@@ -1,7 +1,18 @@
-require("dotenv").config();
+if (process.env.NODE_ENV !== "production") {
+  require("dotenv").config();
+}
+
 const express = require("express");
 const axios = require("axios");
-const twilio = require("twilio");
+
+// Load Twilio ONLY if installed (prevents crash during first setup)
+let twilio;
+try {
+  twilio = require("twilio");
+} catch (e) {
+  console.warn("Twilio not installed yet — skipping");
+}
+
 
 const app = express();
 app.use(express.json());
@@ -96,4 +107,19 @@ app.post("/webhook", async (req, res) => {
     }
 
     return res.sendStatus(200);
-  } catch
+} catch (err) {
+  console.error("Webhook error:", err);
+  return res.sendStatus(200);
+}
+    );
+// Health check (Render uses this implicitly)
+app.get("/health", (req, res) => {
+  res.status(200).send("OK");
+});
+
+// Start server (Render requires this)
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => {
+  console.log(`MSTAF Core running on port ${PORT}`);
+});
+
