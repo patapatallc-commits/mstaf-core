@@ -110,7 +110,8 @@ app.post("/webhook", async (req, res) => {
 } catch (err) {
   console.error("Webhook error:", err);
   return res.sendStatus(200);
-});
+};
+
 
 // Health check (Render uses this implicitly)
 app.get("/health", (req, res) => {
