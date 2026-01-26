@@ -106,11 +106,13 @@ app.post("/webhook", async (req, res) => {
       );
     }
 
+        return res.sendStatus(200);
+  } catch (err) {
+    console.error("Webhook error:", err);
     return res.sendStatus(200);
-} catch (err) {
-  console.error("Webhook error:", err);
-  return res.sendStatus(200);
-}
+  }
+});
+
 
 
 
