@@ -43,9 +43,31 @@ async function appendJobToSheet(row) {
 
 
 const app = express();
+      });
+    }
+  });
+  res.json({ routes });
+});
 app.use(express.json());
 // Parse URL-encoded bodies (needed for forms + Twilio)
 app.use(express.urlencoded({ extended: true }));
+
+
+// =============================
+// 🔍 Debug: list active routes
+// =============================
+app.get("/routes", (req, res) => {
+  const routes = [];
+  app._router.stack.forEach((m) => {
+    if (m.route && m.route.path) {
+      routes.push({
+        path: m.route.path,
+        methods: Object.keys(m.route.methods).join(",").toUpperCase(),
+      });
+    }
+  });
+  res.json({ routes });
+});
 // ===============================
 // 📦 Upload setup (Render-friendly)
 // ===============================
