@@ -228,7 +228,79 @@ app.post("/upload", upload.single("file"), (req, res) => {
     savedAs: req.file.path
   });
 });
+/**
+ * List jobs by printerId (simple queue)
+ * GET /jobs?printerId=PP-USA-001
+ */
+app.get("/jobs", (req, res) => {
+  try {
+    const { printerId } = req.query;
 
+    if (!printerId) {
+      return res.status(400).json({
+        success: false,
+        error: "printerId is required"
+      });
+    }
+
+    const uploadsDir = path.join(__dirname, "uploads");
+
+    if (!fs.existsSync(uploadsDir)) {
+      return res.json({
+        success: true,
+        count: 0,
+        jobs: []
+      });
+    }
+
+    const files = fs.readdirSync(uploadsDir);
+
+    // Only files that contain this printerId
+    const jobs = files
+      .filter(name => name.includes(printerId))
+      .map(name => ({
+        printerId,
+        filename: name,
+        url: `/uploads/${name}`
+      }));
+
+    return res.json({
+      success: true,
+      count: jobs.length,
+      jobs
+    });
+
+  } catch (e) {
+    console.error("Jobs list error:", e);
+    return res.status(500).json({
+      success: false,
+      error: "Server error reading jobs"
+    });
+  }
+});
+// ✅ List jobs (optionally filter by printerId)
+app.get("/jobs", (req, res) => {
+  try {
+    const printerId = (req.query.printerId || "").trim();
+    const jobs = readJobs();
+
+    const filtered = printerId
+      ? jobs.filter(j => (j.printerId || "").trim() === printerId)
+      : jobs;
+
+    return res.json({
+      success: true,
+      count: filtered.length,
+      jobs: filtered
+    });
+  } catch (e) {
+    console.log("Jobs list error:", e.message);
+    return res.status(500).json({
+      success: false,
+      error: "Server error reading jobs."
+    });
+  }
+});
 /**
  * 404 handler
  */
