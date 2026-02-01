@@ -10,7 +10,9 @@ require("dotenv").config();
 
 const express = require("express");
 const twilio = require("twilio");
-
+const multer = require("multer");
+const path = require("path");
+const fs = require("fs");
 const app = express();
 
 /**
@@ -20,6 +22,23 @@ const app = express();
  */
 app.use(express.urlencoded({ extended: true }));
 app.use(express.json());
+// ===== FILE UPLOAD SETUP (MSTAF UPLOAD / PRINT) =====
+const uploadDir = path.join(__dirname, "uploads");
+
+if (!fs.existsSync(uploadDir)) {
+  fs.mkdirSync(uploadDir);
+}
+
+const storage = multer.diskStorage({
+  destination: uploadDir,
+  filename: (req, file, cb) => {
+    const safeName =
+      Date.now() + "-" + file.originalname.replace(/\s+/g, "_");
+    cb(null, safeName);
+  }
+});
+
+const upload = multer({ storage });
 
 /** Basic health check (Render uses this to confirm your service is alive) */
 app.get("/", (req, res) => {
@@ -168,6 +187,18 @@ app.post("/twilio/status", (req, res) => {
   } catch (e) {
     res.status(200).json({ ok: true });
   }
+});
+// ===== FILE UPLOAD ENDPOINT =====
+app.post("/upload", upload.single("file"), (req, res) => {
+  if (!req.file) {
+    return res.status(400).json({ error: "No file uploaded" });
+  }
+
+  res.json({
+    success: true,
+    filename: req.file.filename,
+    savedAs: req.file.path
+  });
 });
 
 /**
