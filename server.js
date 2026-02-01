@@ -1,241 +1,186 @@
-// MSTAF Core - Stable starter for Render
-// WhatsApp webhook disabled (Meta WhatsApp still pending)
-// Twilio SMS webhook enabled at /sms
+/**
+ * MSTAF CORE - server.js (Twilio SMS/MMS first)
+ * - Works on Render/Heroku-style hosts
+ * - Correctly parses Twilio x-www-form-urlencoded webhooks
+ * - Provides health + debug routes
+ * - Handles SMS + MMS (media URLs)
+ */
 
-if (process.env.NODE_ENV !== "production") {
-  try {
-    require("dotenv").config();
-  } catch (e) {
-    // ignore if dotenv not installed
-  }
-}
+require("dotenv").config();
 
 const express = require("express");
-const { google } = require("googleapis");
-const multer = require("multer");
-const { v4: uuidv4 } = require("uuid");
-const fs = require("fs");
-const path = require("path");
-
-// ✅ Google Sheets auth (Render Secret File)
-const auth = new google.auth.GoogleAuth({
-  keyFile: "/etc/secrets/google-service-account.json",
-  scopes: ["https://www.googleapis.com/auth/spreadsheets"],
-});
-
-const sheets = google.sheets({ version: "v4", auth });
-
-// ✅ Sheet config (set in Render Environment Variables)
-const SPREADSHEET_ID = process.env.GOOGLE_SHEET_ID;
-const SHEET_NAME = process.env.GOOGLE_SHEET_TAB || "Sheet1";
-
-// ✅ Helper: append a row to Google Sheets
-async function appendJobToSheet(row) {
-  await sheets.spreadsheets.values.append({
-    spreadsheetId: SPREADSHEET_ID,
-    range: `${SHEET_NAME}!A1`,
-    valueInputOption: "RAW",
-    requestBody: {
-      values: [row],
-    },
-  });
-}
-
+const twilio = require("twilio");
 
 const app = express();
-      });
-    }
-  });
-  res.json({ routes });
-});
-app.use(express.json());
-// Parse URL-encoded bodies (needed for forms + Twilio)
+
+/**
+ * IMPORTANT:
+ * Twilio sends webhooks as application/x-www-form-urlencoded
+ * So we must include express.urlencoded(...)
+ */
 app.use(express.urlencoded({ extended: true }));
+app.use(express.json());
 
+/** Basic health check (Render uses this to confirm your service is alive) */
+app.get("/", (req, res) => {
+  res.status(200).send("✅ MSTAF CORE is running");
+});
 
-// =============================
-// 🔍 Debug: list active routes
-// =============================
-app.get("/routes", (req, res) => {
-  const routes = [];
-  app._router.stack.forEach((m) => {
-    if (m.route && m.route.path) {
-      routes.push({
-        path: m.route.path,
-        methods: Object.keys(m.route.methods).join(",").toUpperCase(),
-      });
-    }
+/** Optional: quick env check (safe — does not reveal secrets) */
+app.get("/health", (req, res) => {
+  res.json({
+    ok: true,
+    service: "mstaf-core",
+    hasTwilioSid: Boolean(process.env.TWILIO_ACCOUNT_SID),
+    hasTwilioAuthToken: Boolean(process.env.TWILIO_AUTH_TOKEN),
+    hasTwilioNumber: Boolean(process.env.TWILIO_PHONE_NUMBER),
   });
-  res.json({ routes });
-});
-// ===============================
-// 📦 Upload setup (Render-friendly)
-// ===============================
-const UPLOAD_DIR = process.env.UPLOAD_DIR || "/tmp/mstaf_uploads";
-
-if (!fs.existsSync(UPLOAD_DIR)) {
-  fs.mkdirSync(UPLOAD_DIR, { recursive: true });
-}
-
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => cb(null, UPLOAD_DIR),
-  filename: (req, file, cb) => {
-    const id = uuidv4();
-    const safeOriginal = (file.originalname || "file").replace(/[^a-zA-Z0-9._-]/g, "_");
-    cb(null, `${id}__${safeOriginal}`);
-  },
 });
 
-function fileFilter(req, file, cb) {
-  const ok =
-    file.mimetype.startsWith("image/") ||
-    file.mimetype === "application/pdf";
-
-  if (!ok) return cb(new Error("Only images and PDF files are allowed."));
-  cb(null, true);
-}
-
-const upload = multer({
-  storage,
-  fileFilter,
-  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB
-});
-
-// ✅ Upload endpoint
-app.post("/api/upload", upload.single("file"), async (req, res) => {
+/** Debug: list active routes */
+app.get("/routes", (req, res) => {
   try {
-    if (!req.file) {
-      return res.status(400).json({ ok: false, error: "No file uploaded. Use field name: file" });
-    }
-
-    return res.status(200).json({
-      ok: true,
-      message: "Upload received",
-      file: {
-        filename: req.file.filename,
-        originalname: req.file.originalname,
-        mimetype: req.file.mimetype,
-        size: req.file.size,
-      },
+    const routes = [];
+    app._router.stack.forEach((m) => {
+      if (m.route && m.route.path) {
+        routes.push({
+          path: m.route.path,
+          methods: Object.keys(m.route.methods).join(",").toUpperCase(),
+        });
+      }
     });
-  } catch (err) {
-    return res.status(500).json({ ok: false, error: err.message || "Upload failed" });
+    res.json({ routes });
+  } catch (e) {
+    res.json({ routes: [], note: "Route listing not available." });
   }
 });
 
-// Multer error handler
-app.use((err, req, res, next) => {
-  if (err) return res.status(400).json({ ok: false, error: err.message || "Bad request" });
-  next();
-});
-// ✅ Health check endpoint
-app.get("/health", (req, res) => {
-  res.status(200).json({
-    status: "ok",
-    service: "MSTAF Core",
-    time: new Date().toISOString(),
-  });
-});
+/**
+ * (Recommended) Twilio request signature validation
+ * If you don't want validation yet, set:
+ *   TWILIO_VALIDATE_WEBHOOKS=false
+ */
+function shouldValidateTwilio() {
+  const v = (process.env.TWILIO_VALIDATE_WEBHOOKS || "true").toLowerCase();
+  return v !== "false";
+}
 
+function validateTwilioRequest(req) {
+  // Only validate if enabled and we have auth token.
+  if (!shouldValidateTwilio()) return true;
+  if (!process.env.TWILIO_AUTH_TOKEN) return true;
 
-app.post("/sms", async (req, res) => {
-  // Respond immediately to Twilio
-  res.status(200).send("OK");
+  // Twilio sends signature in header:
+  const signature = req.headers["x-twilio-signature"];
+  if (!signature) return false;
 
+  // Build the full URL Twilio called (Render/Proxy safe)
+  const proto = (req.headers["x-forwarded-proto"] || req.protocol || "https")
+    .split(",")[0]
+    .trim();
+  const host = (req.headers["x-forwarded-host"] || req.headers.host || "")
+    .split(",")[0]
+    .trim();
+  const url = `${proto}://${host}${req.originalUrl}`;
+
+  return twilio.validateRequest(
+    process.env.TWILIO_AUTH_TOKEN,
+    signature,
+    url,
+    req.body
+  );
+}
+
+/**
+ * Twilio SMS/MMS inbound webhook
+ * Configure in Twilio Console:
+ * Phone Number > Messaging > "A MESSAGE COMES IN"
+ *   https://YOUR-RENDER-URL/sms
+ */
+app.post("/sms", (req, res) => {
   try {
+    // Validate Twilio signature (optional but recommended)
+    const isValid = validateTwilioRequest(req);
+    if (!isValid) {
+      return res.status(403).send("Forbidden (invalid Twilio signature)");
+    }
+
     const from = req.body.From || "";
     const to = req.body.To || "";
     const body = (req.body.Body || "").trim();
     const numMedia = parseInt(req.body.NumMedia || "0", 10);
 
-    const mediaUrl = numMedia > 0 ? req.body.MediaUrl0 : "";
-    const mediaType = numMedia > 0 ? req.body.MediaContentType0 : "";
+    // Collect media URLs if MMS
+    const media = [];
+    for (let i = 0; i < numMedia; i++) {
+      const url = req.body[`MediaUrl${i}`];
+      const contentType = req.body[`MediaContentType${i}`];
+      if (url) media.push({ url, contentType });
+    }
 
-    const now = new Date();
-    const jobId = `JOB-${now.getTime()}`;
+    // ---- MSTAF logic placeholder ----
+    // For now we just acknowledge + show what we received.
+    let reply = `✅ MSTAF received your message.\n\nFrom: ${from}\nTo: ${to}\nText: ${body || "(no text)"}`;
 
-    // Row matches your Sheet columns
-    const row = [
-      jobId,
-      now.toISOString(),
-      from,
-      to,
-      body,
-      mediaUrl,
-      mediaType,
-      "PENDING",
-    ];
+    if (media.length > 0) {
+      reply += `\n\n📎 Media received (${media.length}):\n`;
+      media.forEach((m, idx) => {
+        reply += `${idx + 1}) ${m.contentType || "file"}\n${m.url}\n`;
+      });
+      reply += `\nNext: We will connect this to MSTAF PRINT / MSTAF UPLOAD logic.`;
+    } else {
+      reply += `\n\nTip: Send an image (MMS) to test upload flow.`;
+    }
 
-    await appendJobToSheet(row);
-    console.log("✅ Job saved to Google Sheets:", jobId);
+    // Respond to Twilio with TwiML
+    const twiml = new twilio.twiml.MessagingResponse();
+    twiml.message(reply);
+
+    res.type("text/xml");
+    return res.status(200).send(twiml.toString());
   } catch (err) {
-    console.error("❌ Failed to write to sheet:", err);
+    console.error("❌ /sms error:", err);
+    return res.status(500).send("Server error");
   }
 });
 
-app.get("/health", (req, res) => {
-  res.status(200).send("OK");
-});
+/**
+ * Optional: Twilio Status Callback endpoint
+ * You can set this as Status Callback URL when sending outbound messages later.
+ */
+app.post("/twilio/status", (req, res) => {
+  try {
+    // Typically no need to validate, but you can if you want:
+    // const isValid = validateTwilioRequest(req);
+    // if (!isValid) return res.status(403).send("Forbidden");
 
-app.post("/sms", (req, res) => {
-  console.log("✅ /sms HIT from Twilio");
-  console.log("Headers:", req.headers);
-  console.log("Body:", req.body);
-  res.status(200).send("OK");
-});
+    const payload = {
+      MessageSid: req.body.MessageSid,
+      MessageStatus: req.body.MessageStatus,
+      To: req.body.To,
+      From: req.body.From,
+      ErrorCode: req.body.ErrorCode,
+      ErrorMessage: req.body.ErrorMessage,
+    };
 
-// Helpers
-function escapeXml(unsafe = "") {
-  return unsafe
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&apos;");
-}
-
-// Home
-app.get("/", (req, res) => {
-  res.status(200).send("MSTAF Core is running ✅");
-});
-
-// Health check (Render uses this)
-app.get("/health", (req, res) => {
-  res.status(200).send("OK");
-});
-
-// WhatsApp webhook DISABLED for now (Meta pending)
-app.post("/webhook", (req, res) => {
-  return res.sendStatus(200);
-});
-
-// ✅ Twilio SMS webhook (use this NOW while WhatsApp is pending)
-app.post("/sms", (req, res) => {
-  const text = (req.body.Body || "").trim();
-  const upper = text.toUpperCase();
-
-  let reply =
-    'Hi 👋 Welcome to MSTAF.\nTry:\n• MSTAF TELEVISION\n• MSTAF LAPTOP\n• MSTAF UPLOAD';
-
-  if (upper.startsWith("MSTAF UPLOAD")) {
-    reply =
-      "✅ MSTAF UPLOAD received.\nPlease send:\n1) Product photo\n2) Price\n3) Store name + address\n4) Country/City";
-  } else if (upper.startsWith("MSTAF ")) {
-    const query = text.substring(5).trim();
-    reply = `🔎 Searching MSTAF for: ${query}\n\n(Next: connect a database so you get prices + store addresses.)`;
+    console.log("📌 Twilio Status:", payload);
+    res.status(200).json({ ok: true });
+  } catch (e) {
+    res.status(200).json({ ok: true });
   }
-
-  // Twilio expects XML (TwiML)
-  const twiml = `<?xml version="1.0" encoding="UTF-8"?>
-<Response>
-  <Message>${escapeXml(reply)}</Message>
-</Response>`;
-
-  res.type("text/xml").send(twiml);
 });
 
-// Start server (Render requires PORT)
+/**
+ * 404 handler
+ */
+app.use((req, res) => {
+  res.status(404).json({ ok: false, message: "Not Found" });
+});
+
+/**
+ * Start server
+ */
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
-  console.log(`MSTAF Core running on port ${PORT}`);
+  console.log(`✅ MSTAF CORE listening on port ${PORT}`);
 });
