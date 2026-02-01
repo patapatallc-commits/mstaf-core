@@ -15,7 +15,7 @@ const { google } = require("googleapis");
 
 // ✅ Google Sheets auth (Render Secret File)
 const auth = new google.auth.GoogleAuth({
-  keyFile: process.env.GOOGLE_SERVICE_ACCOUNT_JSON, // /etc/secrets/google-service-account.json
+  keyFile: "/etc/secrets/google-service-account.json",
   scopes: ["https://www.googleapis.com/auth/spreadsheets"],
 });
 
