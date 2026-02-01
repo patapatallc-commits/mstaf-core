@@ -12,6 +12,10 @@ if (process.env.NODE_ENV !== "production") {
 
 const express = require("express");
 const { google } = require("googleapis");
+const multer = require("multer");
+const { v4: uuidv4 } = require("uuid");
+const fs = require("fs");
+const path = require("path");
 
 // ✅ Google Sheets auth (Render Secret File)
 const auth = new google.auth.GoogleAuth({
@@ -40,7 +44,68 @@ async function appendJobToSheet(row) {
 
 const app = express();
 app.use(express.json());
+// Parse URL-encoded bodies (needed for forms + Twilio)
+app.use(express.urlencoded({ extended: true }));
+// ===============================
+// 📦 Upload setup (Render-friendly)
+// ===============================
+const UPLOAD_DIR = process.env.UPLOAD_DIR || "/tmp/mstaf_uploads";
 
+if (!fs.existsSync(UPLOAD_DIR)) {
+  fs.mkdirSync(UPLOAD_DIR, { recursive: true });
+}
+
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => cb(null, UPLOAD_DIR),
+  filename: (req, file, cb) => {
+    const id = uuidv4();
+    const safeOriginal = (file.originalname || "file").replace(/[^a-zA-Z0-9._-]/g, "_");
+    cb(null, `${id}__${safeOriginal}`);
+  },
+});
+
+function fileFilter(req, file, cb) {
+  const ok =
+    file.mimetype.startsWith("image/") ||
+    file.mimetype === "application/pdf";
+
+  if (!ok) return cb(new Error("Only images and PDF files are allowed."));
+  cb(null, true);
+}
+
+const upload = multer({
+  storage,
+  fileFilter,
+  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB
+});
+
+// ✅ Upload endpoint
+app.post("/api/upload", upload.single("file"), async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ ok: false, error: "No file uploaded. Use field name: file" });
+    }
+
+    return res.status(200).json({
+      ok: true,
+      message: "Upload received",
+      file: {
+        filename: req.file.filename,
+        originalname: req.file.originalname,
+        mimetype: req.file.mimetype,
+        size: req.file.size,
+      },
+    });
+  } catch (err) {
+    return res.status(500).json({ ok: false, error: err.message || "Upload failed" });
+  }
+});
+
+// Multer error handler
+app.use((err, req, res, next) => {
+  if (err) return res.status(400).json({ ok: false, error: err.message || "Bad request" });
+  next();
+});
 // ✅ Health check endpoint
 app.get("/health", (req, res) => {
   res.status(200).json({
@@ -50,7 +115,7 @@ app.get("/health", (req, res) => {
   });
 });
 
-app.use(express.urlencoded({ extended: true }));
+
 app.post("/sms", async (req, res) => {
   // Respond immediately to Twilio
   res.status(200).send("OK");
