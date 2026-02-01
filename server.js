@@ -11,10 +11,70 @@ if (process.env.NODE_ENV !== "production") {
 }
 
 const express = require("express");
+const { google } = require("googleapis");
+
+// ✅ Google Sheets auth (Render Secret File)
+const auth = new google.auth.GoogleAuth({
+  keyFile: process.env.GOOGLE_SERVICE_ACCOUNT_JSON, // /etc/secrets/google-service-account.json
+  scopes: ["https://www.googleapis.com/auth/spreadsheets"],
+});
+
+const sheets = google.sheets({ version: "v4", auth });
+
+// ✅ Sheet config (set in Render Environment Variables)
+const SPREADSHEET_ID = process.env.GOOGLE_SHEET_ID;
+const SHEET_NAME = process.env.GOOGLE_SHEET_TAB || "Sheet1";
+
+// ✅ Helper: append a row to Google Sheets
+async function appendJobToSheet(row) {
+  await sheets.spreadsheets.values.append({
+    spreadsheetId: SPREADSHEET_ID,
+    range: `${SHEET_NAME}!A1`,
+    valueInputOption: "RAW",
+    requestBody: {
+      values: [row],
+    },
+  });
+}
+
 
 const app = express();
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+app.post("/sms", async (req, res) => {
+  // Respond immediately to Twilio
+  res.status(200).send("OK");
+
+  try {
+    const from = req.body.From || "";
+    const to = req.body.To || "";
+    const body = (req.body.Body || "").trim();
+    const numMedia = parseInt(req.body.NumMedia || "0", 10);
+
+    const mediaUrl = numMedia > 0 ? req.body.MediaUrl0 : "";
+    const mediaType = numMedia > 0 ? req.body.MediaContentType0 : "";
+
+    const now = new Date();
+    const jobId = `JOB-${now.getTime()}`;
+
+    // Row matches your Sheet columns
+    const row = [
+      jobId,
+      now.toISOString(),
+      from,
+      to,
+      body,
+      mediaUrl,
+      mediaType,
+      "PENDING",
+    ];
+
+    await appendJobToSheet(row);
+    console.log("✅ Job saved to Google Sheets:", jobId);
+  } catch (err) {
+    console.error("❌ Failed to write to sheet:", err);
+  }
+});
 
 app.get("/health", (req, res) => {
   res.status(200).send("OK");
