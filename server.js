@@ -16,6 +16,17 @@ const app = express();
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
+app.get("/health", (req, res) => {
+  res.status(200).send("OK");
+});
+
+app.post("/sms", (req, res) => {
+  console.log("✅ /sms HIT from Twilio");
+  console.log("Headers:", req.headers);
+  console.log("Body:", req.body);
+  res.status(200).send("OK");
+});
+
 // Helpers
 function escapeXml(unsafe = "") {
   return unsafe
