@@ -13,7 +13,35 @@ const twilio = require("twilio");
 const multer = require("multer");
 const path = require("path");
 const fs = require("fs");
-const app = express();
+
+
+
+
+const app = express();   // 👈 KEEP THIS
+
+// ===== JOB QUEUE (simple JSON file) =====
+const jobsFile = path.join(__dirname, "jobs.json");
+
+function readJobs() {
+  try {
+    if (!fs.existsSync(jobsFile)) return [];
+    const raw = fs.readFileSync(jobsFile, "utf8");
+    return raw ? JSON.parse(raw) : [];
+  } catch (e) {
+    console.log("jobs.json read error:", e.message);
+    return [];
+  }
+}
+
+function writeJobs(jobs) {
+  const tmp = jobsFile + ".tmp";
+  fs.writeFileSync(tmp, JSON.stringify(jobs, null, 2), "utf8");
+  fs.renameSync(tmp, jobsFile);
+}
+
+function makeJobId() {
+  return `JOB-${Date.now()}-${Math.random().toString(36).slice(2, 8).toUpperCase()}`;
+}
 
 /**
  * IMPORTANT:
