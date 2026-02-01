@@ -18,7 +18,18 @@ const fs = require("fs");
 
 
 const app = express();   // 👈 KEEP THIS
+// ===== Middleware =====
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
 
+// ===== Uploads folder + public access =====
+const uploadsDir = path.join(__dirname, "uploads");
+if (!fs.existsSync(uploadsDir)) {
+  fs.mkdirSync(uploadsDir, { recursive: true });
+}
+
+// Public access: /uploads/<filename>
+app.use("/uploads", express.static(uploadsDir));
 // ===== JOB QUEUE (simple JSON file) =====
 const jobsFile = path.join(__dirname, "jobs.json");
 
@@ -222,11 +233,35 @@ app.post("/upload", upload.single("file"), (req, res) => {
     return res.status(400).json({ error: "No file uploaded" });
   }
 
-  res.json({
-    success: true,
-    filename: req.file.filename,
-    savedAs: req.file.path
+  const printerId = String(req.body.printerId || "").trim();
+if (!printerId) {
+  return res.status(400).json({
+    success: false,
+    error: "printerId is required"
   });
+}
+
+const jobs = readJobs();
+
+const job = {
+  id: String(Date.now()),
+  printerId,
+  filename: req.file.filename,
+  fileUrl: `${req.protocol}://${req.get("host")}/uploads/${req.file.filename}`,
+  status: "queued",
+  createdAt: new Date().toISOString(),
+  completedAt: null
+};
+
+jobs.push(job);
+writeJobs(jobs);
+
+return res.json({
+  success: true,
+  filename: req.file.filename,
+  fileUrl: job.fileUrl,
+  job
+});
 });
 /**
  * List jobs by printerId (simple queue)
