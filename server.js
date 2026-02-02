@@ -25,19 +25,6 @@ app.use(express.urlencoded({ extended: true }));
 const { Pool } = require("pg");
 const pool = new Pool({ connectionString: process.env.DATABASE_URL, ssl: { rejectUnauthorized: false } });
 
-app.get("/db-info", async (req, res) => {
-  try {
-    const r = await pool.query(`
-      SELECT table_name
-      FROM information_schema.tables
-      WHERE table_schema='public'
-      ORDER BY table_name;
-    `);
-    res.json({ ok: true, tables: r.rows.map(x => x.table_name) });
-  } catch (e) {
-    res.status(500).json({ ok: false, error: e.message });
-  }
-});
 // =====================================
 // ===== Uploads folder + public access =====
 const uploadsDir = path.join(__dirname, "uploads");
