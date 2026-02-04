@@ -1,6 +1,6 @@
 /**
  * MSTAF CORE - server.js (Twilio SMS/MMS first)
- * - Works on Render/Heroku-style hosts
+ * - Works on Render/Heroku-style host
  * - Correctly parses Twilio x-www-form-urlencoded webhooks
  * - Provides health + debug routes
  * - Handles SMS + MMS (media URLs)
@@ -271,6 +271,104 @@ return res.json({
  * List jobs by printerId (simple queue)
  * GET /jobs?printerId=PP-USA-001
  */
+// ================================
+// PRINT-O-MATIC: Create a job
+// POST /jobs
+// ================================
+app.post("/jobs", async (req, res) => {
+  try {
+    const {
+      printerId = "PP-USA-001",
+      fileUrl = null,
+      pages = 1,
+      copies = 1,
+      color = "BW",
+      customerPhone = null,
+      meta = {}
+    } = req.body || {};
+
+    const status = "queued";
+
+    const metaOut = {
+      ...meta,
+      pages,
+      copies,
+      color,
+      customerPhone
+    };
+
+    const q = `
+      INSERT INTO print_jobs (printer_id, status, file_url, meta)
+      VALUES ($1, $2, $3, $4)
+      RETURNING *;
+    `;
+
+    const result = await pool.query(q, [
+      printerId,
+      status,
+      fileUrl,
+      metaOut
+    ]);
+
+    return res.json({
+      success: true,
+      job: result.rows[0]
+    });
+  } catch (err) {
+    console.error("POST /jobs ERROR:", err);
+    return res.status(500).json({
+      success: false,
+      error: err.message
+    });
+  }
+});
+// ================================
+// PRINT-O-MATIC: Update job status
+// PATCH /jobs/:id/status
+// ================================
+app.patch("/jobs/:id/status", async (req, res) => {
+  try {
+    const id = req.params.id;
+    const { status, meta = {} } = req.body || {};
+
+    const allowed = new Set(["queued", "printing", "completed", "failed"]);
+    const normalized = String(status || "").toLowerCase();
+    if (!allowed.has(normalized)) {
+      return res.status(400).json({
+        success: false,
+        error: "Invalid status. Use queued|printing|completed|failed."
+      });
+    }
+
+    const q = `
+      UPDATE print_jobs
+      SET status = $2,
+          meta = COALESCE(meta, '{}'::jsonb) || $3::jsonb
+      WHERE id = $1
+      RETURNING *;
+    `;
+
+    const result = await pool.query(q, [id, normalized, meta]);
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        error: "Job not found"
+      });
+    }
+
+    return res.json({
+      success: true,
+      job: result.rows[0]
+    });
+  } catch (err) {
+    console.error("PATCH /jobs/:id/status ERROR:", err);
+    return res.status(500).json({
+      success: false,
+      error: err.message
+    });
+  }
+});
 // ================================
 // PRINT-O-MATIC: Jobs queue (Postgres)
 // GET /jobs?printerId=PP-USA-001
