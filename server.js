@@ -305,37 +305,37 @@ return res.json({
 app.post("/jobs", async (req, res) => {
   try {
     const {
-      printerId = "PP-USA-001",
-      fileUrl = null,
-      pages = 1,
-      copies = 1,
-      color = "BW",
-      customerPhone = null,
-      meta = {}
+      const {
+  printerId = "PP-USA-001",
+  fileUrl = null,
+  pages = 1,
+  copies = 1,
+  color = "BW",
+  customerPhone = null
+} = req.body || {};
     } = req.body || {};
 
     const status = "queued";
 
-    const metaOut = {
-      ...meta,
-      pages,
-      copies,
-      color,
-      customerPhone
+    
     };
 
     const q = `
-      INSERT INTO print_jobs (printer_id, status, file_url, meta)
-      VALUES ($1, $2, $3, $4)
-      RETURNING *;
-    `;
+  INSERT INTO print_jobs
+  (printer_id, status, file_url, pages, copies, color, customer_phone)
+  VALUES ($1, $2, $3, $4, $5, $6, $7)
+  RETURNING *;
+`;
 
     const result = await pool.query(q, [
-      printerId,
-      status,
-      fileUrl,
-      metaOut
-    ]);
+  printerId,
+  status,
+  fileUrl,
+  pages,
+  copies,
+  color,
+  customerPhone
+]);
 
     return res.json({
       success: true,
