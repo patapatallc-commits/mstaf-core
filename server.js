@@ -271,49 +271,36 @@ return res.json({
  * List jobs by printerId (simple queue)
  * GET /jobs?printerId=PP-USA-001
  */
-app.get("/jobs", (req, res) => {
+// ================================
+// PRINT-O-MATIC: Jobs queue (Postgres)
+// GET /jobs?printerId=PP-USA-001
+// ================================
+app.get("/jobs", async (req, res) => {
   try {
-    const { printerId } = req.query;
+    const printerId = (req.query.printerId || "PP-USA-001").trim();
+    const limit = Math.min(parseInt(req.query.limit || "10", 10), 50);
 
-    if (!printerId) {
-      return res.status(400).json({
-        success: false,
-        error: "printerId is required"
-      });
-    }
+    const q = `
+      SELECT *
+      FROM print_jobs
+      WHERE printer_id = $1 AND status = 'queued'
+      ORDER BY created_at ASC
+      LIMIT $2;
+    `;
 
-    const uploadsDir = path.join(__dirname, "uploads");
-
-    if (!fs.existsSync(uploadsDir)) {
-      return res.json({
-        success: true,
-        count: 0,
-        jobs: []
-      });
-    }
-
-    const files = fs.readdirSync(uploadsDir);
-
-    // Only files that contain this printerId
-    const jobs = files
-      .filter(name => name.includes(printerId))
-      .map(name => ({
-        printerId,
-        filename: name,
-        url: `/uploads/${name}`
-      }));
+    const result = await pool.query(q, [printerId, limit]);
 
     return res.json({
       success: true,
-      count: jobs.length,
-      jobs
+      printerId,
+      count: result.rows.length,
+      jobs: result.rows
     });
-
-  } catch (e) {
-    console.error("Jobs list error:", e);
+  } catch (err) {
+    console.error("GET /jobs ERROR:", err);
     return res.status(500).json({
       success: false,
-      error: "Server error reading jobs"
+      error: err.message
     });
   }
 });
