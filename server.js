@@ -205,7 +205,34 @@ app.post("/sms", (req, res) => {
     return res.status(500).send("Server error");
   }
 });
+// ===== COUNT JOBS (must be above /jobs list route) =====
+app.get("/jobs/count", async (req, res) => {
+  try {
+    const printerId = (req.query.printerId || "").trim();
+    if (!printerId) {
+      return res.status(400).json({ ok: false, error: "printerId is required" });
+    }
 
+    // Postgres path
+    if (typeof pool !== "undefined" && pool?.query) {
+      const r = await pool.query(
+        "SELECT COUNT(*)::int AS count FROM print_jobs WHERE printer_id = $1",
+        [printerId]
+      );
+      return res.json({ ok: true, printerId, count: r.rows[0].count });
+    }
+
+    // In-memory fallback
+    if (typeof jobs !== "undefined" && Array.isArray(jobs)) {
+      const count = jobs.filter(j => j.printerId === printerId).length;
+      return res.json({ ok: true, printerId, count });
+    }
+
+    return res.status(500).json({ ok: false, error: "No job store found" });
+  } catch (err) {
+    return res.status(500).json({ ok: false, error: err.message });
+  }
+});
 /**
  * Optional: Twilio Status Callback endpoint
  * You can set this as Status Callback URL when sending outbound messages later.
