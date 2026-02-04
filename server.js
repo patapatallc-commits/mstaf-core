@@ -1,468 +1,386 @@
 /**
- * MSTAF CORE - server.js (Twilio SMS/MMS first)
- * - Works on Render/Heroku-style host
- * - Correctly parses Twilio x-www-form-urlencoded webhooks
- * - Provides health + debug routes
- * - Handles SMS + MMS (media URLs)
+ * MSTAF CORE - Print-O-Matic Stable Server (Render)
+ * - Twilio SMS/MMS inbound webhook: POST /sms
+ * - Upload endpoint: POST /api/upload (multipart/form-data)
+ * - Printer polling: GET /jobs?printerId=PP-USA-001
+ * - Count endpoint: GET /jobs/count?printerId=PP-USA-001
+ * - Update status: POST /jobs/:id/status
+ * - Uses Postgres if DATABASE_URL is set, otherwise in-memory fallback
  */
 
-require("dotenv").config();
+if (process.env.NODE_ENV !== "production") {
+  try { require("dotenv").config(); } catch (e) {}
+}
 
 const express = require("express");
-const twilio = require("twilio");
 const multer = require("multer");
+const crypto = require("crypto");
+const os = require("os");
 const path = require("path");
-const fs = require("fs");
 
-
-
-
-const app = express();   // 👈 KEEP THIS
-// ===== Middleware =====
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
-// ===== TEMP DB VERIFY (READ-ONLY) =====
-const { Pool } = require("pg");
-const pool = new Pool({ connectionString: process.env.DATABASE_URL, ssl: { rejectUnauthorized: false } });
-
-// =====================================
-// ===== Uploads folder + public access =====
-const uploadsDir = path.join(__dirname, "uploads");
-if (!fs.existsSync(uploadsDir)) {
-  fs.mkdirSync(uploadsDir, { recursive: true });
+// Optional Postgres (pg)
+let pg = null;
+try {
+  pg = require("pg");
+} catch (e) {
+  pg = null;
 }
 
-// Public access: /uploads/<filename>
-app.use("/uploads", express.static(uploadsDir));
-// ===== JOB QUEUE (simple JSON file) =====
-const jobsFile = path.join(__dirname, "jobs.json");
+const app = express();
 
-function readJobs() {
+// IMPORTANT for Twilio (form-encoded) + JSON
+app.use(express.json({ limit: "20mb" }));
+app.use(express.urlencoded({ extended: true }));
+
+// -------------------- CONFIG --------------------
+const PORT = process.env.PORT || 10000;
+
+// Your default printer ID (used when none provided)
+const DEFAULT_PRINTER_ID = process.env.DEFAULT_PRINTER_ID || "PP-USA-001";
+
+// Public base URL is optional (helpful for logs/messages)
+const PUBLIC_BASE_URL = process.env.PUBLIC_BASE_URL || "";
+
+// Twilio optional
+const TWILIO_FROM_NUMBER = process.env.TWILIO_FROM_NUMBER || "";
+// ------------------------------------------------
+
+// -------------------- DEBUG ---------------------
+app.get("/health", (req, res) => res.status(200).send("OK"));
+
+app.get("/debug/instance", (req, res) => {
+  res.json({
+    pid: process.pid,
+    host: os.hostname(),
+    time: new Date().toISOString(),
+    node_env: process.env.NODE_ENV || "unknown",
+    using_db: Boolean(process.env.DATABASE_URL && pg),
+    public_base_url: PUBLIC_BASE_URL || null
+  });
+});
+// ------------------------------------------------
+
+// -------------------- STORAGE -------------------
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: {
+    fileSize: 15 * 1024 * 1024 // 15MB
+  }
+});
+
+// In-memory fallback queue (if DB not available)
+const memoryJobs = []; // {id, printer_id, from, file_name, mime_type, file_base64, status, created_at, updated_at}
+
+// -------------------- DB LAYER ------------------
+let pool = null;
+
+function canUseDb() {
+  return Boolean(process.env.DATABASE_URL && pg);
+}
+
+async function initDbIfPossible() {
+  if (!canUseDb()) return false;
+
+  const { Pool } = pg;
+  pool = new Pool({
+    connectionString: process.env.DATABASE_URL,
+    ssl: process.env.PGSSLMODE === "disable" ? false : { rejectUnauthorized: false }
+  });
+
+  // Create table if it doesn't exist
+  const sql = `
+    CREATE TABLE IF NOT EXISTS print_jobs (
+      id TEXT PRIMARY KEY,
+      printer_id TEXT NOT NULL,
+      from_phone TEXT,
+      file_name TEXT,
+      mime_type TEXT,
+      file_base64 TEXT,
+      status TEXT NOT NULL DEFAULT 'QUEUED',
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+    CREATE INDEX IF NOT EXISTS idx_print_jobs_printer_status_created
+      ON print_jobs (printer_id, status, created_at);
+  `;
+  await pool.query(sql);
+  return true;
+}
+
+function newId(prefix = "job") {
+  return `${prefix}_${crypto.randomBytes(10).toString("hex")}`;
+}
+
+async function dbInsertJob(job) {
+  const sql = `
+    INSERT INTO print_jobs (id, printer_id, from_phone, file_name, mime_type, file_base64, status)
+    VALUES ($1,$2,$3,$4,$5,$6,$7)
+  `;
+  await pool.query(sql, [
+    job.id,
+    job.printer_id,
+    job.from_phone || null,
+    job.file_name || null,
+    job.mime_type || null,
+    job.file_base64 || null,
+    job.status || "QUEUED"
+  ]);
+}
+
+async function dbGetNextJobs(printerId, limit = 5) {
+  // Only return QUEUED jobs (printer polls these)
+  const sql = `
+    SELECT id, printer_id, from_phone, file_name, mime_type, file_base64, status, created_at, updated_at
+    FROM print_jobs
+    WHERE printer_id = $1 AND status = 'QUEUED'
+    ORDER BY created_at ASC
+    LIMIT $2
+  `;
+  const { rows } = await pool.query(sql, [printerId, limit]);
+  return rows;
+}
+
+async function dbCountQueued(printerId) {
+  const sql = `SELECT COUNT(*)::int AS count FROM print_jobs WHERE printer_id = $1 AND status = 'QUEUED'`;
+  const { rows } = await pool.query(sql, [printerId]);
+  return rows?.[0]?.count ?? 0;
+}
+
+async function dbUpdateStatus(id, status) {
+  const sql = `
+    UPDATE print_jobs
+    SET status = $1, updated_at = NOW()
+    WHERE id = $2
+    RETURNING id, printer_id, status, updated_at
+  `;
+  const { rows } = await pool.query(sql, [status, id]);
+  return rows?.[0] || null;
+}
+
+// -------------------- FALLBACK (MEMORY) ---------
+function memInsertJob(job) {
+  memoryJobs.push({
+    ...job,
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString()
+  });
+}
+
+function memGetNextJobs(printerId, limit = 5) {
+  return memoryJobs
+    .filter(j => j.printer_id === printerId && j.status === "QUEUED")
+    .slice(0, limit);
+}
+
+function memCountQueued(printerId) {
+  return memoryJobs.filter(j => j.printer_id === printerId && j.status === "QUEUED").length;
+}
+
+function memUpdateStatus(id, status) {
+  const j = memoryJobs.find(x => x.id === id);
+  if (!j) return null;
+  j.status = status;
+  j.updated_at = new Date().toISOString();
+  return { id: j.id, printer_id: j.printer_id, status: j.status, updated_at: j.updated_at };
+}
+
+// Unified wrappers (DB if available, else memory)
+async function insertJob(job) {
+  if (canUseDb() && pool) return dbInsertJob(job);
+  return memInsertJob(job);
+}
+
+async function getNextJobs(printerId, limit = 5) {
+  if (canUseDb() && pool) return dbGetNextJobs(printerId, limit);
+  return memGetNextJobs(printerId, limit);
+}
+
+async function countQueued(printerId) {
+  if (canUseDb() && pool) return dbCountQueued(printerId);
+  return memCountQueued(printerId);
+}
+
+async function updateStatus(id, status) {
+  if (canUseDb() && pool) return dbUpdateStatus(id, status);
+  return memUpdateStatus(id, status);
+}
+
+// -------------------- ROUTES --------------------
+
+// 1) Upload endpoint (PowerShell curl)
+app.post("/api/upload", upload.single("file"), async (req, res) => {
   try {
-    if (!fs.existsSync(jobsFile)) return [];
-    const raw = fs.readFileSync(jobsFile, "utf8");
-    return raw ? JSON.parse(raw) : [];
-  } catch (e) {
-    console.log("jobs.json read error:", e.message);
-    return [];
-  }
-}
+    const printerId = (req.body.printerId || req.query.printerId || DEFAULT_PRINTER_ID).toString().trim();
+    const fromPhone = (req.body.from || req.query.from || "").toString().trim();
 
-function writeJobs(jobs) {
-  const tmp = jobsFile + ".tmp";
-  fs.writeFileSync(tmp, JSON.stringify(jobs, null, 2), "utf8");
-  fs.renameSync(tmp, jobsFile);
-}
+    if (!req.file) {
+      return res.status(400).json({ ok: false, error: "No file uploaded. Use form field name: file" });
+    }
 
-function makeJobId() {
-  return `JOB-${Date.now()}-${Math.random().toString(36).slice(2, 8).toUpperCase()}`;
-}
+    const fileName = req.file.originalname || `upload_${Date.now()}`;
+    const mimeType = req.file.mimetype || "application/octet-stream";
+    const base64 = req.file.buffer.toString("base64");
 
-/**
- * IMPORTANT:
- * Twilio sends webhooks as application/x-www-form-urlencoded
- * So we must include express.urlencoded(...)
- */
-app.use(express.urlencoded({ extended: true }));
-app.use(express.json());
-// ===== FILE UPLOAD SETUP (MSTAF UPLOAD / PRINT) =====
-const uploadDir = path.join(__dirname, "uploads");
+    const job = {
+      id: newId("print"),
+      printer_id: printerId,
+      from_phone: fromPhone,
+      file_name: fileName,
+      mime_type: mimeType,
+      file_base64: base64,
+      status: "QUEUED"
+    };
 
-if (!fs.existsSync(uploadDir)) {
-  fs.mkdirSync(uploadDir);
-}
+    await insertJob(job);
 
-const storage = multer.diskStorage({
-  destination: uploadDir,
-  filename: (req, file, cb) => {
-    const safeName =
-      Date.now() + "-" + file.originalname.replace(/\s+/g, "_");
-    cb(null, safeName);
+    return res.json({
+      ok: true,
+      message: "Queued print job",
+      job: {
+        id: job.id,
+        printerId: job.printer_id,
+        fileName: job.file_name,
+        mimeType: job.mime_type,
+        status: job.status
+      }
+    });
+  } catch (err) {
+    console.error("UPLOAD ERROR:", err);
+    return res.status(500).json({ ok: false, error: "Upload failed", detail: String(err?.message || err) });
   }
 });
 
-const upload = multer({ storage });
+// 2) Printer polls jobs (returns base64 so printer can print)
+app.get("/jobs", async (req, res) => {
+  try {
+    const printerId = (req.query.printerId || DEFAULT_PRINTER_ID).toString().trim();
+    const limit = Math.min(parseInt(req.query.limit || "5", 10) || 5, 20);
 
-/** Basic health check (Render uses this to confirm your service is alive) */
+    const jobs = await getNextJobs(printerId, limit);
+
+    return res.json({
+      ok: true,
+      printerId,
+      count: jobs.length,
+      jobs: jobs.map(j => ({
+        id: j.id,
+        printerId: j.printer_id,
+        from: j.from_phone || null,
+        fileName: j.file_name || null,
+        mimeType: j.mime_type || null,
+        fileBase64: j.file_base64 || null,
+        status: j.status,
+        createdAt: j.created_at,
+        updatedAt: j.updated_at
+      }))
+    });
+  } catch (err) {
+    console.error("JOBS GET ERROR:", err);
+    return res.status(500).json({ ok: false, error: "Failed to fetch jobs", detail: String(err?.message || err) });
+  }
+});
+
+// 3) Count queued jobs (fast)
+app.get("/jobs/count", async (req, res) => {
+  try {
+    const printerId = (req.query.printerId || DEFAULT_PRINTER_ID).toString().trim();
+    const count = await countQueued(printerId);
+    return res.json({ ok: true, printerId, queued: count });
+  } catch (err) {
+    console.error("COUNT ERROR:", err);
+    return res.status(500).json({ ok: false, error: "Failed to count jobs", detail: String(err?.message || err) });
+  }
+});
+
+// 4) Update job status (printer calls this after it starts/finishes)
+app.post("/jobs/:id/status", async (req, res) => {
+  try {
+    const id = req.params.id;
+    const status = (req.body.status || req.query.status || "").toString().trim().toUpperCase();
+
+    const allowed = new Set(["QUEUED", "PRINTING", "DONE", "FAILED"]);
+    if (!allowed.has(status)) {
+      return res.status(400).json({ ok: false, error: "Invalid status", allowed: Array.from(allowed) });
+    }
+
+    const updated = await updateStatus(id, status);
+    if (!updated) return res.status(404).json({ ok: false, error: "Job not found" });
+
+    return res.json({ ok: true, job: updated });
+  } catch (err) {
+    console.error("STATUS UPDATE ERROR:", err);
+    return res.status(500).json({ ok: false, error: "Failed to update status", detail: String(err?.message || err) });
+  }
+});
+
+// 5) Twilio inbound SMS/MMS webhook
+app.post("/sms", async (req, res) => {
+  try {
+    // Twilio sends x-www-form-urlencoded
+    const from = (req.body.From || "").toString();
+    const body = (req.body.Body || "").toString().trim();
+    const numMedia = parseInt(req.body.NumMedia || "0", 10) || 0;
+
+    // NOTE: We are not fetching media URLs here (Twilio MediaUrl0 is remote).
+    // For now we acknowledge, and you can expand this later to download media.
+    // This keeps the webhook stable.
+
+    // Simple response for now
+    const msg =
+      numMedia > 0
+        ? `MSTAF received your message + ${numMedia} attachment(s). Upload processing can be connected next.`
+        : `MSTAF received: "${body}"`;
+
+    // Twilio expects TwiML XML
+    res.set("Content-Type", "text/xml");
+    return res.send(
+      `<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+  <Message>${escapeXml(msg)}</Message>
+</Response>`
+    );
+  } catch (err) {
+    console.error("TWILIO /sms ERROR:", err);
+    res.set("Content-Type", "text/xml");
+    return res.status(200).send(
+      `<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+  <Message>Sorry — MSTAF had an error processing that message.</Message>
+</Response>`
+    );
+  }
+});
+
+// 6) Root
 app.get("/", (req, res) => {
-  res.status(200).send("✅ MSTAF CORE is running");
-});
-
-/** Optional: quick env check (safe — does not reveal secrets) */
-app.get("/health", (req, res) => {
   res.json({
     ok: true,
     service: "mstaf-core",
-    hasTwilioSid: Boolean(process.env.TWILIO_ACCOUNT_SID),
-    hasTwilioAuthToken: Boolean(process.env.TWILIO_AUTH_TOKEN),
-    hasTwilioNumber: Boolean(process.env.TWILIO_PHONE_NUMBER),
+    endpoints: ["/health", "/debug/instance", "POST /api/upload", "GET /jobs", "GET /jobs/count", "POST /jobs/:id/status", "POST /sms"]
   });
 });
 
-/** Debug: list active routes */
-app.get("/routes", (req, res) => {
-  try {
-    const routes = [];
-    app._router.stack.forEach((m) => {
-      if (m.route && m.route.path) {
-        routes.push({
-          path: m.route.path,
-          methods: Object.keys(m.route.methods).join(",").toUpperCase(),
-        });
-      }
-    });
-    res.json({ routes });
-  } catch (e) {
-    res.json({ routes: [], note: "Route listing not available." });
-  }
-});
-
-/**
- * (Recommended) Twilio request signature validation
- * If you don't want validation yet, set:
- *   TWILIO_VALIDATE_WEBHOOKS=false
- */
-function shouldValidateTwilio() {
-  const v = (process.env.TWILIO_VALIDATE_WEBHOOKS || "true").toLowerCase();
-  return v !== "false";
+// -------------------- HELPERS -------------------
+function escapeXml(unsafe) {
+  return String(unsafe)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&apos;");
 }
 
-function validateTwilioRequest(req) {
-  // Only validate if enabled and we have auth token.
-  if (!shouldValidateTwilio()) return true;
-  if (!process.env.TWILIO_AUTH_TOKEN) return true;
-
-  // Twilio sends signature in header:
-  const signature = req.headers["x-twilio-signature"];
-  if (!signature) return false;
-
-  // Build the full URL Twilio called (Render/Proxy safe)
-  const proto = (req.headers["x-forwarded-proto"] || req.protocol || "https")
-    .split(",")[0]
-    .trim();
-  const host = (req.headers["x-forwarded-host"] || req.headers.host || "")
-    .split(",")[0]
-    .trim();
-  const url = `${proto}://${host}${req.originalUrl}`;
-
-  return twilio.validateRequest(
-    process.env.TWILIO_AUTH_TOKEN,
-    signature,
-    url,
-    req.body
-  );
-}
-
-/**
- * Twilio SMS/MMS inbound webhook
- * Configure in Twilio Console:
- * Phone Number > Messaging > "A MESSAGE COMES IN"
- *   https://YOUR-RENDER-URL/sms
- */
-app.post("/sms", (req, res) => {
+// -------------------- STARTUP -------------------
+(async () => {
   try {
-    // Validate Twilio signature (optional but recommended)
-    const isValid = validateTwilioRequest(req);
-    if (!isValid) {
-      return res.status(403).send("Forbidden (invalid Twilio signature)");
-    }
-
-    const from = req.body.From || "";
-    const to = req.body.To || "";
-    const body = (req.body.Body || "").trim();
-    const numMedia = parseInt(req.body.NumMedia || "0", 10);
-
-    // Collect media URLs if MMS
-    const media = [];
-    for (let i = 0; i < numMedia; i++) {
-      const url = req.body[`MediaUrl${i}`];
-      const contentType = req.body[`MediaContentType${i}`];
-      if (url) media.push({ url, contentType });
-    }
-
-    // ---- MSTAF logic placeholder ----
-    // For now we just acknowledge + show what we received.
-    let reply = `✅ MSTAF received your message.\n\nFrom: ${from}\nTo: ${to}\nText: ${body || "(no text)"}`;
-
-    if (media.length > 0) {
-      reply += `\n\n📎 Media received (${media.length}):\n`;
-      media.forEach((m, idx) => {
-        reply += `${idx + 1}) ${m.contentType || "file"}\n${m.url}\n`;
-      });
-      reply += `\nNext: We will connect this to MSTAF PRINT / MSTAF UPLOAD logic.`;
-    } else {
-      reply += `\n\nTip: Send an image (MMS) to test upload flow.`;
-    }
-
-    // Respond to Twilio with TwiML
-    const twiml = new twilio.twiml.MessagingResponse();
-    twiml.message(reply);
-
-    res.type("text/xml");
-    return res.status(200).send(twiml.toString());
-  } catch (err) {
-    console.error("❌ /sms error:", err);
-    return res.status(500).send("Server error");
-  }
-});
-// ===== COUNT JOBS (must be above /jobs list route) =====
-app.get("/jobs/count", async (req, res) => {
-  try {
-    const printerId = (req.query.printerId || "").trim();
-    if (!printerId) {
-      return res.status(400).json({ ok: false, error: "printerId is required" });
-    }
-
-    // Postgres path
-    if (typeof pool !== "undefined" && pool?.query) {
-      const r = await pool.query(
-        "SELECT COUNT(*)::int AS count FROM print_jobs WHERE printer_id = $1",
-        [printerId]
-      );
-      return res.json({ ok: true, printerId, count: r.rows[0].count });
-    }
-
-    // In-memory fallback
-    if (typeof jobs !== "undefined" && Array.isArray(jobs)) {
-      const count = jobs.filter(j => j.printerId === printerId).length;
-      return res.json({ ok: true, printerId, count });
-    }
-
-    return res.status(500).json({ ok: false, error: "No job store found" });
-  } catch (err) {
-    return res.status(500).json({ ok: false, error: err.message });
-  }
-});
-/**
- * Optional: Twilio Status Callback endpoint
- * You can set this as Status Callback URL when sending outbound messages later.
- */
-app.post("/twilio/status", (req, res) => {
-  try {
-    // Typically no need to validate, but you can if you want:
-    // const isValid = validateTwilioRequest(req);
-    // if (!isValid) return res.status(403).send("Forbidden");
-
-    const payload = {
-      MessageSid: req.body.MessageSid,
-      MessageStatus: req.body.MessageStatus,
-      To: req.body.To,
-      From: req.body.From,
-      ErrorCode: req.body.ErrorCode,
-      ErrorMessage: req.body.ErrorMessage,
-    };
-
-    console.log("📌 Twilio Status:", payload);
-    res.status(200).json({ ok: true });
+    const dbOk = await initDbIfPossible();
+    console.log(`[BOOT] DB enabled: ${dbOk ? "YES" : "NO (using memory queue)"}`);
   } catch (e) {
-    res.status(200).json({ ok: true });
-  }
-});
-// ===== FILE UPLOAD ENDPOINT =====
-app.post("/upload", upload.single("file"), (req, res) => {
-  if (!req.file) {
-    return res.status(400).json({ error: "No file uploaded" });
+    console.error("[BOOT] DB init failed, using memory queue:", e);
+    pool = null;
   }
 
-  const printerId = String(req.body.printerId || "").trim();
-if (!printerId) {
-  return res.status(400).json({
-    success: false,
-    error: "printerId is required"
+  app.listen(PORT, () => {
+    console.log(`MSTAF Core listening on port ${PORT}`);
   });
-}
-
-const jobs = readJobs();
-
-const job = {
-  id: String(Date.now()),
-  printerId,
-  filename: req.file.filename,
-  fileUrl: `${req.protocol}://${req.get("host")}/uploads/${req.file.filename}`,
-  status: "queued",
-  createdAt: new Date().toISOString(),
-  completedAt: null
-};
-
-jobs.push(job);
-writeJobs(jobs);
-
-return res.json({
-  success: true,
-  filename: req.file.filename,
-  fileUrl: job.fileUrl,
-  job
-});
-});
-/**
- * List jobs by printerId (simple queue)
- * GET /jobs?printerId=PP-USA-001
- */
-// ================================
-// PRINT-O-MATIC: Create a job
-// POST /jobs
-// ================================
-app.post("/jobs", async (req, res) => {
-  try {
-    const {
-      const {
-  printerId = "PP-USA-001",
-  fileUrl = null,
-  pages = 1,
-  copies = 1,
-  color = "BW",
-  customerPhone = null
-} = req.body || {};
-    } = req.body || {};
-
-    const status = "queued";
-
-    
-    };
-
-    const q = `
-  INSERT INTO print_jobs
-  (printer_id, status, file_url, pages, copies, color, customer_phone)
-  VALUES ($1, $2, $3, $4, $5, $6, $7)
-  RETURNING *;
-`;
-
-    const result = await pool.query(q, [
-  printerId,
-  status,
-  fileUrl,
-  pages,
-  copies,
-  color,
-  customerPhone
-]);
-
-    return res.json({
-      success: true,
-      job: result.rows[0]
-    });
-  } catch (err) {
-    console.error("POST /jobs ERROR:", err);
-    return res.status(500).json({
-      success: false,
-      error: err.message
-    });
-  }
-});
-// ================================
-// PRINT-O-MATIC: Update job status
-// PATCH /jobs/:id/status
-// ================================
-app.patch("/jobs/:id/status", async (req, res) => {
-  try {
-    const id = req.params.id;
-    const { status, meta = {} } = req.body || {};
-
-    const allowed = new Set(["queued", "printing", "completed", "failed"]);
-    const normalized = String(status || "").toLowerCase();
-    if (!allowed.has(normalized)) {
-      return res.status(400).json({
-        success: false,
-        error: "Invalid status. Use queued|printing|completed|failed."
-      });
-    }
-
-    const q = `
-      UPDATE print_jobs
-      SET status = $2,
-          meta = COALESCE(meta, '{}'::jsonb) || $3::jsonb
-      WHERE id = $1
-      RETURNING *;
-    `;
-
-    const result = await pool.query(q, [id, normalized, meta]);
-
-    if (result.rows.length === 0) {
-      return res.status(404).json({
-        success: false,
-        error: "Job not found"
-      });
-    }
-
-    return res.json({
-      success: true,
-      job: result.rows[0]
-    });
-  } catch (err) {
-    console.error("PATCH /jobs/:id/status ERROR:", err);
-    return res.status(500).json({
-      success: false,
-      error: err.message
-    });
-  }
-});
-// ================================
-// PRINT-O-MATIC: Jobs queue (Postgres)
-// GET /jobs?printerId=PP-USA-001
-// ================================
-app.get("/jobs", async (req, res) => {
-  try {
-    const printerId = (req.query.printerId || "PP-USA-001").trim();
-    const limit = Math.min(parseInt(req.query.limit || "10", 10), 50);
-
-    const q = `
-      SELECT *
-      FROM print_jobs
-      WHERE printer_id = $1 AND status = 'queued'
-      ORDER BY created_at ASC
-      LIMIT $2;
-    `;
-
-    const result = await pool.query(q, [printerId, limit]);
-
-    return res.json({
-      success: true,
-      printerId,
-      count: result.rows.length,
-      jobs: result.rows
-    });
-  } catch (err) {
-    console.error("GET /jobs ERROR:", err);
-    return res.status(500).json({
-      success: false,
-      error: err.message
-    });
-  }
-});
-// ✅ List jobs (optionally filter by printerId)
-app.get("/jobs", (req, res) => {
-  try {
-    const printerId = (req.query.printerId || "").trim();
-    const jobs = readJobs();
-
-    const filtered = printerId
-      ? jobs.filter(j => (j.printerId || "").trim() === printerId)
-      : jobs;
-
-    return res.json({
-      success: true,
-      count: filtered.length,
-      jobs: filtered
-    });
-  } catch (e) {
-    console.log("Jobs list error:", e.message);
-    return res.status(500).json({
-      success: false,
-      error: "Server error reading jobs."
-    });
-  }
-});
-/**
- * 404 handler
- */
-app.use((req, res) => {
-  res.status(404).json({ ok: false, message: "Not Found" });
-});
-
-/**
- * Start server
- */
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-  console.log(`✅ MSTAF CORE listening on port ${PORT}`);
-});
+})();
