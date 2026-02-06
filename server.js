@@ -23,7 +23,7 @@ const os = require("os");
 let pg = null;
 try {
   pg = require("pg");
-} catch (e) {2
+} catch (e) {
   pg = null;
 }
 
@@ -55,6 +55,21 @@ app.get("/debug/instance", (req, res) => {
 });
 // ------------------------------------------------
 
+// -------------------- HELPERS -------------------
+function newId(prefix = "job") {
+  return `${prefix}_${crypto.randomBytes(10).toString("hex")}`;
+}
+
+function escapeXml(str = "") {
+  return String(str)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&apos;");
+}
+// ------------------------------------------------
+
 // -------------------- STORAGE -------------------
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -82,7 +97,7 @@ async function initDbIfPossible() {
     ssl: process.env.PGSSLMODE === "disable" ? false : { rejectUnauthorized: false }
   });
 
-  // Create minimal base table if it doesn't exist (works for old + new DBs)
+  // Base table (works for new DBs)
   await pool.query(`
     CREATE TABLE IF NOT EXISTS print_jobs (
       id TEXT PRIMARY KEY,
@@ -92,7 +107,7 @@ async function initDbIfPossible() {
     );
   `);
 
-  // ✅ FORCE SAFE MIGRATIONS (fixes your "file_name does not exist" error)
+  // Safe migrations (adds missing columns if needed)
   const migrations = [
     `ALTER TABLE print_jobs ADD COLUMN IF NOT EXISTS file_name TEXT;`,
     `ALTER TABLE print_jobs ADD COLUMN IF NOT EXISTS mime_type TEXT;`,
@@ -109,14 +124,14 @@ async function initDbIfPossible() {
     }
   }
 
-  // Ensure updated_at is populated for older rows
+  // Ensure updated_at exists for older rows
   await pool.query(`
     UPDATE print_jobs
     SET updated_at = COALESCE(updated_at, created_at, NOW())
     WHERE updated_at IS NULL;
   `);
 
-  // Index (safe)
+  // Helpful index
   await pool.query(`
     CREATE INDEX IF NOT EXISTS idx_print_jobs_printer_status_created
     ON print_jobs (printer_id, status, created_at);
@@ -126,21 +141,10 @@ async function initDbIfPossible() {
   return true;
 }
 
-
-
-
-
-  return true;
-}
-
-function newId(prefix = "job") {
-  return `${prefix}_${crypto.randomBytes(10).toString("hex")}`;
-}
-
 async function dbInsertJob(job) {
   const sql = `
-    INSERT INTO print_jobs (id, printer_id, from_phone, file_name, mime_type, file_base64, status)
-    VALUES ($1,$2,$3,$4,$5,$6,$7)
+    INSERT INTO print_jobs (id, printer_id, from_phone, file_name, mime_type, file_base64, status, updated_at)
+    VALUES ($1,$2,$3,$4,$5,$6,$7, NOW())
   `;
   await pool.query(sql, [
     job.id,
@@ -275,7 +279,7 @@ app.post("/api/upload", upload.single("file"), async (req, res) => {
   }
 });
 
-// 2) Printer polls jobs (returns base64 so printer can print)
+// 2) Printer polls jobs
 app.get("/jobs", async (req, res) => {
   try {
     const printerId = (req.query.printerId || DEFAULT_PRINTER_ID).toString().trim();
@@ -305,7 +309,7 @@ app.get("/jobs", async (req, res) => {
   }
 });
 
-// 3) Count queued jobs (fast)
+// 3) Count queued jobs
 app.get("/jobs/count", async (req, res) => {
   try {
     const printerId = (req.query.printerId || DEFAULT_PRINTER_ID).toString().trim();
@@ -317,7 +321,7 @@ app.get("/jobs/count", async (req, res) => {
   }
 });
 
-// 4) Update job status (printer calls this after it starts/finishes)
+// 4) Update job status
 app.post("/jobs/:id/status", async (req, res) => {
   try {
     const id = req.params.id;
@@ -341,17 +345,16 @@ app.post("/jobs/:id/status", async (req, res) => {
 // 5) Twilio inbound SMS/MMS webhook
 app.post("/sms", async (req, res) => {
   try {
-    const from = (req.body.From || "").toString();
     const body = (req.body.Body || "").toString().trim();
     const numMedia = parseInt(req.body.NumMedia || "0", 10) || 0;
 
     const msg =
       numMedia > 0
-        ? `MSTAF received your message + ${numMedia} attachment(s). Upload processing can be connected next.`
+        ? `MSTAF received your message + ${numMedia} attachment(s).`
         : `MSTAF received: "${body}"`;
 
     res.set("Content-Type", "text/xml");
-    return res.send(
+    return res.status(200).send(
       `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
   <Message>${escapeXml(msg)}</Message>
@@ -369,37 +372,19 @@ app.post("/sms", async (req, res) => {
   }
 });
 
-// 6) Root
-app.get("/", (req, res) => {
-  res.json({
-    ok: true,
-    service: "mstaf-core",
-    endpoints: ["/health", "/debug/instance", "POST /api/upload", "GET /jobs", "GET /jobs/count", "POST /jobs/:id/status", "POST /sms"]
-  });
-});
-
-// -------------------- HELPERS -------------------
-function escapeXml(unsafe) {
-  return String(unsafe)
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&apos;");
-}
-
-// -------------------- STARTUP -------------------
+// -------------------- BOOT ----------------------
 (async () => {
   try {
-    const dbOk = await initDbIfPossible();
-    console.log(`[BOOT] DB enabled: ${dbOk ? "YES" : "NO (using memory queue)"}`);
+    const ok = await initDbIfPossible();
+    console.log(ok ? "[DB] enabled" : "[DB] disabled (memory fallback)");
   } catch (e) {
-    console.error("[BOOT] DB init failed, using memory queue:", e);
-    pool = null;
+    console.warn("[DB] init failed, using memory fallback:", e?.message || e);
   }
 
   app.listen(PORT, () => {
-    console.log(`MSTAF Core listening on port ${PORT}`);
+    console.log(`MSTAF server running on port ${PORT}`);
+    if (PUBLIC_BASE_URL) console.log(`[PUBLIC_BASE_URL] ${PUBLIC_BASE_URL}`);
+    if (TWILIO_FROM_NUMBER) console.log(`[TWILIO_FROM_NUMBER] ${TWILIO_FROM_NUMBER}`);
   });
 })();
 
