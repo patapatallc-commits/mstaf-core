@@ -40,21 +40,6 @@ const PUBLIC_BASE_URL = process.env.PUBLIC_BASE_URL || "";
 const TWILIO_FROM_NUMBER = process.env.TWILIO_FROM_NUMBER || "";
 // ------------------------------------------------
 
-// -------------------- DEBUG ---------------------
-app.get("/health", (req, res) => res.status(200).send("OK"));
-
-app.get("/debug/instance", (req, res) => {
-  res.json({
-    pid: process.pid,
-    host: os.hostname(),
-    time: new Date().toISOString(),
-    node_env: process.env.NODE_ENV || "unknown",
-    using_db: Boolean(process.env.DATABASE_URL && pg),
-    public_base_url: PUBLIC_BASE_URL || null
-  });
-});
-// ------------------------------------------------
-
 // -------------------- HELPERS -------------------
 function newId(prefix = "job") {
   return `${prefix}_${crypto.randomBytes(10).toString("hex")}`;
@@ -70,12 +55,25 @@ function escapeXml(str = "") {
 }
 // ------------------------------------------------
 
+// -------------------- DEBUG ---------------------
+app.get("/health", (req, res) => res.status(200).send("OK"));
+
+app.get("/debug/instance", (req, res) => {
+  res.json({
+    pid: process.pid,
+    host: os.hostname(),
+    time: new Date().toISOString(),
+    node_env: process.env.NODE_ENV || "unknown",
+    using_db: Boolean(process.env.DATABASE_URL && pg),
+    public_base_url: PUBLIC_BASE_URL || null
+  });
+});
+// ------------------------------------------------
+
 // -------------------- STORAGE -------------------
 const upload = multer({
   storage: multer.memoryStorage(),
-  limits: {
-    fileSize: 15 * 1024 * 1024 // 15MB
-  }
+  limits: { fileSize: 15 * 1024 * 1024 } // 15MB
 });
 
 // In-memory fallback queue (if DB not available)
@@ -97,7 +95,7 @@ async function initDbIfPossible() {
     ssl: process.env.PGSSLMODE === "disable" ? false : { rejectUnauthorized: false }
   });
 
-  // Base table (works for new DBs)
+  // Base table
   await pool.query(`
     CREATE TABLE IF NOT EXISTS print_jobs (
       id TEXT PRIMARY KEY,
@@ -140,6 +138,53 @@ async function initDbIfPossible() {
   console.log("[DB] Auto-migration complete");
   return true;
 }
+
+// ---- TEMP: DB DEBUG / MIGRATE ENDPOINTS (REMOVE LATER) ----
+app.get("/debug/db/columns", async (req, res) => {
+  try {
+    if (!canUseDb() || !pool) return res.status(400).json({ ok: false, error: "DB not enabled" });
+
+    const { rows } = await pool.query(`
+      SELECT column_name, data_type
+      FROM information_schema.columns
+      WHERE table_schema = 'public' AND table_name = 'print_jobs'
+      ORDER BY ordinal_position;
+    `);
+
+    return res.json({ ok: true, columns: rows });
+  } catch (e) {
+    return res.status(500).json({ ok: false, error: String(e?.message || e) });
+  }
+});
+
+app.post("/debug/db/migrate", async (req, res) => {
+  try {
+    if (!canUseDb() || !pool) return res.status(400).json({ ok: false, error: "DB not enabled" });
+
+    const migrations = [
+      `ALTER TABLE print_jobs ADD COLUMN IF NOT EXISTS file_name TEXT;`,
+      `ALTER TABLE print_jobs ADD COLUMN IF NOT EXISTS mime_type TEXT;`,
+      `ALTER TABLE print_jobs ADD COLUMN IF NOT EXISTS file_base64 TEXT;`,
+      `ALTER TABLE print_jobs ADD COLUMN IF NOT EXISTS from_phone TEXT;`,
+      `ALTER TABLE print_jobs ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ;`
+    ];
+
+    for (const sql of migrations) {
+      await pool.query(sql);
+    }
+
+    await pool.query(`
+      UPDATE print_jobs
+      SET updated_at = COALESCE(updated_at, created_at, NOW())
+      WHERE updated_at IS NULL;
+    `);
+
+    return res.json({ ok: true, message: "Migration applied" });
+  } catch (e) {
+    return res.status(500).json({ ok: false, error: String(e?.message || e) });
+  }
+});
+// ---- END TEMP ----
 
 async function dbInsertJob(job) {
   const sql = `
