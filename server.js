@@ -125,11 +125,6 @@ async function initDbIfPossible() {
 }
 
 
-  const { Pool } = pg;
-  pool = new Pool({
-    connectionString: process.env.DATABASE_URL,
-    ssl: process.env.PGSSLMODE === "disable" ? false : { rejectUnauthorized: false }
-  });
 
   // Create table if it doesn't exist (new installs)
   const sql = `
