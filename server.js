@@ -126,26 +126,7 @@ async function initDbIfPossible() {
 
 
 
-  // Create table if it doesn't exist (new installs)
-  const sql = `
-    CREATE TABLE IF NOT EXISTS print_jobs (
-      id TEXT PRIMARY KEY,
-      printer_id TEXT NOT NULL,
-      from_phone TEXT,
-      file_name TEXT,
-      mime_type TEXT,
-      file_base64 TEXT,
-      status TEXT NOT NULL DEFAULT 'QUEUED',
-      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    );
-    CREATE INDEX IF NOT EXISTS idx_print_jobs_printer_status_created
-      ON print_jobs (printer_id, status, created_at);
-  `;
-  await pool.query(sql);
 
-  // ✅ Auto-migrate older DB schema safely (fixes "missing from_phone" 500)
-  await pool.query(`ALTER TABLE print_jobs ADD COLUMN IF NOT EXISTS from_phone TEXT;`);
 
   return true;
 }
