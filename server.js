@@ -21,7 +21,7 @@ const os = require("os");
 let pg = null;
 try {
   pg = require("pg");
-} catch (e) {
+} catch (e) {2
   pg = null;
 }
 
@@ -73,6 +73,57 @@ function canUseDb() {
 
 async function initDbIfPossible() {
   if (!canUseDb()) return false;
+
+  const { Pool } = pg;
+  pool = new Pool({
+    connectionString: process.env.DATABASE_URL,
+    ssl: process.env.PGSSLMODE === "disable" ? false : { rejectUnauthorized: false }
+  });
+
+  // Create minimal base table if it doesn't exist (works for old + new DBs)
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS print_jobs (
+      id TEXT PRIMARY KEY,
+      printer_id TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'QUEUED',
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+  `);
+
+  // ✅ FORCE SAFE MIGRATIONS (fixes your "file_name does not exist" error)
+  const migrations = [
+    `ALTER TABLE print_jobs ADD COLUMN IF NOT EXISTS file_name TEXT;`,
+    `ALTER TABLE print_jobs ADD COLUMN IF NOT EXISTS mime_type TEXT;`,
+    `ALTER TABLE print_jobs ADD COLUMN IF NOT EXISTS file_base64 TEXT;`,
+    `ALTER TABLE print_jobs ADD COLUMN IF NOT EXISTS from_phone TEXT;`,
+    `ALTER TABLE print_jobs ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ;`
+  ];
+
+  for (const sql of migrations) {
+    try {
+      await pool.query(sql);
+    } catch (e) {
+      console.warn("[DB MIGRATION WARNING]", e?.message || e);
+    }
+  }
+
+  // Ensure updated_at is populated for older rows
+  await pool.query(`
+    UPDATE print_jobs
+    SET updated_at = COALESCE(updated_at, created_at, NOW())
+    WHERE updated_at IS NULL;
+  `);
+
+  // Index (safe)
+  await pool.query(`
+    CREATE INDEX IF NOT EXISTS idx_print_jobs_printer_status_created
+    ON print_jobs (printer_id, status, created_at);
+  `);
+
+  console.log("[DB] Auto-migration complete");
+  return true;
+}
+
 
   const { Pool } = pg;
   pool = new Pool({
