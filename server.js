@@ -1,435 +1,397 @@
-// redeploy bump
-
 /**
- * MSTAF CORE - Print-O-Matic Stable Server (Render)
- * - Twilio SMS/MMS inbound webhook: POST /sms
- * - Upload endpoint: POST /api/upload (multipart/form-data)
- * - Printer polling: GET /jobs?printerId=PP-USA-001
- * - Count endpoint: GET /jobs/count?printerId=PP-USA-001
- * - Update status: POST /jobs/:id/status
- * - Uses Postgres if DATABASE_URL is set, otherwise in-memory fallback
+ * MSTAF CORE - server.js (Twilio SMS/MMS first) + Print-O-Matic
+ * - Works on Render/Heroku-style host
+ * - Correctly parses Twilio x-www-form-urlencoded webhooks
+ * - Provides health + debug routes
+ * - Handles upload -> print_jobs queue
+ * - SAFE DB migration: adds id_text TEXT and uses it for new jobs
  */
 
-if (process.env.NODE_ENV !== "production") {
-  try { require("dotenv").config(); } catch (e) {}
-}
+require("dotenv").config();
 
 const express = require("express");
+const twilio = require("twilio");
 const multer = require("multer");
-const crypto = require("crypto");
+const path = require("path");
+const fs = require("fs");
 const os = require("os");
-
-// Optional Postgres (pg)
-let pg = null;
-try {
-  pg = require("pg");
-} catch (e) {
-  pg = null;
-}
+const crypto = require("crypto");
 
 const app = express();
 
-// IMPORTANT for Twilio (form-encoded) + JSON
-app.use(express.json({ limit: "20mb" }));
+// ===== Middleware =====
+app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// -------------------- CONFIG --------------------
-const PORT = process.env.PORT || 10000;
-const DEFAULT_PRINTER_ID = process.env.DEFAULT_PRINTER_ID || "PP-USA-001";
-const PUBLIC_BASE_URL = process.env.PUBLIC_BASE_URL || "";
-const TWILIO_FROM_NUMBER = process.env.TWILIO_FROM_NUMBER || "";
-// ------------------------------------------------
+// ===== Uploads folder + public access =====
+const uploadsDir = path.join(__dirname, "uploads");
+if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
 
-// -------------------- HELPERS -------------------
-function newId(prefix = "job") {
-  return `${prefix}_${crypto.randomBytes(10).toString("hex")}`;
+// Public access: /uploads/<filename>
+app.use("/uploads", express.static(uploadsDir));
+
+// ===== Database (PostgreSQL) =====
+const { Pool } = require("pg");
+
+const DATABASE_URL = process.env.DATABASE_URL;
+const DB_SSL = (process.env.DB_SSL || "true").toLowerCase() !== "false"; // default true
+
+const pool = DATABASE_URL
+  ? new Pool({
+      connectionString: DATABASE_URL,
+      ssl: DB_SSL ? { rejectUnauthorized: false } : false,
+    })
+  : null;
+
+// ===== Helpers =====
+function makePrintId() {
+  // print_<random>
+  return `print_${crypto.randomBytes(10).toString("hex")}`;
 }
 
-function escapeXml(str = "") {
-  return String(str)
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&apos;");
-}
-// ------------------------------------------------
-
-// -------------------- DEBUG ---------------------
-app.get("/health", (req, res) => res.status(200).send("OK"));
-
-app.get("/debug/instance", (req, res) => {
-  res.json({
-    pid: process.pid,
-    host: os.hostname(),
-    time: new Date().toISOString(),
-    node_env: process.env.NODE_ENV || "unknown",
-    using_db: Boolean(process.env.DATABASE_URL && pg),
-    public_base_url: PUBLIC_BASE_URL || null
-  });
-});
-// ------------------------------------------------
-
-// -------------------- STORAGE -------------------
-const upload = multer({
-  storage: multer.memoryStorage(),
-  limits: { fileSize: 15 * 1024 * 1024 } // 15MB
-});
-
-// In-memory fallback queue (if DB not available)
-const memoryJobs = []; // {id, printer_id, from_phone, file_name, mime_type, file_base64, status, created_at, updated_at}
-
-// -------------------- DB LAYER ------------------
-let pool = null;
-
-function canUseDb() {
-  return Boolean(process.env.DATABASE_URL && pg);
+function nowIso() {
+  return new Date().toISOString();
 }
 
-async function initDbIfPossible() {
-  if (!canUseDb()) return false;
-
-  const { Pool } = pg;
-  pool = new Pool({
-    connectionString: process.env.DATABASE_URL,
-    ssl: process.env.PGSSLMODE === "disable" ? false : { rejectUnauthorized: false }
-  });
-
-  // Base table
-  await pool.query(`
-    CREATE TABLE IF NOT EXISTS print_jobs (
-      id TEXT PRIMARY KEY,
-      printer_id TEXT NOT NULL,
-      status TEXT NOT NULL DEFAULT 'QUEUED',
-      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    );
-  `);
-
-  // Safe migrations (adds missing columns if needed)
-  const migrations = [
-    `ALTER TABLE print_jobs ADD COLUMN IF NOT EXISTS file_name TEXT;`,
-    `ALTER TABLE print_jobs ADD COLUMN IF NOT EXISTS mime_type TEXT;`,
-    `ALTER TABLE print_jobs ADD COLUMN IF NOT EXISTS file_base64 TEXT;`,
-    `ALTER TABLE print_jobs ADD COLUMN IF NOT EXISTS from_phone TEXT;`,
-    `ALTER TABLE print_jobs ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ;`
-  ];
-
-  for (const sql of migrations) {
-    try {
-      await pool.query(sql);
-    } catch (e) {
-      console.warn("[DB MIGRATION WARNING]", e?.message || e);
-    }
+function requireDb(req, res) {
+  if (!pool) {
+    res.status(500).json({
+      ok: false,
+      error: "DATABASE_URL is not set. DB is not configured on this service.",
+    });
+    return false;
   }
-
-  // Ensure updated_at exists for older rows
-  await pool.query(`
-    UPDATE print_jobs
-    SET updated_at = COALESCE(updated_at, created_at, NOW())
-    WHERE updated_at IS NULL;
-  `);
-
-  // Helpful index
-  await pool.query(`
-    CREATE INDEX IF NOT EXISTS idx_print_jobs_printer_status_created
-    ON print_jobs (printer_id, status, created_at);
-  `);
-
-  console.log("[DB] Auto-migration complete");
   return true;
 }
 
-// ---- TEMP: DB DEBUG / MIGRATE ENDPOINTS (REMOVE LATER) ----
-app.get("/debug/db/columns", async (req, res) => {
-  try {
-    if (!canUseDb() || !pool) return res.status(400).json({ ok: false, error: "DB not enabled" });
-
-    const { rows } = await pool.query(`
-      SELECT column_name, data_type
-      FROM information_schema.columns
-      WHERE table_schema = 'public' AND table_name = 'print_jobs'
-      ORDER BY ordinal_position;
-    `);
-
-    return res.json({ ok: true, columns: rows });
-  } catch (e) {
-    return res.status(500).json({ ok: false, error: String(e?.message || e) });
-  }
+// ===== Multer for file uploads =====
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => cb(null, uploadsDir),
+  filename: (req, file, cb) => {
+    // keep original extension, unique name
+    const ext = path.extname(file.originalname || "");
+    const base = crypto.randomBytes(8).toString("hex");
+    cb(null, `${Date.now()}_${base}${ext}`);
+  },
 });
 
-app.post("/debug/db/migrate", async (req, res) => {
+const upload = multer({
+  storage,
+  limits: { fileSize: 15 * 1024 * 1024 }, // 15MB
+});
+
+// =====================================
+// ===== DB INIT + MIGRATIONS (SAFE) =====
+// =====================================
+async function initDbIfPossible() {
+  if (!pool) {
+    console.log("[DB] DATABASE_URL missing. Skipping DB init.");
+    return;
+  }
+
+  // Core table (id remains INT if it already exists in your DB)
+  // IMPORTANT: We do NOT drop or alter id type here (safe).
+  const migrations = [
+    `CREATE TABLE IF NOT EXISTS print_jobs (
+      id SERIAL PRIMARY KEY,
+      printer_id TEXT NOT NULL,
+      "from" TEXT,
+      file_url TEXT,
+      filename TEXT,
+      mime_type TEXT,
+      status TEXT NOT NULL DEFAULT 'queued',
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );`,
+
+    // ✅ SAFE FIX: add id_text TEXT for string ids like print_xxx
+    `ALTER TABLE print_jobs ADD COLUMN IF NOT EXISTS id_text TEXT;`,
+
+    // Extra columns that are useful (safe adds)
+    `ALTER TABLE print_jobs ADD COLUMN IF NOT EXISTS meta JSONB;`,
+
+    // Helpful indexes (safe)
+    `CREATE INDEX IF NOT EXISTS idx_print_jobs_printer_status_created
+      ON print_jobs (printer_id, status, created_at);`,
+
+    `CREATE INDEX IF NOT EXISTS idx_print_jobs_id_text
+      ON print_jobs (id_text);`,
+  ];
+
   try {
-    if (!canUseDb() || !pool) return res.status(400).json({ ok: false, error: "DB not enabled" });
-
-    const migrations = [
-      `ALTER TABLE print_jobs ADD COLUMN IF NOT EXISTS file_name TEXT;`,
-      `ALTER TABLE print_jobs ADD COLUMN IF NOT EXISTS mime_type TEXT;`,
-      `ALTER TABLE print_jobs ADD COLUMN IF NOT EXISTS file_base64 TEXT;`,
-      `ALTER TABLE print_jobs ADD COLUMN IF NOT EXISTS from_phone TEXT;`,
-      `ALTER TABLE print_jobs ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ;`
-    ];
-
+    console.log("[DB] Running migrations...");
     for (const sql of migrations) {
       await pool.query(sql);
     }
 
+    // ✅ Backfill id_text from numeric id (safe)
     await pool.query(`
       UPDATE print_jobs
-      SET updated_at = COALESCE(updated_at, created_at, NOW())
-      WHERE updated_at IS NULL;
+      SET id_text = COALESCE(id_text, id::text)
+      WHERE id_text IS NULL;
     `);
 
-    return res.json({ ok: true, message: "Migration applied" });
+    console.log("[DB] Migrations complete.");
+  } catch (err) {
+    console.error("[DB] Migration error:", err.message);
+  }
+}
+
+// =====================================
+// ===== DB FUNCTIONS (use id_text) =====
+// =====================================
+
+async function dbInsertJob({ id, printerId, from, fileUrl, filename, mimeType, meta }) {
+  if (!pool) throw new Error("DB not configured");
+
+  const q = `
+    INSERT INTO print_jobs
+      (id_text, printer_id, "from", file_url, filename, mime_type, status, created_at, updated_at, meta)
+    VALUES
+      ($1, $2, $3, $4, $5, $6, 'queued', NOW(), NOW(), $7)
+    RETURNING
+      id_text AS id, printer_id, "from", file_url, filename, mime_type, status, created_at, updated_at, meta;
+  `;
+
+  const vals = [id, printerId, from || null, fileUrl || null, filename || null, mimeType || null, meta || null];
+  const r = await pool.query(q, vals);
+  return r.rows[0];
+}
+
+async function dbGetNextJobs({ printerId, limit = 10 }) {
+  if (!pool) throw new Error("DB not configured");
+
+  const q = `
+    SELECT
+      id_text AS id,
+      printer_id,
+      "from",
+      file_url,
+      filename,
+      mime_type,
+      status,
+      created_at,
+      updated_at,
+      meta
+    FROM print_jobs
+    WHERE printer_id = $1
+      AND status IN ('queued','retry')
+    ORDER BY created_at ASC
+    LIMIT $2;
+  `;
+  const r = await pool.query(q, [printerId, limit]);
+  return r.rows;
+}
+
+async function dbUpdateStatus({ id, status }) {
+  if (!pool) throw new Error("DB not configured");
+
+  const q = `
+    UPDATE print_jobs
+    SET status = $1,
+        updated_at = NOW()
+    WHERE id_text = $2
+    RETURNING
+      id_text AS id, printer_id, "from", file_url, filename, mime_type, status, created_at, updated_at, meta;
+  `;
+  const r = await pool.query(q, [status, id]);
+  return r.rows[0] || null;
+}
+
+// =====================================
+// ===== Routes =====
+// =====================================
+
+// Health
+app.get("/health", async (req, res) => {
+  const out = {
+    ok: true,
+    service: "mstaf-core",
+    time: nowIso(),
+    host: os.hostname(),
+    pid: process.pid,
+    dbConfigured: !!pool,
+  };
+
+  if (pool) {
+    try {
+      const r = await pool.query("SELECT 1 AS ok;");
+      out.dbOk = r.rows?.[0]?.ok === 1;
+    } catch (e) {
+      out.dbOk = false;
+      out.dbError = e.message;
+    }
+  }
+
+  res.json(out);
+});
+
+// Debug instance
+app.get("/debug/instance", (req, res) => {
+  res.json({
+    pid: process.pid,
+    host: os.hostname(),
+    time: nowIso(),
+  });
+});
+
+// Debug DB columns (shows current columns)
+app.get("/debug/db/columns", async (req, res) => {
+  if (!requireDb(req, res)) return;
+
+  try {
+    const q = `
+      SELECT column_name, data_type
+      FROM information_schema.columns
+      WHERE table_name = 'print_jobs'
+      ORDER BY ordinal_position;
+    `;
+    const r = await pool.query(q);
+    res.json({ ok: true, table: "print_jobs", columns: r.rows });
   } catch (e) {
-    return res.status(500).json({ ok: false, error: String(e?.message || e) });
+    res.status(500).json({ ok: false, error: e.message });
   }
 });
-// ---- END TEMP ----
 
-async function dbInsertJob(job) {
-  const sql = `
-    INSERT INTO print_jobs (id, printer_id, from_phone, file_name, mime_type, file_base64, status, updated_at)
-    VALUES ($1,$2,$3,$4,$5,$6,$7, NOW())
-  `;
-  await pool.query(sql, [
-    job.id,
-    job.printer_id,
-    job.from_phone || null,
-    job.file_name || null,
-    job.mime_type || null,
-    job.file_base64 || null,
-    job.status || "QUEUED"
-  ]);
-}
+// Debug DB migrate (runs initDbIfPossible on demand)
+app.post("/debug/db/migrate", async (req, res) => {
+  if (!requireDb(req, res)) return;
 
-async function dbGetNextJobs(printerId, limit = 5) {
-  const sql = `
-    SELECT id, printer_id, from_phone, file_name, mime_type, file_base64, status, created_at, updated_at
-    FROM print_jobs
-    WHERE printer_id = $1 AND status = 'QUEUED'
-    ORDER BY created_at ASC
-    LIMIT $2
-  `;
-  const { rows } = await pool.query(sql, [printerId, limit]);
-  return rows;
-}
+  try {
+    await initDbIfPossible();
+    res.json({ ok: true, migrated: true, time: nowIso() });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
 
-async function dbCountQueued(printerId) {
-  const sql = `SELECT COUNT(*)::int AS count FROM print_jobs WHERE printer_id = $1 AND status = 'QUEUED'`;
-  const { rows } = await pool.query(sql, [printerId]);
-  return rows?.[0]?.count ?? 0;
-}
-
-async function dbUpdateStatus(id, status) {
-  const sql = `
-    UPDATE print_jobs
-    SET status = $1, updated_at = NOW()
-    WHERE id = $2
-    RETURNING id, printer_id, status, updated_at
-  `;
-  const { rows } = await pool.query(sql, [status, id]);
-  return rows?.[0] || null;
-}
-
-// -------------------- FALLBACK (MEMORY) ---------
-function memInsertJob(job) {
-  memoryJobs.push({
-    ...job,
-    created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString()
-  });
-}
-
-function memGetNextJobs(printerId, limit = 5) {
-  return memoryJobs
-    .filter(j => j.printer_id === printerId && j.status === "QUEUED")
-    .slice(0, limit);
-}
-
-function memCountQueued(printerId) {
-  return memoryJobs.filter(j => j.printer_id === printerId && j.status === "QUEUED").length;
-}
-
-function memUpdateStatus(id, status) {
-  const j = memoryJobs.find(x => x.id === id);
-  if (!j) return null;
-  j.status = status;
-  j.updated_at = new Date().toISOString();
-  return { id: j.id, printer_id: j.printer_id, status: j.status, updated_at: j.updated_at };
-}
-
-// Unified wrappers (DB if available, else memory)
-async function insertJob(job) {
-  if (canUseDb() && pool) return dbInsertJob(job);
-  return memInsertJob(job);
-}
-
-async function getNextJobs(printerId, limit = 5) {
-  if (canUseDb() && pool) return dbGetNextJobs(printerId, limit);
-  return memGetNextJobs(printerId, limit);
-}
-
-async function countQueued(printerId) {
-  if (canUseDb() && pool) return dbCountQueued(printerId);
-  return memCountQueued(printerId);
-}
-
-async function updateStatus(id, status) {
-  if (canUseDb() && pool) return dbUpdateStatus(id, status);
-  return memUpdateStatus(id, status);
-}
-
-// -------------------- ROUTES --------------------
-
-// 1) Upload endpoint (PowerShell curl)
+// Upload endpoint
+// POST /api/upload  (multipart/form-data)
+// fields: printerId, from, file=@...
 app.post("/api/upload", upload.single("file"), async (req, res) => {
   try {
-    const printerId = (req.body.printerId || req.query.printerId || DEFAULT_PRINTER_ID).toString().trim();
-    const fromPhone = (req.body.from || req.query.from || "").toString().trim();
+    const printerId = (req.body.printerId || "").trim();
+    const from = (req.body.from || "").trim();
 
+    if (!printerId) {
+      return res.status(400).json({ ok: false, error: "Missing printerId" });
+    }
     if (!req.file) {
-      return res.status(400).json({ ok: false, error: "No file uploaded. Use form field name: file" });
+      return res.status(400).json({ ok: false, error: "No file uploaded" });
+    }
+    if (!pool) {
+      return res.status(500).json({ ok: false, error: "DB not configured (DATABASE_URL missing)" });
     }
 
-    const fileName = req.file.originalname || `upload_${Date.now()}`;
-    const mimeType = req.file.mimetype || "application/octet-stream";
-    const base64 = req.file.buffer.toString("base64");
+    const id = makePrintId();
+    const fileUrl = `${req.protocol}://${req.get("host")}/uploads/${req.file.filename}`;
 
-    const job = {
-      id: newId("print"),
-      printer_id: printerId,
-      from_phone: fromPhone,
-      file_name: fileName,
-      mime_type: mimeType,
-      file_base64: base64,
-      status: "QUEUED"
-    };
-
-    await insertJob(job);
-
-    return res.json({
-      ok: true,
-      message: "Queued print job",
-      job: {
-        id: job.id,
-        printerId: job.printer_id,
-        fileName: job.file_name,
-        mimeType: job.mime_type,
-        status: job.status
-      }
+    const job = await dbInsertJob({
+      id,
+      printerId,
+      from,
+      fileUrl,
+      filename: req.file.originalname,
+      mimeType: req.file.mimetype,
+      meta: {
+        stored_filename: req.file.filename,
+        size: req.file.size,
+      },
     });
-  } catch (err) {
-    console.error("UPLOAD ERROR:", err);
-    return res.status(500).json({ ok: false, error: "Upload failed", detail: String(err?.message || err) });
+
+    return res.json({ ok: true, job });
+  } catch (e) {
+    console.error("[UPLOAD] error:", e);
+    return res.status(500).json({ ok: false, error: e.message });
   }
 });
 
-// 2) Printer polls jobs
+// Get jobs for a printer
+// GET /jobs?printerId=PP-USA-001&limit=10
 app.get("/jobs", async (req, res) => {
   try {
-    const printerId = (req.query.printerId || DEFAULT_PRINTER_ID).toString().trim();
-    const limit = Math.min(parseInt(req.query.limit || "5", 10) || 5, 20);
+    const printerId = (req.query.printerId || "").trim();
+    const limit = Math.min(parseInt(req.query.limit || "10", 10) || 10, 50);
 
-    const jobs = await getNextJobs(printerId, limit);
+    if (!printerId) return res.status(400).json({ ok: false, error: "Missing printerId" });
+    if (!pool) return res.status(500).json({ ok: false, error: "DB not configured" });
 
-    return res.json({
-      ok: true,
-      printerId,
-      count: jobs.length,
-      jobs: jobs.map(j => ({
-        id: j.id,
-        printerId: j.printer_id,
-        from: j.from_phone || null,
-        fileName: j.file_name || null,
-        mimeType: j.mime_type || null,
-        fileBase64: j.file_base64 || null,
-        status: j.status,
-        createdAt: j.created_at,
-        updatedAt: j.updated_at
-      }))
-    });
-  } catch (err) {
-    console.error("JOBS GET ERROR:", err);
-    return res.status(500).json({ ok: false, error: "Failed to fetch jobs", detail: String(err?.message || err) });
+    const jobs = await dbGetNextJobs({ printerId, limit });
+    res.json({ ok: true, printerId, count: jobs.length, jobs });
+  } catch (e) {
+    console.error("[JOBS] error:", e);
+    res.status(500).json({ ok: false, error: e.message });
   }
 });
 
-// 3) Count queued jobs
-app.get("/jobs/count", async (req, res) => {
+// Update job status
+// PATCH /jobs/:id  body: { status: "printing" | "done" | "failed" | ... }
+app.patch("/jobs/:id", async (req, res) => {
   try {
-    const printerId = (req.query.printerId || DEFAULT_PRINTER_ID).toString().trim();
-    const count = await countQueued(printerId);
-    return res.json({ ok: true, printerId, queued: count });
-  } catch (err) {
-    console.error("COUNT ERROR:", err);
-    return res.status(500).json({ ok: false, error: "Failed to count jobs", detail: String(err?.message || err) });
-  }
-});
+    const id = (req.params.id || "").trim();
+    const status = (req.body.status || "").trim();
 
-// 4) Update job status
-app.post("/jobs/:id/status", async (req, res) => {
-  try {
-    const id = req.params.id;
-    const status = (req.body.status || req.query.status || "").toString().trim().toUpperCase();
+    if (!id) return res.status(400).json({ ok: false, error: "Missing id" });
+    if (!status) return res.status(400).json({ ok: false, error: "Missing status" });
+    if (!pool) return res.status(500).json({ ok: false, error: "DB not configured" });
 
-    const allowed = new Set(["QUEUED", "PRINTING", "DONE", "FAILED"]);
-    if (!allowed.has(status)) {
-      return res.status(400).json({ ok: false, error: "Invalid status", allowed: Array.from(allowed) });
-    }
-
-    const updated = await updateStatus(id, status);
+    const updated = await dbUpdateStatus({ id, status });
     if (!updated) return res.status(404).json({ ok: false, error: "Job not found" });
 
-    return res.json({ ok: true, job: updated });
-  } catch (err) {
-    console.error("STATUS UPDATE ERROR:", err);
-    return res.status(500).json({ ok: false, error: "Failed to update status", detail: String(err?.message || err) });
+    res.json({ ok: true, job: updated });
+  } catch (e) {
+    console.error("[PATCH JOB] error:", e);
+    res.status(500).json({ ok: false, error: e.message });
   }
 });
 
-// 5) Twilio inbound SMS/MMS webhook
+// =====================================
+// ===== Twilio SMS/MMS Webhook =====
+// =====================================
+// POST /sms  (Twilio sends x-www-form-urlencoded)
 app.post("/sms", async (req, res) => {
   try {
-    const body = (req.body.Body || "").toString().trim();
+    const MessagingResponse = twilio.twiml.MessagingResponse;
+    const twiml = new MessagingResponse();
+
+    const from = req.body.From || "";
+    const body = (req.body.Body || "").trim();
+
+    // MMS media
     const numMedia = parseInt(req.body.NumMedia || "0", 10) || 0;
+    const mediaUrls = [];
+    for (let i = 0; i < numMedia; i++) {
+      const u = req.body[`MediaUrl${i}`];
+      if (u) mediaUrls.push(u);
+    }
 
-    const msg =
-      numMedia > 0
-        ? `MSTAF received your message + ${numMedia} attachment(s).`
-        : `MSTAF received: "${body}"`;
+    // Simple response for now (you can plug in MSTAF logic here)
+    let msg = `MSTAF received your message.`;
+    if (body) msg += ` You said: "${body}"`;
+    if (mediaUrls.length) msg += ` (Media received: ${mediaUrls.length})`;
 
-    res.set("Content-Type", "text/xml");
-    return res.status(200).send(
-      `<?xml version="1.0" encoding="UTF-8"?>
-<Response>
-  <Message>${escapeXml(msg)}</Message>
-</Response>`
-    );
-  } catch (err) {
-    console.error("TWILIO /sms ERROR:", err);
-    res.set("Content-Type", "text/xml");
-    return res.status(200).send(
-      `<?xml version="1.0" encoding="UTF-8"?>
-<Response>
-  <Message>Sorry — MSTAF had an error processing that message.</Message>
-</Response>`
-    );
+    twiml.message(msg);
+
+    res.type("text/xml").send(twiml.toString());
+  } catch (e) {
+    console.error("[TWILIO] error:", e);
+    res.status(500).send("Error");
   }
 });
 
-// -------------------- BOOT ----------------------
-(async () => {
-  try {
-    const ok = await initDbIfPossible();
-    console.log(ok ? "[DB] enabled" : "[DB] disabled (memory fallback)");
-  } catch (e) {
-    console.warn("[DB] init failed, using memory fallback:", e?.message || e);
-  }
+// Root
+app.get("/", (req, res) => {
+  res.json({ ok: true, service: "mstaf-core", time: nowIso() });
+});
 
+// =====================================
+// ===== Start Server =====
+// =====================================
+const PORT = process.env.PORT || 10000;
+
+initDbIfPossible().finally(() => {
   app.listen(PORT, () => {
-    console.log(`MSTAF server running on port ${PORT}`);
-    if (PUBLIC_BASE_URL) console.log(`[PUBLIC_BASE_URL] ${PUBLIC_BASE_URL}`);
-    if (TWILIO_FROM_NUMBER) console.log(`[TWILIO_FROM_NUMBER] ${TWILIO_FROM_NUMBER}`);
+    console.log(`MSTAF CORE listening on port ${PORT}`);
   });
-})();
+});
 
