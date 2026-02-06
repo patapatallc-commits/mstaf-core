@@ -16,7 +16,6 @@ const express = require("express");
 const multer = require("multer");
 const crypto = require("crypto");
 const os = require("os");
-const path = require("path");
 
 // Optional Postgres (pg)
 let pg = null;
@@ -34,14 +33,8 @@ app.use(express.urlencoded({ extended: true }));
 
 // -------------------- CONFIG --------------------
 const PORT = process.env.PORT || 10000;
-
-// Your default printer ID (used when none provided)
 const DEFAULT_PRINTER_ID = process.env.DEFAULT_PRINTER_ID || "PP-USA-001";
-
-// Public base URL is optional (helpful for logs/messages)
 const PUBLIC_BASE_URL = process.env.PUBLIC_BASE_URL || "";
-
-// Twilio optional
 const TWILIO_FROM_NUMBER = process.env.TWILIO_FROM_NUMBER || "";
 // ------------------------------------------------
 
@@ -69,7 +62,7 @@ const upload = multer({
 });
 
 // In-memory fallback queue (if DB not available)
-const memoryJobs = []; // {id, printer_id, from, file_name, mime_type, file_base64, status, created_at, updated_at}
+const memoryJobs = []; // {id, printer_id, from_phone, file_name, mime_type, file_base64, status, created_at, updated_at}
 
 // -------------------- DB LAYER ------------------
 let pool = null;
@@ -87,7 +80,7 @@ async function initDbIfPossible() {
     ssl: process.env.PGSSLMODE === "disable" ? false : { rejectUnauthorized: false }
   });
 
-  // Create table if it doesn't exist
+  // Create table if it doesn't exist (new installs)
   const sql = `
     CREATE TABLE IF NOT EXISTS print_jobs (
       id TEXT PRIMARY KEY,
@@ -104,6 +97,10 @@ async function initDbIfPossible() {
       ON print_jobs (printer_id, status, created_at);
   `;
   await pool.query(sql);
+
+  // ✅ Auto-migrate older DB schema safely (fixes "missing from_phone" 500)
+  await pool.query(`ALTER TABLE print_jobs ADD COLUMN IF NOT EXISTS from_phone TEXT;`);
+
   return true;
 }
 
@@ -128,7 +125,6 @@ async function dbInsertJob(job) {
 }
 
 async function dbGetNextJobs(printerId, limit = 5) {
-  // Only return QUEUED jobs (printer polls these)
   const sql = `
     SELECT id, printer_id, from_phone, file_name, mime_type, file_base64, status, created_at, updated_at
     FROM print_jobs
@@ -316,22 +312,15 @@ app.post("/jobs/:id/status", async (req, res) => {
 // 5) Twilio inbound SMS/MMS webhook
 app.post("/sms", async (req, res) => {
   try {
-    // Twilio sends x-www-form-urlencoded
     const from = (req.body.From || "").toString();
     const body = (req.body.Body || "").toString().trim();
     const numMedia = parseInt(req.body.NumMedia || "0", 10) || 0;
 
-    // NOTE: We are not fetching media URLs here (Twilio MediaUrl0 is remote).
-    // For now we acknowledge, and you can expand this later to download media.
-    // This keeps the webhook stable.
-
-    // Simple response for now
     const msg =
       numMedia > 0
         ? `MSTAF received your message + ${numMedia} attachment(s). Upload processing can be connected next.`
         : `MSTAF received: "${body}"`;
 
-    // Twilio expects TwiML XML
     res.set("Content-Type", "text/xml");
     return res.send(
       `<?xml version="1.0" encoding="UTF-8"?>
@@ -384,3 +373,4 @@ function escapeXml(unsafe) {
     console.log(`MSTAF Core listening on port ${PORT}`);
   });
 })();
+
