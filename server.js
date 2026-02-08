@@ -36,6 +36,27 @@ const app = express();
 // IMPORTANT: Twilio + JSON safe
 app.use(express.json({ limit: "20mb" }));
 app.use(express.urlencoded({ extended: true }));
+// -------------------- PRINTER KEY AUTH --------------------
+function requirePrinterKey(req, res, next) {
+  const required = process.env.PRINTER_KEY;
+
+  // Safety: if not configured, do not block
+  if (!required) return next();
+
+  const got =
+    req.header("x-printer-key") ||
+    req.query.printerKey ||
+    "";
+
+  if (!got || got !== required) {
+    return res.status(401).json({
+      ok: false,
+      error: "Unauthorized: invalid printer key"
+    });
+  }
+
+  next();
+}
 
 // Uploads folder + public access
 const uploadsDir = path.join(__dirname, "uploads");
@@ -112,7 +133,8 @@ app.get("/health", (req, res) => {
 });
 
 // Upload -> creates queued job (needs_details is for your later flow; queued is fine for now)
-app.post("/api/upload", upload.single("file"), async (req, res) => {
+app.post("/api/upload", requirePrinterKey, upload.single("file"), async (req, res) => {
+
   try {
     const { printerId, from } = req.body;
 
