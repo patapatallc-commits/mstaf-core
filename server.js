@@ -247,15 +247,26 @@ app.post("/jobs/:id/status", async (req, res) => {
 });
 // ==================== ADMIN (protected) ====================
 function requireAdmin(req, res, next) {
-  const key = req.headers["x-admin-key"];
-  if (!process.env.MSTAF_ADMIN_KEY) {
-    return res.status(500).json({ ok: false, error: "Admin key not configured" });
+  const keyFromHeader = req.headers["x-admin-key"];
+
+  // Accept any of these env var names (so it never breaks again)
+  const configuredKey =
+    process.env.MSTAF_ADMIN_KEY ||
+    process.env.MSTAF_ADMIN ||
+    process.env.ADMIN_KEY ||
+    process.env.X_ADMIN_KEY;
+
+  if (!configuredKey) {
+    return res.status(503).json({ ok: false, error: "Admin key not configured" });
   }
-  if (!key || key !== process.env.MSTAF_ADMIN_KEY) {
+
+  if (!keyFromHeader || keyFromHeader !== configuredKey) {
     return res.status(401).json({ ok: false, error: "Unauthorized" });
   }
+
   next();
 }
+
 
 app.get("/admin/jobs/recent", requireAdmin, async (req, res) => {
   const limit = Math.min(parseInt(req.query.limit || "10", 10), 50);
