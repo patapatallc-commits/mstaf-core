@@ -245,6 +245,69 @@ app.post("/jobs/:id/status", async (req, res) => {
     return res.status(500).json({ ok: false, error: "Status update failed", details: err.message });
   }
 });
+// ==================== ADMIN (protected) ====================
+function requireAdmin(req, res, next) {
+  const key = req.headers["x-admin-key"];
+  if (!process.env.MSTAF_ADMIN_KEY) {
+    return res.status(500).json({ ok: false, error: "Admin key not configured" });
+  }
+  if (!key || key !== process.env.MSTAF_ADMIN_KEY) {
+    return res.status(401).json({ ok: false, error: "Unauthorized" });
+  }
+  next();
+}
+
+app.get("/admin/jobs/recent", requireAdmin, async (req, res) => {
+  const limit = Math.min(parseInt(req.query.limit || "10", 10), 50);
+
+  try {
+    const r = await pool.query(
+      `
+      SELECT job_id, id_text, printer_id, from_phone, file_name, mime_type, file_url,
+             status, paid_at, created_at, updated_at
+      FROM print_jobs
+      ORDER BY created_at DESC
+      LIMIT $1
+      `,
+      [limit]
+    );
+    return res.json({ ok: true, jobs: r.rows });
+  } catch (e) {
+    return res.status(500).json({
+      ok: false,
+      error: "admin recent failed",
+      details: String(e.message || e)
+    });
+  }
+});
+
+app.post("/admin/jobs/:id/force-paid", requireAdmin, async (req, res) => {
+  const id = req.params.id;
+
+  try {
+    const r = await pool.query(
+      `
+      UPDATE print_jobs
+      SET status='paid', paid_at=NOW(), updated_at=NOW()
+      WHERE job_id=$1 OR id_text=$1
+      RETURNING job_id, id_text, status, paid_at, updated_at
+      `,
+      [id]
+    );
+
+    if (r.rowCount === 0) {
+      return res.status(404).json({ ok: false, error: "Job not found" });
+    }
+
+    return res.json({ ok: true, job: r.rows[0] });
+  } catch (e) {
+    return res.status(500).json({
+      ok: false,
+      error: "force-paid failed",
+      details: String(e.message || e)
+    });
+  }
+});
 
 // Start
 const PORT = process.env.PORT || 3000;
