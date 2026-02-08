@@ -131,6 +131,87 @@ app.get("/health", (req, res) => {
     db: pool ? "postgres" : "memory"
   });
 });
+// =============================
+// Public Upload (CUSTOMERS)
+// No printer key required here.
+// =============================
+app.post("/public/upload", upload.single("file"), async (req, res) => {
+  try {
+    const { printerId, copies, paper, color } = req.body;
+
+    if (!printerId) return res.status(400).json({ ok: false, error: "Missing printerId" });
+    if (!req.file) return res.status(400).json({ ok: false, error: "Missing file" });
+
+    // sanitize options
+    const copiesNum = Math.min(Math.max(parseInt(copies || "1", 10) || 1, 1), 50);
+    const paperVal = (paper || "letter").toLowerCase();
+    const colorVal = (color || "color").toLowerCase();
+
+    const details = {
+      copies: copiesNum,
+      paper: ["letter", "a4", "legal"].includes(paperVal) ? paperVal : "letter",
+      color: ["color", "bw"].includes(colorVal) ? colorVal : "color"
+    };
+
+    // Build URL to file (your system already serves /uploads/<filename>)
+    const fileUrl = `${req.protocol}://${req.get("host")}/uploads/${req.file.filename}`;
+
+    // Create job id text
+    const jobIdText = `print_${crypto.randomBytes(8).toString("hex")}`;
+
+    // If Postgres exists, store in DB. Otherwise, fallback to memory.
+    // NOTE: This assumes your DB insert already exists in your /api/upload block.
+    // We'll mirror that pattern but include details.
+
+    let job = null;
+
+    if (pool) {
+      const q = `
+        INSERT INTO print_jobs (
+          id_text, printer_id, from_phone,
+          file_name, mime_type, file_url,
+          status, details
+        )
+        VALUES ($1,$2,$3,$4,$5,$6,'queued',$7)
+        RETURNING *
+      `;
+      const vals = [
+        jobIdText,
+        printerId,
+        null,
+        req.file.originalname,
+        req.file.mimetype,
+        fileUrl,
+        JSON.stringify(details)
+      ];
+      const r = await pool.query(q, vals);
+      job = r.rows[0];
+    } else {
+      // memory fallback
+      job = {
+        job_id: jobIdText,
+        id_text: jobIdText,
+        printer_id: printerId,
+        from_phone: null,
+        file_name: req.file.originalname,
+        mime_type: req.file.mimetype,
+        file_url: fileUrl,
+        status: "queued",
+        details
+      };
+      JOBS.push(job); // only if you already have JOBS array in your code
+    }
+
+    res.json({
+      ok: true,
+      message: "Queued print job",
+      job
+    });
+  } catch (err) {
+    console.error("PUBLIC UPLOAD ERROR:", err);
+    res.status(500).json({ ok: false, error: "Server error" });
+  }
+});
 
 // Upload -> creates queued job (needs_details is for your later flow; queued is fine for now)
 app.post("/api/upload", requirePrinterKey, upload.single("file"), async (req, res) => {
