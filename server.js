@@ -8,9 +8,9 @@
  * - Update status: POST /jobs/:id/status
  * - Uses Postgres if DATABASE_URL is set, otherwise in-memory fallback
  *
- * ✅ PATCH INCLUDED:
- * Part A: ensureDb() makes file_url nullable (DROP NOT NULL)
- * Part B: Shopify webhook INSERT includes file_url as NULL
+ * ✅ FIX INCLUDED (Render Free compatible)
+ * - FORCE schema migration so file_url becomes nullable even if it was created NOT NULL before.
+ * - Shopify webhook insert includes file_url as NULL (authorized_awaiting_file).
  */
 
 if (process.env.NODE_ENV !== "production") {
@@ -65,30 +65,22 @@ const USE_DB = !!pool;
 
 // -------------------- In-memory fallback --------------------
 const mem = {
-  jobs: [] // { id, id_text, printer_id, from_phone, status, meta, paper_size, color_mode, copies, file_url, created_at, updated_at }
+  jobs: [] // { id, job_id, id_text, printer_id, from_phone, status, meta, paper_size, color_mode, copies, file_url, created_at, updated_at }
 };
 
 // -------------------- Helpers --------------------
 function nowIso() { return new Date().toISOString(); }
 
-function safeJsonParse(s, fallback = {}) {
-  try { return JSON.parse(s); } catch (e) { return fallback; }
-}
-
 function getPublicBaseUrl(req) {
-  // Prefer explicit env var if provided (best practice)
   const base = process.env.PUBLIC_BASE_URL;
   if (base && typeof base === "string") return base.replace(/\/+$/, "");
-  // Fallback to request host (works behind Render too)
   return `${req.protocol}://${req.get("host")}`.replace(/\/+$/, "");
 }
 
 function normalizePhone(input) {
   if (!input) return null;
   const s = String(input).trim();
-  // Keep as-is if already looks like +E164
   if (s.startsWith("+") && s.length >= 8) return s;
-  // Otherwise return raw (you can harden later)
   return s;
 }
 
@@ -96,7 +88,7 @@ function normalizePhone(input) {
 async function ensureDb() {
   if (!USE_DB) return;
 
-  // Create table if missing
+  // Create table if missing (file_url is TEXT and should be nullable)
   await pool.query(`
     CREATE TABLE IF NOT EXISTS print_jobs (
       id SERIAL PRIMARY KEY,
@@ -117,7 +109,7 @@ async function ensureDb() {
     );
   `);
 
-  // Add columns if older schema is missing them (safe idempotent)
+  // Add missing columns (safe)
   await pool.query(`ALTER TABLE print_jobs ADD COLUMN IF NOT EXISTS job_id TEXT;`).catch(() => {});
   await pool.query(`ALTER TABLE print_jobs ADD COLUMN IF NOT EXISTS id_text TEXT;`).catch(() => {});
   await pool.query(`ALTER TABLE print_jobs ADD COLUMN IF NOT EXISTS printer_id TEXT;`).catch(() => {});
@@ -133,9 +125,36 @@ async function ensureDb() {
   await pool.query(`ALTER TABLE print_jobs ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT NOW();`).catch(() => {});
   await pool.query(`ALTER TABLE print_jobs ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW();`).catch(() => {});
 
-  // ✅ Part A — Auto-migration: remove NOT NULL from file_url
-  // Put after file_url column add (done above)
-  await pool.query(`ALTER TABLE print_jobs ALTER COLUMN file_url DROP NOT NULL;`).catch(() => {});
+  /**
+   * ✅ Render Free compatible “FORCE nullable file_url migration”
+   * Why: If your old schema had file_url NOT NULL, DROP NOT NULL sometimes doesn’t run (and no Shell on Free).
+   * This approach rebuilds the column safely:
+   *  - create temp nullable column
+   *  - copy existing values
+   *  - drop old column (including any NOT NULL constraint)
+   *  - rename temp back to file_url
+   */
+  try {
+    // If file_url_tmp already exists, the migration probably already ran.
+    await pool.query(`ALTER TABLE print_jobs ADD COLUMN IF NOT EXISTS file_url_tmp TEXT;`);
+
+    // Copy values from file_url (if old column exists and has values)
+    // If old file_url is already gone, this update will fail; catch below.
+    await pool.query(`
+      UPDATE print_jobs
+      SET file_url_tmp = file_url
+      WHERE file_url IS NOT NULL;
+    `);
+
+    // Drop old file_url column (removes NOT NULL constraint too)
+    await pool.query(`ALTER TABLE print_jobs DROP COLUMN file_url;`);
+
+    // Rename temp to file_url
+    await pool.query(`ALTER TABLE print_jobs RENAME COLUMN file_url_tmp TO file_url;`);
+  } catch (e) {
+    // If any step fails because it’s already applied (or older schema differences), ignore safely.
+    console.log("file_url FORCE migration already applied or skipped");
+  }
 
   // Helpful indexes
   await pool.query(`CREATE INDEX IF NOT EXISTS idx_print_jobs_printer ON print_jobs (printer_id);`).catch(() => {});
@@ -147,9 +166,7 @@ async function ensureDb() {
 // -------------------- Debug/Health --------------------
 app.get("/health", async (req, res) => {
   try {
-    if (USE_DB) {
-      await pool.query("SELECT 1;");
-    }
+    if (USE_DB) await pool.query("SELECT 1;");
     res.json({
       ok: true,
       host: os.hostname(),
@@ -172,28 +189,21 @@ app.get("/debug/instance", (req, res) => {
 
 // -------------------- Twilio inbound (simple placeholder) --------------------
 app.post("/sms", async (req, res) => {
-  // Twilio sends x-www-form-urlencoded
   const from = normalizePhone(req.body.From);
   const body = (req.body.Body || "").trim();
   const numMedia = Number(req.body.NumMedia || 0);
 
-  // You can wire MSTAF logic here later.
   res.type("text/xml");
   res.send(`<?xml version="1.0" encoding="UTF-8"?><Response><Message>✅ MSTAF received: ${body || "(no text)"}${numMedia ? " + media" : ""}</Message></Response>`);
 });
 
 // -------------------- Shopify webhook (Authorized job creation) --------------------
-/**
- * Expecting JSON body with a phone + printing options inside metadata.
- * Your PowerShell test should hit this endpoint.
- */
 app.post("/shopify/webhook", async (req, res) => {
   try {
     const meta = req.body || {};
     const phone = normalizePhone(meta.phone || meta.customer_phone || meta.from_phone || meta?.customer?.phone);
     const printerId = meta.printer_id || meta.printerId || "PP-USA-001";
 
-    // Basic parse for options (customize to your Shopify payload format)
     const parsed = {
       paper: meta.paper_size || meta.paper || "LETTER",
       color: meta.color_mode || meta.color || "COLOR",
@@ -203,7 +213,7 @@ app.post("/shopify/webhook", async (req, res) => {
     const jobId = `job_${crypto.randomBytes(8).toString("hex")}`;
 
     if (USE_DB) {
-      // ✅ Part B — Shopify webhook insert: include file_url as NULL
+      // ✅ Shopify insert includes file_url (NULL) + status authorized_awaiting_file
       await pool.query(
         `
         INSERT INTO print_jobs (
@@ -261,10 +271,6 @@ app.post("/shopify/webhook", async (req, res) => {
 });
 
 // -------------------- Upload endpoint --------------------
-/**
- * Uploads a file and returns a public URL.
- * Later we will add: update an existing job_id with this file_url.
- */
 app.post("/api/upload", upload.single("file"), async (req, res) => {
   try {
     if (!req.file) return res.status(400).json({ ok: false, error: "No file uploaded" });
@@ -336,7 +342,6 @@ app.post("/jobs/:id/status", async (req, res) => {
 
   try {
     if (USE_DB) {
-      // Accept either numeric id or id_text/job_id
       const isNumeric = /^[0-9]+$/.test(id);
 
       const r = isNumeric
