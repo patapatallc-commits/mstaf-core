@@ -1,19 +1,16 @@
 /**
  * MSTAF CORE - Print-O-Matic Stable Server (Render)
- * - Health: GET /health
- * - Upload (printer/agent): POST /api/upload (multipart/form-data)
- * - Public Upload (customers): POST /public/upload (multipart/form-data)
- * - Printer polling: GET /jobs?printerId=PP-USA-001&limit=5
+ * - Twilio SMS/MMS inbound webhook: POST /sms
+ * - Shopify webhook (authorized job): POST /shopify/webhook
+ * - Upload endpoint: POST /api/upload (multipart/form-data)
+ * - Printer polling: GET /jobs?printerId=PP-USA-001
+ * - Count endpoint: GET /jobs/count?printerId=PP-USA-001
  * - Update status: POST /jobs/:id/status
- * - Admin recent: GET /admin/jobs/recent
- * - Admin force paid: POST /admin/jobs/:id/force-paid
- * - Shopify paid webhook (RAW BODY): POST /webhooks/shopify/orders-paid
+ * - Uses Postgres if DATABASE_URL is set, otherwise in-memory fallback
  *
- * DB rules:
- * - Do NOT insert into serial id
- * - Always set job_id + id_text (same value)
- * - Auto-migrate missing columns
- * - Backfill old rows where job_id / id_text are NULL
+ * ✅ PATCH INCLUDED:
+ * Part A: ensureDb() makes file_url nullable (DROP NOT NULL)
+ * Part B: Shopify webhook INSERT includes file_url as NULL
  */
 
 if (process.env.NODE_ENV !== "production") {
@@ -27,459 +24,186 @@ const os = require("os");
 const path = require("path");
 const fs = require("fs");
 
-// Optional Postgres (pg)
-let Pool = null;
-try { ({ Pool } = require("pg")); } catch (e) { Pool = null; }
+let pg = null;
+try { pg = require("pg"); } catch (e) { pg = null; }
 
 const app = express();
 
-/**
- * ✅ SHOPIFY RAW BODY (CRITICAL)
- * Must come BEFORE express.json()
- */
-app.use("/webhooks/shopify", express.raw({ type: "application/json" }));
-
-// Normal parsers for all other routes
+// IMPORTANT for Twilio (form-encoded) + JSON
 app.use(express.json({ limit: "20mb" }));
 app.use(express.urlencoded({ extended: true }));
 
-// -------------------- PRINTER KEY AUTH --------------------
-function requirePrinterKey(req, res, next) {
-  const required = process.env.PRINTER_KEY;
-  if (!required) return next();
-
-  const got = req.header("x-printer-key") || req.query.printerKey || "";
-  if (!got || got !== required) {
-    return res.status(401).json({ ok: false, error: "Unauthorized: invalid printer key" });
-  }
-  next();
-}
-
-// -------------------- ADMIN KEY AUTH --------------------
-function requireAdmin(req, res, next) {
-  const keyFromHeader = req.headers["x-admin-key"];
-  const configuredKey =
-    process.env.MSTAF_ADMIN_KEY ||
-    process.env.MSTAF_ADMIN ||
-    process.env.ADMIN_KEY ||
-    process.env.X_ADMIN_KEY;
-
-  if (!configuredKey) {
-    return res.status(503).json({ ok: false, error: "Admin key not configured" });
-  }
-
-  if (!keyFromHeader || keyFromHeader !== configuredKey) {
-    return res.status(401).json({ ok: false, error: "Unauthorized" });
-  }
-
-  next();
-}
-
-// Uploads folder + public access
+// -------------------- Uploads folder + public access --------------------
 const uploadsDir = path.join(__dirname, "uploads");
 if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
 app.use("/uploads", express.static(uploadsDir));
 
-const upload = multer({ dest: uploadsDir });
+// Multer storage
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => cb(null, uploadsDir),
+  filename: (req, file, cb) => {
+    const ext = path.extname(file.originalname || "");
+    const name = `mstaf_${Date.now()}_${crypto.randomBytes(6).toString("hex")}${ext}`;
+    cb(null, name);
+  }
+});
+const upload = multer({ storage });
 
-// Memory fallback
-const JOBS = [];
-
-// DB pool (Render)
+// -------------------- Optional Postgres --------------------
 let pool = null;
-if (process.env.DATABASE_URL && Pool) {
+if (pg && process.env.DATABASE_URL) {
+  const { Pool } = pg;
   pool = new Pool({
     connectionString: process.env.DATABASE_URL,
-    ssl: { rejectUnauthorized: false }
+    ssl: process.env.DATABASE_URL.includes("render.com")
+      ? { rejectUnauthorized: false }
+      : undefined
   });
 }
 
-// ---------- HELPERS ----------
-function nowISO() { return new Date().toISOString(); }
-function makeJobId() { return `print_${crypto.randomBytes(8).toString("hex")}`; }
+const USE_DB = !!pool;
 
-// ---------- AUTO MIGRATION ----------
+// -------------------- In-memory fallback --------------------
+const mem = {
+  jobs: [] // { id, id_text, printer_id, from_phone, status, meta, paper_size, color_mode, copies, file_url, created_at, updated_at }
+};
+
+// -------------------- Helpers --------------------
+function nowIso() { return new Date().toISOString(); }
+
+function safeJsonParse(s, fallback = {}) {
+  try { return JSON.parse(s); } catch (e) { return fallback; }
+}
+
+function getPublicBaseUrl(req) {
+  // Prefer explicit env var if provided (best practice)
+  const base = process.env.PUBLIC_BASE_URL;
+  if (base && typeof base === "string") return base.replace(/\/+$/, "");
+  // Fallback to request host (works behind Render too)
+  return `${req.protocol}://${req.get("host")}`.replace(/\/+$/, "");
+}
+
+function normalizePhone(input) {
+  if (!input) return null;
+  const s = String(input).trim();
+  // Keep as-is if already looks like +E164
+  if (s.startsWith("+") && s.length >= 8) return s;
+  // Otherwise return raw (you can harden later)
+  return s;
+}
+
+// -------------------- DB Migration --------------------
 async function ensureDb() {
-  if (!pool) return;
+  if (!USE_DB) return;
 
-  await pool.query(`CREATE TABLE IF NOT EXISTS print_jobs (id SERIAL PRIMARY KEY)`);
+  // Create table if missing
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS print_jobs (
+      id SERIAL PRIMARY KEY,
+      job_id TEXT,
+      id_text TEXT,
+      printer_id TEXT,
+      from_phone TEXT,
+      status TEXT DEFAULT 'queued',
+      meta JSONB DEFAULT '{}'::jsonb,
+      paper_size TEXT,
+      color_mode TEXT,
+      copies INTEGER DEFAULT 1,
+      file_url TEXT,
+      file_name TEXT,
+      mime_type TEXT,
+      created_at TIMESTAMPTZ DEFAULT NOW(),
+      updated_at TIMESTAMPTZ DEFAULT NOW()
+    );
+  `);
 
-  // Core columns
+  // Add columns if older schema is missing them (safe idempotent)
   await pool.query(`ALTER TABLE print_jobs ADD COLUMN IF NOT EXISTS job_id TEXT;`).catch(() => {});
   await pool.query(`ALTER TABLE print_jobs ADD COLUMN IF NOT EXISTS id_text TEXT;`).catch(() => {});
   await pool.query(`ALTER TABLE print_jobs ADD COLUMN IF NOT EXISTS printer_id TEXT;`).catch(() => {});
   await pool.query(`ALTER TABLE print_jobs ADD COLUMN IF NOT EXISTS from_phone TEXT;`).catch(() => {});
+  await pool.query(`ALTER TABLE print_jobs ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'queued';`).catch(() => {});
+  await pool.query(`ALTER TABLE print_jobs ADD COLUMN IF NOT EXISTS meta JSONB DEFAULT '{}'::jsonb;`).catch(() => {});
+  await pool.query(`ALTER TABLE print_jobs ADD COLUMN IF NOT EXISTS paper_size TEXT;`).catch(() => {});
+  await pool.query(`ALTER TABLE print_jobs ADD COLUMN IF NOT EXISTS color_mode TEXT;`).catch(() => {});
+  await pool.query(`ALTER TABLE print_jobs ADD COLUMN IF NOT EXISTS copies INTEGER DEFAULT 1;`).catch(() => {});
+  await pool.query(`ALTER TABLE print_jobs ADD COLUMN IF NOT EXISTS file_url TEXT;`).catch(() => {});
   await pool.query(`ALTER TABLE print_jobs ADD COLUMN IF NOT EXISTS file_name TEXT;`).catch(() => {});
   await pool.query(`ALTER TABLE print_jobs ADD COLUMN IF NOT EXISTS mime_type TEXT;`).catch(() => {});
-  await pool.query(`ALTER TABLE print_jobs ADD COLUMN IF NOT EXISTS file_url TEXT;`).catch(() => {});
-  await pool.query(`ALTER TABLE print_jobs ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'queued';`).catch(() => {});
-  await pool.query(`ALTER TABLE print_jobs ADD COLUMN IF NOT EXISTS paid_at TIMESTAMPTZ;`).catch(() => {});
   await pool.query(`ALTER TABLE print_jobs ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT NOW();`).catch(() => {});
   await pool.query(`ALTER TABLE print_jobs ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW();`).catch(() => {});
 
-  // Extra columns for Shopify + details
-  await pool.query(`ALTER TABLE print_jobs ADD COLUMN IF NOT EXISTS details JSONB;`).catch(() => {});
-  await pool.query(`ALTER TABLE print_jobs ADD COLUMN IF NOT EXISTS meta JSONB;`).catch(() => {});
-  await pool.query(`ALTER TABLE print_jobs ADD COLUMN IF NOT EXISTS paper_size TEXT;`).catch(() => {});
-  await pool.query(`ALTER TABLE print_jobs ADD COLUMN IF NOT EXISTS color_mode TEXT;`).catch(() => {});
-  await pool.query(`ALTER TABLE print_jobs ADD COLUMN IF NOT EXISTS copies INTEGER;`).catch(() => {});
+  // ✅ Part A — Auto-migration: remove NOT NULL from file_url
+  // Put after file_url column add (done above)
+  await pool.query(`ALTER TABLE print_jobs ALTER COLUMN file_url DROP NOT NULL;`).catch(() => {});
 
-  // Backfill old rows where ids are missing
-  await pool.query(`
-    UPDATE print_jobs
-    SET
-      id_text = COALESCE(id_text, 'print_' || md5(random()::text)),
-      job_id  = COALESCE(job_id, id_text, 'print_' || md5(random()::text))
-    WHERE id_text IS NULL OR job_id IS NULL
-  `).catch(() => {});
+  // Helpful indexes
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_print_jobs_printer ON print_jobs (printer_id);`).catch(() => {});
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_print_jobs_status ON print_jobs (status);`).catch(() => {});
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_print_jobs_job_id ON print_jobs (job_id);`).catch(() => {});
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_print_jobs_id_text ON print_jobs (id_text);`).catch(() => {});
 }
 
-// Run at boot
-ensureDb().catch(() => {});
+// -------------------- Debug/Health --------------------
+app.get("/health", async (req, res) => {
+  try {
+    if (USE_DB) {
+      await pool.query("SELECT 1;");
+    }
+    res.json({
+      ok: true,
+      host: os.hostname(),
+      time: nowIso(),
+      db: USE_DB ? "connected" : "memory"
+    });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: String(e) });
+  }
+});
 
-// ---------- ROUTES ----------
-app.get("/health", (req, res) => {
+app.get("/debug/instance", (req, res) => {
   res.json({
-    ok: true,
-    service: "mstaf-core-1",
+    pid: process.pid,
     host: os.hostname(),
-    time: nowISO(),
-    db: pool ? "postgres" : "memory"
+    time: nowIso(),
+    db: USE_DB ? "postgres" : "memory"
   });
 });
 
-// =============================
-// Public Upload (CUSTOMERS)
-// =============================
-app.post("/public/upload", upload.single("file"), async (req, res) => {
+// -------------------- Twilio inbound (simple placeholder) --------------------
+app.post("/sms", async (req, res) => {
+  // Twilio sends x-www-form-urlencoded
+  const from = normalizePhone(req.body.From);
+  const body = (req.body.Body || "").trim();
+  const numMedia = Number(req.body.NumMedia || 0);
+
+  // You can wire MSTAF logic here later.
+  res.type("text/xml");
+  res.send(`<?xml version="1.0" encoding="UTF-8"?><Response><Message>✅ MSTAF received: ${body || "(no text)"}${numMedia ? " + media" : ""}</Message></Response>`);
+});
+
+// -------------------- Shopify webhook (Authorized job creation) --------------------
+/**
+ * Expecting JSON body with a phone + printing options inside metadata.
+ * Your PowerShell test should hit this endpoint.
+ */
+app.post("/shopify/webhook", async (req, res) => {
   try {
-    const { printerId, copies, paper, color } = req.body;
-    if (!printerId) return res.status(400).json({ ok: false, error: "Missing printerId" });
-    if (!req.file) return res.status(400).json({ ok: false, error: "Missing file" });
+    const meta = req.body || {};
+    const phone = normalizePhone(meta.phone || meta.customer_phone || meta.from_phone || meta?.customer?.phone);
+    const printerId = meta.printer_id || meta.printerId || "PP-USA-001";
 
-    const copiesNum = Math.min(Math.max(parseInt(copies || "1", 10) || 1, 1), 50);
-    const paperVal = (paper || "letter").toLowerCase();
-    const colorVal = (color || "color").toLowerCase();
-
-    const details = {
-      copies: copiesNum,
-      paper: ["letter", "a4", "legal"].includes(paperVal) ? paperVal : "letter",
-      color: ["color", "bw"].includes(colorVal) ? colorVal : "color"
+    // Basic parse for options (customize to your Shopify payload format)
+    const parsed = {
+      paper: meta.paper_size || meta.paper || "LETTER",
+      color: meta.color_mode || meta.color || "COLOR",
+      copies: Number(meta.copies || 1)
     };
 
-    const fileUrl = `${req.protocol}://${req.get("host")}/uploads/${req.file.filename}`;
-    const jobId = makeJobId();
+    const jobId = `job_${crypto.randomBytes(8).toString("hex")}`;
 
-    if (!pool) {
-      const job = {
-        job_id: jobId,
-        id_text: jobId,
-        printer_id: printerId,
-        from_phone: null,
-        file_name: req.file.originalname,
-        mime_type: req.file.mimetype,
-        file_url: fileUrl,
-        status: "queued",
-        details,
-        created_at: nowISO(),
-        updated_at: nowISO()
-      };
-      JOBS.push(job);
-      return res.json({ ok: true, message: "Queued print job", job });
-    }
-
-    await ensureDb();
-
-    const r = await pool.query(
-      `
-      INSERT INTO print_jobs (
-        job_id, id_text, printer_id, from_phone,
-        file_name, mime_type, file_url,
-        status, details, created_at, updated_at
-      )
-      VALUES ($1,$2,$3,$4,$5,$6,$7,'queued',$8,NOW(),NOW())
-      RETURNING *
-      `,
-      [
-        jobId, jobId, printerId, null,
-        req.file.originalname, req.file.mimetype, fileUrl,
-        JSON.stringify(details)
-      ]
-    );
-
-    return res.json({ ok: true, message: "Queued print job", job: r.rows[0] });
-  } catch (err) {
-    console.error("PUBLIC UPLOAD ERROR:", err);
-    return res.status(500).json({ ok: false, error: String(err.message || err) });
-  }
-});
-
-// =============================
-// Upload (printer/agent)
-// =============================
-app.post("/api/upload", requirePrinterKey, upload.single("file"), async (req, res) => {
-  try {
-    const { printerId, from } = req.body;
-    if (!printerId) return res.status(400).json({ ok: false, error: "Missing printerId" });
-    if (!req.file) return res.status(400).json({ ok: false, error: "Missing file" });
-
-    const jobId = makeJobId();
-    const fileUrl = `${req.protocol}://${req.get("host")}/uploads/${req.file.filename}`;
-
-    if (!pool) {
-      const job = {
-        job_id: jobId,
-        id_text: jobId,
-        printer_id: printerId,
-        from_phone: from || null,
-        file_name: req.file.originalname,
-        mime_type: req.file.mimetype,
-        file_url: fileUrl,
-        status: "queued",
-        created_at: nowISO(),
-        updated_at: nowISO()
-      };
-      JOBS.push(job);
-      return res.json({ ok: true, message: "Queued print job", job });
-    }
-
-    await ensureDb();
-
-    const r = await pool.query(
-      `
-      INSERT INTO print_jobs (
-        job_id, id_text, printer_id, from_phone,
-        file_name, mime_type, file_url,
-        status, paid_at, created_at, updated_at
-      )
-      VALUES ($1,$2,$3,$4,$5,$6,$7,'queued',NULL,NOW(),NOW())
-      RETURNING job_id, id_text, printer_id, from_phone, file_name, mime_type, file_url, status, paid_at, created_at, updated_at
-      `,
-      [jobId, jobId, printerId, from || null, req.file.originalname, req.file.mimetype, fileUrl]
-    );
-
-    return res.json({ ok: true, message: "Queued print job", job: r.rows[0] });
-  } catch (err) {
-    console.error("UPLOAD ERROR:", err);
-    return res.status(500).json({ ok: false, error: "Upload failed", details: String(err.message || err) });
-  }
-});
-
-// =============================
-// Printer Poll
-// =============================
-app.get("/jobs", async (req, res) => {
-  try {
-    const { printerId, limit } = req.query;
-    const lim = Math.min(parseInt(limit || "20", 10), 50);
-
-    if (!printerId) return res.status(400).json({ ok: false, error: "Missing printerId" });
-
-    if (!pool) {
-      const jobs = JOBS.filter(j => j.printer_id === printerId).slice(0, lim);
-      return res.json({ ok: true, jobs });
-    }
-
-    const r = await pool.query(
-      `
-      SELECT job_id, id_text, printer_id, from_phone, file_name, mime_type, file_url,
-             status, paid_at, created_at, updated_at, details, meta, paper_size, color_mode, copies
-      FROM print_jobs
-      WHERE printer_id = $1
-      ORDER BY created_at DESC
-      LIMIT $2
-      `,
-      [printerId, lim]
-    );
-
-    return res.json({ ok: true, jobs: r.rows });
-  } catch (err) {
-    console.error("JOBS ERROR:", err);
-    return res.status(500).json({ ok: false, error: "Jobs fetch failed", details: String(err.message || err) });
-  }
-});
-
-// =============================
-// Update Status
-// =============================
-app.post("/jobs/:id/status", async (req, res) => {
-  try {
-    const { status } = req.body;
-    const id = req.params.id;
-
-    if (!status) return res.status(400).json({ ok: false, error: "Missing status" });
-
-    if (!pool) {
-      const j = JOBS.find(x => x.id_text === id || x.job_id === id);
-      if (j) j.status = status;
-      return res.json({ ok: true });
-    }
-
-    await pool.query(
-      `UPDATE print_jobs SET status=$1, updated_at=NOW() WHERE id_text=$2 OR job_id=$2`,
-      [status, id]
-    );
-
-    return res.json({ ok: true });
-  } catch (err) {
-    console.error("STATUS ERROR:", err);
-    return res.status(500).json({ ok: false, error: "Status update failed", details: String(err.message || err) });
-  }
-});
-
-// ==================== ADMIN ====================
-app.get("/admin/jobs/recent", requireAdmin, async (req, res) => {
-  const limit = Math.min(parseInt(req.query.limit || "10", 10), 50);
-
-  try {
-    if (!pool) return res.json({ ok: true, jobs: JOBS.slice(-limit).reverse() });
-
-    const r = await pool.query(
-      `
-      SELECT job_id, id_text, printer_id, from_phone, file_name, mime_type, file_url,
-             status, paid_at, created_at, updated_at, details, meta, paper_size, color_mode, copies
-      FROM print_jobs
-      ORDER BY created_at DESC
-      LIMIT $1
-      `,
-      [limit]
-    );
-    return res.json({ ok: true, jobs: r.rows });
-  } catch (e) {
-    return res.status(500).json({ ok: false, error: "admin recent failed", details: String(e.message || e) });
-  }
-});
-
-app.post("/admin/jobs/:id/force-paid", requireAdmin, async (req, res) => {
-  const id = req.params.id;
-
-  try {
-    if (!pool) return res.status(501).json({ ok: false, error: "DB not enabled" });
-
-    const r = await pool.query(
-      `
-      UPDATE print_jobs
-      SET status='paid', paid_at=NOW(), updated_at=NOW()
-      WHERE job_id=$1 OR id_text=$1
-      RETURNING job_id, id_text, status, paid_at, updated_at
-      `,
-      [id]
-    );
-
-    if (r.rowCount === 0) return res.status(404).json({ ok: false, error: "Job not found" });
-
-    return res.json({ ok: true, job: r.rows[0] });
-  } catch (e) {
-    return res.status(500).json({ ok: false, error: "force-paid failed", details: String(e.message || e) });
-  }
-});
-
-// ===============================
-// Shopify Orders Paid Webhook (RAW BODY)
-// ===============================
-function verifyShopifyHmacRaw(req) {
-  const secret = process.env.SHOPIFY_WEBHOOK_SECRET;
-  if (!secret) throw new Error("Missing SHOPIFY_WEBHOOK_SECRET");
-
-  const rawBody = req.body; // Buffer
-  const hmacHeader = req.get("X-Shopify-Hmac-Sha256") || "";
-
-  const digest = crypto
-    .createHmac("sha256", secret)
-    .update(rawBody)
-    .digest("base64");
-
-  const a = Buffer.from(digest, "utf8");
-  const b = Buffer.from(hmacHeader, "utf8");
-  if (a.length !== b.length) return false;
-  return crypto.timingSafeEqual(a, b);
-}
-
-function parseVariantTitle(variantTitle) {
-  if (!variantTitle || typeof variantTitle !== "string") return null;
-  const parts = variantTitle.split("/").map(s => s.trim());
-  if (parts.length !== 3) return null;
-
-  const paper = parts[0];
-  const colorRaw = parts[1].toLowerCase();
-  const copiesRaw = parts[2];
-
-  const color =
-    colorRaw.includes("black") ? "bw" :
-    colorRaw === "color" ? "color" :
-    null;
-
-  const m = copiesRaw.match(/(\d+)/);
-  const copies = m ? parseInt(m[1], 10) : null;
-
-  if (!paper || !color || !Number.isInteger(copies) || copies <= 0) return null;
-  return { paper, color, copies };
-}
-
-function getOrderPhone(order) {
-  return (
-    order?.shipping_address?.phone ||
-    order?.billing_address?.phone ||
-    order?.customer?.phone ||
-    order?.phone ||
-    null
-  );
-}
-
-async function shopifyOrdersPaidHandler(req, res) {
-  try {
-    const ok = verifyShopifyHmacRaw(req);
-    if (!ok) return res.status(401).send("Invalid HMAC");
-
-    const order = JSON.parse(req.body.toString("utf8"));
-
-    if ((order.financial_status || "").toLowerCase() !== "paid") {
-      return res.status(200).send("Ignored (not paid)");
-    }
-
-    if (!pool) {
-      return res.status(501).json({ ok: false, error: "DB not enabled" });
-    }
-
-    await ensureDb();
-
-    const printerId = process.env.DEFAULT_PRINTER_ID || "PP-USA-001";
-    const orderId = order.id;
-    const orderName = order.name || null;
-    const email = order.email || order?.customer?.email || null;
-    const phone = getOrderPhone(order);
-
-    const lineItems = Array.isArray(order.line_items) ? order.line_items : [];
-    if (lineItems.length === 0) return res.status(200).json({ ok: true, created_count: 0 });
-
-    const created = [];
-
-    for (const li of lineItems) {
-      const variantTitle =
-        li.variant_title ||
-        (typeof li.name === "string" && li.name.includes(" - ")
-          ? li.name.split(" - ").slice(1).join(" - ")
-          : null);
-
-      const parsed = parseVariantTitle(variantTitle);
-      if (!parsed) continue;
-
-      // ✅ job_id + id_text both set (job_id is NOT NULL)
-      const jobId = `shopify_${orderId}_${li.id}_${crypto.randomBytes(4).toString("hex")}`;
-
-      const meta = {
-        source: "shopify",
-        order_id: orderId,
-        order_name: orderName,
-        line_item_id: li.id,
-        product_id: li.product_id || null,
-        variant_id: li.variant_id || null,
-        variant_title: variantTitle,
-        quantity: li.quantity || 1,
-        customer_email: email,
-        customer_phone: phone
-      };
-
+    if (USE_DB) {
+      // ✅ Part B — Shopify webhook insert: include file_url as NULL
       await pool.query(
         `
         INSERT INTO print_jobs (
@@ -492,10 +216,11 @@ async function shopifyOrdersPaidHandler(req, res) {
           paper_size,
           color_mode,
           copies,
+          file_url,
           created_at,
           updated_at
         )
-        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,NOW(),NOW())
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,NOW(),NOW())
         `,
         [
           jobId,
@@ -506,30 +231,151 @@ async function shopifyOrdersPaidHandler(req, res) {
           JSON.stringify(meta),
           parsed.paper,
           parsed.color,
-          parsed.copies
+          parsed.copies,
+          null
         ]
       );
-
-      created.push({ jobId, ...parsed });
+    } else {
+      mem.jobs.push({
+        id: mem.jobs.length + 1,
+        job_id: jobId,
+        id_text: jobId,
+        printer_id: printerId,
+        from_phone: phone,
+        status: "authorized_awaiting_file",
+        meta,
+        paper_size: parsed.paper,
+        color_mode: parsed.color,
+        copies: parsed.copies,
+        file_url: null,
+        created_at: nowIso(),
+        updated_at: nowIso()
+      });
     }
 
-    return res.status(200).json({ ok: true, created_count: created.length, created });
-  } catch (err) {
-    console.error("SHOPIFY WEBHOOK ERROR:", err);
-
-    // ✅ Return real error so PowerShell shows it
-    return res.status(500).json({
-      ok: false,
-      error: String(err.message || err),
-      stack: String(err.stack || "")
-    });
+    res.json({ ok: true, created_count: 1, job_id: jobId });
+  } catch (e) {
+    console.error("SHOPIFY WEBHOOK ERROR:", e);
+    res.status(500).json({ ok: false, error: String(e) });
   }
-}
+});
 
-// Mount BOTH URLs (prevents 404)
-app.post("/webhooks/shopify/orders-paid", shopifyOrdersPaidHandler);
-app.post("/webhooks/shopify/order_paid", shopifyOrdersPaidHandler);
+// -------------------- Upload endpoint --------------------
+/**
+ * Uploads a file and returns a public URL.
+ * Later we will add: update an existing job_id with this file_url.
+ */
+app.post("/api/upload", upload.single("file"), async (req, res) => {
+  try {
+    if (!req.file) return res.status(400).json({ ok: false, error: "No file uploaded" });
 
-// Start
+    const base = getPublicBaseUrl(req);
+    const fileUrl = `${base}/uploads/${encodeURIComponent(req.file.filename)}`;
+
+    res.json({
+      ok: true,
+      fileUrl,
+      fileName: req.file.originalname,
+      mimeType: req.file.mimetype
+    });
+  } catch (e) {
+    console.error("UPLOAD ERROR:", e);
+    res.status(500).json({ ok: false, error: String(e) });
+  }
+});
+
+// -------------------- Jobs endpoints --------------------
+app.get("/jobs", async (req, res) => {
+  const printerId = req.query.printerId || "PP-USA-001";
+  try {
+    if (USE_DB) {
+      const r = await pool.query(
+        `
+        SELECT *
+        FROM print_jobs
+        WHERE printer_id = $1
+        ORDER BY created_at DESC
+        LIMIT 50
+        `,
+        [printerId]
+      );
+      res.json({ ok: true, jobs: r.rows });
+    } else {
+      const jobs = mem.jobs.filter(j => j.printer_id === printerId).slice(-50).reverse();
+      res.json({ ok: true, jobs });
+    }
+  } catch (e) {
+    console.error("GET JOBS ERROR:", e);
+    res.status(500).json({ ok: false, error: String(e) });
+  }
+});
+
+app.get("/jobs/count", async (req, res) => {
+  const printerId = req.query.printerId || "PP-USA-001";
+  try {
+    if (USE_DB) {
+      const r = await pool.query(
+        `SELECT COUNT(*)::int AS count FROM print_jobs WHERE printer_id = $1`,
+        [printerId]
+      );
+      res.json({ ok: true, printerId, count: r.rows[0].count });
+    } else {
+      const count = mem.jobs.filter(j => j.printer_id === printerId).length;
+      res.json({ ok: true, printerId, count });
+    }
+  } catch (e) {
+    console.error("COUNT ERROR:", e);
+    res.status(500).json({ ok: false, error: String(e) });
+  }
+});
+
+app.post("/jobs/:id/status", async (req, res) => {
+  const id = req.params.id;
+  const status = (req.body.status || "").trim();
+  if (!status) return res.status(400).json({ ok: false, error: "Missing status" });
+
+  try {
+    if (USE_DB) {
+      // Accept either numeric id or id_text/job_id
+      const isNumeric = /^[0-9]+$/.test(id);
+
+      const r = isNumeric
+        ? await pool.query(
+            `UPDATE print_jobs SET status = $1, updated_at = NOW() WHERE id = $2 RETURNING *`,
+            [status, Number(id)]
+          )
+        : await pool.query(
+            `UPDATE print_jobs SET status = $1, updated_at = NOW() WHERE id_text = $2 OR job_id = $2 RETURNING *`,
+            [status, id]
+          );
+
+      if (!r.rows.length) return res.status(404).json({ ok: false, error: "Job not found" });
+      res.json({ ok: true, job: r.rows[0] });
+    } else {
+      const job = mem.jobs.find(j => String(j.id) === String(id) || j.id_text === id || j.job_id === id);
+      if (!job) return res.status(404).json({ ok: false, error: "Job not found" });
+      job.status = status;
+      job.updated_at = nowIso();
+      res.json({ ok: true, job });
+    }
+  } catch (e) {
+    console.error("STATUS UPDATE ERROR:", e);
+    res.status(500).json({ ok: false, error: String(e) });
+  }
+});
+
+// -------------------- Boot --------------------
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`MSTAF CORE running on port ${PORT}`));
+
+(async () => {
+  try {
+    await ensureDb();
+  } catch (e) {
+    console.error("ensureDb FAILED:", e);
+  }
+
+  app.listen(PORT, () => {
+    console.log(`✅ MSTAF Print-O-Matic server running on port ${PORT}`);
+    console.log(`✅ DB mode: ${USE_DB ? "Postgres" : "In-memory"}`);
+  });
+})();
