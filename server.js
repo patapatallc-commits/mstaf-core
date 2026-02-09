@@ -5,6 +5,7 @@
  * - Web Portal upload endpoint: POST /api/upload (multipart/form-data)
  *     - supports attaching upload to an existing job via job_id
  * - Printer polling: GET /jobs?printerId=PP-USA-001
+ *     ✅ NOW FILTERED: returns ONLY ready_to_print jobs WITH file_url
  * - Count endpoint: GET /jobs/count?printerId=PP-USA-001
  * - Update status: POST /jobs/:id/status
  * - Uses Postgres if DATABASE_URL is set, otherwise in-memory fallback
@@ -12,7 +13,8 @@
  * ✅ INCLUDED FIXES:
  * 1) Render Free compatible DB migration to ensure file_url is nullable (FORCE rebuild column if needed)
  * 2) Shopify webhook INSERT includes file_url = NULL with status "authorized_awaiting_file"
- * 3) Web Portal upload can attach a file to an existing job_id and marks status "ready_to_print"
+ * 3) Web Portal upload attaches a file to an existing job_id and marks status "ready_to_print"
+ * 4) Printer polling (/jobs) returns ONLY printable jobs (ready_to_print + file_url not null)
  */
 
 if (process.env.NODE_ENV !== "production") {
@@ -184,7 +186,6 @@ app.get("/debug/instance", (req, res) => {
 
 // -------------------- Twilio inbound (placeholder) --------------------
 app.post("/sms", async (req, res) => {
-  const from = normalizePhone(req.body.From);
   const body = (req.body.Body || "").trim();
   const numMedia = Number(req.body.NumMedia || 0);
 
@@ -208,7 +209,6 @@ app.post("/shopify/webhook", async (req, res) => {
     const jobId = `job_${crypto.randomBytes(8).toString("hex")}`;
 
     if (USE_DB) {
-      // ✅ Shopify insert includes file_url (NULL) + status authorized_awaiting_file
       await pool.query(
         `
         INSERT INTO print_jobs (
@@ -294,7 +294,6 @@ app.post("/api/upload", upload.single("file"), async (req, res) => {
     }
 
     if (USE_DB) {
-      // Attach file to existing authorized job and mark ready_to_print
       const r = await pool.query(
         `
         UPDATE print_jobs
@@ -362,19 +361,27 @@ app.get("/jobs", async (req, res) => {
   const printerId = req.query.printerId || "PP-USA-001";
   try {
     if (USE_DB) {
+      // ✅ FILTER: only printable jobs
       const r = await pool.query(
         `
         SELECT *
         FROM print_jobs
         WHERE printer_id = $1
-        ORDER BY created_at DESC
-        LIMIT 50
+          AND status = 'ready_to_print'
+          AND file_url IS NOT NULL
+        ORDER BY created_at ASC
+        LIMIT 10
         `,
         [printerId]
       );
       res.json({ ok: true, jobs: r.rows });
     } else {
-      const jobs = mem.jobs.filter(j => j.printer_id === printerId).slice(-50).reverse();
+      // ✅ FILTER: only printable jobs
+      const jobs = mem.jobs
+        .filter(j => j.printer_id === printerId && j.status === "ready_to_print" && j.file_url)
+        .slice(-10)
+        .reverse();
+
       res.json({ ok: true, jobs });
     }
   } catch (e) {
@@ -387,6 +394,7 @@ app.get("/jobs/count", async (req, res) => {
   const printerId = req.query.printerId || "PP-USA-001";
   try {
     if (USE_DB) {
+      // Count ALL jobs for this printer (including authorized/printing/done)
       const r = await pool.query(
         `SELECT COUNT(*)::int AS count FROM print_jobs WHERE printer_id = $1`,
         [printerId]
@@ -451,4 +459,3 @@ const PORT = process.env.PORT || 3000;
     console.log(`✅ DB mode: ${USE_DB ? "Postgres" : "In-memory"}`);
   });
 })();
-
