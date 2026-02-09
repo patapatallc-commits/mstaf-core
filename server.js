@@ -11,7 +11,7 @@
  *
  * DB rules:
  * - Do NOT insert into serial id
- * - Always set job_id + id_text (same value) for regular uploads
+ * - Always set job_id + id_text (same value)
  * - Auto-migrate missing columns
  * - Backfill old rows where job_id / id_text are NULL
  */
@@ -36,7 +36,7 @@ const app = express();
 /**
  * ✅ CRITICAL SHOPIFY FIX
  * Shopify HMAC verification MUST use the raw request body.
- * So we register RAW parser ONLY for /webhooks/shopify/*
+ * Register RAW parser ONLY for /webhooks/shopify/*
  * BEFORE express.json() middleware.
  */
 app.use("/webhooks/shopify", express.raw({ type: "application/json" }));
@@ -128,7 +128,7 @@ async function ensureDb() {
   await pool.query(`ALTER TABLE print_jobs ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT NOW();`).catch(() => {});
   await pool.query(`ALTER TABLE print_jobs ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW();`).catch(() => {});
 
-  // ✅ Needed for customer upload + Shopify
+  // Needed for customer upload + Shopify
   await pool.query(`ALTER TABLE print_jobs ADD COLUMN IF NOT EXISTS details JSONB;`).catch(() => {});
   await pool.query(`ALTER TABLE print_jobs ADD COLUMN IF NOT EXISTS meta JSONB;`).catch(() => {});
   await pool.query(`ALTER TABLE print_jobs ADD COLUMN IF NOT EXISTS paper_size TEXT;`).catch(() => {});
@@ -478,6 +478,7 @@ async function shopifyOrdersPaidHandler(req, res) {
       const parsed = parseVariantTitle(variantTitle);
       if (!parsed) continue;
 
+      // ✅ IMPORTANT: job_id is NOT NULL in your DB, so always set job_id + id_text
       const jobId = `shopify_${orderId}_${li.id}_${crypto.randomBytes(4).toString("hex")}`;
 
       const meta = {
@@ -496,14 +497,22 @@ async function shopifyOrdersPaidHandler(req, res) {
       await pool.query(
         `
         INSERT INTO print_jobs (
-          id_text, printer_id, from_phone,
-          status, meta,
-          paper_size, color_mode, copies,
-          created_at, updated_at
+          job_id,
+          id_text,
+          printer_id,
+          from_phone,
+          status,
+          meta,
+          paper_size,
+          color_mode,
+          copies,
+          created_at,
+          updated_at
         )
-        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,NOW(),NOW())
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,NOW(),NOW())
         `,
         [
+          jobId,
           jobId,
           printerId,
           phone,
@@ -525,11 +534,10 @@ async function shopifyOrdersPaidHandler(req, res) {
   }
 }
 
-// IMPORTANT: Do NOT put express.raw() here (already applied via app.use above)
+// Do NOT put express.raw() here (already applied via app.use above)
 app.post("/webhooks/shopify/orders-paid", shopifyOrdersPaidHandler);
 app.post("/webhooks/shopify/order_paid", shopifyOrdersPaidHandler);
 
 // Start
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log(`MSTAF CORE running on port ${PORT}`));
-
