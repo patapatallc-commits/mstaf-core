@@ -2,15 +2,17 @@
  * MSTAF CORE - Print-O-Matic Stable Server (Render)
  * - Twilio SMS/MMS inbound webhook: POST /sms
  * - Shopify webhook (authorized job): POST /shopify/webhook
- * - Upload endpoint: POST /api/upload (multipart/form-data)
+ * - Web Portal upload endpoint: POST /api/upload (multipart/form-data)
+ *     - supports attaching upload to an existing job via job_id
  * - Printer polling: GET /jobs?printerId=PP-USA-001
  * - Count endpoint: GET /jobs/count?printerId=PP-USA-001
  * - Update status: POST /jobs/:id/status
  * - Uses Postgres if DATABASE_URL is set, otherwise in-memory fallback
  *
- * ✅ FIX INCLUDED (Render Free compatible)
- * - FORCE schema migration so file_url becomes nullable even if it was created NOT NULL before.
- * - Shopify webhook insert includes file_url as NULL (authorized_awaiting_file).
+ * ✅ INCLUDED FIXES:
+ * 1) Render Free compatible DB migration to ensure file_url is nullable (FORCE rebuild column if needed)
+ * 2) Shopify webhook INSERT includes file_url = NULL with status "authorized_awaiting_file"
+ * 3) Web Portal upload can attach a file to an existing job_id and marks status "ready_to_print"
  */
 
 if (process.env.NODE_ENV !== "production") {
@@ -65,7 +67,7 @@ const USE_DB = !!pool;
 
 // -------------------- In-memory fallback --------------------
 const mem = {
-  jobs: [] // { id, job_id, id_text, printer_id, from_phone, status, meta, paper_size, color_mode, copies, file_url, created_at, updated_at }
+  jobs: [] // { id, job_id, id_text, printer_id, from_phone, status, meta, paper_size, color_mode, copies, file_url, file_name, mime_type, created_at, updated_at }
 };
 
 // -------------------- Helpers --------------------
@@ -88,7 +90,7 @@ function normalizePhone(input) {
 async function ensureDb() {
   if (!USE_DB) return;
 
-  // Create table if missing (file_url is TEXT and should be nullable)
+  // Create table if missing
   await pool.query(`
     CREATE TABLE IF NOT EXISTS print_jobs (
       id SERIAL PRIMARY KEY,
@@ -127,32 +129,25 @@ async function ensureDb() {
 
   /**
    * ✅ Render Free compatible “FORCE nullable file_url migration”
-   * Why: If your old schema had file_url NOT NULL, DROP NOT NULL sometimes doesn’t run (and no Shell on Free).
-   * This approach rebuilds the column safely:
+   * If an old schema had file_url NOT NULL, we rebuild the column safely:
    *  - create temp nullable column
    *  - copy existing values
-   *  - drop old column (including any NOT NULL constraint)
+   *  - drop old file_url column (removes NOT NULL constraint too)
    *  - rename temp back to file_url
    */
   try {
-    // If file_url_tmp already exists, the migration probably already ran.
     await pool.query(`ALTER TABLE print_jobs ADD COLUMN IF NOT EXISTS file_url_tmp TEXT;`);
 
-    // Copy values from file_url (if old column exists and has values)
-    // If old file_url is already gone, this update will fail; catch below.
+    // Copy values if old file_url exists
     await pool.query(`
       UPDATE print_jobs
       SET file_url_tmp = file_url
       WHERE file_url IS NOT NULL;
     `);
 
-    // Drop old file_url column (removes NOT NULL constraint too)
     await pool.query(`ALTER TABLE print_jobs DROP COLUMN file_url;`);
-
-    // Rename temp to file_url
     await pool.query(`ALTER TABLE print_jobs RENAME COLUMN file_url_tmp TO file_url;`);
   } catch (e) {
-    // If any step fails because it’s already applied (or older schema differences), ignore safely.
     console.log("file_url FORCE migration already applied or skipped");
   }
 
@@ -187,7 +182,7 @@ app.get("/debug/instance", (req, res) => {
   });
 });
 
-// -------------------- Twilio inbound (simple placeholder) --------------------
+// -------------------- Twilio inbound (placeholder) --------------------
 app.post("/sms", async (req, res) => {
   const from = normalizePhone(req.body.From);
   const body = (req.body.Body || "").trim();
@@ -258,6 +253,8 @@ app.post("/shopify/webhook", async (req, res) => {
         color_mode: parsed.color,
         copies: parsed.copies,
         file_url: null,
+        file_name: null,
+        mime_type: null,
         created_at: nowIso(),
         updated_at: nowIso()
       });
@@ -270,7 +267,10 @@ app.post("/shopify/webhook", async (req, res) => {
   }
 });
 
-// -------------------- Upload endpoint --------------------
+// -------------------- Upload endpoint (Web Portal first) --------------------
+// multipart/form-data:
+// - field "file" (required)
+// - field "job_id" (recommended) to attach upload to an authorized Shopify job
 app.post("/api/upload", upload.single("file"), async (req, res) => {
   try {
     if (!req.file) return res.status(400).json({ ok: false, error: "No file uploaded" });
@@ -278,12 +278,79 @@ app.post("/api/upload", upload.single("file"), async (req, res) => {
     const base = getPublicBaseUrl(req);
     const fileUrl = `${base}/uploads/${encodeURIComponent(req.file.filename)}`;
 
-    res.json({
-      ok: true,
-      fileUrl,
-      fileName: req.file.originalname,
-      mimeType: req.file.mimetype
-    });
+    const jobId =
+      (req.body && (req.body.job_id || req.body.jobId || req.body.id_text || req.body.job)) || null;
+
+    // Backward-compatible: allow upload without attaching to a job
+    if (!jobId) {
+      return res.json({
+        ok: true,
+        attached: false,
+        fileUrl,
+        fileName: req.file.originalname,
+        mimeType: req.file.mimetype,
+        note: "No job_id provided, upload stored but not attached to a print job."
+      });
+    }
+
+    if (USE_DB) {
+      // Attach file to existing authorized job and mark ready_to_print
+      const r = await pool.query(
+        `
+        UPDATE print_jobs
+        SET
+          file_url = $1,
+          file_name = $2,
+          mime_type = $3,
+          status = 'ready_to_print',
+          updated_at = NOW()
+        WHERE job_id = $4 OR id_text = $4
+        RETURNING *
+        `,
+        [fileUrl, req.file.originalname, req.file.mimetype, jobId]
+      );
+
+      if (!r.rows.length) {
+        return res.status(404).json({
+          ok: false,
+          error: "Job not found for job_id",
+          job_id: jobId,
+          fileUrl
+        });
+      }
+
+      return res.json({
+        ok: true,
+        attached: true,
+        job_id: jobId,
+        fileUrl,
+        job: r.rows[0]
+      });
+    } else {
+      const job = mem.jobs.find(j => j.job_id === jobId || j.id_text === jobId);
+      if (!job) {
+        return res.status(404).json({
+          ok: false,
+          error: "Job not found for job_id",
+          job_id: jobId,
+          fileUrl
+        });
+      }
+
+      job.file_url = fileUrl;
+      job.file_name = req.file.originalname;
+      job.mime_type = req.file.mimetype;
+      job.status = "ready_to_print";
+      job.updated_at = nowIso();
+
+      return res.json({
+        ok: true,
+        attached: true,
+        job_id: jobId,
+        fileUrl,
+        job
+      });
+    }
   } catch (e) {
     console.error("UPLOAD ERROR:", e);
     res.status(500).json({ ok: false, error: String(e) });
@@ -384,3 +451,4 @@ const PORT = process.env.PORT || 3000;
     console.log(`✅ DB mode: ${USE_DB ? "Postgres" : "In-memory"}`);
   });
 })();
+
