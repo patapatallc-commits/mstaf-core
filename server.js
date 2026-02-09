@@ -422,6 +422,152 @@ app.post("/admin/jobs/:id/force-paid", requireAdmin, async (req, res) => {
     });
   }
 });
+// ===============================
+// Shopify Orders Paid Webhook (RAW BODY)
+// - Accepts BOTH URLs to prevent 404s
+// ===============================
+
+function verifyShopifyHmacRaw(req) {
+  const secret = process.env.SHOPIFY_WEBHOOK_SECRET;
+  if (!secret) throw new Error("Missing SHOPIFY_WEBHOOK_SECRET");
+
+  const hmacHeader = req.get("X-Shopify-Hmac-Sha256") || "";
+  const rawBody = req.body; // Buffer from express.raw()
+
+  const digest = crypto
+    .createHmac("sha256", secret)
+    .update(rawBody)
+    .digest("base64");
+
+  const a = Buffer.from(digest, "utf8");
+  const b = Buffer.from(hmacHeader, "utf8");
+  if (a.length !== b.length) return false;
+  return crypto.timingSafeEqual(a, b);
+}
+
+function parseVariantTitle(variantTitle) {
+  // Expected: "A4 / Black & White / 10 Copies"
+  if (!variantTitle || typeof variantTitle !== "string") return null;
+
+  const parts = variantTitle.split("/").map(s => s.trim());
+  if (parts.length !== 3) return null;
+
+  const paper = parts[0];                  // A4, Letter
+  const colorRaw = parts[1].toLowerCase(); // "black & white" or "color"
+  const copiesRaw = parts[2];              // "10 Copies" or "1 Copy"
+
+  const color =
+    colorRaw.includes("black") ? "bw" :
+    colorRaw === "color" ? "color" :
+    null;
+
+  const m = copiesRaw.match(/(\d+)/);
+  const copies = m ? parseInt(m[1], 10) : null;
+
+  if (!paper || !color || !Number.isInteger(copies) || copies <= 0) return null;
+  return { paper, color, copies };
+}
+
+function getOrderPhone(order) {
+  return (
+    order?.shipping_address?.phone ||
+    order?.billing_address?.phone ||
+    order?.customer?.phone ||
+    order?.phone ||
+    null
+  );
+}
+
+async function shopifyOrdersPaidHandler(req, res) {
+  try {
+    // 1) Verify HMAC
+    const ok = verifyShopifyHmacRaw(req);
+    if (!ok) return res.status(401).send("Invalid HMAC");
+
+    // 2) Parse JSON from raw buffer
+    const order = JSON.parse(req.body.toString("utf8"));
+
+    // 3) Paid only
+    if ((order.financial_status || "").toLowerCase() !== "paid") {
+      return res.status(200).send("Ignored (not paid)");
+    }
+
+    const printerId = process.env.DEFAULT_PRINTER_ID || "PP-USA-001";
+    const orderId = order.id;
+    const orderName = order.name || null;
+    const email = order.email || order?.customer?.email || null;
+    const phone = getOrderPhone(order);
+
+    const lineItems = Array.isArray(order.line_items) ? order.line_items : [];
+    if (lineItems.length === 0) return res.status(200).json({ ok: true, created_count: 0 });
+
+    const created = [];
+
+    for (const li of lineItems) {
+      const variantTitle =
+        li.variant_title ||
+        (typeof li.name === "string" && li.name.includes(" - ")
+          ? li.name.split(" - ").slice(1).join(" - ")
+          : null);
+
+      const parsed = parseVariantTitle(variantTitle);
+      if (!parsed) continue;
+
+      const jobId = `shopify_${orderId}_${li.id}_${crypto.randomBytes(4).toString("hex")}`;
+
+      const meta = {
+        source: "shopify",
+        order_id: orderId,
+        order_name: orderName,
+        line_item_id: li.id,
+        product_id: li.product_id || null,
+        variant_id: li.variant_id || null,
+        variant_title: variantTitle,
+        quantity: li.quantity || 1,
+        customer_email: email,
+        customer_phone: phone
+      };
+
+      // NOTE: This assumes you already have `pool` defined (pg Pool)
+      await pool.query(
+        `
+        INSERT INTO print_jobs (
+          id_text,
+          printer_id,
+          from_phone,
+          status,
+          meta,
+          paper_size,
+          color_mode,
+          copies
+        )
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+        `,
+        [
+          jobId,
+          printerId,
+          phone,
+          "authorized_awaiting_file",
+          JSON.stringify(meta),
+          parsed.paper,
+          parsed.color,
+          parsed.copies
+        ]
+      );
+
+      created.push({ jobId, ...parsed });
+    }
+
+    return res.status(200).json({ ok: true, created_count: created.length, created });
+  } catch (err) {
+    console.error("SHOPIFY WEBHOOK ERROR:", err);
+    return res.status(500).send("Webhook error");
+  }
+}
+
+// Mount BOTH URLs so you never get 404 again
+app.post("/webhooks/shopify/orders-paid", require("express").raw({ type: "application/json" }), shopifyOrdersPaidHandler);
+app.post("/webhooks/shopify/order_paid",  require("express").raw({ type: "application/json" }), shopifyOrdersPaidHandler);
 
 // Start
 const PORT = process.env.PORT || 3000;
