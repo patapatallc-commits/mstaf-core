@@ -1,16 +1,25 @@
 /**
- * MSTAF CORE - Print-O-Matic Stable Server (Render)
- * - Twilio SMS/MMS inbound webhook: POST /sms
- * - Shopify webhook (authorized job): POST /shopify/webhook
- * - Web Portal upload endpoint: POST /api/upload (multipart/form-data)
- *     - supports attaching upload to an existing job via job_id
- * - Printer queue (view): GET /jobs?printerId=PP-USA-001
- *     ✅ filtered: only ready_to_print jobs WITH file_url
- * - Printer claim (atomic lock): POST /jobs/next?printerId=PP-USA-001
- *     ✅ claims ONE job and sets status=printing (prevents double printing)
- * - Count endpoint: GET /jobs/count?printerId=PP-USA-001
- * - Update status: POST /jobs/:id/status (done/failed/etc)
- * - Uses Postgres if DATABASE_URL is set, otherwise in-memory fallback
+ * MSTAF CORE - server.js (Print-O-Matic + Worker Queue) ✅ COMPLETE REPLACEMENT
+ * Works on Render.
+ *
+ * ✅ Key Fixes Included:
+ * 1) POST /jobs/next?printerId=PP-USA-001   (worker claims next queued job)
+ * 2) POST /api/upload                       (uploads file + ALWAYS creates queued job)
+ *
+ * Endpoints:
+ * - GET  /health
+ * - POST /sms                     (Twilio inbound safe stub)
+ * - POST /api/upload              (multipart/form-data: printerId, from, file)
+ * - GET  /jobs?printerId=...
+ * - GET  /jobs/count?printerId=...
+ * - POST /jobs/next?printerId=... (worker claims job)
+ * - POST /jobs/:jobId/status      (mark printing/done/failed)
+ * - GET  /debug/instance
+ *
+ * Notes:
+ * - Uses Postgres if DATABASE_URL is set.
+ * - Auto-creates print_jobs table if missing.
+ * - Serves uploaded files at /uploads/<filename>
  */
 
 if (process.env.NODE_ENV !== "production") {
@@ -20,429 +29,384 @@ if (process.env.NODE_ENV !== "production") {
 const express = require("express");
 const multer = require("multer");
 const crypto = require("crypto");
-const os = require("os");
-const path = require("path");
 const fs = require("fs");
+const path = require("path");
+const os = require("os");
 
-let pg = null;
-try { pg = require("pg"); } catch (e) { pg = null; }
-
+// -------------------- App --------------------
 const app = express();
 
-// IMPORTANT for Twilio (form-encoded) + JSON
+// Twilio posts x-www-form-urlencoded. Also accept JSON.
 app.use(express.json({ limit: "20mb" }));
 app.use(express.urlencoded({ extended: true }));
 
-// -------------------- Uploads folder + public access --------------------
+// -------------------- Uploads folder --------------------
 const uploadsDir = path.join(__dirname, "uploads");
 if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
+
+// Serve uploads publicly
 app.use("/uploads", express.static(uploadsDir));
 
-// Multer storage
+// Multer config (store file on disk)
 const storage = multer.diskStorage({
   destination: (req, file, cb) => cb(null, uploadsDir),
   filename: (req, file, cb) => {
     const ext = path.extname(file.originalname || "");
-    const name = `mstaf_${Date.now()}_${crypto.randomBytes(6).toString("hex")}${ext}`;
-    cb(null, name);
+    const safeExt = ext && ext.length <= 10 ? ext : "";
+    cb(null, `mstaf_${Date.now()}_${crypto.randomBytes(8).toString("hex")}${safeExt}`);
   }
 });
 const upload = multer({ storage });
 
 // -------------------- Optional Postgres --------------------
 let pool = null;
-if (pg && process.env.DATABASE_URL) {
-  const { Pool } = pg;
-  pool = new Pool({
+
+async function initDbIfAvailable() {
+  if (!process.env.DATABASE_URL) {
+    console.log("DB: DATABASE_URL not set, running WITHOUT Postgres (limited mode).");
+    return;
+  }
+
+  let pg;
+  try {
+    pg = require("pg");
+  } catch (e) {
+    console.log("DB: pg not installed, running WITHOUT Postgres.");
+    return;
+  }
+
+  pool = new pg.Pool({
     connectionString: process.env.DATABASE_URL,
-    ssl: process.env.DATABASE_URL.includes("render.com")
-      ? { rejectUnauthorized: false }
-      : undefined
+    ssl: { rejectUnauthorized: false }
   });
-}
 
-const USE_DB = !!pool;
-
-// -------------------- In-memory fallback --------------------
-const mem = { jobs: [] };
-
-// -------------------- Helpers --------------------
-function nowIso() { return new Date().toISOString(); }
-
-function getPublicBaseUrl(req) {
-  const base = process.env.PUBLIC_BASE_URL;
-  if (base && typeof base === "string") return base.replace(/\/+$/, "");
-  return `${req.protocol}://${req.get("host")}`.replace(/\/+$/, "");
-}
-
-function normalizePhone(input) {
-  if (!input) return null;
-  const s = String(input).trim();
-  if (s.startsWith("+") && s.length >= 8) return s;
-  return s;
-}
-
-// -------------------- DB Migration --------------------
-async function ensureDb() {
-  if (!USE_DB) return;
-
-  await pool.query(`
+  // Create table if missing
+  const createSql = `
     CREATE TABLE IF NOT EXISTS print_jobs (
       id SERIAL PRIMARY KEY,
-      job_id TEXT,
-      id_text TEXT,
-      printer_id TEXT,
+      id_text TEXT UNIQUE,
+      printer_id TEXT NOT NULL,
       from_phone TEXT,
-      status TEXT DEFAULT 'queued',
-      meta JSONB DEFAULT '{}'::jsonb,
-      paper_size TEXT,
-      color_mode TEXT,
-      copies INTEGER DEFAULT 1,
-      file_url TEXT,
       file_name TEXT,
       mime_type TEXT,
-      created_at TIMESTAMPTZ DEFAULT NOW(),
-      updated_at TIMESTAMPTZ DEFAULT NOW()
+      file_url TEXT,
+      status TEXT NOT NULL DEFAULT 'queued',
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
-  `);
 
-  await pool.query(`ALTER TABLE print_jobs ADD COLUMN IF NOT EXISTS job_id TEXT;`).catch(() => {});
-  await pool.query(`ALTER TABLE print_jobs ADD COLUMN IF NOT EXISTS id_text TEXT;`).catch(() => {});
-  await pool.query(`ALTER TABLE print_jobs ADD COLUMN IF NOT EXISTS printer_id TEXT;`).catch(() => {});
-  await pool.query(`ALTER TABLE print_jobs ADD COLUMN IF NOT EXISTS from_phone TEXT;`).catch(() => {});
-  await pool.query(`ALTER TABLE print_jobs ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'queued';`).catch(() => {});
-  await pool.query(`ALTER TABLE print_jobs ADD COLUMN IF NOT EXISTS meta JSONB DEFAULT '{}'::jsonb;`).catch(() => {});
-  await pool.query(`ALTER TABLE print_jobs ADD COLUMN IF NOT EXISTS paper_size TEXT;`).catch(() => {});
-  await pool.query(`ALTER TABLE print_jobs ADD COLUMN IF NOT EXISTS color_mode TEXT;`).catch(() => {});
-  await pool.query(`ALTER TABLE print_jobs ADD COLUMN IF NOT EXISTS copies INTEGER DEFAULT 1;`).catch(() => {});
-  await pool.query(`ALTER TABLE print_jobs ADD COLUMN IF NOT EXISTS file_url TEXT;`).catch(() => {});
-  await pool.query(`ALTER TABLE print_jobs ADD COLUMN IF NOT EXISTS file_name TEXT;`).catch(() => {});
-  await pool.query(`ALTER TABLE print_jobs ADD COLUMN IF NOT EXISTS mime_type TEXT;`).catch(() => {});
-  await pool.query(`ALTER TABLE print_jobs ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT NOW();`).catch(() => {});
-  await pool.query(`ALTER TABLE print_jobs ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW();`).catch(() => {});
+    CREATE INDEX IF NOT EXISTS idx_print_jobs_printer_status_created
+      ON print_jobs (printer_id, status, created_at);
+  `;
 
-  // FORCE nullable file_url migration (Render Free safe)
-  try {
-    await pool.query(`ALTER TABLE print_jobs ADD COLUMN IF NOT EXISTS file_url_tmp TEXT;`);
-    await pool.query(`
-      UPDATE print_jobs
-      SET file_url_tmp = file_url
-      WHERE file_url IS NOT NULL;
-    `);
-    await pool.query(`ALTER TABLE print_jobs DROP COLUMN file_url;`);
-    await pool.query(`ALTER TABLE print_jobs RENAME COLUMN file_url_tmp TO file_url;`);
-  } catch (e) {
-    console.log("file_url FORCE migration already applied or skipped");
-  }
-
-  await pool.query(`CREATE INDEX IF NOT EXISTS idx_print_jobs_printer ON print_jobs (printer_id);`).catch(() => {});
-  await pool.query(`CREATE INDEX IF NOT EXISTS idx_print_jobs_status ON print_jobs (status);`).catch(() => {});
-  await pool.query(`CREATE INDEX IF NOT EXISTS idx_print_jobs_job_id ON print_jobs (job_id);`).catch(() => {});
-  await pool.query(`CREATE INDEX IF NOT EXISTS idx_print_jobs_id_text ON print_jobs (id_text);`).catch(() => {});
+  await pool.query(createSql);
+  console.log("DB: connected + print_jobs ensured");
 }
 
-// -------------------- Debug/Health --------------------
+// -------------------- Helpers --------------------
+function publicBaseUrl(req) {
+  // Prefer explicit BASE_URL if you set it in Render env
+  if (process.env.BASE_URL && /^https?:\/\//i.test(process.env.BASE_URL)) return process.env.BASE_URL.replace(/\/+$/, "");
+  // Otherwise build from request
+  const proto = (req.headers["x-forwarded-proto"] || req.protocol || "https").toString();
+  const host = req.headers["x-forwarded-host"] || req.headers.host;
+  return `${proto}://${host}`.replace(/\/+$/, "");
+}
+
+function makeJobId() {
+  return `print_${crypto.randomBytes(10).toString("hex")}`;
+}
+
+// -------------------- Debug --------------------
+app.get("/debug/instance", (req, res) => {
+  res.json({
+    ok: true,
+    pid: process.pid,
+    host: os.hostname(),
+    time: new Date().toISOString()
+  });
+});
+
+// -------------------- Health --------------------
 app.get("/health", async (req, res) => {
   try {
-    if (USE_DB) await pool.query("SELECT 1;");
-    res.json({ ok: true, host: os.hostname(), time: nowIso(), db: USE_DB ? "connected" : "memory" });
-  } catch (e) {
-    res.status(500).json({ ok: false, error: String(e) });
-  }
-});
-
-app.get("/debug/instance", (req, res) => {
-  res.json({ pid: process.pid, host: os.hostname(), time: nowIso(), db: USE_DB ? "postgres" : "memory" });
-});
-
-// -------------------- Twilio inbound (placeholder) --------------------
-app.post("/sms", async (req, res) => {
-  const body = (req.body.Body || "").trim();
-  const numMedia = Number(req.body.NumMedia || 0);
-  res.type("text/xml");
-  res.send(`<?xml version="1.0" encoding="UTF-8"?><Response><Message>✅ MSTAF received: ${body || "(no text)"}${numMedia ? " + media" : ""}</Message></Response>`);
-});
-
-// -------------------- Shopify webhook (Authorized job creation) --------------------
-app.post("/shopify/webhook", async (req, res) => {
-  try {
-    const meta = req.body || {};
-    const phone = normalizePhone(meta.phone || meta.customer_phone || meta.from_phone || meta?.customer?.phone);
-    const printerId = meta.printer_id || meta.printerId || "PP-USA-001";
-
-    const parsed = {
-      paper: meta.paper_size || meta.paper || "LETTER",
-      color: meta.color_mode || meta.color || "COLOR",
-      copies: Number(meta.copies || 1)
-    };
-
-    const jobId = `job_${crypto.randomBytes(8).toString("hex")}`;
-
-    if (USE_DB) {
-      await pool.query(
-        `
-        INSERT INTO print_jobs (
-          job_id, id_text, printer_id, from_phone,
-          status, meta, paper_size, color_mode, copies,
-          file_url, created_at, updated_at
-        )
-        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,NOW(),NOW())
-        `,
-        [
-          jobId,
-          jobId,
-          printerId,
-          phone,
-          "authorized_awaiting_file",
-          JSON.stringify(meta),
-          parsed.paper,
-          parsed.color,
-          parsed.copies,
-          null
-        ]
-      );
-    } else {
-      mem.jobs.push({
-        id: mem.jobs.length + 1,
-        job_id: jobId,
-        id_text: jobId,
-        printer_id: printerId,
-        from_phone: phone,
-        status: "authorized_awaiting_file",
-        meta,
-        paper_size: parsed.paper,
-        color_mode: parsed.color,
-        copies: parsed.copies,
-        file_url: null,
-        file_name: null,
-        mime_type: null,
-        created_at: nowIso(),
-        updated_at: nowIso()
-      });
+    let db = "disabled";
+    if (pool) {
+      await pool.query("SELECT 1");
+      db = "connected";
     }
-
-    res.json({ ok: true, created_count: 1, job_id: jobId });
+    res.json({ ok: true, host: os.hostname(), time: new Date().toISOString(), db });
   } catch (e) {
-    console.error("SHOPIFY WEBHOOK ERROR:", e);
-    res.status(500).json({ ok: false, error: String(e) });
+    res.status(500).json({ ok: false, error: "db_error" });
   }
 });
 
-// -------------------- Upload endpoint (Web Portal first) --------------------
+// -------------------- Twilio inbound (safe stub) --------------------
+app.post("/sms", async (req, res) => {
+  // Keep it simple: acknowledge inbound so Twilio doesn't retry.
+  // You can later expand to create jobs via SMS, etc.
+  res.type("text/xml").send(`<?xml version="1.0" encoding="UTF-8"?><Response></Response>`);
+});
+
+// -------------------- Upload + AUTO-QUEUE JOB --------------------
 app.post("/api/upload", upload.single("file"), async (req, res) => {
   try {
-    if (!req.file) return res.status(400).json({ ok: false, error: "No file uploaded" });
+    const printerId = (req.body.printerId || req.body.printer_id || "").toString().trim();
+    const from = (req.body.from || req.body.from_phone || "").toString().trim();
+    const providedJobId = (req.body.job_id || req.body.jobId || "").toString().trim();
 
-    const base = getPublicBaseUrl(req);
-    const fileUrl = `${base}/uploads/${encodeURIComponent(req.file.filename)}`;
+    if (!printerId) return res.status(400).json({ ok: false, error: "printerId required" });
+    if (!req.file) return res.status(400).json({ ok: false, error: "No file upload" });
 
-    const jobId = (req.body && (req.body.job_id || req.body.jobId || req.body.id_text || req.body.job)) || null;
+    const base = publicBaseUrl(req);
+    const fileUrl = `${base}/uploads/${req.file.filename}`;
+    const fileName = req.file.originalname || req.file.filename;
+    const mimeType = req.file.mimetype || "application/octet-stream";
 
-    if (!jobId) {
+    if (!pool) {
+      // No DB means we can upload but cannot queue persistent jobs.
       return res.json({
         ok: true,
+        queued: false,
         attached: false,
         fileUrl,
-        fileName: req.file.originalname,
-        mimeType: req.file.mimetype,
-        note: "No job_id provided, upload stored but not attached to a print job."
+        fileName,
+        mimeType,
+        note: "Uploaded, but DATABASE_URL not set so job cannot be queued."
       });
     }
 
-    if (USE_DB) {
-      const r = await pool.query(
-        `
-        UPDATE print_jobs
-        SET
-          file_url = $1,
-          file_name = $2,
-          mime_type = $3,
-          status = 'ready_to_print',
-          updated_at = NOW()
-        WHERE job_id = $4 OR id_text = $4
-        RETURNING *
-        `,
-        [fileUrl, req.file.originalname, req.file.mimetype, jobId]
+    // If job_id provided, attach to that job if it exists; else create a new one.
+    let jobIdText = providedJobId || makeJobId();
+
+    // Check if provided job exists (when job_id is sent)
+    if (providedJobId) {
+      const check = await pool.query(
+        `SELECT id, id_text FROM print_jobs WHERE id_text = $1 LIMIT 1`,
+        [providedJobId]
       );
-
-      if (!r.rows.length) return res.status(404).json({ ok: false, error: "Job not found for job_id", job_id: jobId, fileUrl });
-
-      return res.json({ ok: true, attached: true, job_id: jobId, fileUrl, job: r.rows[0] });
-    } else {
-      const job = mem.jobs.find(j => j.job_id === jobId || j.id_text === jobId);
-      if (!job) return res.status(404).json({ ok: false, error: "Job not found for job_id", job_id: jobId, fileUrl });
-
-      job.file_url = fileUrl;
-      job.file_name = req.file.originalname;
-      job.mime_type = req.file.mimetype;
-      job.status = "ready_to_print";
-      job.updated_at = nowIso();
-
-      return res.json({ ok: true, attached: true, job_id: jobId, fileUrl, job });
-    }
-  } catch (e) {
-    console.error("UPLOAD ERROR:", e);
-    res.status(500).json({ ok: false, error: String(e) });
-  }
-});
-
-// -------------------- Jobs endpoints --------------------
-
-// View printable queue (filtered)
-app.get("/jobs", async (req, res) => {
-  const printerId = req.query.printerId || "PP-USA-001";
-  try {
-    if (USE_DB) {
-      const r = await pool.query(
-        `
-        SELECT *
-        FROM print_jobs
-        WHERE printer_id = $1
-          AND status = 'ready_to_print'
-          AND file_url IS NOT NULL
-        ORDER BY created_at ASC
-        LIMIT 10
-        `,
-        [printerId]
-      );
-      return res.json({ ok: true, jobs: r.rows });
-    } else {
-      const jobs = mem.jobs
-        .filter(j => j.printer_id === printerId && j.status === "ready_to_print" && j.file_url)
-        .slice(-10)
-        .reverse();
-      return res.json({ ok: true, jobs });
-    }
-  } catch (e) {
-    console.error("GET JOBS ERROR:", e);
-    res.status(500).json({ ok: false, error: String(e) });
-  }
-});
-
-// ✅ NEW: Claim ONE job atomically (locks it by setting status=printing)
-app.post("/jobs/next", async (req, res) => {
-  const printerId = (req.query.printerId || req.body?.printerId || req.body?.printer_id || "PP-USA-001");
-
-  try {
-    if (USE_DB) {
-      const client = await pool.connect();
-      try {
-        await client.query("BEGIN");
-
-        // Atomically select 1 row + lock it, then update to printing
-        const r = await client.query(
+      if (check.rowCount === 0) {
+        // Create it (instead of failing)
+        await pool.query(
           `
-          WITH candidate AS (
-            SELECT id
-            FROM print_jobs
-            WHERE printer_id = $1
-              AND status = 'ready_to_print'
-              AND file_url IS NOT NULL
-            ORDER BY created_at ASC
-            FOR UPDATE SKIP LOCKED
-            LIMIT 1
-          )
-          UPDATE print_jobs pj
-          SET status = 'printing',
-              updated_at = NOW()
-          FROM candidate
-          WHERE pj.id = candidate.id
-          RETURNING pj.*;
+          INSERT INTO print_jobs (id_text, printer_id, from_phone, file_name, mime_type, file_url, status, created_at, updated_at)
+          VALUES ($1,$2,$3,$4,$5,$6,'queued',NOW(),NOW())
           `,
-          [printerId]
+          [jobIdText, printerId, from, fileName, mimeType, fileUrl]
         );
-
-        await client.query("COMMIT");
-        client.release();
-
-        if (!r.rows.length) return res.json({ ok: true, job: null });
-
-        return res.json({ ok: true, job: r.rows[0] });
-      } catch (e) {
-        try { await client.query("ROLLBACK"); } catch (_) {}
-        client.release();
-        throw e;
+      } else {
+        // Update existing job with file info and re-queue if needed
+        await pool.query(
+          `
+          UPDATE print_jobs
+          SET printer_id=$2, from_phone=$3, file_name=$4, mime_type=$5, file_url=$6,
+              status = CASE WHEN status IN ('done','failed') THEN 'queued' ELSE status END,
+              updated_at=NOW()
+          WHERE id_text=$1
+          `,
+          [jobIdText, printerId, from, fileName, mimeType, fileUrl]
+        );
       }
     } else {
-      const job = mem.jobs
-        .filter(j => j.printer_id === printerId && j.status === "ready_to_print" && j.file_url)
-        .sort((a, b) => new Date(a.created_at) - new Date(b.created_at))[0];
-
-      if (!job) return res.json({ ok: true, job: null });
-
-      job.status = "printing";
-      job.updated_at = nowIso();
-
-      return res.json({ ok: true, job });
+      // No job_id provided → ALWAYS create a new queued job
+      await pool.query(
+        `
+        INSERT INTO print_jobs (id_text, printer_id, from_phone, file_name, mime_type, file_url, status, created_at, updated_at)
+        VALUES ($1,$2,$3,$4,$5,$6,'queued',NOW(),NOW())
+        `,
+        [jobIdText, printerId, from, fileName, mimeType, fileUrl]
+      );
     }
+
+    // Return the queued job
+    const out = await pool.query(
+      `SELECT id_text, printer_id, from_phone, file_name, mime_type, file_url, status
+       FROM print_jobs WHERE id_text=$1 LIMIT 1`,
+      [jobIdText]
+    );
+
+    const job = out.rows[0] || {
+      id_text: jobIdText,
+      printer_id: printerId,
+      from_phone: from,
+      file_name: fileName,
+      mime_type: mimeType,
+      file_url: fileUrl,
+      status: "queued"
+    };
+
+    return res.json({
+      ok: true,
+      message: "Queued print job",
+      job: {
+        job_id: job.id_text,
+        printerId: job.printer_id,
+        from: job.from_phone,
+        fileName: job.file_name,
+        mimeType: job.mime_type,
+        fileUrl: job.file_url,
+        status: job.status
+      }
+    });
+  } catch (e) {
+    console.error("UPLOAD ERROR:", e);
+    res.status(500).json({ ok: false, error: "server_error" });
+  }
+});
+
+// -------------------- List jobs --------------------
+app.get("/jobs", async (req, res) => {
+  try {
+    const printerId = (req.query.printerId || "").toString().trim();
+    if (!printerId) return res.status(400).json({ ok: false, error: "printerId required" });
+
+    if (!pool) return res.json({ ok: true, jobs: [] });
+
+    const r = await pool.query(
+      `SELECT id_text, printer_id, from_phone, file_name, mime_type, file_url, status, created_at, updated_at
+       FROM print_jobs
+       WHERE printer_id=$1
+       ORDER BY created_at DESC
+       LIMIT 50`,
+      [printerId]
+    );
+
+    res.json({
+      ok: true,
+      jobs: r.rows.map(j => ({
+        job_id: j.id_text,
+        printerId: j.printer_id,
+        from: j.from_phone,
+        fileName: j.file_name,
+        mimeType: j.mime_type,
+        fileUrl: j.file_url,
+        status: j.status,
+        createdAt: j.created_at,
+        updatedAt: j.updated_at
+      }))
+    });
+  } catch (e) {
+    console.error("JOBS LIST ERROR:", e);
+    res.status(500).json({ ok: false, error: "server_error" });
+  }
+});
+
+// -------------------- Count jobs --------------------
+app.get("/jobs/count", async (req, res) => {
+  try {
+    const printerId = (req.query.printerId || "").toString().trim();
+    if (!printerId) return res.status(400).json({ ok: false, error: "printerId required" });
+
+    if (!pool) return res.json({ ok: true, printerId, queued: 0, printing: 0, done: 0, failed: 0 });
+
+    const r = await pool.query(
+      `
+      SELECT
+        SUM(CASE WHEN status='queued' THEN 1 ELSE 0 END) AS queued,
+        SUM(CASE WHEN status='printing' THEN 1 ELSE 0 END) AS printing,
+        SUM(CASE WHEN status='done' THEN 1 ELSE 0 END) AS done,
+        SUM(CASE WHEN status='failed' THEN 1 ELSE 0 END) AS failed
+      FROM print_jobs
+      WHERE printer_id=$1
+      `,
+      [printerId]
+    );
+
+    const row = r.rows[0] || {};
+    res.json({
+      ok: true,
+      printerId,
+      queued: Number(row.queued || 0),
+      printing: Number(row.printing || 0),
+      done: Number(row.done || 0),
+      failed: Number(row.failed || 0)
+    });
+  } catch (e) {
+    console.error("JOBS COUNT ERROR:", e);
+    res.status(500).json({ ok: false, error: "server_error" });
+  }
+});
+
+// -------------------- Worker claims next queued job --------------------
+// Worker calls: POST /jobs/next?printerId=PP-USA-001
+app.post("/jobs/next", async (req, res) => {
+  try {
+    const printerId = (req.query.printerId || req.body.printerId || "").toString().trim();
+    if (!printerId) return res.status(400).json({ ok: false, error: "printerId required" });
+    if (!pool) return res.json({ ok: true, job: null });
+
+    // Claim the oldest queued job for this printer
+    const q = `
+      UPDATE print_jobs
+      SET status='printing', updated_at=NOW()
+      WHERE id = (
+        SELECT id FROM print_jobs
+        WHERE printer_id=$1 AND status='queued'
+        ORDER BY created_at ASC
+        LIMIT 1
+        FOR UPDATE SKIP LOCKED
+      )
+      RETURNING id_text, printer_id, from_phone, file_name, mime_type, file_url, status;
+    `;
+    const r = await pool.query(q, [printerId]);
+
+    if (r.rowCount === 0) return res.json({ ok: true, job: null });
+
+    const j = r.rows[0];
+    return res.json({
+      ok: true,
+      job: {
+        job_id: j.id_text,
+        printer_id: j.printer_id,
+        from_phone: j.from_phone,
+        file_name: j.file_name,
+        mime_type: j.mime_type,
+        file_url: j.file_url,
+        status: j.status
+      }
+    });
   } catch (e) {
     console.error("JOBS NEXT ERROR:", e);
-    res.status(500).json({ ok: false, error: String(e) });
+    res.status(500).json({ ok: false, error: "server_error" });
   }
 });
 
-app.get("/jobs/count", async (req, res) => {
-  const printerId = req.query.printerId || "PP-USA-001";
+// -------------------- Update job status --------------------
+// Worker calls: POST /jobs/:jobId/status  with JSON { status: "done" }
+app.post("/jobs/:jobId/status", async (req, res) => {
   try {
-    if (USE_DB) {
-      const r = await pool.query(
-        `SELECT COUNT(*)::int AS count FROM print_jobs WHERE printer_id = $1`,
-        [printerId]
-      );
-      return res.json({ ok: true, printerId, count: r.rows[0].count });
-    } else {
-      const count = mem.jobs.filter(j => j.printer_id === printerId).length;
-      return res.json({ ok: true, printerId, count });
-    }
-  } catch (e) {
-    console.error("COUNT ERROR:", e);
-    res.status(500).json({ ok: false, error: String(e) });
-  }
-});
+    const jobId = (req.params.jobId || "").toString().trim();
+    const status = (req.body.status || "").toString().trim();
 
-// Printer reports status (done/failed/etc)
-app.post("/jobs/:id/status", async (req, res) => {
-  const id = req.params.id;
-  const status = (req.body.status || "").trim();
-  if (!status) return res.status(400).json({ ok: false, error: "Missing status" });
+    if (!jobId) return res.status(400).json({ ok: false, error: "jobId required" });
+    if (!status) return res.status(400).json({ ok: false, error: "status required" });
+    if (!pool) return res.json({ ok: true });
 
-  try {
-    if (USE_DB) {
-      const isNumeric = /^[0-9]+$/.test(id);
+    await pool.query(
+      `UPDATE print_jobs SET status=$2, updated_at=NOW() WHERE id_text=$1`,
+      [jobId, status]
+    );
 
-      const r = isNumeric
-        ? await pool.query(
-            `UPDATE print_jobs SET status = $1, updated_at = NOW() WHERE id = $2 RETURNING *`,
-            [status, Number(id)]
-          )
-        : await pool.query(
-            `UPDATE print_jobs SET status = $1, updated_at = NOW() WHERE id_text = $2 OR job_id = $2 RETURNING *`,
-            [status, id]
-          );
-
-      if (!r.rows.length) return res.status(404).json({ ok: false, error: "Job not found" });
-      return res.json({ ok: true, job: r.rows[0] });
-    } else {
-      const job = mem.jobs.find(j => String(j.id) === String(id) || j.id_text === id || j.job_id === id);
-      if (!job) return res.status(404).json({ ok: false, error: "Job not found" });
-      job.status = status;
-      job.updated_at = nowIso();
-      return res.json({ ok: true, job });
-    }
+    res.json({ ok: true, job_id: jobId, status });
   } catch (e) {
     console.error("STATUS UPDATE ERROR:", e);
-    res.status(500).json({ ok: false, error: String(e) });
+    res.status(500).json({ ok: false, error: "server_error" });
   }
 });
 
-// -------------------- Boot --------------------
-const PORT = process.env.PORT || 3000;
+// -------------------- Start --------------------
+const PORT = process.env.PORT || 10000;
 
-(async () => {
-  try { await ensureDb(); } catch (e) { console.error("ensureDb FAILED:", e); }
-
-  app.listen(PORT, () => {
-    console.log(`✅ MSTAF Print-O-Matic server running on port ${PORT}`);
-    console.log(`✅ DB mode: ${USE_DB ? "Postgres" : "In-memory"}`);
+initDbIfAvailable()
+  .then(() => {
+    app.listen(PORT, () => {
+      console.log(`MSTAF CORE listening on port ${PORT}`);
+    });
+  })
+  .catch((e) => {
+    console.error("Startup DB init failed:", e);
+    // Still start server even if DB init fails (health will show db_error)
+    app.listen(PORT, () => {
+      console.log(`MSTAF CORE listening on port ${PORT} (DB init failed)`);
+    });
   });
-})();
