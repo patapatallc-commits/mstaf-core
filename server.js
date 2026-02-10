@@ -1,10 +1,15 @@
 /**
- * MSTAF CORE - Print-O-Matic Stable Server (Render)
+ * MSTAF CORE - Print-O-Matic Server (Render)
  * - Upload endpoint: POST /api/upload (multipart/form-data)
  * - Printer polling: GET /jobs/next?printerId=PP-USA-001
+ * - List jobs: GET /jobs?printerId=PP-USA-001
  * - Count endpoint: GET /jobs/count?printerId=PP-USA-001
  * - Update status: POST /jobs/:jobId/status
  * - Public file hosting: /uploads/<filename>
+ *
+ * IMPORTANT:
+ * This server uses DB column: id_text (your DB already shows id_text in records).
+ * It returns job_id as an alias = id_text for compatibility.
  */
 
 if (process.env.NODE_ENV !== "production") {
@@ -18,21 +23,15 @@ const fs = require("fs");
 const path = require("path");
 const os = require("os");
 
-// ---- Postgres (Render) ----
-let Pool = null;
-try {
-  ({ Pool } = require("pg"));
-} catch (e) {
-  Pool = null;
-}
+const { Pool } = require("pg");
 
 const app = express();
 
-// Twilio + JSON safety
+// Twilio-style + JSON safe
 app.use(express.json({ limit: "20mb" }));
 app.use(express.urlencoded({ extended: true }));
 
-// ---- Uploads folder ----
+// ---------- Uploads folder ----------
 const uploadsDir = path.join(__dirname, "uploads");
 if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
 app.use("/uploads", express.static(uploadsDir));
@@ -42,36 +41,43 @@ const storage = multer.diskStorage({
   destination: (req, file, cb) => cb(null, uploadsDir),
   filename: (req, file, cb) => {
     const safeName = file.originalname.replace(/[^\w.\-]/g, "_");
-    const stamp = Date.now();
-    cb(null, `${stamp}_${safeName}`);
+    cb(null, `${Date.now()}_${safeName}`);
   }
 });
 const upload = multer({ storage });
 
-// ---- DB connection ----
-const DATABASE_URL = process.env.DATABASE_URL || "";
-const hasDb = !!(Pool && DATABASE_URL);
+// ---------- DB ----------
+if (!process.env.DATABASE_URL) {
+  console.error("❌ DATABASE_URL is not set");
+}
 
-const pool = hasDb
-  ? new Pool({
-      connectionString: DATABASE_URL,
-      ssl: { rejectUnauthorized: false }
-    })
-  : null;
+const pool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+  ssl: { rejectUnauthorized: false }
+});
 
-// ---- Auto-migrate schema ----
+// ---------- Helpers ----------
+function baseUrlFromReq(req) {
+  if (process.env.BASE_URL) return process.env.BASE_URL.replace(/\/+$/, "");
+  const proto = (req.headers["x-forwarded-proto"] || "http").toString();
+  const host = req.headers.host;
+  return `${proto}://${host}`;
+}
+
 async function ensureSchema() {
-  if (!pool) return;
+  // Create table if missing using the schema your DB output shows (id_text + file_url)
   await pool.query(`
     CREATE TABLE IF NOT EXISTS print_jobs (
       id SERIAL PRIMARY KEY,
-      job_id TEXT NOT NULL UNIQUE,
+      id_text TEXT NOT NULL UNIQUE,
       printer_id TEXT NOT NULL,
-      from_phone TEXT,
-      file_name TEXT,
-      mime_type TEXT,
-      file_url TEXT,
       status TEXT NOT NULL DEFAULT 'queued',
+      file_url TEXT,
+      mime_type TEXT,
+      file_name TEXT,
+      from_phone TEXT,
+      details TEXT,
+      error TEXT,
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
@@ -83,51 +89,36 @@ async function ensureSchema() {
   `);
 }
 
-// Call on boot
 ensureSchema().catch((e) => console.error("SCHEMA INIT ERROR:", e));
 
-// ---- Helpers ----
-function baseUrlFromReq(req) {
-  // Prefer explicit BASE_URL if you set it in Render env
-  if (process.env.BASE_URL) return process.env.BASE_URL.replace(/\/+$/, "");
-  const proto = (req.headers["x-forwarded-proto"] || "http").toString();
-  const host = req.headers.host;
-  return `${proto}://${host}`;
-}
-
-function nowIso() {
-  return new Date().toISOString();
-}
-
-// ---- Health / debug ----
-app.get("/health", (req, res) => {
-  res.json({ ok: true, time: nowIso(), host: os.hostname(), db: !!pool });
+// ---------- Health ----------
+app.get("/health", async (req, res) => {
+  try {
+    await pool.query("SELECT 1");
+    res.json({ ok: true, time: new Date().toISOString(), host: os.hostname(), db: true });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message, db: false });
+  }
 });
 
 app.get("/debug/instance", (req, res) => {
-  res.json({
-    pid: process.pid,
-    host: os.hostname(),
-    time: nowIso()
-  });
+  res.json({ pid: process.pid, host: os.hostname(), time: new Date().toISOString() });
 });
 
 // =====================================================
-// ✅ FIXED UPLOAD ROUTE (job_id ALWAYS CREATED + INSERTED)
+// ✅ Upload: POST /api/upload
+// - Inserts id_text (job id string) NOT NULL
+// - Stores file_url in DB
+// - Returns job_id alias for compatibility
 // =====================================================
 app.post("/api/upload", upload.single("file"), async (req, res) => {
   try {
-    if (!pool) {
-      return res.status(500).json({ ok: false, error: "DATABASE_URL not set / DB not available" });
-    }
-
     const printerId = (req.body.printerId || "").trim();
     const from = (req.body.from || "").trim();
 
     if (!printerId) return res.status(400).json({ ok: false, error: "Missing printerId" });
     if (!req.file) return res.status(400).json({ ok: false, error: "Missing file" });
 
-    // ✅ This is the fix: job_id generated and used in INSERT
     const jobId = `print_${crypto.randomBytes(8).toString("hex")}`;
 
     const baseUrl = baseUrlFromReq(req);
@@ -135,60 +126,56 @@ app.post("/api/upload", upload.single("file"), async (req, res) => {
 
     const q = `
       INSERT INTO print_jobs (
-        job_id,
-        printer_id,
-        from_phone,
-        file_name,
-        mime_type,
-        file_url,
-        status,
-        updated_at
+        id_text, printer_id, status, file_url, mime_type, file_name, from_phone, updated_at
       )
-      VALUES ($1,$2,$3,$4,$5,$6,'queued', NOW())
-      RETURNING id, job_id, printer_id, status, file_url, file_name, mime_type, created_at;
+      VALUES ($1,$2,'queued',$3,$4,$5,$6,NOW())
+      RETURNING id, id_text, printer_id, status, file_url, created_at;
     `;
 
     const r = await pool.query(q, [
       jobId,
       printerId,
-      from,
-      req.file.originalname,
+      fileUrl,
       req.file.mimetype,
-      fileUrl
+      req.file.originalname,
+      from
     ]);
 
-    return res.json({
+    const row = r.rows[0];
+
+    res.json({
       ok: true,
       message: "Queued print job",
       job: {
-        id: r.rows[0].id,
-        jobId: r.rows[0].job_id,
-        printerId: r.rows[0].printer_id,
-        status: r.rows[0].status,
-        fileUrl: r.rows[0].file_url,
-        fileName: r.rows[0].file_name,
-        mimeType: r.rows[0].mime_type,
-        createdAt: r.rows[0].created_at
+        id: row.id,
+        id_text: row.id_text,
+        job_id: row.id_text,          // 👈 alias for compatibility
+        printer_id: row.printer_id,
+        printerId: row.printer_id,    // extra convenience
+        status: row.status,
+        file_url: row.file_url,
+        fileUrl: row.file_url,
+        created_at: row.created_at
       }
     });
   } catch (err) {
     console.error("UPLOAD ERROR:", err);
-    return res.status(500).json({ ok: false, error: err.message || String(err) });
+    res.status(500).json({ ok: false, error: err.message || String(err) });
   }
 });
 
 // =====================================================
-// Printer worker route: claim next job
-// GET /jobs/next?printerId=PP-USA-001
+// ✅ Worker claim: GET /jobs/next?printerId=PP-USA-001
+// - Claims oldest queued job for that printer
+// - Sets status to 'printing'
+// - Returns job fields using id_text + file_url
+// - Also returns job_id alias = id_text
 // =====================================================
 app.get("/jobs/next", async (req, res) => {
   try {
-    if (!pool) return res.status(500).json({ ok: false, error: "DB not available" });
-
     const printerId = (req.query.printerId || "").toString().trim();
     if (!printerId) return res.status(400).json({ ok: false, error: "Missing printerId" });
 
-    // Atomically claim the oldest queued job for this printer
     const q = `
       WITH next_job AS (
         SELECT id
@@ -199,9 +186,9 @@ app.get("/jobs/next", async (req, res) => {
         FOR UPDATE SKIP LOCKED
       )
       UPDATE print_jobs
-      SET status = 'processing', updated_at = NOW()
+      SET status = 'printing', updated_at = NOW()
       WHERE id IN (SELECT id FROM next_job)
-      RETURNING id, job_id, printer_id, from_phone, file_name, mime_type, file_url, status, created_at, updated_at;
+      RETURNING id, id_text, printer_id, status, file_url, mime_type, file_name, from_phone, created_at, updated_at;
     `;
 
     const r = await pool.query(q, [printerId]);
@@ -210,18 +197,33 @@ app.get("/jobs/next", async (req, res) => {
       return res.json({ ok: true, job: null });
     }
 
-    return res.json({ ok: true, job: r.rows[0] });
+    const row = r.rows[0];
+
+    return res.json({
+      ok: true,
+      job: {
+        id: row.id,
+        id_text: row.id_text,
+        job_id: row.id_text,        // 👈 alias
+        printer_id: row.printer_id,
+        file_url: row.file_url,
+        mime_type: row.mime_type,
+        file_name: row.file_name,
+        from_phone: row.from_phone,
+        status: row.status,
+        created_at: row.created_at,
+        updated_at: row.updated_at
+      }
+    });
   } catch (err) {
-    console.error("NEXT JOB ERROR:", err);
-    return res.status(500).json({ ok: false, error: err.message || String(err) });
+    console.error("JOBS NEXT ERROR:", err);
+    res.status(500).json({ ok: false, error: err.message || String(err) });
   }
 });
 
-// List jobs (optional, helpful)
+// List jobs (helps debugging)
 app.get("/jobs", async (req, res) => {
   try {
-    if (!pool) return res.status(500).json({ ok: false, error: "DB not available" });
-
     const printerId = (req.query.printerId || "").toString().trim();
     const limit = Math.min(parseInt(req.query.limit || "50", 10), 200);
 
@@ -233,23 +235,32 @@ app.get("/jobs", async (req, res) => {
       ? await pool.query(q, [printerId, limit])
       : await pool.query(q, [limit]);
 
-    res.json({ ok: true, jobs: r.rows });
+    // Add job_id alias to each row for compatibility
+    const jobs = r.rows.map(j => ({
+      ...j,
+      job_id: j.id_text
+    }));
+
+    res.json({ ok: true, jobs });
   } catch (err) {
     console.error("LIST JOBS ERROR:", err);
     res.status(500).json({ ok: false, error: err.message || String(err) });
   }
 });
 
-// Count endpoint
+// Count by status
 app.get("/jobs/count", async (req, res) => {
   try {
-    if (!pool) return res.status(500).json({ ok: false, error: "DB not available" });
-
     const printerId = (req.query.printerId || "").toString().trim();
     if (!printerId) return res.status(400).json({ ok: false, error: "Missing printerId" });
 
-    const q = `SELECT status, COUNT(*)::int AS count FROM print_jobs WHERE printer_id=$1 GROUP BY status`;
-    const r = await pool.query(q, [printerId]);
+    const r = await pool.query(
+      `SELECT status, COUNT(*)::int AS count
+       FROM print_jobs
+       WHERE printer_id=$1
+       GROUP BY status`,
+      [printerId]
+    );
 
     const byStatus = {};
     for (const row of r.rows) byStatus[row.status] = row.count;
@@ -261,38 +272,55 @@ app.get("/jobs/count", async (req, res) => {
   }
 });
 
-// Worker updates status: completed/failed/etc
+// =====================================================
+// Update status: POST /jobs/:jobId/status
+// Accepts jobId = id_text (or job_id alias)
+// Body: { "status": "done"|"failed"|..., "details": "..." }
+// =====================================================
 app.post("/jobs/:jobId/status", async (req, res) => {
   try {
-    if (!pool) return res.status(500).json({ ok: false, error: "DB not available" });
-
-    const jobId = (req.params.jobId || "").trim();
-    const status = (req.body.status || "").trim();
+    const jobId = (req.params.jobId || "").toString().trim();
+    const status = (req.body.status || "").toString().trim();
+    const details = req.body.details ? String(req.body.details) : null;
 
     if (!jobId) return res.status(400).json({ ok: false, error: "Missing jobId" });
     if (!status) return res.status(400).json({ ok: false, error: "Missing status" });
 
     const q = `
       UPDATE print_jobs
-      SET status=$2, updated_at=NOW()
-      WHERE job_id=$1
-      RETURNING job_id, status, updated_at;
+      SET status=$2,
+          details = COALESCE($3, details),
+          updated_at=NOW()
+      WHERE id_text=$1
+      RETURNING id, id_text, printer_id, status, details, updated_at;
     `;
 
-    const r = await pool.query(q, [jobId, status]);
+    const r = await pool.query(q, [jobId, status, details]);
 
     if (r.rows.length === 0) {
       return res.status(404).json({ ok: false, error: "Job not found" });
     }
 
-    res.json({ ok: true, job: r.rows[0] });
+    const row = r.rows[0];
+    res.json({
+      ok: true,
+      job: {
+        id: row.id,
+        id_text: row.id_text,
+        job_id: row.id_text,      // alias
+        printer_id: row.printer_id,
+        status: row.status,
+        details: row.details,
+        updated_at: row.updated_at
+      }
+    });
   } catch (err) {
     console.error("STATUS UPDATE ERROR:", err);
     res.status(500).json({ ok: false, error: err.message || String(err) });
   }
 });
 
-// ---- Start server ----
+// ---------- Start ----------
 const PORT = process.env.PORT || 10000;
 app.listen(PORT, () => {
   console.log(`MSTAF CORE listening on port ${PORT}`);
