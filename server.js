@@ -1,15 +1,17 @@
 /**
- * MSTAF CORE - Print-O-Matic Stable Server (Render)
+ * MSTAF CORE - Print-O-Matic (Render-ready)
  * - Health: GET /health
- * - Upload: POST /api/upload (multipart/form-data)
- * - Serve files: GET /uploads/:filename
+ * - Upload: POST /api/upload (multipart/form-data field: file)
+ * - Serve uploads: GET /uploads/:filename
  * - Printer polling: GET /jobs?printerId=PP-USA-001
  * - Count: GET /jobs/count?printerId=PP-USA-001
- * - Update status: POST /jobs/:id/status
- * - Debug: POST /debug/mark-paid/:id (for testing)
+ * - Update status: POST /jobs/:id/status   (id = id_text)
+ * - Debug mark paid: POST /debug/mark-paid/:id
  *
- * IMPORTANT:
- * ✅ file_url uses BASE_URL env (no hardcoded old Render domains)
+ * FIXES INCLUDED:
+ * ✅ CORS for Shopify (patapata.us) + OPTIONS preflight
+ * ✅ file_url built from BASE_URL (no hardcoded mstaf-core-1)
+ * ✅ /uploads served publicly
  */
 
 if (process.env.NODE_ENV !== "production") {
@@ -17,12 +19,13 @@ if (process.env.NODE_ENV !== "production") {
 }
 
 const express = require("express");
+const cors = require("cors");
 const multer = require("multer");
 const crypto = require("crypto");
 const path = require("path");
 const fs = require("fs");
 
-// Optional Postgres
+// Optional Postgres (pg)
 let pg = null;
 try { pg = require("pg"); } catch (e) { pg = null; }
 
@@ -31,22 +34,45 @@ app.use(express.json({ limit: "20mb" }));
 app.use(express.urlencoded({ extended: true }));
 
 // =========================
+// CORS (Shopify browser calls)
+// =========================
+const ALLOWED_ORIGINS = [
+  "https://patapata.us",
+  "https://www.patapata.us",
+];
+
+app.use(cors({
+  origin: function (origin, cb) {
+    // allow curl/server-to-server (no Origin header)
+    if (!origin) return cb(null, true);
+    if (ALLOWED_ORIGINS.includes(origin)) return cb(null, true);
+    return cb(new Error("CORS blocked: " + origin));
+  },
+  methods: ["GET", "POST", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization", "x-admin-key", "x-printer-key"],
+}));
+
+// IMPORTANT: handle preflight
+app.options("*", cors());
+
+// =========================
 // CONFIG
 // =========================
-const BASE_URL = (process.env.BASE_URL || "https://mstaf-core.onrender.com").replace(/\/$/, "");
 const PORT = process.env.PORT || 10000;
+
+// ✅ Set this in Render ENV: BASE_URL=https://mstaf-core.onrender.com
+const BASE_URL = (process.env.BASE_URL || "https://mstaf-core.onrender.com").replace(/\/$/, "");
 
 const UPLOADS_DIR = process.env.UPLOADS_DIR || path.join(__dirname, "uploads");
 if (!fs.existsSync(UPLOADS_DIR)) fs.mkdirSync(UPLOADS_DIR, { recursive: true });
 
-// Serve uploads publicly so worker can download file_url
+// ✅ Serve uploads publicly so worker can download file_url
 app.use("/uploads", express.static(UPLOADS_DIR));
 
 // =========================
 // DB / In-memory fallback
 // =========================
 const useDb = !!(process.env.DATABASE_URL && pg);
-
 let pool = null;
 let memJobs = []; // fallback
 
@@ -57,11 +83,9 @@ if (useDb) {
   });
 }
 
-// Safe bootstrap (create table if missing)
 async function ensureSchema() {
   if (!useDb) return;
 
-  // Create print_jobs table (minimal columns needed)
   await pool.query(`
     CREATE TABLE IF NOT EXISTS print_jobs (
       id SERIAL PRIMARY KEY,
@@ -78,7 +102,7 @@ async function ensureSchema() {
     );
   `);
 
-  // Ensure columns exist (safe)
+  // safe adds (no harm if already exist)
   await pool.query(`ALTER TABLE print_jobs ADD COLUMN IF NOT EXISTS paid BOOLEAN DEFAULT false;`);
   await pool.query(`ALTER TABLE print_jobs ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT NOW();`);
   await pool.query(`ALTER TABLE print_jobs ADD COLUMN IF NOT EXISTS created_at TIMESTAMP DEFAULT NOW();`);
@@ -90,7 +114,7 @@ async function ensureSchema() {
   await pool.query(`ALTER TABLE print_jobs ADD COLUMN IF NOT EXISTS file_url TEXT;`);
   await pool.query(`ALTER TABLE print_jobs ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'queued';`);
 
-  // Unique index on id_text (safe)
+  // unique index (safe)
   await pool.query(`
     DO $$
     BEGIN
@@ -103,12 +127,12 @@ async function ensureSchema() {
   `);
 }
 
-function nowIso() {
-  return new Date().toISOString();
-}
-
 function makeJobId() {
   return `print_${crypto.randomBytes(8).toString("hex")}`;
+}
+
+function nowIso() {
+  return new Date().toISOString();
 }
 
 // =========================
@@ -146,10 +170,14 @@ app.post("/api/upload", upload.single("file"), async (req, res) => {
     const printerId = (req.body.printerId || req.query.printerId || "PP-USA-001").toString();
     const fromPhone = (req.body.from || req.body.phone || "").toString();
 
-    if (!req.file) return res.status(400).json({ ok: false, error: "No file uploaded" });
+    if (!req.file) {
+      return res.status(400).json({ ok: false, error: "No file uploaded (field name must be 'file')" });
+    }
 
     const filename = req.file.filename;
-    const fileUrl = `${BASE_URL}/uploads/${filename}`; // ✅ THIS IS THE CRITICAL FIX
+
+    // ✅ CRITICAL: correct file_url base
+    const fileUrl = `${BASE_URL}/uploads/${filename}`;
 
     const jobId = makeJobId();
 
@@ -256,7 +284,7 @@ app.get("/jobs/count", async (req, res) => {
   }
 });
 
-// Update status (worker calls this)
+// Worker updates status here
 app.post("/jobs/:id/status", async (req, res) => {
   try {
     const id = req.params.id;
@@ -288,7 +316,7 @@ app.post("/jobs/:id/status", async (req, res) => {
   }
 });
 
-// Debug: mark job paid (so printer can pick it up)
+// Debug: mark job paid so printer can pick it up
 app.post("/debug/mark-paid/:id", async (req, res) => {
   try {
     const id = req.params.id;
@@ -330,6 +358,7 @@ app.post("/debug/mark-paid/:id", async (req, res) => {
       console.log("BASE_URL =", BASE_URL);
       console.log("UPLOADS_DIR =", UPLOADS_DIR);
       console.log("DB =", useDb ? "Postgres" : "In-memory");
+      console.log("Allowed origins =", ALLOWED_ORIGINS);
     });
   } catch (e) {
     console.error("Startup error:", e);
