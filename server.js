@@ -11,6 +11,10 @@
  * - Ensures print_jobs table exists
  * - Adds missing columns (including service_type) via ALTER TABLE IF NOT EXISTS
  * - Adds sane defaults and backfills
+ *
+ * ✅ Security:
+ * - Worker can authenticate with header: x-printer-key
+ * - Browser testing can authenticate with query: ?key=YOUR_PRINTER_KEY
  */
 
 require("dotenv").config();
@@ -31,12 +35,13 @@ app.use(express.urlencoded({ extended: true }));
 // =======================
 const PORT = process.env.PORT || 10000;
 
-// If you use a printer key in your worker, set this env on Render + in worker.
+// Printer security key (set on Render → Environment)
 const PRINTER_KEY = (process.env.PRINTER_KEY || "").trim();
 
-// If you want to ONLY allow printing after payment later, keep this true.
-// For now, you can keep it false to allow queued printing.
-const ONLY_PRINT_PAID = String(process.env.ONLY_PRINT_PAID || "false").toLowerCase() === "true";
+// If true: /jobs returns only is_paid=true jobs.
+// If false: queued jobs are printable immediately (good for testing)
+const ONLY_PRINT_PAID =
+  String(process.env.ONLY_PRINT_PAID || "false").toLowerCase() === "true";
 
 // =======================
 // DATABASE
@@ -56,9 +61,6 @@ const pool = new Pool({
 // =======================
 // UPLOADS (local disk)
 // =======================
-// Render disk is ephemeral unless you use a persistent disk.
-// But this still works for worker downloading quickly after upload.
-// If you want permanent files, move to S3 later.
 const UPLOAD_DIR = path.join(__dirname, "uploads");
 if (!fs.existsSync(UPLOAD_DIR)) fs.mkdirSync(UPLOAD_DIR, { recursive: true });
 
@@ -80,14 +82,12 @@ const upload = multer({ storage });
 // SAFE AUTO-MIGRATIONS
 // =======================
 async function ensureTables() {
-  // Base table exists
   await pool.query(`
     CREATE TABLE IF NOT EXISTS print_jobs (
       id SERIAL PRIMARY KEY
     );
   `);
 
-  // Add missing columns safely
   await pool.query(`ALTER TABLE print_jobs ADD COLUMN IF NOT EXISTS id_text TEXT;`);
   await pool.query(`ALTER TABLE print_jobs ADD COLUMN IF NOT EXISTS printer_id TEXT;`);
   await pool.query(`ALTER TABLE print_jobs ADD COLUMN IF NOT EXISTS service_type TEXT;`);
@@ -106,7 +106,9 @@ async function ensureTables() {
   await pool.query(`ALTER TABLE print_jobs ADD COLUMN IF NOT EXISTS status TEXT;`);
   await pool.query(`ALTER TABLE print_jobs ADD COLUMN IF NOT EXISTS is_paid BOOLEAN;`);
 
-  await pool.query(`ALTER TABLE print_jobs ADD COLUMN IF NOT EXISTS created_at TIMESTAMP DEFAULT NOW();`);
+  await pool.query(
+    `ALTER TABLE print_jobs ADD COLUMN IF NOT EXISTS created_at TIMESTAMP DEFAULT NOW();`
+  );
 
   // Defaults + backfills
   await pool.query(`ALTER TABLE print_jobs ALTER COLUMN copies SET DEFAULT 1;`);
@@ -118,7 +120,7 @@ async function ensureTables() {
   await pool.query(`ALTER TABLE print_jobs ALTER COLUMN is_paid SET DEFAULT FALSE;`);
   await pool.query(`UPDATE print_jobs SET is_paid = FALSE WHERE is_paid IS NULL;`);
 
-  // Backfill id_text for any legacy rows, then enforce NOT NULL + unique index
+  // Backfill id_text for legacy rows, then enforce NOT NULL + unique index
   await pool.query(`
     UPDATE print_jobs
     SET id_text = CONCAT('legacy_', id)
@@ -137,26 +139,38 @@ async function ensureTables() {
     ON print_jobs (printer_id, status, created_at);
   `);
 
-  // If an old wrong column exists, remove it to avoid confusion
+  // Remove older wrong schema column if present
   await pool.query(`ALTER TABLE print_jobs DROP COLUMN IF EXISTS job_id;`);
 
   console.log("✅ DB migrations complete: print_jobs ensured (includes service_type)");
 }
 
 // =======================
-// HELPERS
+// SECURITY (UPDATED)
 // =======================
 function requirePrinterKey(req, res, next) {
-  if (!PRINTER_KEY) return next(); // if you didn't set a key, allow
-  const key = (req.headers["x-printer-key"] || "").toString().trim();
-  if (!key || key !== PRINTER_KEY) {
+  // If no key configured, allow
+  if (!PRINTER_KEY) return next();
+
+  // Worker header
+  const headerKey = (req.headers["x-printer-key"] || "").toString().trim();
+
+  // Browser test query: ?key=...
+  const queryKey = (req.query.key || "").toString().trim();
+
+  const providedKey = headerKey || queryKey;
+
+  if (!providedKey || providedKey !== PRINTER_KEY) {
     return res.status(401).json({ ok: false, error: "Invalid printer key" });
   }
+
   next();
 }
 
+// =======================
+// HELPERS
+// =======================
 function absoluteBaseUrl(req) {
-  // Use Render public URL if you want, but this works reliably per-request.
   return `${req.protocol}://${req.get("host")}`;
 }
 
@@ -200,6 +214,7 @@ app.post("/api/upload", upload.single("file"), async (req, res) => {
 
     const printerId = String(req.body.printerId || "PP-USA-001").trim();
     const serviceType = normalizeServiceType(req.body.serviceType);
+
     const paperSize = req.body.paperSize ? String(req.body.paperSize) : null;
     const colorMode = req.body.colorMode ? String(req.body.colorMode) : null;
 
@@ -210,7 +225,7 @@ app.post("/api/upload", upload.single("file"), async (req, res) => {
     const idText = makeJobId();
     const fileUrl = `${absoluteBaseUrl(req)}/uploads/${encodeURIComponent(req.file.filename)}`;
 
-    // For now, queue immediately. If you later require payment, set is_paid=false initially.
+    // Queue immediately unless you force paid-only
     const isPaid = ONLY_PRINT_PAID ? false : true;
 
     await pool.query(
@@ -364,8 +379,6 @@ app.post("/jobs/:id_text/status", requirePrinterKey, async (req, res) => {
     const notes = req.body.notes ? String(req.body.notes) : null;
     const pages = req.body.pages ? parseInt(req.body.pages, 10) : null;
 
-    // store notes in instructions if you want quick debug history (or add a new column later)
-    // Here we just update status (and optionally pages)
     if (Number.isFinite(pages)) {
       await pool.query(
         `
@@ -387,7 +400,6 @@ app.post("/jobs/:id_text/status", requirePrinterKey, async (req, res) => {
       );
     }
 
-    // Optionally log notes
     if (notes) console.log("JOB NOTE:", idText, notes);
 
     res.json({ ok: true, id_text: idText, status });
