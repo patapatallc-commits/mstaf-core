@@ -1,203 +1,412 @@
+/**
+ * MSTAF CORE - server.js (Render-ready, Print-O-Matic Stable)
+ * - Health: GET /health
+ * - Upload: POST /api/upload (multipart/form-data)
+ * - Printer polling:
+ *    - GET /jobs?printerId=PP-USA-001   (returns queued/paid jobs)
+ *    - GET /jobs/next?printerId=PP-USA-001 (returns single next job)
+ * - Status update: POST /jobs/:id_text/status
+ *
+ * ✅ Includes SAFE auto-migrations on startup:
+ * - Ensures print_jobs table exists
+ * - Adds missing columns (including service_type) via ALTER TABLE IF NOT EXISTS
+ * - Adds sane defaults and backfills
+ */
+
 require("dotenv").config();
 
 const express = require("express");
-const multer = require("multer");
-const { Pool } = require("pg");
-const cors = require("cors");
 const crypto = require("crypto");
+const multer = require("multer");
 const path = require("path");
 const fs = require("fs");
+const { Pool } = require("pg");
 
 const app = express();
-app.use(express.json());
-app.use(cors());
+app.use(express.json({ limit: "20mb" }));
+app.use(express.urlencoded({ extended: true }));
 
-// =========================
+// =======================
+// CONFIG
+// =======================
+const PORT = process.env.PORT || 10000;
+
+// If you use a printer key in your worker, set this env on Render + in worker.
+const PRINTER_KEY = (process.env.PRINTER_KEY || "").trim();
+
+// If you want to ONLY allow printing after payment later, keep this true.
+// For now, you can keep it false to allow queued printing.
+const ONLY_PRINT_PAID = String(process.env.ONLY_PRINT_PAID || "false").toLowerCase() === "true";
+
+// =======================
 // DATABASE
-// =========================
-const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
-  ssl: { rejectUnauthorized: false }
-});
-
-// =========================
-// HEALTH CHECK
-// =========================
-app.get("/health", (req, res) => {
-  res.json({ status: "ok" });
-});
-
-// =========================
-// FILE STORAGE
-// =========================
-const uploadDir = path.join(__dirname, "uploads");
-if (!fs.existsSync(uploadDir)) {
-  fs.mkdirSync(uploadDir);
+// =======================
+if (!process.env.DATABASE_URL) {
+  console.error("❌ Missing DATABASE_URL env var on Render.");
+  process.exit(1);
 }
 
+const pool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+  ssl: process.env.DATABASE_URL.includes("render.com")
+    ? { rejectUnauthorized: false }
+    : undefined,
+});
+
+// =======================
+// UPLOADS (local disk)
+// =======================
+// Render disk is ephemeral unless you use a persistent disk.
+// But this still works for worker downloading quickly after upload.
+// If you want permanent files, move to S3 later.
+const UPLOAD_DIR = path.join(__dirname, "uploads");
+if (!fs.existsSync(UPLOAD_DIR)) fs.mkdirSync(UPLOAD_DIR, { recursive: true });
+
+// Serve uploads publicly so worker can download
+app.use("/uploads", express.static(UPLOAD_DIR));
+
+// Multer store on disk
 const storage = multer.diskStorage({
-  destination: function (req, file, cb) {
-    cb(null, uploadDir);
+  destination: (req, file, cb) => cb(null, UPLOAD_DIR),
+  filename: (req, file, cb) => {
+    const safe = file.originalname.replace(/[^a-zA-Z0-9._-]/g, "_");
+    const stamp = Date.now();
+    cb(null, `${stamp}_${safe}`);
   },
-  filename: function (req, file, cb) {
-    const unique = crypto.randomBytes(6).toString("hex");
-    cb(null, unique + "-" + file.originalname);
+});
+const upload = multer({ storage });
+
+// =======================
+// SAFE AUTO-MIGRATIONS
+// =======================
+async function ensureTables() {
+  // Base table exists
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS print_jobs (
+      id SERIAL PRIMARY KEY
+    );
+  `);
+
+  // Add missing columns safely
+  await pool.query(`ALTER TABLE print_jobs ADD COLUMN IF NOT EXISTS id_text TEXT;`);
+  await pool.query(`ALTER TABLE print_jobs ADD COLUMN IF NOT EXISTS printer_id TEXT;`);
+  await pool.query(`ALTER TABLE print_jobs ADD COLUMN IF NOT EXISTS service_type TEXT;`);
+  await pool.query(`ALTER TABLE print_jobs ADD COLUMN IF NOT EXISTS from_phone TEXT;`);
+
+  await pool.query(`ALTER TABLE print_jobs ADD COLUMN IF NOT EXISTS file_name TEXT;`);
+  await pool.query(`ALTER TABLE print_jobs ADD COLUMN IF NOT EXISTS file_url TEXT;`);
+  await pool.query(`ALTER TABLE print_jobs ADD COLUMN IF NOT EXISTS mime_type TEXT;`);
+
+  await pool.query(`ALTER TABLE print_jobs ADD COLUMN IF NOT EXISTS paper_size TEXT;`);
+  await pool.query(`ALTER TABLE print_jobs ADD COLUMN IF NOT EXISTS color_mode TEXT;`);
+  await pool.query(`ALTER TABLE print_jobs ADD COLUMN IF NOT EXISTS pages INTEGER;`);
+  await pool.query(`ALTER TABLE print_jobs ADD COLUMN IF NOT EXISTS copies INTEGER;`);
+  await pool.query(`ALTER TABLE print_jobs ADD COLUMN IF NOT EXISTS instructions TEXT;`);
+
+  await pool.query(`ALTER TABLE print_jobs ADD COLUMN IF NOT EXISTS status TEXT;`);
+  await pool.query(`ALTER TABLE print_jobs ADD COLUMN IF NOT EXISTS is_paid BOOLEAN;`);
+
+  await pool.query(`ALTER TABLE print_jobs ADD COLUMN IF NOT EXISTS created_at TIMESTAMP DEFAULT NOW();`);
+
+  // Defaults + backfills
+  await pool.query(`ALTER TABLE print_jobs ALTER COLUMN copies SET DEFAULT 1;`);
+  await pool.query(`UPDATE print_jobs SET copies = 1 WHERE copies IS NULL;`);
+
+  await pool.query(`ALTER TABLE print_jobs ALTER COLUMN status SET DEFAULT 'queued';`);
+  await pool.query(`UPDATE print_jobs SET status = 'queued' WHERE status IS NULL;`);
+
+  await pool.query(`ALTER TABLE print_jobs ALTER COLUMN is_paid SET DEFAULT FALSE;`);
+  await pool.query(`UPDATE print_jobs SET is_paid = FALSE WHERE is_paid IS NULL;`);
+
+  // Backfill id_text for any legacy rows, then enforce NOT NULL + unique index
+  await pool.query(`
+    UPDATE print_jobs
+    SET id_text = CONCAT('legacy_', id)
+    WHERE id_text IS NULL;
+  `);
+
+  await pool.query(`ALTER TABLE print_jobs ALTER COLUMN id_text SET NOT NULL;`);
+
+  await pool.query(`
+    CREATE UNIQUE INDEX IF NOT EXISTS print_jobs_id_text_uidx
+    ON print_jobs (id_text);
+  `);
+
+  await pool.query(`
+    CREATE INDEX IF NOT EXISTS print_jobs_printer_status_idx
+    ON print_jobs (printer_id, status, created_at);
+  `);
+
+  // If an old wrong column exists, remove it to avoid confusion
+  await pool.query(`ALTER TABLE print_jobs DROP COLUMN IF EXISTS job_id;`);
+
+  console.log("✅ DB migrations complete: print_jobs ensured (includes service_type)");
+}
+
+// =======================
+// HELPERS
+// =======================
+function requirePrinterKey(req, res, next) {
+  if (!PRINTER_KEY) return next(); // if you didn't set a key, allow
+  const key = (req.headers["x-printer-key"] || "").toString().trim();
+  if (!key || key !== PRINTER_KEY) {
+    return res.status(401).json({ ok: false, error: "Invalid printer key" });
+  }
+  next();
+}
+
+function absoluteBaseUrl(req) {
+  // Use Render public URL if you want, but this works reliably per-request.
+  return `${req.protocol}://${req.get("host")}`;
+}
+
+function makeJobId() {
+  return `print_${crypto.randomBytes(8).toString("hex")}`;
+}
+
+function normalizeServiceType(v) {
+  const x = String(v || "print").toLowerCase().trim();
+  if (["print", "image_edit", "video_edit"].includes(x)) return x;
+  return "print";
+}
+
+// =======================
+// ROUTES
+// =======================
+app.get("/health", async (req, res) => {
+  try {
+    await pool.query("SELECT 1");
+    res.json({
+      ok: true,
+      service: "mstaf-core",
+      db: "ok",
+      only_print_paid: ONLY_PRINT_PAID,
+      time: new Date().toISOString(),
+    });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: "DB not reachable" });
   }
 });
 
-const upload = multer({ storage });
-
-// Serve uploaded files
-app.use("/uploads", express.static(uploadDir));
-
-// =========================
-// SAFE MIGRATION
-// =========================
-async function ensureTables() {
-  await pool.query(`
-    CREATE TABLE IF NOT EXISTS print_jobs (
-      id SERIAL PRIMARY KEY,
-      id_text TEXT,
-      printer_id TEXT,
-      service_type TEXT,
-      file_name TEXT,
-      file_url TEXT,
-      mime_type TEXT,
-      paper_size TEXT,
-      color_mode TEXT,
-      pages INTEGER,
-      copies INTEGER,
-      instructions TEXT,
-      status TEXT DEFAULT 'queued',
-      created_at TIMESTAMP DEFAULT NOW()
-    )
-  `);
-}
-ensureTables();
-
-// =========================
-// UPLOAD ROUTE
-// =========================
+// Upload: multipart/form-data
+// fields supported:
+// - file (required)
+// - printerId (optional) default PP-USA-001
+// - serviceType (optional) print|image_edit|video_edit
+// - paperSize, colorMode, pages, copies, instructions (optional)
 app.post("/api/upload", upload.single("file"), async (req, res) => {
   try {
-    if (!req.file) {
-      return res.status(400).json({ error: "No file uploaded" });
-    }
+    if (!req.file) return res.status(400).json({ ok: false, error: "No file uploaded" });
 
-    const {
-      printerId,
-      serviceType,
-      paperSize,
-      colorMode,
-      pages,
-      copies,
-      instructions
-    } = req.body;
+    const printerId = String(req.body.printerId || "PP-USA-001").trim();
+    const serviceType = normalizeServiceType(req.body.serviceType);
+    const paperSize = req.body.paperSize ? String(req.body.paperSize) : null;
+    const colorMode = req.body.colorMode ? String(req.body.colorMode) : null;
 
-    const jobId = "print_" + crypto.randomBytes(6).toString("hex");
-    const fileUrl = `${req.protocol}://${req.get("host")}/uploads/${req.file.filename}`;
+    const pages = req.body.pages ? parseInt(req.body.pages, 10) : null;
+    const copies = req.body.copies ? parseInt(req.body.copies, 10) : 1;
+    const instructions = req.body.instructions ? String(req.body.instructions) : null;
 
-    let status = "queued";
+    const idText = makeJobId();
+    const fileUrl = `${absoluteBaseUrl(req)}/uploads/${encodeURIComponent(req.file.filename)}`;
 
-    if (serviceType === "edit_image" || serviceType === "edit_video") {
-      status = "awaiting_editor";
-    }
+    // For now, queue immediately. If you later require payment, set is_paid=false initially.
+    const isPaid = ONLY_PRINT_PAID ? false : true;
 
     await pool.query(
       `
-      INSERT INTO print_jobs
-      (id_text, printer_id, service_type, file_name, file_url, mime_type,
-       paper_size, color_mode, pages, copies, instructions, status)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+      INSERT INTO print_jobs (
+        id_text,
+        printer_id,
+        service_type,
+        file_name,
+        file_url,
+        mime_type,
+        paper_size,
+        color_mode,
+        pages,
+        copies,
+        instructions,
+        status,
+        is_paid
+      )
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,'queued',$12)
       `,
       [
-        jobId,
-        printerId || "PP-USA-001",
-        serviceType || "print",
+        idText,
+        printerId,
+        serviceType,
         req.file.originalname,
         fileUrl,
         req.file.mimetype,
-        paperSize || "A4",
-        colorMode || "bw",
-        pages ? parseInt(pages) : null,
-        copies ? parseInt(copies) : 1,
-        instructions || null,
-        status
+        paperSize,
+        colorMode,
+        Number.isFinite(pages) ? pages : null,
+        Number.isFinite(copies) ? copies : 1,
+        instructions,
+        isPaid,
       ]
     );
 
-    console.log("UPLOAD SUCCESS:", jobId);
-
     res.json({
-      success: true,
-      jobId,
-      status,
-      serviceType,
-      fileUrl
+      ok: true,
+      id_text: idText,
+      printer_id: printerId,
+      service_type: serviceType,
+      file_url: fileUrl,
+      is_paid: isPaid,
+      status: "queued",
     });
-
-  } catch (err) {
-    console.error("UPLOAD ERROR:", err);
-    res.status(500).json({ error: "Upload failed" });
+  } catch (e) {
+    console.error("UPLOAD ERROR:", e);
+    res.status(500).json({ ok: false, error: "Upload failed" });
   }
 });
 
-// =========================
-// PRINTER POLLING ROUTE
-// =========================
-app.get("/jobs", async (req, res) => {
+// Printer polling (list)
+app.get("/jobs", requirePrinterKey, async (req, res) => {
   try {
-    const printerId = req.query.printerId;
-    const limit = parseInt(req.query.limit || "10", 10);
+    const printerId = String(req.query.printerId || "").trim();
+    if (!printerId) return res.status(400).json({ ok: false, error: "Missing printerId" });
 
-    if (!printerId) {
-      return res.status(400).json({ error: "printerId required" });
-    }
+    const paidClause = ONLY_PRINT_PAID ? `AND is_paid = TRUE` : ``;
 
     const { rows } = await pool.query(
       `
-      SELECT *
+      SELECT
+        id_text,
+        printer_id,
+        service_type,
+        file_name,
+        file_url,
+        mime_type,
+        paper_size,
+        color_mode,
+        pages,
+        copies,
+        instructions,
+        status,
+        is_paid,
+        created_at
       FROM print_jobs
       WHERE printer_id = $1
-        AND service_type = 'print'
         AND status IN ('queued','paid')
+        ${paidClause}
       ORDER BY created_at ASC
-      LIMIT $2
+      LIMIT 25
       `,
-      [printerId, limit]
+      [printerId]
     );
 
     res.json(rows);
-  } catch (err) {
-    console.error("JOBS ERROR:", err);
-    res.status(500).json({ error: "Failed to fetch jobs" });
+  } catch (e) {
+    console.error("JOBS ERROR:", e);
+    res.status(500).json({ ok: false, error: e.message || "Jobs failed" });
   }
 });
 
-// =========================
-// UPDATE JOB STATUS
-// =========================
-app.post("/jobs/:id/status", async (req, res) => {
+// Printer polling (single next job)
+app.get("/jobs/next", requirePrinterKey, async (req, res) => {
   try {
-    const id = req.params.id;
-    const { status } = req.body;
+    const printerId = String(req.query.printerId || "").trim();
+    if (!printerId) return res.status(400).json({ ok: false, error: "Missing printerId" });
 
-    await pool.query(
-      `UPDATE print_jobs SET status=$1 WHERE id_text=$2`,
-      [status, id]
+    const paidClause = ONLY_PRINT_PAID ? `AND is_paid = TRUE` : ``;
+
+    const { rows } = await pool.query(
+      `
+      SELECT
+        id_text,
+        printer_id,
+        service_type,
+        file_name,
+        file_url,
+        mime_type,
+        paper_size,
+        color_mode,
+        pages,
+        copies,
+        instructions,
+        status,
+        is_paid,
+        created_at
+      FROM print_jobs
+      WHERE printer_id = $1
+        AND status IN ('queued','paid')
+        ${paidClause}
+      ORDER BY created_at ASC
+      LIMIT 1
+      `,
+      [printerId]
     );
 
-    res.json({ success: true });
-  } catch (err) {
-    console.error("STATUS UPDATE ERROR:", err);
-    res.status(500).json({ error: "Failed to update status" });
+    if (!rows.length) return res.json({ ok: true, job: null });
+    res.json({ ok: true, job: rows[0] });
+  } catch (e) {
+    console.error("JOBS/NEXT ERROR:", e);
+    res.status(500).json({ ok: false, error: e.message || "Jobs next failed" });
   }
 });
 
-// =========================
-// START SERVER
-// =========================
-const PORT = process.env.PORT || 10000;
-app.listen(PORT, () => {
-  console.log("Server running on port", PORT);
+// Worker updates job status
+// POST /jobs/:id_text/status { status: "printing"|"printed"|"error", notes?: "...", pages?: n }
+app.post("/jobs/:id_text/status", requirePrinterKey, async (req, res) => {
+  try {
+    const idText = String(req.params.id_text || "").trim();
+    if (!idText) return res.status(400).json({ ok: false, error: "Missing id_text" });
+
+    const status = String(req.body.status || "").trim().toLowerCase();
+    const allowed = new Set(["queued", "paid", "printing", "printed", "completed", "error", "failed"]);
+    if (!allowed.has(status)) {
+      return res.status(400).json({ ok: false, error: "Invalid status" });
+    }
+
+    const notes = req.body.notes ? String(req.body.notes) : null;
+    const pages = req.body.pages ? parseInt(req.body.pages, 10) : null;
+
+    // store notes in instructions if you want quick debug history (or add a new column later)
+    // Here we just update status (and optionally pages)
+    if (Number.isFinite(pages)) {
+      await pool.query(
+        `
+        UPDATE print_jobs
+        SET status = $1,
+            pages = COALESCE($2, pages)
+        WHERE id_text = $3
+        `,
+        [status, pages, idText]
+      );
+    } else {
+      await pool.query(
+        `
+        UPDATE print_jobs
+        SET status = $1
+        WHERE id_text = $2
+        `,
+        [status, idText]
+      );
+    }
+
+    // Optionally log notes
+    if (notes) console.log("JOB NOTE:", idText, notes);
+
+    res.json({ ok: true, id_text: idText, status });
+  } catch (e) {
+    console.error("STATUS UPDATE ERROR:", e);
+    res.status(500).json({ ok: false, error: e.message || "Status update failed" });
+  }
 });
+
+// =======================
+// STARTUP (CRITICAL)
+// =======================
+ensureTables()
+  .then(() => {
+    console.log("✅ DB ready");
+    app.listen(PORT, () => console.log("✅ Server running on port", PORT));
+  })
+  .catch((err) => {
+    console.error("❌ DB init failed", err);
+    process.exit(1);
+  });
+
