@@ -3,6 +3,7 @@
  * ✅ Fixes Shopify "Failed to fetch" (CORS + OPTIONS preflight)
  * ✅ Uploads to Cloudinary (permanent file_url)
  * ✅ Worker-friendly job polling + status update
+ * ✅ FIXED: removed duplicate UNIQUE constraint migration that crashed deploy (42P07)
  *
  * ENV REQUIRED:
  * - DATABASE_URL
@@ -46,7 +47,7 @@ cloudinary.config({
 const ADMIN_KEY = process.env.ADMIN_KEY || "MSTAF_ADMIN_2026_SECURE_KEY";
 
 // --------------------
-// CORS (THIS FIXES "Failed to fetch")
+// CORS (FIXES Shopify "Failed to fetch")
 // --------------------
 const defaultOrigins = ["https://patapata.us", "https://www.patapata.us"];
 
@@ -57,16 +58,16 @@ const envOrigins = (process.env.ALLOWED_ORIGINS || "")
 
 const allowedOrigins = envOrigins.length ? envOrigins : defaultOrigins;
 
-// Allow Shopify browser requests + preflight
 app.use(
   cors({
     origin: function (origin, cb) {
-      // allow same-origin, server-to-server calls, curl, Render health checks
+      // allow server-to-server calls, curl, Render health checks
       if (!origin) return cb(null, true);
 
       if (allowedOrigins.includes(origin)) return cb(null, true);
 
-      return cb(new Error(`CORS blocked for origin: ${origin}`), false);
+      // Do NOT crash server; just block this request
+      return cb(null, false);
     },
     credentials: true,
     methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
@@ -75,7 +76,7 @@ app.use(
   })
 );
 
-// IMPORTANT: handle preflight for all routes
+// Handle preflight for all routes
 app.options("*", cors());
 
 // Body parsing
@@ -94,6 +95,7 @@ const upload = multer({
 // DB migrations (safe)
 // --------------------
 async function ensureSchema() {
+  // Create table with id_text UNIQUE baked in (no extra constraint needed)
   await pool.query(`
     CREATE TABLE IF NOT EXISTS print_jobs (
       id SERIAL PRIMARY KEY,
@@ -112,7 +114,7 @@ async function ensureSchema() {
     );
   `);
 
-  // Ensure columns exist (safe adds)
+  // Safe adds (do NOT try to add UNIQUE constraint again)
   await pool.query(`ALTER TABLE print_jobs ADD COLUMN IF NOT EXISTS id_text TEXT;`);
   await pool.query(`ALTER TABLE print_jobs ADD COLUMN IF NOT EXISTS printer_id TEXT;`);
   await pool.query(`ALTER TABLE print_jobs ADD COLUMN IF NOT EXISTS from_phone TEXT;`);
@@ -123,20 +125,16 @@ async function ensureSchema() {
   await pool.query(`ALTER TABLE print_jobs ADD COLUMN IF NOT EXISTS copies INTEGER DEFAULT 1;`);
   await pool.query(`ALTER TABLE print_jobs ADD COLUMN IF NOT EXISTS color_type TEXT;`);
   await pool.query(`ALTER TABLE print_jobs ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'queued';`);
-  await pool.query(`ALTER TABLE print_jobs ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT NOW();`);
-  await pool.query(`ALTER TABLE print_jobs ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW();`);
+  await pool.query(
+    `ALTER TABLE print_jobs ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT NOW();`
+  );
+  await pool.query(
+    `ALTER TABLE print_jobs ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW();`
+  );
 
-  // Unique constraint for id_text
-  await pool.query(`
-    DO $$
-    BEGIN
-      IF NOT EXISTS (
-        SELECT 1 FROM pg_constraint WHERE conname = 'print_jobs_id_text_unique'
-      ) THEN
-        ALTER TABLE print_jobs ADD CONSTRAINT print_jobs_id_text_unique UNIQUE (id_text);
-      END IF;
-    END$$;
-  `);
+  // ✅ NOTE:
+  // We intentionally DO NOT add any constraint here.
+  // The old "ADD CONSTRAINT print_jobs_id_text_unique" is what caused 42P07 crash.
 }
 
 // --------------------
@@ -149,10 +147,6 @@ function requireAdmin(req, res) {
     return false;
   }
   return true;
-}
-
-function nowUpdateSql() {
-  return `updated_at = NOW()`;
 }
 
 // --------------------
@@ -193,13 +187,23 @@ app.post("/api/upload", upload.single("file"), async (req, res) => {
     const copies = Math.max(1, parseInt(req.body.copies || "1", 10) || 1);
     const colorType = (req.body.colorType || "Color").trim();
 
-    // Cloudinary upload (permanent URL)
-    const publicId = `printomatic/${Date.now()}_${crypto.randomBytes(6).toString("hex")}`;
+    // Validate Cloudinary env early (clear error)
+    if (
+      !process.env.CLOUDINARY_CLOUD_NAME ||
+      !process.env.CLOUDINARY_API_KEY ||
+      !process.env.CLOUDINARY_API_SECRET
+    ) {
+      return res.status(500).json({
+        error: "cloudinary_env_missing",
+        detail:
+          "Missing CLOUDINARY_CLOUD_NAME / CLOUDINARY_API_KEY / CLOUDINARY_API_SECRET in Render Environment.",
+      });
+    }
 
+    // Cloudinary upload (permanent URL)
     const uploadResult = await new Promise((resolve, reject) => {
       const stream = cloudinary.uploader.upload_stream(
         {
-          public_id: publicId,
           resource_type: "auto",
           folder: "printomatic",
           overwrite: false,
@@ -213,7 +217,6 @@ app.post("/api/upload", upload.single("file"), async (req, res) => {
     });
 
     const fileUrl = uploadResult.secure_url;
-
     const jobId = `print_${crypto.randomBytes(8).toString("hex")}`;
 
     await pool.query(
@@ -244,7 +247,6 @@ app.post("/api/upload", upload.single("file"), async (req, res) => {
       color_type: colorType,
     });
   } catch (e) {
-    // This is the exact reason Shopify would show "Failed to fetch" (CORS) OR server errors
     res.status(500).json({ error: "upload_failed", detail: String(e.message || e) });
   }
 });
@@ -280,6 +282,7 @@ app.post("/jobs/:jobId/status", async (req, res) => {
   try {
     const jobId = req.params.jobId;
     const status = (req.body.status || "").trim();
+
     const allowed = new Set([
       "queued",
       "paid",
@@ -295,7 +298,7 @@ app.post("/jobs/:jobId/status", async (req, res) => {
     await pool.query(
       `
       UPDATE print_jobs
-      SET status = $1, ${nowUpdateSql()}
+      SET status = $1, updated_at = NOW()
       WHERE id_text = $2
       `,
       [status, jobId]
@@ -315,7 +318,7 @@ const PORT = process.env.PORT || 10000;
 ensureSchema()
   .then(() => {
     app.listen(PORT, () => {
-      console.log(`MSTAF CORE running on ${PORT}`);
+      console.log(`MSTAF CORE running on port ${PORT}`);
       console.log("Allowed origins:", allowedOrigins);
     });
   })
