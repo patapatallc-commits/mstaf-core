@@ -1,150 +1,168 @@
 /**
- * MSTAF CORE - Cloudinary Stable Version
- * - Health route
- * - Shopify upload endpoint
- * - Cloudinary permanent storage
- * - CORS locked to patapata.us
+ * MSTAF CORE - Stable Print-O-Matic Server
+ * - Upload -> print_jobs
+ * - Printer polling -> GET /jobs
+ * - Health check
+ * - Safe string job IDs (id_text)
  */
 
 require("dotenv").config();
-
 const express = require("express");
-const cors = require("cors");
 const multer = require("multer");
-const { v2: cloudinary } = require("cloudinary");
+const { Pool } = require("pg");
 const crypto = require("crypto");
+const path = require("path");
 
 const app = express();
-
 app.use(express.json());
 
-/* -----------------------------
-   CORS
------------------------------- */
+const PORT = process.env.PORT || 10000;
 
-const allowedOrigins = [
-  "https://patapata.us",
-  "https://www.patapata.us",
-];
-
-app.use(
-  cors({
-    origin: function (origin, callback) {
-      if (!origin) return callback(null, true);
-      if (allowedOrigins.includes(origin)) {
-        callback(null, true);
-      } else {
-        callback(new Error("Not allowed by CORS"));
-      }
-    },
-  })
-);
-
-/* -----------------------------
-   Health Check
------------------------------- */
-
-app.get("/health", (req, res) => {
-  res.json({ ok: true });
+// ==============================
+// DATABASE
+// ==============================
+const pool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+  ssl: { rejectUnauthorized: false },
 });
 
-/* -----------------------------
-   Cloudinary Config
------------------------------- */
+// ==============================
+// BASIC HEALTH CHECK
+// ==============================
+app.get("/health", (req, res) => {
+  res.json({ status: "ok" });
+});
 
-// If CLOUDINARY_URL exists, SDK auto-reads it
-if (!process.env.CLOUDINARY_URL) {
-  if (
-    !process.env.CLOUDINARY_CLOUD_NAME ||
-    !process.env.CLOUDINARY_API_KEY ||
-    !process.env.CLOUDINARY_API_SECRET
-  ) {
-    console.error("Cloudinary environment missing.");
-  } else {
-    cloudinary.config({
-      cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
-      api_key: process.env.CLOUDINARY_API_KEY,
-      api_secret: process.env.CLOUDINARY_API_SECRET,
-    });
-  }
+// ==============================
+// FILE UPLOAD CONFIG
+// ==============================
+const storage = multer.diskStorage({
+  destination: function (req, file, cb) {
+    cb(null, "uploads/");
+  },
+  filename: function (req, file, cb) {
+    const unique = Date.now() + "-" + Math.round(Math.random() * 1e9);
+    cb(null, unique + "-" + file.originalname);
+  },
+});
+
+const upload = multer({ storage });
+
+// Ensure uploads folder exists
+const fs = require("fs");
+if (!fs.existsSync("uploads")) {
+  fs.mkdirSync("uploads");
 }
 
-/* -----------------------------
-   Multer (Memory Storage)
------------------------------- */
-
-const upload = multer({
-  storage: multer.memoryStorage(),
-});
-
-/* -----------------------------
-   Upload Route
------------------------------- */
-
+// ==============================
+// UPLOAD ROUTE
+// ==============================
 app.post("/api/upload", upload.single("file"), async (req, res) => {
   try {
-    // Check Cloudinary env
-    const hasCloudinaryUrl = !!process.env.CLOUDINARY_URL;
-    const hasCloudinaryParts =
-      !!process.env.CLOUDINARY_CLOUD_NAME &&
-      !!process.env.CLOUDINARY_API_KEY &&
-      !!process.env.CLOUDINARY_API_SECRET;
-
-    if (!hasCloudinaryUrl && !hasCloudinaryParts) {
-      return res.status(500).json({
-        error: "cloudinary_env_missing",
-        detail:
-          "Missing CLOUDINARY_URL OR CLOUDINARY_CLOUD_NAME / CLOUDINARY_API_KEY / CLOUDINARY_API_SECRET in Render.",
-      });
-    }
+    const printerId = req.body.printerId || "PP-USA-001";
 
     if (!req.file) {
       return res.status(400).json({ error: "No file uploaded" });
     }
 
-    const uniqueName = `print_${crypto.randomBytes(8).toString("hex")}`;
+    const jobId = `print_${crypto.randomBytes(8).toString("hex")}`;
 
-    const result = await cloudinary.uploader.upload_stream(
-      {
-        folder: "printomatic",
-        public_id: uniqueName,
-        resource_type: "auto",
-        overwrite: false,
-      },
-      (error, result) => {
-        if (error) {
-          console.error("Cloudinary error:", error);
-          return res.status(500).json({
-            error: "upload_failed",
-            detail: error.message,
-          });
-        }
+    const fileUrl = `${req.protocol}://${req.get("host")}/uploads/${req.file.filename}`;
 
-        return res.json({
-          success: true,
-          file_url: result.secure_url,
-          public_id: result.public_id,
-        });
-      }
+    await pool.query(
+      `
+      INSERT INTO print_jobs (
+        id_text,
+        printer_id,
+        file_name,
+        mime_type,
+        file_url,
+        status
+      )
+      VALUES ($1,$2,$3,$4,$5,'paid')
+      `,
+      [
+        jobId,
+        printerId,
+        req.file.originalname,
+        req.file.mimetype,
+        fileUrl,
+      ]
     );
 
-    // Pipe buffer into Cloudinary
-    result.end(req.file.buffer);
-  } catch (err) {
-    console.error("Upload error:", err);
-    res.status(500).json({
-      error: "upload_failed",
-      detail: err.message,
+    res.json({
+      success: true,
+      jobId,
+      message: "Uploaded successfully",
     });
+  } catch (err) {
+    console.error("UPLOAD ERROR:", err);
+    res.status(500).json({ error: "Upload failed" });
   }
 });
 
-/* -----------------------------
-   Start Server
------------------------------- */
+// ==============================
+// SERVE UPLOADED FILES
+// ==============================
+app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 
-const PORT = process.env.PORT || 10000;
+// ==============================
+// PRINTER POLLING ENDPOINT
+// ==============================
+app.get("/jobs", async (req, res) => {
+  try {
+    const { printerId, limit = 5 } = req.query;
 
+    if (!printerId) {
+      return res.status(400).json({ error: "printerId required" });
+    }
+
+    const result = await pool.query(
+      `
+      SELECT *
+      FROM print_jobs
+      WHERE printer_id = $1
+        AND status = 'paid'
+      ORDER BY created_at ASC
+      LIMIT $2
+      `,
+      [printerId, limit]
+    );
+
+    res.json(result.rows);
+  } catch (err) {
+    console.error("JOBS ERROR:", err);
+    res.status(500).json({ error: "Failed to fetch jobs" });
+  }
+});
+
+// ==============================
+// UPDATE JOB STATUS
+// ==============================
+app.post("/jobs/:id/status", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { status } = req.body;
+
+    await pool.query(
+      `
+      UPDATE print_jobs
+      SET status = $1
+      WHERE id_text = $2
+      `,
+      [status, id]
+    );
+
+    res.json({ success: true });
+  } catch (err) {
+    console.error("STATUS UPDATE ERROR:", err);
+    res.status(500).json({ error: "Failed to update status" });
+  }
+});
+
+// ==============================
+// START SERVER
+// ==============================
 app.listen(PORT, () => {
   console.log(`MSTAF CORE running on port ${PORT}`);
 });
