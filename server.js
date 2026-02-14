@@ -1,274 +1,233 @@
-/**
- * MSTAF CORE - Production Stable Version
- * - Fixes Shopify upload CORS
- * - Accepts any multipart file field
- * - Secure printer polling (header or ?key=)
- * - Safe auto DB migrations
- */
-
 require("dotenv").config();
-
 const express = require("express");
-const crypto = require("crypto");
 const multer = require("multer");
+const { Pool } = require("pg");
 const path = require("path");
 const fs = require("fs");
-const { Pool } = require("pg");
+const crypto = require("crypto");
 
 const app = express();
-app.use(express.json({ limit: "20mb" }));
-app.use(express.urlencoded({ extended: true }));
+app.use(express.json());
 
-// =======================
-// CORS FIX (Shopify → Render)
-// =======================
-const ALLOWED_ORIGINS = new Set([
-  "https://patapata.us",
-  "https://www.patapata.us",
-]);
+/* ===========================
+   CONFIG
+=========================== */
+
+const PORT = process.env.PORT || 10000;
+const PRINTER_KEY = process.env.PRINTER_KEY || "";
+const pool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+  ssl: { rejectUnauthorized: false },
+});
+
+/* ===========================
+   CORS (for Shopify)
+=========================== */
 
 app.use((req, res, next) => {
-  const origin = req.headers.origin;
-
-  if (origin && ALLOWED_ORIGINS.has(origin)) {
-    res.setHeader("Access-Control-Allow-Origin", origin);
-    res.setHeader("Vary", "Origin");
-    res.setHeader("Access-Control-Allow-Credentials", "true");
-  }
-
-  res.setHeader("Access-Control-Allow-Methods", "GET,POST,OPTIONS");
-  res.setHeader(
-    "Access-Control-Allow-Headers",
-    "Content-Type, Authorization, X-Requested-With, x-printer-key"
-  );
-
-  if (req.method === "OPTIONS") {
-    return res.status(204).end();
-  }
-
+  res.header("Access-Control-Allow-Origin", "*");
+  res.header("Access-Control-Allow-Headers", "*");
+  res.header("Access-Control-Allow-Methods", "GET,POST,OPTIONS");
+  if (req.method === "OPTIONS") return res.sendStatus(200);
   next();
 });
 
-// =======================
-// CONFIG
-// =======================
-const PORT = process.env.PORT || 10000;
-const PRINTER_KEY = (process.env.PRINTER_KEY || "").trim();
-const ONLY_PRINT_PAID =
-  String(process.env.ONLY_PRINT_PAID || "false").toLowerCase() === "true";
+/* ===========================
+   FILE STORAGE
+=========================== */
 
-// =======================
-// DATABASE
-// =======================
-if (!process.env.DATABASE_URL) {
-  console.error("Missing DATABASE_URL");
-  process.exit(1);
-}
-
-const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
-  ssl: process.env.DATABASE_URL.includes("render.com")
-    ? { rejectUnauthorized: false }
-    : undefined,
-});
-
-// =======================
-// UPLOAD STORAGE
-// =======================
-const UPLOAD_DIR = path.join(__dirname, "uploads");
-if (!fs.existsSync(UPLOAD_DIR)) fs.mkdirSync(UPLOAD_DIR, { recursive: true });
-
-app.use("/uploads", express.static(UPLOAD_DIR));
+const uploadDir = path.join(__dirname, "uploads");
+if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir);
 
 const storage = multer.diskStorage({
-  destination: (req, file, cb) => cb(null, UPLOAD_DIR),
-  filename: (req, file, cb) => {
-    const safe = file.originalname.replace(/[^a-zA-Z0-9._-]/g, "_");
-    cb(null, `${Date.now()}_${safe}`);
+  destination: (_, __, cb) => cb(null, uploadDir),
+  filename: (_, file, cb) => {
+    const unique = Date.now() + "_" + file.originalname;
+    cb(null, unique);
   },
 });
 
 const upload = multer({ storage });
 
-// =======================
-// SAFE AUTO MIGRATION
-// =======================
+/* ===========================
+   DB MIGRATION
+=========================== */
+
 async function ensureTables() {
   await pool.query(`
     CREATE TABLE IF NOT EXISTS print_jobs (
       id SERIAL PRIMARY KEY
-    );
+    )
   `);
 
-  const columns = [
+  const cols = [
     "id_text TEXT",
     "printer_id TEXT",
-    "service_type TEXT",
+    "status TEXT",
     "file_name TEXT",
     "file_url TEXT",
     "mime_type TEXT",
-    "paper_size TEXT",
-    "color_mode TEXT",
-    "pages INTEGER",
-    "copies INTEGER",
+    "pages INTEGER DEFAULT 1",
+    "copies INTEGER DEFAULT 1",
+    "color BOOLEAN DEFAULT false",
+    "service_type TEXT",
     "instructions TEXT",
-    "status TEXT",
-    "is_paid BOOLEAN",
     "created_at TIMESTAMP DEFAULT NOW()",
+    "is_paid BOOLEAN DEFAULT true"
   ];
 
-  for (const col of columns) {
-    await pool.query(`ALTER TABLE print_jobs ADD COLUMN IF NOT EXISTS ${col};`);
+  for (const col of cols) {
+    const colName = col.split(" ")[0];
+    await pool.query(`
+      ALTER TABLE print_jobs
+      ADD COLUMN IF NOT EXISTS ${col};
+    `);
   }
-
-  await pool.query(`ALTER TABLE print_jobs ALTER COLUMN copies SET DEFAULT 1;`);
-  await pool.query(`ALTER TABLE print_jobs ALTER COLUMN status SET DEFAULT 'queued';`);
-  await pool.query(`ALTER TABLE print_jobs ALTER COLUMN is_paid SET DEFAULT FALSE;`);
-
-  await pool.query(`
-    UPDATE print_jobs
-    SET id_text = CONCAT('legacy_', id)
-    WHERE id_text IS NULL;
-  `);
-
-  await pool.query(`ALTER TABLE print_jobs ALTER COLUMN id_text SET NOT NULL;`);
-
-  await pool.query(`
-    CREATE UNIQUE INDEX IF NOT EXISTS print_jobs_id_text_uidx
-    ON print_jobs (id_text);
-  `);
-
-  await pool.query(`ALTER TABLE print_jobs DROP COLUMN IF EXISTS job_id;`);
-
-  console.log("DB migration complete");
 }
 
-// =======================
-// SECURITY
-// =======================
-function requirePrinterKey(req, res, next) {
-  if (!PRINTER_KEY) return next();
+/* ===========================
+   HEALTH
+=========================== */
 
-  const headerKey = (req.headers["x-printer-key"] || "").trim();
-  const queryKey = (req.query.key || "").trim();
-  const provided = headerKey || queryKey;
-
-  if (!provided || provided !== PRINTER_KEY) {
-    return res.status(401).json({ ok: false, error: "Invalid printer key" });
+app.get("/health", async (_, res) => {
+  try {
+    await pool.query("SELECT 1");
+    res.json({ ok: true, db: "ok" });
+  } catch {
+    res.json({ ok: false, db: "error" });
   }
-
-  next();
-}
-
-// =======================
-// HELPERS
-// =======================
-function makeJobId() {
-  return `print_${crypto.randomBytes(8).toString("hex")}`;
-}
-
-function normalizeServiceType(v) {
-  const x = String(v || "print").toLowerCase().trim();
-  if (["print", "image_edit", "video_edit"].includes(x)) return x;
-  return "print";
-}
-
-// =======================
-// ROUTES
-// =======================
-app.get("/health", async (req, res) => {
-  await pool.query("SELECT 1");
-  res.json({ ok: true, db: "ok" });
 });
 
-// ===== FIXED UPLOAD ROUTE =====
+/* ===========================
+   UPLOAD ROUTE
+=========================== */
+
 app.post("/api/upload", upload.any(), async (req, res) => {
   try {
-    console.log("UPLOAD HIT:", {
-      origin: req.headers.origin,
-      contentType: req.headers["content-type"],
-      files: (req.files || []).length,
-    });
-
-    const f = req.files && req.files[0] ? req.files[0] : null;
-
-    if (!f) {
-      return res.status(400).json({
-        ok: false,
-        error: "No file received."
-      });
+    if (!req.files || !req.files.length) {
+      return res.status(400).json({ ok: false, error: "No file uploaded" });
     }
 
+    const file = req.files[0];
+    const jobId = "print_" + crypto.randomBytes(8).toString("hex");
+
     const printerId = req.body.printerId || "PP-USA-001";
-    const serviceType = normalizeServiceType(req.body.serviceType);
+    const pages = parseInt(req.body.pages || "1", 10);
+    const copies = parseInt(req.body.copies || "1", 10);
+    const color = req.body.colorMode === "color";
+    const serviceType = req.body.serviceType || "print";
+    const instructions = req.body.instructions || null;
 
-    const idText = makeJobId();
-    const fileUrl = `${req.protocol}://${req.get("host")}/uploads/${f.filename}`;
-
-    const isPaid = ONLY_PRINT_PAID ? false : true;
+    const fileUrl =
+      `${req.protocol}://${req.get("host")}/uploads/${file.filename}`;
 
     await pool.query(
       `
-      INSERT INTO print_jobs (
-        id_text,
-        printer_id,
-        service_type,
-        file_name,
-        file_url,
-        mime_type,
-        status,
-        is_paid
-      )
-      VALUES ($1,$2,$3,$4,$5,$6,'queued',$7)
+      INSERT INTO print_jobs
+      (id_text, printer_id, status, file_name, file_url, mime_type,
+       pages, copies, color, service_type, instructions, is_paid)
+      VALUES
+      ($1,$2,'paid',$3,$4,$5,$6,$7,$8,$9,$10,true)
       `,
       [
-        idText,
+        jobId,
         printerId,
-        serviceType,
-        f.originalname,
+        file.originalname,
         fileUrl,
-        f.mimetype,
-        isPaid,
+        file.mimetype,
+        pages,
+        copies,
+        color,
+        serviceType,
+        instructions,
       ]
     );
 
-    res.json({ ok: true, id_text: idText });
-
-  } catch (e) {
-    console.error("UPLOAD ERROR:", e);
-    res.status(500).json({ ok: false, error: e.message });
+    res.json({ ok: true, id_text: jobId });
+  } catch (err) {
+    console.error("UPLOAD ERROR:", err);
+    res.status(500).json({ ok: false, error: "Upload failed" });
   }
 });
 
-// =======================
-// PRINTER POLLING
-// =======================
-app.get("/jobs", requirePrinterKey, async (req, res) => {
-  const printerId = req.query.printerId;
-  const { rows } = await pool.query(
-    `
-    SELECT *
-    FROM print_jobs
-    WHERE printer_id = $1
-      AND status IN ('queued','paid')
-    ORDER BY created_at ASC
-    `,
-    [printerId]
-  );
-  res.json(rows);
+/* ===========================
+   JOB POLLING (SECURE)
+=========================== */
+
+app.get("/jobs", async (req, res) => {
+  try {
+    const key =
+      req.headers["x-printer-key"] ||
+      req.query.key;
+
+    if (!PRINTER_KEY || key !== PRINTER_KEY) {
+      return res.status(401).json({ ok: false, error: "Invalid printer key" });
+    }
+
+    const printerId = req.query.printerId;
+    const limit = parseInt(req.query.limit || "5", 10);
+
+    const { rows } = await pool.query(
+      `
+      SELECT *
+      FROM print_jobs
+      WHERE printer_id = $1
+      AND status = 'paid'
+      ORDER BY created_at ASC
+      LIMIT $2
+      `,
+      [printerId, limit]
+    );
+
+    res.json(rows);
+  } catch (err) {
+    console.error("JOBS ERROR:", err);
+    res.status(500).json({ ok: false, error: "Failed to fetch jobs" });
+  }
 });
 
-// =======================
-// START SERVER
-// =======================
-ensureTables()
-  .then(() => {
-    console.log("Server ready");
-    app.listen(PORT, () =>
-      console.log("Listening on port", PORT)
+/* ===========================
+   JOB STATUS UPDATE
+=========================== */
+
+app.post("/jobs/:id/status", async (req, res) => {
+  try {
+    const key =
+      req.headers["x-printer-key"] ||
+      req.query.key;
+
+    if (!PRINTER_KEY || key !== PRINTER_KEY) {
+      return res.status(401).json({ ok: false, error: "Invalid printer key" });
+    }
+
+    const { id } = req.params;
+    const { status } = req.body;
+
+    await pool.query(
+      `UPDATE print_jobs SET status=$1 WHERE id_text=$2`,
+      [status, id]
     );
-  })
-  .catch((err) => {
-    console.error("DB init failed", err);
-    process.exit(1);
+
+    res.json({ ok: true });
+  } catch (err) {
+    console.error("STATUS UPDATE ERROR:", err);
+    res.status(500).json({ ok: false });
+  }
+});
+
+/* ===========================
+   STATIC FILES
+=========================== */
+
+app.use("/uploads", express.static(uploadDir));
+
+/* ===========================
+   START SERVER
+=========================== */
+
+ensureTables().then(() => {
+  app.listen(PORT, () => {
+    console.log("MSTAF Core running on port", PORT);
   });
+});
+
