@@ -1,233 +1,255 @@
-require("dotenv").config();
+/**
+ * MSTAF CORE - Print-O-Matic Server (Render)
+ * - Health: GET /health
+ * - Upload: POST /api/upload (multipart/form-data)
+ * - Serve uploads: GET /uploads/:filename
+ * - Printer polling: GET /jobs?printerId=PP-USA-001&limit=5&key=ppk_xxx
+ * - Status update: POST /jobs/:id/status  (x-api-key or ?key)
+ */
+
 const express = require("express");
+const cors = require("cors");
 const multer = require("multer");
-const { Pool } = require("pg");
 const path = require("path");
 const fs = require("fs");
-const crypto = require("crypto");
+const { Pool } = require("pg");
 
+// ------------------- ENV -------------------
+const PORT = process.env.PORT || 3000;
+const BASE_URL =
+  (process.env.PUBLIC_BASE_URL || process.env.BASE_URL || "").trim() ||
+  `http://localhost:${PORT}`;
+
+// Printer auth key (shared secret between worker + server)
+const PRINTER_API_KEY = (process.env.PRINTER_API_KEY || "").trim();
+
+// ------------------- APP -------------------
 const app = express();
-app.use(express.json());
+app.use(cors());
+app.use(express.json({ limit: "20mb" }));
+app.use(express.urlencoded({ extended: true }));
 
-/* ===========================
-   CONFIG
-=========================== */
+// ------------------- UPLOADS DIR -------------------
+const uploadsDir = path.join(__dirname, "uploads");
+if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
 
-const PORT = process.env.PORT || 10000;
-const PRINTER_KEY = process.env.PRINTER_KEY || "";
+// Serve uploaded files
+app.use("/uploads", express.static(uploadsDir, { fallthrough: false }));
+
+// ------------------- DB -------------------
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
-  ssl: { rejectUnauthorized: false },
+  ssl:
+    process.env.DATABASE_URL && process.env.DATABASE_URL.includes("render.com")
+      ? { rejectUnauthorized: false }
+      : false,
 });
 
-/* ===========================
-   CORS (for Shopify)
-=========================== */
-
-app.use((req, res, next) => {
-  res.header("Access-Control-Allow-Origin", "*");
-  res.header("Access-Control-Allow-Headers", "*");
-  res.header("Access-Control-Allow-Methods", "GET,POST,OPTIONS");
-  if (req.method === "OPTIONS") return res.sendStatus(200);
-  next();
-});
-
-/* ===========================
-   FILE STORAGE
-=========================== */
-
-const uploadDir = path.join(__dirname, "uploads");
-if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir);
-
-const storage = multer.diskStorage({
-  destination: (_, __, cb) => cb(null, uploadDir),
-  filename: (_, file, cb) => {
-    const unique = Date.now() + "_" + file.originalname;
-    cb(null, unique);
-  },
-});
-
-const upload = multer({ storage });
-
-/* ===========================
-   DB MIGRATION
-=========================== */
-
-async function ensureTables() {
+async function ensureSchema() {
+  // Minimal schema needed for printing
   await pool.query(`
     CREATE TABLE IF NOT EXISTS print_jobs (
-      id SERIAL PRIMARY KEY
-    )
+      id SERIAL PRIMARY KEY,
+      id_text TEXT,
+      printer_id TEXT,
+      status TEXT DEFAULT 'queued',
+      file_url TEXT,
+      file_name TEXT,
+      copies INT DEFAULT 1,
+      pages INT DEFAULT 1,
+      paper_size TEXT,
+      color_type TEXT,
+      source TEXT,
+      created_at TIMESTAMPTZ DEFAULT NOW(),
+      updated_at TIMESTAMPTZ DEFAULT NOW(),
+      error TEXT,
+      meta JSONB DEFAULT '{}'::jsonb
+    );
   `);
 
-  const cols = [
-    "id_text TEXT",
-    "printer_id TEXT",
-    "status TEXT",
-    "file_name TEXT",
-    "file_url TEXT",
-    "mime_type TEXT",
-    "pages INTEGER DEFAULT 1",
-    "copies INTEGER DEFAULT 1",
-    "color BOOLEAN DEFAULT false",
-    "service_type TEXT",
-    "instructions TEXT",
-    "created_at TIMESTAMP DEFAULT NOW()",
-    "is_paid BOOLEAN DEFAULT true"
-  ];
+  // Helpful indexes
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_print_jobs_printer ON print_jobs(printer_id);`);
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_print_jobs_status ON print_jobs(status);`);
+}
+ensureSchema().catch((e) => console.error("Schema ensure error:", e));
 
-  for (const col of cols) {
-    const colName = col.split(" ")[0];
-    await pool.query(`
-      ALTER TABLE print_jobs
-      ADD COLUMN IF NOT EXISTS ${col};
-    `);
-  }
+// ------------------- PRINTER AUTH (fixes 401) -------------------
+function getIncomingKey(req) {
+  const qKey = (req.query.key || "").toString().trim();
+  const hKey =
+    (req.headers["x-api-key"] || req.headers["x-printer-key"] || "")
+      .toString()
+      .trim();
+  return qKey || hKey;
 }
 
-/* ===========================
-   HEALTH
-=========================== */
+function requirePrinterKey(req, res, next) {
+  // If no key set on server, don't block (but warn)
+  if (!PRINTER_API_KEY) {
+    console.warn("WARNING: PRINTER_API_KEY is not set on server env.");
+    return next();
+  }
 
-app.get("/health", async (_, res) => {
+  const incoming = getIncomingKey(req);
+  if (!incoming || incoming !== PRINTER_API_KEY) {
+    return res.status(401).json({
+      ok: false,
+      error: "Unauthorized",
+      hint: "Provide key via ?key=... or header x-api-key",
+    });
+  }
+  next();
+}
+
+// ------------------- MULTER -------------------
+const storage = multer.diskStorage({
+  destination: function (_req, _file, cb) {
+    cb(null, uploadsDir);
+  },
+  filename: function (_req, file, cb) {
+    // Keep filename but make it safe + unique
+    const safe = (file.originalname || "file")
+      .replace(/[^\w.\- ]+/g, "")
+      .replace(/\s+/g, "_");
+    cb(null, `${Date.now()}_${safe}`);
+  },
+});
+const upload = multer({ storage });
+
+// ------------------- ROUTES -------------------
+app.get("/health", async (_req, res) => {
   try {
-    await pool.query("SELECT 1");
-    res.json({ ok: true, db: "ok" });
-  } catch {
-    res.json({ ok: false, db: "error" });
+    const r = await pool.query("SELECT NOW() as now");
+    res.json({ ok: true, now: r.rows[0].now, baseUrl: BASE_URL });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: String(e?.message || e) });
   }
 });
 
-/* ===========================
-   UPLOAD ROUTE
-=========================== */
-
-app.post("/api/upload", upload.any(), async (req, res) => {
+/**
+ * Upload endpoint used by Shopify/web form
+ * Expects multipart form-data:
+ * - file: upload file
+ * Optional fields:
+ * - printerId, copies, pages, paper_size, color_type, source
+ */
+app.post("/api/upload", upload.single("file"), async (req, res) => {
   try {
-    if (!req.files || !req.files.length) {
-      return res.status(400).json({ ok: false, error: "No file uploaded" });
-    }
+    if (!req.file) return res.status(400).json({ ok: false, error: "No file uploaded" });
 
-    const file = req.files[0];
-    const jobId = "print_" + crypto.randomBytes(8).toString("hex");
+    const printerId = (req.body.printerId || req.body.printer_id || "PP-USA-001").toString().trim();
+    const copies = Math.max(1, parseInt(req.body.copies || "1", 10) || 1);
+    const pages = Math.max(1, parseInt(req.body.pages || "1", 10) || 1);
+    const paper_size = (req.body.paper_size || req.body.paperSize || null);
+    const color_type = (req.body.color_type || req.body.colorType || "BW");
 
-    const printerId = req.body.printerId || "PP-USA-001";
-    const pages = parseInt(req.body.pages || "1", 10);
-    const copies = parseInt(req.body.copies || "1", 10);
-    const color = req.body.colorMode === "color";
-    const serviceType = req.body.serviceType || "print";
-    const instructions = req.body.instructions || null;
+    // Build a URL the worker can download
+    const fileUrl = `${BASE_URL.replace(/\/$/, "")}/uploads/${encodeURIComponent(req.file.filename)}`;
 
-    const fileUrl =
-      `${req.protocol}://${req.get("host")}/uploads/${file.filename}`;
+    const id_text = `print_${Math.random().toString(16).slice(2)}${Date.now().toString(16)}`;
 
-    await pool.query(
+    const insert = await pool.query(
       `
       INSERT INTO print_jobs
-      (id_text, printer_id, status, file_name, file_url, mime_type,
-       pages, copies, color, service_type, instructions, is_paid)
+        (id_text, printer_id, status, file_url, file_name, copies, pages, paper_size, color_type, source, meta)
       VALUES
-      ($1,$2,'paid',$3,$4,$5,$6,$7,$8,$9,$10,true)
+        ($1, $2, 'queued', $3, $4, $5, $6, $7, $8, $9, $10)
+      RETURNING *;
       `,
       [
-        jobId,
+        id_text,
         printerId,
-        file.originalname,
         fileUrl,
-        file.mimetype,
-        pages,
+        req.file.originalname,
         copies,
-        color,
-        serviceType,
-        instructions,
+        pages,
+        paper_size,
+        color_type,
+        (req.body.source || "web").toString(),
+        req.body.meta ? JSON.parse(req.body.meta) : {},
       ]
     );
 
-    res.json({ ok: true, id_text: jobId });
-  } catch (err) {
-    console.error("UPLOAD ERROR:", err);
-    res.status(500).json({ ok: false, error: "Upload failed" });
+    res.json({ ok: true, job: insert.rows[0] });
+  } catch (e) {
+    console.error("UPLOAD ERROR:", e);
+    res.status(500).json({ ok: false, error: String(e?.message || e) });
   }
 });
 
-/* ===========================
-   JOB POLLING (SECURE)
-=========================== */
-
-app.get("/jobs", async (req, res) => {
+/**
+ * Printer poll endpoint (PROTECTED)
+ * Worker calls:
+ * GET /jobs?printerId=PP-USA-001&limit=5&key=ppk_...
+ */
+app.get("/jobs", requirePrinterKey, async (req, res) => {
   try {
-    const key =
-      req.headers["x-printer-key"] ||
-      req.query.key;
+    const printerId = (req.query.printerId || req.query.printer_id || "").toString().trim();
+    const limit = Math.min(50, Math.max(1, parseInt(req.query.limit || "5", 10) || 5));
 
-    if (!PRINTER_KEY || key !== PRINTER_KEY) {
-      return res.status(401).json({ ok: false, error: "Invalid printer key" });
-    }
+    if (!printerId) return res.status(400).json({ ok: false, error: "Missing printerId" });
 
-    const printerId = req.query.printerId;
-    const limit = parseInt(req.query.limit || "5", 10);
-
-    const { rows } = await pool.query(
+    // Return queued jobs first (oldest first)
+    const q = await pool.query(
       `
       SELECT *
       FROM print_jobs
       WHERE printer_id = $1
-      AND status = 'paid'
+        AND status IN ('queued', 'printing')
       ORDER BY created_at ASC
-      LIMIT $2
+      LIMIT $2;
       `,
       [printerId, limit]
     );
 
-    res.json(rows);
-  } catch (err) {
-    console.error("JOBS ERROR:", err);
-    res.status(500).json({ ok: false, error: "Failed to fetch jobs" });
+    res.json({ ok: true, jobs: q.rows });
+  } catch (e) {
+    console.error("JOBS ERROR:", e);
+    res.status(500).json({ ok: false, error: String(e?.message || e) });
   }
 });
 
-/* ===========================
-   JOB STATUS UPDATE
-=========================== */
-
-app.post("/jobs/:id/status", async (req, res) => {
+/**
+ * Worker status update (PROTECTED)
+ * POST /jobs/:id/status
+ * Body: { status: "printing" | "done" | "error", error?: "...", details?: "..."}
+ * Key via x-api-key or ?key
+ */
+app.post("/jobs/:id/status", requirePrinterKey, async (req, res) => {
   try {
-    const key =
-      req.headers["x-printer-key"] ||
-      req.query.key;
+    const id = parseInt(req.params.id, 10);
+    if (!Number.isFinite(id)) return res.status(400).json({ ok: false, error: "Invalid job id" });
 
-    if (!PRINTER_KEY || key !== PRINTER_KEY) {
-      return res.status(401).json({ ok: false, error: "Invalid printer key" });
-    }
+    const status = (req.body.status || "").toString().trim();
+    const error = req.body.error ? String(req.body.error) : null;
 
-    const { id } = req.params;
-    const { status } = req.body;
+    if (!status) return res.status(400).json({ ok: false, error: "Missing status" });
 
-    await pool.query(
-      `UPDATE print_jobs SET status=$1 WHERE id_text=$2`,
-      [status, id]
+    const upd = await pool.query(
+      `
+      UPDATE print_jobs
+      SET status = $1,
+          error = $2,
+          updated_at = NOW()
+      WHERE id = $3
+      RETURNING *;
+      `,
+      [status, error, id]
     );
 
-    res.json({ ok: true });
-  } catch (err) {
-    console.error("STATUS UPDATE ERROR:", err);
-    res.status(500).json({ ok: false });
+    if (upd.rowCount === 0) return res.status(404).json({ ok: false, error: "Job not found" });
+
+    res.json({ ok: true, job: upd.rows[0] });
+  } catch (e) {
+    console.error("STATUS UPDATE ERROR:", e);
+    res.status(500).json({ ok: false, error: String(e?.message || e) });
   }
 });
 
-/* ===========================
-   STATIC FILES
-=========================== */
-
-app.use("/uploads", express.static(uploadDir));
-
-/* ===========================
-   START SERVER
-=========================== */
-
-ensureTables().then(() => {
-  app.listen(PORT, () => {
-    console.log("MSTAF Core running on port", PORT);
-  });
+// ------------------- START -------------------
+app.listen(PORT, () => {
+  console.log(`MSTAF CORE listening on :${PORT}`);
+  console.log(`BASE_URL: ${BASE_URL}`);
+  console.log(`Uploads: ${uploadsDir}`);
+  if (!PRINTER_API_KEY) console.log("WARNING: PRINTER_API_KEY is empty (printer endpoints not protected).");
 });
-
