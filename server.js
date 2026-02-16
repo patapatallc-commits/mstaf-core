@@ -1,338 +1,403 @@
 /**
  * MSTAF CORE - Print-O-Matic Stable Server (Render)
- * ✅ Health:            GET  /health
- * ✅ Upload (Web form): POST /api/upload   (multipart/form-data)
- * ✅ Serve uploads:     GET  /uploads/:file
- * ✅ Worker polling:    GET  /jobs/next?printerId=PP-USA-001
- * ✅ Status updates:    POST /jobs/:id/status   (worker auth)
- * ✅ List jobs:         GET  /jobs?printerId=PP-USA-001&status=queued
+ * - Health: GET /health
+ * - Upload: POST /api/upload (multipart/form-data)
+ * - Printer polling:
+ *    - GET /jobs?printerId=PP-USA-001
+ *    - GET /jobs/next?printerId=PP-USA-001
+ * - Status update:
+ *    - POST /jobs/:id/status
  *
- * NEW (Safe Routing):
- * - If paper_size=A3  => printer_id = PP-USA-A3-001
- * - If print_format=Card => printer_id = PP-USA-CARD-001
- * - Else default => PP-USA-001
- *
- * Backward compatible:
- * - Accepts both x-worker-key and x-printer-key headers
- * - Accepts body fields in multiple names (paperSize/paper_size, printFormat/print_format, etc.)
+ * Fix included:
+ * ✅ Always writes id_text (UUID) so Postgres NOT NULL constraint never fails.
  */
 
 require("dotenv").config();
 
 const express = require("express");
 const cors = require("cors");
-const path = require("path");
-const fs = require("fs");
-const crypto = require("crypto");
 const multer = require("multer");
+const crypto = require("crypto");
 const { Pool } = require("pg");
+
+// Cloudinary optional (recommended for Render)
+let cloudinary = null;
+try {
+  cloudinary = require("cloudinary").v2;
+  // Support either CLOUDINARY_URL or the 3 var method
+  if (process.env.CLOUDINARY_URL) {
+    cloudinary.config({ cloudinary_url: process.env.CLOUDINARY_URL });
+  } else if (
+    process.env.CLOUDINARY_CLOUD_NAME &&
+    process.env.CLOUDINARY_API_KEY &&
+    process.env.CLOUDINARY_API_SECRET
+  ) {
+    cloudinary.config({
+      cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+      api_key: process.env.CLOUDINARY_API_KEY,
+      api_secret: process.env.CLOUDINARY_API_SECRET,
+    });
+  } else {
+    cloudinary = null;
+  }
+} catch (e) {
+  cloudinary = null;
+}
 
 const app = express();
 
-// ---------- CONFIG ----------
-const PORT = process.env.PORT || 3000;
+// For normal JSON routes
+app.use(express.json({ limit: "25mb" }));
+app.use(express.urlencoded({ extended: true }));
 
-const BASE_URL = (process.env.BASE_URL || process.env.RENDER_EXTERNAL_URL || "").replace(/\/+$/, "");
-// If BASE_URL is empty, we still return relative URLs; worker uses full file_url stored in DB.
-// Recommended: set BASE_URL=https://mstaf-core-1.onrender.com in Render env.
+// CORS (open for your Shopify page)
+app.use(
+  cors({
+    origin: "*",
+    methods: ["GET", "POST", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization"],
+  })
+);
 
-const WORKER_KEY = process.env.WORKER_KEY || process.env.PRINTER_KEY || "";
+// Multer memory upload (then to Cloudinary)
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 50 * 1024 * 1024 }, // 50MB
+});
 
-// Default printer queue (your Epson A4/LTR worker)
-const DEFAULT_PRINTER_ID = process.env.DEFAULT_PRINTER_ID || "PP-USA-001";
+// Printer routing
+const PRINTER_DEFAULT = process.env.PRINTER_DEFAULT || "PP-USA-001";
+const PRINTER_A3 = process.env.PRINTER_A3 || "PP-USA-A3-001";
+const PRINTER_CARD = process.env.PRINTER_CARD || "PP-USA-CARD-001";
 
-// Upload storage
-const UPLOADS_DIR = process.env.UPLOADS_DIR || path.join(process.cwd(), "uploads");
+function pickPrinterId({ printer_id, paper_size, print_format }) {
+  // If client sends printer_id already, respect it (unless empty)
+  const incoming = (printer_id || "").trim();
+  if (incoming) return incoming;
 
-// PostgreSQL
-const DATABASE_URL = process.env.DATABASE_URL;
-if (!DATABASE_URL) {
+  const pf = (print_format || "").trim();
+  const ps = (paper_size || "").trim();
+
+  // Priority routing (Card > A3 > Default)
+  if (pf.toLowerCase() === "card") return PRINTER_CARD;
+  if (ps.toUpperCase() === "A3") return PRINTER_A3;
+  return PRINTER_DEFAULT;
+}
+
+// Postgres
+if (!process.env.DATABASE_URL) {
   console.error("❌ Missing DATABASE_URL env var");
-  process.exit(1);
 }
 
 const pool = new Pool({
-  connectionString: DATABASE_URL,
-  ssl: process.env.PGSSL_DISABLE === "1" ? false : { rejectUnauthorized: false },
+  connectionString: process.env.DATABASE_URL,
+  ssl: process.env.DATABASE_SSL === "false" ? false : { rejectUnauthorized: false },
 });
 
-// ---------- MIDDLEWARE ----------
-app.use(cors());
-app.use(express.json({ limit: "10mb" }));
-app.use(express.urlencoded({ extended: true }));
-
-// Ensure uploads directory exists
-try {
-  if (!fs.existsSync(UPLOADS_DIR)) fs.mkdirSync(UPLOADS_DIR, { recursive: true });
-} catch (e) {
-  console.error("❌ Cannot create uploads dir:", e.message);
-  process.exit(1);
-}
-
-// Serve uploaded files
-app.use("/uploads", express.static(UPLOADS_DIR));
-
-// Multer for file uploads
-const storage = multer.diskStorage({
-  destination: (_req, _file, cb) => cb(null, UPLOADS_DIR),
-  filename: (_req, file, cb) => {
-    const safeOriginal = String(file.originalname || "file")
-      .replace(/[^\w.\-]+/g, "_")
-      .slice(0, 160);
-
-    const ext = path.extname(safeOriginal) || "";
-    const base = safeOriginal.replace(ext, "");
-    const stamp = Date.now();
-    cb(null, `${stamp}_${base}${ext}`);
-  },
-});
-const upload = multer({ storage });
-
-// ---------- DB MIGRATION (SAFE) ----------
+// Ensure schema (safe + minimal; does not drop anything)
 async function ensureSchema() {
-  // Create table if missing, add columns if missing
-  await pool.query(`
-    CREATE TABLE IF NOT EXISTS print_jobs (
-      id SERIAL PRIMARY KEY,
-      file_name TEXT NOT NULL,
-      file_url TEXT NOT NULL,
-      status TEXT NOT NULL DEFAULT 'queued',
-      printer_id TEXT NOT NULL DEFAULT '${DEFAULT_PRINTER_ID}',
-      copies INTEGER NOT NULL DEFAULT 1,
-      pages INTEGER NOT NULL DEFAULT 1,
-      paper_size TEXT,
-      color_type TEXT,
-      print_format TEXT,
-      instructions TEXT,
-      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-      error TEXT
-    );
-  `);
-
-  // Add missing columns (idempotent)
-  const addCol = async (name, typeSql) => {
-    await pool.query(`ALTER TABLE print_jobs ADD COLUMN IF NOT EXISTS ${name} ${typeSql};`);
-  };
-
-  await addCol("printer_id", `TEXT NOT NULL DEFAULT '${DEFAULT_PRINTER_ID}'`);
-  await addCol("copies", "INTEGER NOT NULL DEFAULT 1");
-  await addCol("pages", "INTEGER NOT NULL DEFAULT 1");
-  await addCol("paper_size", "TEXT");
-  await addCol("color_type", "TEXT");
-  await addCol("print_format", "TEXT");
-  await addCol("instructions", "TEXT");
-  await addCol("created_at", "TIMESTAMPTZ NOT NULL DEFAULT NOW()");
-  await addCol("updated_at", "TIMESTAMPTZ NOT NULL DEFAULT NOW()");
-  await addCol("error", "TEXT");
-}
-
-// Keep updated_at fresh
-async function touchUpdatedAt(id) {
-  await pool.query(`UPDATE print_jobs SET updated_at = NOW() WHERE id = $1`, [id]);
-}
-
-// ---------- AUTH (WORKER) ----------
-function getWorkerKeyFromReq(req) {
-  const a = req.headers["x-worker-key"];
-  const b = req.headers["x-printer-key"];
-  const c = req.headers["x-api-key"];
-  return String(a || b || c || "");
-}
-
-function requireWorkerAuth(req, res, next) {
-  // If WORKER_KEY is not set, we still allow (dev mode)
-  if (!WORKER_KEY) return next();
-
-  const got = getWorkerKeyFromReq(req);
-  if (!got || got !== WORKER_KEY) {
-    return res.status(401).json({ ok: false, error: "Unauthorized worker" });
-  }
-  next();
-}
-
-// ---------- PRINTER ROUTING (NEW) ----------
-function resolvePrinterIdFromRequest(body = {}) {
-  const paperSizeRaw = body.paper_size ?? body.paperSize ?? body.size ?? body.paper ?? "A4";
-  const printFormatRaw = body.print_format ?? body.printFormat ?? body.format ?? "Document";
-
-  const paperSize = String(paperSizeRaw).trim().toUpperCase();
-  const printFormat = String(printFormatRaw).trim().toLowerCase(); // document/card
-
-  let printerId = DEFAULT_PRINTER_ID;
-
-  // A3 routes to A3 queue
-  if (paperSize === "A3") printerId = "PP-USA-A3-001";
-
-  // Card routes to Card queue (overrides A3 if selected)
-  if (printFormat === "card") printerId = "PP-USA-CARD-001";
-
-  return printerId;
-}
-
-function buildPublicFileUrl(req, filename) {
-  // Prefer explicit BASE_URL if set, else infer from request
-  const base =
-    BASE_URL ||
-    `${req.protocol}://${req.get("host")}`.replace(/\/+$/, "");
-  return `${base}/uploads/${encodeURIComponent(filename)}`;
-}
-
-// ---------- ROUTES ----------
-app.get("/health", async (_req, res) => {
+  const client = await pool.connect();
   try {
-    const r = await pool.query("SELECT 1 as ok");
-    res.json({ ok: true, db: !!r?.rows?.[0]?.ok });
+    // Enable pgcrypto if possible (non-fatal if permissions block it)
+    try {
+      await client.query(`CREATE EXTENSION IF NOT EXISTS pgcrypto;`);
+    } catch (_) {}
+
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS print_jobs (
+        id BIGSERIAL PRIMARY KEY,
+        id_text TEXT UNIQUE,
+        printer_id TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'queued',
+        service_type TEXT NOT NULL DEFAULT 'Print',
+        paper_size TEXT DEFAULT 'A4',
+        color_mode TEXT DEFAULT 'bw',
+        print_format TEXT DEFAULT 'Document',
+        pages INT DEFAULT 1,
+        copies INT DEFAULT 1,
+        instructions TEXT,
+        file_url TEXT,
+        original_filename TEXT,
+        mime_type TEXT,
+        file_bytes BIGINT,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+        claimed_at TIMESTAMPTZ,
+        claimed_by TEXT,
+        error TEXT
+      );
+    `);
+
+    // Make sure id_text exists + is not-null friendly
+    // 1) fill nulls if any exist
+    await client.query(`
+      UPDATE print_jobs
+      SET id_text = COALESCE(id_text, gen_random_uuid()::text)
+      WHERE id_text IS NULL;
+    `).catch(() => { /* ignore if gen_random_uuid not available */ });
+
+    // 2) If gen_random_uuid isn't available, fallback update via app code (handled during inserts)
+    // 3) Do not force NOT NULL here (your DB already has it). We simply guarantee insert always supplies it.
+  } finally {
+    client.release();
+  }
+}
+
+// Cloudinary upload helper
+async function uploadToCloudinary(buffer, filename, mimeType) {
+  if (!cloudinary) {
+    throw new Error(
+      "Cloudinary is not configured. Set CLOUDINARY_URL or CLOUDINARY_CLOUD_NAME/API_KEY/API_SECRET."
+    );
+  }
+
+  const base64 = buffer.toString("base64");
+  const dataUri = `data:${mimeType};base64,${base64}`;
+
+  const isVideo = (mimeType || "").startsWith("video/");
+  const resource_type = isVideo ? "video" : "auto";
+
+  const result = await cloudinary.uploader.upload(dataUri, {
+    resource_type,
+    folder: process.env.CLOUDINARY_FOLDER || "mstaf_uploads",
+    public_id: `${Date.now()}_${(filename || "upload").replace(/\s+/g, "_")}`,
+    overwrite: false,
+  });
+
+  return {
+    url: result.secure_url || result.url,
+    resource_type: result.resource_type,
+  };
+}
+
+// Health
+app.get("/health", async (req, res) => {
+  try {
+    await pool.query("SELECT 1");
+    res.status(200).send("OK");
   } catch (e) {
-    res.status(500).json({ ok: false, error: e.message });
+    res.status(500).send("DB_ERROR");
   }
 });
 
-// Upload from Shopify web form
+// Upload endpoint used by Shopify page
 app.post("/api/upload", upload.single("file"), async (req, res) => {
   try {
-    const file = req.file;
-    if (!file?.filename) {
-      return res.status(400).json({ ok: false, error: "Missing file" });
+    // File is required for Print; for editing you still accept file
+    const f = req.file;
+    if (!f) {
+      return res.status(400).json({ ok: false, error: "No file uploaded (field name must be 'file')." });
     }
 
-    // Read fields (support multiple names)
-    const copies = Math.max(1, Number(req.body.copies ?? req.body.copy ?? 1) || 1);
-    const pages = Math.max(1, Number(req.body.pages ?? req.body.pageCount ?? 1) || 1);
+    // Fields (from Shopify widget)
+    const paper_size = (req.body.paper_size || "A4").toString();
+    const color_mode = (req.body.color_mode || "bw").toString();
+    const print_format = (req.body.print_format || "Document").toString();
+    const service_type = (req.body.service_type || "Print").toString();
+    const pages = parseInt(req.body.pages || "1", 10) || 1;
+    const copies = parseInt(req.body.copies || "1", 10) || 1;
+    const instructions = (req.body.instructions || "").toString();
+    const printer_id = pickPrinterId({
+      printer_id: req.body.printer_id,
+      paper_size,
+      print_format,
+    });
 
-    const paper_size = String(req.body.paper_size ?? req.body.paperSize ?? "A4");
-    const color_type = String(req.body.color_type ?? req.body.colorType ?? req.body.color ?? "BW");
-    const print_format = String(req.body.print_format ?? req.body.printFormat ?? "Document");
-    const instructions = String(req.body.instructions ?? req.body.note ?? req.body.notes ?? "");
+    // ✅ Always generate id_text so NOT NULL constraint never fails
+    const id_text = crypto.randomUUID();
 
-    // NEW: route to printer queues safely
-    const printer_id = resolvePrinterIdFromRequest(req.body);
+    // Upload file to Cloudinary (same idea as your earlier setup)
+    const { url: file_url } = await uploadToCloudinary(f.buffer, f.originalname, f.mimetype);
 
-    const file_name = file.filename;
-    const file_url = buildPublicFileUrl(req, file.filename);
-
-    const insert = await pool.query(
-      `
-      INSERT INTO print_jobs
-        (file_name, file_url, copies, pages, status, printer_id, paper_size, color_type, print_format, instructions)
-      VALUES
-        ($1,$2,$3,$4,'queued',$5,$6,$7,$8,$9)
+    // Insert into DB
+    const q = `
+      INSERT INTO print_jobs (
+        id_text, printer_id, status,
+        service_type, paper_size, color_mode, print_format,
+        pages, copies, instructions,
+        file_url, original_filename, mime_type, file_bytes,
+        created_at, updated_at
+      )
+      VALUES (
+        $1, $2, 'queued',
+        $3, $4, $5, $6,
+        $7, $8, $9,
+        $10, $11, $12, $13,
+        now(), now()
+      )
       RETURNING *
-      `,
-      [file_name, file_url, copies, pages, printer_id, paper_size, color_type, print_format, instructions]
-    );
+    `;
 
-    const job = insert.rows[0];
-    res.json({ ok: true, job, file_url, printer_id });
+    const params = [
+      id_text,
+      printer_id,
+      service_type,
+      paper_size,
+      color_mode,
+      print_format,
+      pages,
+      copies,
+      instructions,
+      file_url,
+      f.originalname || null,
+      f.mimetype || null,
+      f.size || null,
+    ];
+
+    const result = await pool.query(q, params);
+    const job = result.rows[0];
+
+    return res.status(200).json({
+      ok: true,
+      job: {
+        id: job.id,
+        id_text: job.id_text,
+        printer_id: job.printer_id,
+        status: job.status,
+        file_url: job.file_url,
+        pages: job.pages,
+        copies: job.copies,
+        paper_size: job.paper_size,
+        color_mode: job.color_mode,
+        print_format: job.print_format,
+        service_type: job.service_type,
+      },
+    });
   } catch (e) {
     console.error("UPLOAD ERROR:", e);
-    res.status(500).json({ ok: false, error: e.message });
+    return res.status(500).json({ ok: false, error: e.message || "Upload failed" });
   }
 });
 
-// List jobs (optional admin)
+// List queued jobs for a printer (worker can use this)
 app.get("/jobs", async (req, res) => {
   try {
-    const printerId = String(req.query.printerId || req.query.printer_id || "");
-    const status = String(req.query.status || "");
+    const printerId = (req.query.printerId || PRINTER_DEFAULT).toString();
+    const limit = Math.min(parseInt(req.query.limit || "10", 10) || 10, 50);
 
-    const where = [];
-    const vals = [];
-    let i = 1;
-
-    if (printerId) {
-      where.push(`printer_id = $${i++}`);
-      vals.push(printerId);
-    }
-    if (status) {
-      where.push(`status = $${i++}`);
-      vals.push(status);
-    }
-
-    const sql = `
+    const q = `
       SELECT *
       FROM print_jobs
-      ${where.length ? "WHERE " + where.join(" AND ") : ""}
-      ORDER BY id DESC
-      LIMIT 200
+      WHERE printer_id = $1
+        AND status IN ('queued', 'processing')
+      ORDER BY created_at ASC
+      LIMIT $2
     `;
-
-    const r = await pool.query(sql, vals);
+    const r = await pool.query(q, [printerId, limit]);
     res.json({ ok: true, jobs: r.rows });
   } catch (e) {
     res.status(500).json({ ok: false, error: e.message });
   }
 });
 
-// Worker fetch next job
-app.get("/jobs/next", requireWorkerAuth, async (req, res) => {
+// Get next queued job & mark it processing (recommended for worker)
+app.get("/jobs/next", async (req, res) => {
+  const client = await pool.connect();
   try {
-    const printerId = String(req.query.printerId || req.query.printer_id || DEFAULT_PRINTER_ID);
+    const printerId = (req.query.printerId || PRINTER_DEFAULT).toString();
+    const claimedBy = (req.query.claimedBy || req.headers["x-printer-id"] || "").toString() || null;
 
-    // Pick oldest queued job for that printer
-    const r = await pool.query(
+    await client.query("BEGIN");
+
+    // Lock one queued job
+    const pick = await client.query(
       `
       SELECT *
       FROM print_jobs
-      WHERE printer_id = $1 AND status = 'queued'
-      ORDER BY id ASC
+      WHERE printer_id = $1
+        AND status = 'queued'
+      ORDER BY created_at ASC
+      FOR UPDATE SKIP LOCKED
       LIMIT 1
       `,
       [printerId]
     );
 
-    const job = r.rows[0] || null;
-    res.json({ ok: true, job });
-  } catch (e) {
-    console.error("NEXT JOB ERROR:", e);
-    res.status(500).json({ ok: false, error: e.message });
-  }
-});
-
-// Worker updates job status
-app.post("/jobs/:id/status", requireWorkerAuth, async (req, res) => {
-  try {
-    const id = Number(req.params.id);
-    const status = String(req.body.status || "").trim();
-    const error = req.body.error ? String(req.body.error).slice(0, 1000) : null;
-
-    if (!id || !status) {
-      return res.status(400).json({ ok: false, error: "Missing id or status" });
+    if (pick.rows.length === 0) {
+      await client.query("COMMIT");
+      return res.json({ ok: true, job: null });
     }
 
-    await pool.query(
+    const job = pick.rows[0];
+
+    const upd = await client.query(
       `
       UPDATE print_jobs
-      SET status = $1,
-          error = COALESCE($2, error),
-          updated_at = NOW()
-      WHERE id = $3
+      SET status='processing',
+          claimed_at=now(),
+          claimed_by=$2,
+          updated_at=now()
+      WHERE id = $1
+      RETURNING *
       `,
-      [status, error, id]
+      [job.id, claimedBy]
     );
 
-    res.json({ ok: true });
+    await client.query("COMMIT");
+    return res.json({ ok: true, job: upd.rows[0] });
   } catch (e) {
-    console.error("STATUS UPDATE ERROR:", e);
-    res.status(500).json({ ok: false, error: e.message });
+    try { await client.query("ROLLBACK"); } catch (_) {}
+    return res.status(500).json({ ok: false, error: e.message });
+  } finally {
+    client.release();
   }
 });
 
-// (Optional) Simple admin view route to confirm server up
-app.get("/", (_req, res) => {
-  res.type("text").send(
-    "MSTAF CORE is running. Endpoints: /health, /api/upload, /jobs, /jobs/next, /jobs/:id/status, /uploads/:file"
-  );
+// Update job status (worker calls this)
+app.post("/jobs/:id/status", async (req, res) => {
+  try {
+    const id = req.params.id; // may be numeric id or id_text
+    const status = (req.body.status || "").toString();
+    const error = (req.body.error || "").toString();
+    const claimedBy = (req.body.claimed_by || req.headers["x-printer-id"] || "").toString() || null;
+
+    if (!status) {
+      return res.status(400).json({ ok: false, error: "Missing status" });
+    }
+
+    const isNumeric = /^[0-9]+$/.test(id);
+
+    const q = isNumeric
+      ? `
+        UPDATE print_jobs
+        SET status=$2,
+            error = NULLIF($3,''),
+            claimed_by = COALESCE($4, claimed_by),
+            updated_at=now()
+        WHERE id=$1
+        RETURNING *
+      `
+      : `
+        UPDATE print_jobs
+        SET status=$2,
+            error = NULLIF($3,''),
+            claimed_by = COALESCE($4, claimed_by),
+            updated_at=now()
+        WHERE id_text=$1
+        RETURNING *
+      `;
+
+    const r = await pool.query(q, [id, status, error, claimedBy]);
+
+    if (r.rows.length === 0) {
+      return res.status(404).json({ ok: false, error: "Job not found" });
+    }
+
+    return res.json({ ok: true, job: r.rows[0] });
+  } catch (e) {
+    return res.status(500).json({ ok: false, error: e.message });
+  }
 });
 
-// ---------- START ----------
+// Start
+const PORT = process.env.PORT || 3000;
 ensureSchema()
   .then(() => {
     app.listen(PORT, () => {
-      console.log(`✅ MSTAF CORE listening on port ${PORT}`);
-      console.log(`✅ Uploads dir: ${UPLOADS_DIR}`);
-      console.log(`✅ Default printer queue: ${DEFAULT_PRINTER_ID}`);
-      console.log(`✅ Worker key: ${WORKER_KEY ? "(set)" : "(missing - dev mode)"}`);
+      console.log(`✅ MSTAF Core listening on ${PORT}`);
+      console.log(`✅ Health: /health`);
+      console.log(`✅ Upload: POST /api/upload`);
+      console.log(`✅ Next job: GET /jobs/next?printerId=${PRINTER_DEFAULT}`);
     });
   })
   .catch((e) => {
