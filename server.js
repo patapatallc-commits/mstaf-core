@@ -1,32 +1,40 @@
 /**
- * MSTAF Core Server (Render) - Stable + Defensive DB Writes
- * - Upload print job (Shopify form or API)
- * - Worker pulls next job, server marks as printing before returning
- * - Worker updates status done/error
- * - Public file link returned after upload (customerFileUrl)
- *
- * IMPORTANT: DB schema safe:
- * - Uses file_name (NOT original_name) because your table already has file_name.
- * - Uses schema-aware insert/update so missing columns will never crash the API.
+ * MSTAF Core - Server.js (Stable)
+ * - Upload endpoint for Shopify (multipart)
+ * - Defensive DB insert (won't crash if columns missing)
+ * - Worker polling endpoint (fixes 404)
+ * - Public file links (customerFileUrl)
  */
 
 require("dotenv").config();
 
 const express = require("express");
 const cors = require("cors");
-const crypto = require("crypto");
 const multer = require("multer");
+const crypto = require("crypto");
 const { Pool } = require("pg");
 
 const app = express();
 
 // ---------- Config ----------
-const PORT = process.env.PORT || 10000;
-const DATABASE_URL = process.env.DATABASE_URL;
+const PORT = process.env.PORT || 3000;
 
+// Prefer explicit BASE_URL; fallback to Render hostname if present
+const BASE_URL =
+  (process.env.BASE_URL && process.env.BASE_URL.trim()) ||
+  (process.env.RENDER_EXTERNAL_URL && process.env.RENDER_EXTERNAL_URL.trim()) ||
+  "https://mstaf-core-1.onrender.com";
+
+const WORKER_KEY =
+  process.env.WORKER_KEY ||
+  process.env.PRINTER_KEY ||
+  process.env.WORKER_SECRET ||
+  "";
+
+// DB
+const DATABASE_URL = process.env.DATABASE_URL;
 if (!DATABASE_URL) {
-  console.error("❌ Missing DATABASE_URL env var");
-  process.exit(1);
+  console.error("❌ DATABASE_URL is not set.");
 }
 
 const pool = new Pool({
@@ -34,448 +42,479 @@ const pool = new Pool({
   ssl: process.env.PGSSLMODE === "disable" ? false : { rejectUnauthorized: false },
 });
 
-// If you're serving behind Render, set your public base URL like:
-// BASE_URL=https://mstaf-core-1.onrender.com
-const BASE_URL =
-  (process.env.BASE_URL || "").trim() ||
-  (process.env.RENDER_EXTERNAL_URL || "").trim() ||
-  ""; // if empty, we will still return relative links
-
-// Worker key can come from either env var:
-const WORKER_KEY = (process.env.WORKER_KEY || process.env.PRINTER_KEY || "").trim();
-
 // ---------- Middleware ----------
-app.use(cors());
 app.use(express.json({ limit: "25mb" }));
 app.use(express.urlencoded({ extended: true, limit: "25mb" }));
 
-// Multer: in-memory upload (we store base64 in DB because your table has file_base64)
+app.use(
+  cors({
+    origin: (origin, cb) => {
+      // Allow Shopify + browsers. If origin is missing (curl/postman), allow.
+      if (!origin) return cb(null, true);
+      const ok =
+        origin.includes("myshopify.com") ||
+        origin.includes("patapata.us") ||
+        origin.includes("shopify.com") ||
+        origin.includes("render.com");
+      return cb(null, ok);
+    },
+    credentials: false,
+  })
+);
+
+// Multer in-memory upload
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 25 * 1024 * 1024 }, // 25MB
 });
 
 // ---------- Helpers ----------
-function nowIso() {
-  return new Date().toISOString();
+function sleep(ms) {
+  return new Promise((r) => setTimeout(r, ms));
 }
 
-function randToken(bytes = 16) {
+function toInt(v, fallback = 1) {
+  const n = parseInt(String(v ?? ""), 10);
+  return Number.isFinite(n) && n > 0 ? n : fallback;
+}
+
+function toBool(v, fallback = false) {
+  if (typeof v === "boolean") return v;
+  const s = String(v ?? "").trim().toLowerCase();
+  if (["true", "1", "yes", "y", "on"].includes(s)) return true;
+  if (["false", "0", "no", "n", "off"].includes(s)) return false;
+  return fallback;
+}
+
+function safeJsonString(input, fallbackObj = {}) {
+  // If already object, stringify it.
+  if (input && typeof input === "object") {
+    try {
+      return JSON.stringify(input);
+    } catch {
+      return JSON.stringify(fallbackObj);
+    }
+  }
+
+  const s = String(input ?? "").trim();
+  if (!s) return JSON.stringify(fallbackObj);
+
+  // If it's a JSON string, accept it.
+  try {
+    JSON.parse(s);
+    return s;
+  } catch {
+    // Not JSON; wrap into JSON safely
+    return JSON.stringify({ ...fallbackObj, raw: s });
+  }
+}
+
+function randToken(bytes = 24) {
   return crypto.randomBytes(bytes).toString("hex");
 }
 
-function isTruthy(x) {
-  return x === true || x === "true" || x === "1" || x === 1;
+function uuidLike() {
+  // quick uuid v4-ish (good enough for IDs)
+  return crypto.randomUUID ? crypto.randomUUID() : randToken(16);
 }
 
-// Read worker key from either header name
-function getWorkerKeyFromReq(req) {
-  return (
-    (req.headers["x-worker-key"] || "").toString().trim() ||
-    (req.headers["x-printer-key"] || "").toString().trim()
-  );
+// Cache columns and types so we can do defensive inserts
+let _schemaCache = {
+  at: 0,
+  ttlMs: 60_000,
+  tables: {}, // { print_jobs: { colName: { data_type, udt_name } } }
+};
+
+async function getTableSchema(tableName) {
+  const now = Date.now();
+  if (_schemaCache.tables[tableName] && now - _schemaCache.at < _schemaCache.ttlMs) {
+    return _schemaCache.tables[tableName];
+  }
+
+  const q = `
+    SELECT column_name, data_type, udt_name
+    FROM information_schema.columns
+    WHERE table_name = $1
+  `;
+  const { rows } = await pool.query(q, [tableName]);
+
+  const schema = {};
+  for (const r of rows) {
+    schema[r.column_name] = { data_type: r.data_type, udt_name: r.udt_name };
+  }
+
+  _schemaCache = {
+    at: now,
+    ttlMs: _schemaCache.ttlMs,
+    tables: { ..._schemaCache.tables, [tableName]: schema },
+  };
+
+  return schema;
+}
+
+function pickExistingColumns(schema, obj) {
+  const out = {};
+  for (const [k, v] of Object.entries(obj)) {
+    if (schema[k]) out[k] = v;
+  }
+  return out;
+}
+
+function buildInsert(table, schema, data) {
+  const cols = Object.keys(data);
+  const vals = Object.values(data);
+
+  // Build placeholders, with JSON casting when needed
+  const placeholders = cols.map((c, i) => {
+    const t = schema[c];
+    const isJson = t && (t.data_type === "json" || t.data_type === "jsonb");
+    return isJson ? `$${i + 1}::jsonb` : `$${i + 1}`;
+  });
+
+  const sql = `
+    INSERT INTO ${table} (${cols.join(", ")})
+    VALUES (${placeholders.join(", ")})
+    RETURNING *
+  `;
+  return { sql, vals };
+}
+
+function buildUpdate(table, schema, data, whereClause, whereVals) {
+  const cols = Object.keys(data);
+  const vals = Object.values(data);
+
+  const sets = cols.map((c, i) => {
+    const t = schema[c];
+    const isJson = t && (t.data_type === "json" || t.data_type === "jsonb");
+    return isJson ? `${c} = $${i + 1}::jsonb` : `${c} = $${i + 1}`;
+  });
+
+  const sql = `
+    UPDATE ${table}
+    SET ${sets.join(", ")}
+    WHERE ${whereClause}
+    RETURNING *
+  `;
+  return { sql, vals: [...vals, ...whereVals] };
 }
 
 function requireWorkerAuth(req, res, next) {
-  // If no WORKER_KEY configured, allow (but log) — you can enforce by setting WORKER_KEY env var.
-  if (!WORKER_KEY) {
-    console.warn("⚠️ WORKER_KEY/PRINTER_KEY not set. Worker endpoints are NOT protected.");
-    return next();
-  }
-  const k = getWorkerKeyFromReq(req);
-  if (!k || k !== WORKER_KEY) {
+  const got =
+    req.headers["x-worker-key"] ||
+    req.headers["x-printer-key"] ||
+    req.headers["authorization"];
+
+  const token = String(got ?? "").replace(/^bearer\s+/i, "").trim();
+
+  if (!WORKER_KEY || token !== WORKER_KEY) {
     return res.status(401).json({ ok: false, error: "Unauthorized worker" });
   }
   next();
 }
 
-async function getTableColumns(tableName) {
-  const { rows } = await pool.query(
-    `SELECT column_name
-     FROM information_schema.columns
-     WHERE table_schema='public' AND table_name=$1`,
-    [tableName]
-  );
-  return new Set(rows.map((r) => r.column_name));
-}
-
-function pickExistingCols(payload, colsSet) {
-  const out = {};
-  for (const [k, v] of Object.entries(payload)) {
-    if (colsSet.has(k) && v !== undefined) out[k] = v;
-  }
-  return out;
-}
-
-async function safeInsert(tableName, payload) {
-  const colsSet = await getTableColumns(tableName);
-  const data = pickExistingCols(payload, colsSet);
-
-  const keys = Object.keys(data);
-  if (keys.length === 0) {
-    throw new Error(`safeInsert: no matching columns found for ${tableName}`);
-  }
-
-  const vals = keys.map((k) => data[k]);
-  const colsSql = keys.map((k) => `"${k}"`).join(", ");
-  const paramsSql = keys.map((_, i) => `$${i + 1}`).join(", ");
-
-  const sql = `INSERT INTO "${tableName}" (${colsSql}) VALUES (${paramsSql}) RETURNING *`;
-  return pool.query(sql, vals);
-}
-
-async function safeUpdateById(tableName, id, payload) {
-  const colsSet = await getTableColumns(tableName);
-  const data = pickExistingCols(payload, colsSet);
-
-  const keys = Object.keys(data);
-  if (keys.length === 0) {
-    // nothing to update, return current row
-    return pool.query(`SELECT * FROM "${tableName}" WHERE id=$1`, [id]);
-  }
-
-  const sets = keys.map((k, i) => `"${k}"=$${i + 2}`).join(", ");
-  const vals = [id, ...keys.map((k) => data[k])];
-
-  const sql = `UPDATE "${tableName}" SET ${sets} WHERE id=$1 RETURNING *`;
-  return pool.query(sql, vals);
-}
-
-function safeJsonParse(maybeJson, fallback = null) {
-  if (maybeJson == null) return fallback;
-  if (typeof maybeJson === "object") return maybeJson;
-  try {
-    return JSON.parse(maybeJson);
-  } catch {
-    return fallback;
-  }
-}
-
-function buildPublicFileUrl(token) {
-  const path = `/public/file/${token}`;
-  if (!BASE_URL) return path;
-  return `${BASE_URL}${path}`;
-}
-
 // ---------- Routes ----------
-app.get("/", (req, res) => res.json({ ok: true, service: "mstaf-core-1", time: nowIso() }));
-app.get("/health", (req, res) => res.json({ ok: true, time: nowIso() }));
+app.get("/health", (req, res) => {
+  res.json({ ok: true, time: new Date().toISOString() });
+});
 
-/**
- * SHOPIFY / FORM UPLOAD ENDPOINT
- * Expects multipart/form-data:
- * - file (pdf/jpg/png)
- * - printerId
- * - pages
- * - copies
- * - color (color / bw)
- * - details (instructions)
- * - source (shopify)
- */
-app.post("/api/upload", upload.single("file"), async (req, res) => {
+// Public job status (optional)
+app.get("/public/job/:publicJobId", async (req, res) => {
   try {
+    const publicJobId = String(req.params.publicJobId || "").trim();
+    if (!publicJobId) return res.status(400).json({ ok: false, error: "Missing publicJobId" });
+
+    const schema = await getTableSchema("print_jobs");
+    if (!schema.public_job_id) {
+      return res.status(404).json({ ok: false, error: "Public job feature not enabled (missing column public_job_id)" });
+    }
+
+    const { rows } = await pool.query(
+      `SELECT id, status, pages, copies, created_at, updated_at, printer_id
+       FROM print_jobs
+       WHERE public_job_id = $1
+       LIMIT 1`,
+      [publicJobId]
+    );
+
+    if (!rows[0]) return res.status(404).json({ ok: false, error: "Not found" });
+    return res.json({ ok: true, job: rows[0] });
+  } catch (e) {
+    return res.status(500).json({ ok: false, error: "Server error", details: e.message });
+  }
+});
+
+// Public file download (secure token)
+app.get("/public/file/:token", async (req, res) => {
+  try {
+    const token = String(req.params.token || "").trim();
+    if (!token) return res.status(400).send("Missing token");
+
+    const schema = await getTableSchema("print_jobs");
+
+    // Prefer public_file_token column, fallback to customer_file_url token match (if any)
+    if (!schema.public_file_token) {
+      return res.status(404).send("Public file feature not enabled (missing column public_file_token)");
+    }
+
+    const colsNeeded = ["file_base64", "mime_type", "file_name", "original_name"];
+    for (const c of colsNeeded) {
+      if (!schema[c]) {
+        // Don't hard fail; file_base64 is required
+      }
+    }
+
+    const { rows } = await pool.query(
+      `SELECT file_base64, mime_type, file_name, original_name
+       FROM print_jobs
+       WHERE public_file_token = $1
+       LIMIT 1`,
+      [token]
+    );
+
+    if (!rows[0]) return res.status(404).send("Not found");
+
+    const b64 = rows[0].file_base64;
+    if (!b64) return res.status(404).send("File missing");
+
+    const mime = rows[0].mime_type || "application/octet-stream";
+    const name = rows[0].original_name || rows[0].file_name || "file";
+
+    const buf = Buffer.from(b64, "base64");
+    res.setHeader("Content-Type", mime);
+    res.setHeader("Content-Disposition", `attachment; filename="${String(name).replace(/"/g, "")}"`);
+    return res.send(buf);
+  } catch (e) {
+    return res.status(500).send("Server error");
+  }
+});
+
+// ---------- Upload handler (used by both routes) ----------
+async function handleUpload(req, res) {
+  try {
+    const schema = await getTableSchema("print_jobs");
+
+    // File
     const file = req.file;
     if (!file) return res.status(400).json({ ok: false, error: "No file uploaded" });
 
-    const printerId = (req.body.printerId || req.body.printer_id || "PP-USA-001").toString().trim();
-    const pages = Number(req.body.pages || 1) || 1;
-    const copies = Number(req.body.copies || 1) || 1;
-    const color = (req.body.color || "bw").toString().trim(); // "color" or "bw"
-    const source = (req.body.source || "shopify").toString().trim();
-    const details = (req.body.details || req.body.instructions || "").toString();
+    const originalName = file.originalname || "upload";
+    const mimeType = file.mimetype || "application/octet-stream";
+    const fileBase64 = file.buffer.toString("base64");
 
-    // Your DB has file_name, mime_type, file_base64
-    const file_name = (file.originalname || "upload").toString();
-    const mime_type = (file.mimetype || "application/octet-stream").toString();
-    const file_base64 = file.buffer.toString("base64");
+    // Inputs
+    const printerId = String(req.body.printerId || "PP-USA-001").trim();
+    const pages = toInt(req.body.pages, 1);
+    const copies = toInt(req.body.copies, 1);
 
-    // Public access token/job id (won't crash if columns don't exist)
-    const public_job_id = randToken(10);
-    const public_file_token = randToken(18);
+    // IMPORTANT: DB column 'color' is BOOLEAN
+    const colorBool = toBool(req.body.color, false);
 
-    // Store token also inside meta for fallback if columns don't exist
-    const metaObj = {
-      source,
-      uploaded_at: nowIso(),
-      public_job_id,
-      public_file_token,
-    };
+    const source = String(req.body.source || "shopify").trim();
 
-    const payload = {
+    // details/meta may be JSON in DB. We will always send JSON string safely.
+    const detailsJson = safeJsonString(req.body.details, {
+      serviceType: "print",
+      paperSize: "A4",
+      notes: "",
+    });
+
+    const metaJson = safeJsonString(req.body.meta, {
+      ua: req.headers["user-agent"] || "",
+      ip: req.headers["x-forwarded-for"] || req.socket.remoteAddress || "",
+    });
+
+    // Public link tokens
+    const publicJobId = uuidLike();
+    const publicFileToken = randToken(24);
+    const customerFileUrl = `${BASE_URL.replace(/\/$/, "")}/public/file/${publicFileToken}`;
+    const fileExt = (originalName.split(".").pop() || "").toLowerCase();
+
+    // Build data object with many possible columns; we'll keep only existing cols.
+    const now = new Date().toISOString();
+
+    const desired = {
       printer_id: printerId,
       status: "queued",
       pages,
       copies,
-      color,
+      color: colorBool, // boolean
       source,
-      file_name,
-      mime_type,
-      file_base64,
-      details,
-      updated_at: nowIso(),
-      meta: JSON.stringify(metaObj),
-      public_job_id,        // inserted if column exists
-      public_file_token,    // inserted if column exists
-      customer_file_url: buildPublicFileUrl(public_file_token), // inserted if column exists
+
+      // common fields in your table
+      created_at: now,
+      updated_at: now,
+      file_name: originalName,       // some schemas use file_name
+      original_name: originalName,   // newer
+      mime_type: mimeType,
+      file_base64: fileBase64,
+      details: detailsJson,          // JSON safe
+      meta: metaJson,                // JSON safe
+
+      // new safe columns (if exist)
+      file_ext: fileExt,
+      customer_file_url: customerFileUrl,
+      public_job_id: publicJobId,
+      public_file_token: publicFileToken,
     };
 
-    const inserted = await safeInsert("print_jobs", payload);
-    const job = inserted.rows[0];
+    const data = pickExistingColumns(schema, desired);
 
-    // Always return a link even if db doesn't have customer_file_url column
-    const customerFileUrl = buildPublicFileUrl(public_file_token);
+    // Must include at least printer_id, status, file_base64
+    if (!data.printer_id) data.printer_id = printerId;
+    if (!data.status) data.status = "queued";
+    if (!data.file_base64 && schema.file_base64) data.file_base64 = fileBase64;
 
-    return res.json({
-      ok: true,
-      jobId: job.id,
-      printerId,
-      status: job.status,
-      customerFileUrl,
-      publicJobId: public_job_id,
-    });
-  } catch (e) {
-    console.error("❌ /api/upload error:", e);
-    return res.status(500).json({ ok: false, error: "Server error", details: e.message });
-  }
-});
-
-/**
- * JSON UPLOAD ENDPOINT (optional)
- * Accepts JSON:
- * { printerId, fileName, mimeType, fileBase64, pages, copies, color, details, source }
- */
-app.post("/api/upload-json", async (req, res) => {
-  try {
-    const {
-      printerId = "PP-USA-001",
-      fileName = "upload.pdf",
-      mimeType = "application/pdf",
-      fileBase64,
-      pages = 1,
-      copies = 1,
-      color = "bw",
-      details = "",
-      source = "api",
-    } = req.body || {};
-
-    if (!fileBase64) {
-      return res.status(400).json({ ok: false, error: "fileBase64 is required" });
-    }
-
-    const public_job_id = randToken(10);
-    const public_file_token = randToken(18);
-
-    const metaObj = { source, uploaded_at: nowIso(), public_job_id, public_file_token };
-
-    const payload = {
-      printer_id: printerId,
-      status: "queued",
-      pages: Number(pages) || 1,
-      copies: Number(copies) || 1,
-      color: (color || "bw").toString(),
-      source: (source || "api").toString(),
-      file_name: fileName.toString(),
-      mime_type: mimeType.toString(),
-      file_base64: fileBase64.toString(),
-      details: details.toString(),
-      updated_at: nowIso(),
-      meta: JSON.stringify(metaObj),
-      public_job_id,
-      public_file_token,
-      customer_file_url: buildPublicFileUrl(public_file_token),
-    };
-
-    const inserted = await safeInsert("print_jobs", payload);
-    const job = inserted.rows[0];
-
-    return res.json({
-      ok: true,
-      jobId: job.id,
-      printerId: job.printer_id,
-      status: job.status,
-      customerFileUrl: buildPublicFileUrl(public_file_token),
-      publicJobId: public_job_id,
-    });
-  } catch (e) {
-    console.error("❌ /api/upload-json error:", e);
-    return res.status(500).json({ ok: false, error: "Server error", details: e.message });
-  }
-});
-
-/**
- * WORKER: Get next job for a printer
- * - Auth: x-worker-key OR x-printer-key
- * - Query: ?printerId=PP-USA-001
- * Behavior:
- * - Finds oldest queued job for that printer
- * - Marks it "printing" BEFORE returning (prevents reprint loops)
- */
-app.get("/api/worker/next", requireWorkerAuth, async (req, res) => {
-  try {
-    const printerId = (req.query.printerId || req.query.printer_id || "").toString().trim();
-    if (!printerId) return res.status(400).json({ ok: false, error: "printerId is required" });
-
-    // Grab next queued job
-    const { rows } = await pool.query(
-      `SELECT *
-       FROM print_jobs
-       WHERE printer_id = $1 AND status = 'queued'
-       ORDER BY created_at ASC, id ASC
-       LIMIT 1`,
-      [printerId]
-    );
-
-    if (rows.length === 0) return res.json({ ok: true, job: null });
+    const { sql, vals } = buildInsert("print_jobs", schema, data);
+    const { rows } = await pool.query(sql, vals);
 
     const job = rows[0];
 
-    // Mark as printing before returning
-    const updated = await safeUpdateById("print_jobs", job.id, {
+    // Return customer file link + jobId
+    return res.json({
+      ok: true,
+      jobId: job?.id,
+      status: job?.status || "queued",
+      customerFileUrl: schema.public_file_token ? customerFileUrl : null,
+      publicJobId: schema.public_job_id ? publicJobId : null,
+    });
+  } catch (e) {
+    return res.status(500).json({ ok: false, error: "Server error", details: e.message });
+  }
+}
+
+// Main upload endpoint
+app.post("/api/upload", upload.single("file"), handleUpload);
+
+// Compatibility route (old Shopify HTML)
+app.post("/api/print-jobs/upload", upload.single("file"), handleUpload);
+
+// ---------- Worker endpoints ----------
+/**
+ * Worker polls this:
+ * GET /api/worker/next?printerId=PP-USA-001
+ * Auth header: x-worker-key: <WORKER_KEY>
+ */
+app.get("/api/worker/next", requireWorkerAuth, async (req, res) => {
+  const printerId = String(req.query.printerId || "").trim();
+  if (!printerId) return res.status(400).json({ ok: false, error: "Missing printerId" });
+
+  const client = await pool.connect();
+  try {
+    const schema = await getTableSchema("print_jobs");
+
+    await client.query("BEGIN");
+
+    // Lock and pick the next queued job for this printer
+    const q = `
+      SELECT *
+      FROM print_jobs
+      WHERE printer_id = $1 AND status = 'queued'
+      ORDER BY created_at ASC NULLS LAST, id ASC
+      FOR UPDATE SKIP LOCKED
+      LIMIT 1
+    `;
+    const { rows } = await client.query(q, [printerId]);
+
+    if (!rows[0]) {
+      await client.query("COMMIT");
+      return res.json({ ok: true, job: null });
+    }
+
+    const job = rows[0];
+
+    // Mark as printing before returning (prevents loops)
+    const upd = pickExistingColumns(schema, {
       status: "printing",
-      updated_at: nowIso(),
+      updated_at: new Date().toISOString(),
     });
 
-    const updatedJob = updated.rows[0] || job;
+    if (Object.keys(upd).length > 0) {
+      const { sql, vals } = buildUpdate(
+        "print_jobs",
+        schema,
+        upd,
+        "id = $" + (Object.keys(upd).length + 1),
+        [job.id]
+      );
+      await client.query(sql, vals);
+    }
 
-    // Provide both base64 and a public link (worker can choose)
-    // Token might be in columns or in meta
-    const metaObj = safeJsonParse(updatedJob.meta, {});
-    const token =
-      updatedJob.public_file_token ||
-      metaObj.public_file_token ||
-      null;
+    await client.query("COMMIT");
 
     return res.json({
       ok: true,
       job: {
-        id: updatedJob.id,
-        printer_id: updatedJob.printer_id,
-        status: updatedJob.status,
-        pages: updatedJob.pages,
-        copies: updatedJob.copies,
-        color: updatedJob.color,
-        file_name: updatedJob.file_name,
-        mime_type: updatedJob.mime_type,
-        file_base64: updatedJob.file_base64, // existing workflow
-        details: updatedJob.details,
-        customerFileUrl: token ? buildPublicFileUrl(token) : null,
+        id: job.id,
+        printer_id: job.printer_id,
+        status: "printing",
+        pages: job.pages || 1,
+        copies: job.copies || 1,
+        color: job.color === true, // boolean
+        file_name: job.original_name || job.file_name || "file",
+        mime_type: job.mime_type || "application/octet-stream",
+        file_base64: job.file_base64, // worker needs this to print
+        details: job.details ?? null,
       },
     });
   } catch (e) {
-    console.error("❌ /api/worker/next error:", e);
+    try { await client.query("ROLLBACK"); } catch {}
     return res.status(500).json({ ok: false, error: "Server error", details: e.message });
+  } finally {
+    client.release();
   }
 });
 
 /**
- * WORKER: Update job status
+ * Worker reports status:
+ * POST /api/worker/update
  * Body: { id, status, error }
- * status: printing | done | error
  */
 app.post("/api/worker/update", requireWorkerAuth, async (req, res) => {
   try {
-    const { id, status, error } = req.body || {};
-    if (!id) return res.status(400).json({ ok: false, error: "id is required" });
-    if (!status) return res.status(400).json({ ok: false, error: "status is required" });
+    const id = toInt(req.body.id, 0);
+    const status = String(req.body.status || "").trim();
+    const errorMsg = String(req.body.error || "").trim();
 
-    const payload = {
-      status: status.toString(),
-      updated_at: nowIso(),
+    if (!id) return res.status(400).json({ ok: false, error: "Missing id" });
+    if (!status) return res.status(400).json({ ok: false, error: "Missing status" });
+
+    const schema = await getTableSchema("print_jobs");
+
+    // Update fields safely
+    const now = new Date().toISOString();
+
+    // If meta is JSON/JSONB, wrap worker error info as JSON
+    const workerMeta = safeJsonString(
+      { worker_update: { status, error: errorMsg || null, at: now } },
+      { worker_update: { status, error: errorMsg || null, at: now } }
+    );
+
+    const desired = {
+      status,
+      updated_at: now,
+      meta: workerMeta,
     };
 
-    // If your table has "details", we can append error text there safely
-    if (status === "error" && error) {
-      // Do not overwrite existing details if not desired; store in meta if possible
-      const { rows } = await pool.query(`SELECT meta, details FROM print_jobs WHERE id=$1`, [id]);
-      const current = rows[0] || {};
-      const metaObj = safeJsonParse(current.meta, {}) || {};
-      metaObj.last_error = error.toString();
-      metaObj.error_at = nowIso();
+    const data = pickExistingColumns(schema, desired);
 
-      payload.meta = JSON.stringify(metaObj);
+    const { sql, vals } = buildUpdate(
+      "print_jobs",
+      schema,
+      data,
+      "id = $" + (Object.keys(data).length + 1),
+      [id]
+    );
 
-      // optionally append to details
-      const existingDetails = (current.details || "").toString();
-      payload.details = existingDetails
-        ? `${existingDetails}\n\n[ERROR] ${error.toString()}`
-        : `[ERROR] ${error.toString()}`;
-    }
-
-    const updated = await safeUpdateById("print_jobs", id, payload);
-    return res.json({ ok: true, job: updated.rows[0] });
+    const { rows } = await pool.query(sql, vals);
+    return res.json({ ok: true, job: rows[0] || null });
   } catch (e) {
-    console.error("❌ /api/worker/update error:", e);
     return res.status(500).json({ ok: false, error: "Server error", details: e.message });
-  }
-});
-
-/**
- * PUBLIC: Download file by token (customerFileUrl)
- * Works even if you don't have public_file_token column:
- * - checks public_file_token column if present
- * - else checks meta.public_file_token
- */
-app.get("/public/file/:token", async (req, res) => {
-  try {
-    const token = (req.params.token || "").toString().trim();
-    if (!token) return res.status(400).send("Missing token");
-
-    // Try direct column match first
-    let jobRow = null;
-
-    // Check if column exists before querying it (avoid SQL error)
-    const cols = await getTableColumns("print_jobs");
-    if (cols.has("public_file_token")) {
-      const q1 = await pool.query(
-        `SELECT id, file_name, mime_type, file_base64, meta
-         FROM print_jobs
-         WHERE public_file_token = $1
-         ORDER BY id DESC
-         LIMIT 1`,
-        [token]
-      );
-      jobRow = q1.rows[0] || null;
-    }
-
-    // Fallback: search meta text if needed (meta may be JSON text)
-    if (!jobRow) {
-      const q2 = await pool.query(
-        `SELECT id, file_name, mime_type, file_base64, meta
-         FROM print_jobs
-         WHERE meta::text ILIKE $1
-         ORDER BY id DESC
-         LIMIT 1`,
-        [`%${token}%`]
-      );
-
-      const candidate = q2.rows[0] || null;
-      if (candidate) {
-        const metaObj = safeJsonParse(candidate.meta, {});
-        if (metaObj && metaObj.public_file_token === token) jobRow = candidate;
-      }
-    }
-
-    if (!jobRow) return res.status(404).send("File not found");
-
-    const fileName = jobRow.file_name || "download";
-    const mimeType = jobRow.mime_type || "application/octet-stream";
-    const base64 = jobRow.file_base64;
-
-    if (!base64) return res.status(404).send("File missing");
-
-    const buf = Buffer.from(base64, "base64");
-    res.setHeader("Content-Type", mimeType);
-    res.setHeader("Content-Disposition", `inline; filename="${fileName}"`);
-    return res.send(buf);
-  } catch (e) {
-    console.error("❌ /public/file/:token error:", e);
-    return res.status(500).send("Server error");
   }
 });
 
 // ---------- Start ----------
 app.listen(PORT, () => {
-  console.log(`✅ mstaf-core-1 listening on port ${PORT}`);
-  if (BASE_URL) console.log(`✅ BASE_URL = ${BASE_URL}`);
-  console.log(`✅ WORKER_KEY set? ${WORKER_KEY ? "YES" : "NO"}`);
+  console.log("✅ MSTAF Core running on port", PORT);
+  console.log("✅ BASE_URL:", BASE_URL);
+  console.log("✅ WORKER_KEY:", WORKER_KEY ? "(set)" : "(missing)");
 });
