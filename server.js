@@ -568,8 +568,312 @@ app.post("/api/dispatch/email", requireDashboardAuth, async (req, res) => {
     console.error("POST /api/dispatch/email error:", e);
     return res.status(500).json({ ok: false, error: "Server error" });
   }
-});
+  });
+app.get("/dashboard", (req, res) => {
+  res.setHeader("Content-Type", "text/html; charset=utf-8");
+  res.send(`<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>MSTAF Worker Dashboard</title>
+  <style>
+    body{font-family:system-ui,Segoe UI,Roboto,Arial,sans-serif;background:#0b1220;color:#e5e7eb;margin:0}
+    .wrap{max-width:1200px;margin:0 auto;padding:24px}
+    .card{background:#0f1a33;border:1px solid #223055;border-radius:14px;padding:16px;box-shadow:0 10px 30px rgba(0,0,0,.25)}
+    h1{margin:0 0 10px;font-size:22px}
+    .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin:12px 0}
+    input,select,button{border-radius:10px;border:1px solid #2a3a66;background:#0b1633;color:#e5e7eb;padding:10px 12px}
+    button{cursor:pointer;border:0;background:#facc15;color:#111827;font-weight:800}
+    button.secondary{background:#1f2a44;color:#e5e7eb;border:1px solid #2a3a66}
+    table{width:100%;border-collapse:collapse;margin-top:12px}
+    th,td{border-bottom:1px solid #223055;padding:10px;text-align:left;font-size:13px;vertical-align:top}
+    th{color:#93c5fd;font-size:12px;text-transform:uppercase;letter-spacing:.06em}
+    .pill{display:inline-block;padding:3px 8px;border-radius:999px;font-size:12px;border:1px solid #2a3a66}
+    .ok{color:#34d399}.bad{color:#fb7185}
+    .small{font-size:12px;color:#a3b1d6}
+    a{color:#93c5fd}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="card">
+      <h1>✅ MSTAF Worker Dashboard (Dispatch Queue)</h1>
+      <div class="small">Shows copy #2+ jobs routed to humans. Requires DASHBOARD_KEY.</div>
 
+      <div class="row">
+        <button class="secondary" onclick="setKey()">Set/Change Key</button>
+        <label class="small">Status:</label>
+        <select id="status">
+          <option value="pending">pending</option>
+          <option value="claimed">claimed</option>
+          <option value="assigned">assigned</option>
+          <option value="emailed">emailed</option>
+          <option value="done">done</option>
+        </select>
+        <button onclick="load()">Refresh</button>
+        <span id="msg" class="small"></span>
+      </div>
+
+      <table>
+        <thead>
+          <tr>
+            <th>Dispatch</th>
+            <th>Job</th>
+            <th>Copy</th>
+            <th>Specs</th>
+            <th>Customer</th>
+            <th>Instructions</th>
+            <th>Assigned Printer</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody id="tb"></tbody>
+      </table>
+    </div>
+  </div>
+
+<script>
+const BASE = location.origin;
+
+function getKey(){
+  return localStorage.getItem("DASH_KEY") || "";
+}
+function setKey(){
+  const v = prompt("Enter DASHBOARD_KEY (from Render env):", getKey() || "");
+  if (v !== null) localStorage.setItem("DASH_KEY", v.trim());
+}
+
+async function api(path, method="GET", body=null){
+  const key = getKey();
+  if(!key) throw new Error("Missing DASHBOARD_KEY. Click Set/Change Key.");
+  const opts = { method, headers: { "x-dashboard-key": key } };
+  if(body){
+    opts.headers["Content-Type"] = "application/json";
+    opts.body = JSON.stringify(body);
+  }
+  const r = await fetch(BASE + path, opts);
+  const t = await r.text();
+  let j; try{ j = JSON.parse(t); }catch{ j = { ok:false, raw:t }; }
+  if(!r.ok) throw new Error((j && j.error) ? j.error : ("HTTP "+r.status));
+  return j;
+}
+
+function esc(s){ return String(s||"").replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m])); }
+
+async function load(){
+  const msg = document.getElementById("msg");
+  msg.textContent = "Loading...";
+  msg.className = "small";
+  const status = document.getElementById("status").value;
+  try{
+    const j = await api("/api/dispatch/queue?status=" + encodeURIComponent(status) + "&limit=200");
+    render(j.items || []);
+    msg.textContent = "Loaded " + (j.count || 0) + " items";
+  }catch(e){
+    msg.textContent = "Error: " + e.message;
+    msg.className = "small bad";
+  }
+}
+
+function render(items){
+  const tb = document.getElementById("tb");
+  tb.innerHTML = "";
+  for(const it of items){
+    const specs = \`\${esc(it.paper_size)} / \${esc(it.color_mode)} / pages:\${esc(it.pages)} / $ \${esc(it.price)}\`;
+    const cust = \`\${esc(it.customer_city||"")} \${esc(it.customer_country||"")}<div class="small">\${esc(it.customer_email||"")}</div>\`;
+    const instr = \`<div class="small">\${esc(it.instructions||"")}</div>\`;
+    const assigned = esc(it.assigned_printer_id||"");
+    const agent = (it.agent_name||it.agent_location) ? \`<div class="small">Agent: \${esc(it.agent_name||"")} (\${esc(it.agent_location||"")})</div>\` : "";
+    const row = document.createElement("tr");
+    row.innerHTML = \`
+      <td><span class="pill">\${esc(it.status)}</span><div class="small">#\${esc(it.id)}</div>\${agent}</td>
+      <td>#\${esc(it.job_id)}</td>
+      <td>\${esc(it.copy_index)}</td>
+      <td>\${specs}</td>
+      <td>\${cust}</td>
+      <td>\${instr}</td>
+      <td><div class="small">\${assigned || "-"}</div></td>
+      <td>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <input style="width:180px" id="p_\${it.id}" placeholder="Printer ID (e.g. PP-NG-LAG-001)" value="\${assigned}"/>
+          <button onclick="assign(\${it.id})">Assign</button>
+        </div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">
+          <input style="width:180px" id="e_\${it.id}" placeholder="Email for link" value="\${esc(it.customer_email||"")}"/>
+          <button class="secondary" onclick="sendLink(\${it.id})">Create Link</button>
+        </div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">
+          <input style="width:180px" id="n_\${it.id}" placeholder="Notes (optional)"/>
+          <button class="secondary" onclick="done(\${it.id})">Mark Done</button>
+        </div>
+      </td>
+    \`;
+    tb.appendChild(row);
+  }
+}
+
+async function assign(dispatchId){
+  const printerId = document.getElementById("p_"+dispatchId).value.trim();
+  if(!printerId) return alert("Enter printer ID");
+  await api("/api/dispatch/assign","POST",{dispatchId, printerId});
+  await load();
+}
+
+async function sendLink(dispatchId){
+  const email = document.getElementById("e_"+dispatchId).value.trim();
+  if(!email) return alert("Enter email");
+  const r = await api("/api/dispatch/email","POST",{dispatchId, email});
+  alert("Secure link generated:\\n" + r.link);
+  await load();
+}
+
+async function done(dispatchId){
+  const notes = document.getElementById("n_"+dispatchId).value.trim();
+  await api("/api/dispatch/done","POST",{dispatchId, notes});
+  await load();
+}
+
+setKey();
+load();
+</script>
+</body>
+</html>`);
+});
+app.get("/agent", (req, res) => {
+  res.setHeader("Content-Type", "text/html; charset=utf-8");
+  res.send(`<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>MSTAF Agent Dashboard</title>
+  <style>
+    body{font-family:system-ui,Segoe UI,Roboto,Arial,sans-serif;background:#0b1220;color:#e5e7eb;margin:0}
+    .wrap{max-width:1100px;margin:0 auto;padding:24px}
+    .card{background:#0f1a33;border:1px solid #223055;border-radius:14px;padding:16px;box-shadow:0 10px 30px rgba(0,0,0,.25)}
+    h1{margin:0 0 10px;font-size:22px}
+    .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin:12px 0}
+    input,select,button{border-radius:10px;border:1px solid #2a3a66;background:#0b1633;color:#e5e7eb;padding:10px 12px}
+    button{cursor:pointer;border:0;background:#34d399;color:#06251a;font-weight:900}
+    button.secondary{background:#1f2a44;color:#e5e7eb;border:1px solid #2a3a66}
+    table{width:100%;border-collapse:collapse;margin-top:12px}
+    th,td{border-bottom:1px solid #223055;padding:10px;text-align:left;font-size:13px;vertical-align:top}
+    th{color:#93c5fd;font-size:12px;text-transform:uppercase;letter-spacing:.06em}
+    .small{font-size:12px;color:#a3b1d6}
+    .pill{display:inline-block;padding:3px 8px;border-radius:999px;font-size:12px;border:1px solid #2a3a66}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="card">
+      <h1>🧑🏽‍💼 MSTAF Agent Dashboard</h1>
+      <div class="small">Agents claim pending dispatch items and coordinate printing. Uses DASHBOARD_KEY for now.</div>
+
+      <div class="row">
+        <button class="secondary" onclick="setKey()">Set/Change Key</button>
+        <input id="agentName" placeholder="Your name (agent)" style="width:220px"/>
+        <input id="agentLoc" placeholder="City, Country" style="width:220px"/>
+        <button onclick="load()">Refresh</button>
+        <span id="msg" class="small"></span>
+      </div>
+
+      <table>
+        <thead>
+          <tr>
+            <th>Dispatch</th>
+            <th>Job</th>
+            <th>Copy</th>
+            <th>Specs</th>
+            <th>Customer</th>
+            <th>Instructions</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody id="tb"></tbody>
+      </table>
+    </div>
+  </div>
+
+<script>
+const BASE = location.origin;
+function getKey(){ return localStorage.getItem("DASH_KEY") || ""; }
+function setKey(){
+  const v = prompt("Enter DASHBOARD_KEY (from Render env):", getKey() || "");
+  if (v !== null) localStorage.setItem("DASH_KEY", v.trim());
+}
+async function api(path, method="GET", body=null){
+  const key = getKey();
+  if(!key) throw new Error("Missing DASHBOARD_KEY. Click Set/Change Key.");
+  const opts = { method, headers: { "x-dashboard-key": key } };
+  if(body){
+    opts.headers["Content-Type"] = "application/json";
+    opts.body = JSON.stringify(body);
+  }
+  const r = await fetch(BASE + path, opts);
+  const t = await r.text();
+  let j; try{ j = JSON.parse(t); }catch{ j = { ok:false, raw:t }; }
+  if(!r.ok) throw new Error((j && j.error) ? j.error : ("HTTP "+r.status));
+  return j;
+}
+function esc(s){ return String(s||"").replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m])); }
+
+async function load(){
+  const msg = document.getElementById("msg");
+  msg.textContent = "Loading...";
+  try{
+    const j = await api("/api/dispatch/queue?status=pending&limit=200");
+    render(j.items || []);
+    msg.textContent = "Loaded " + (j.count || 0) + " pending items";
+  }catch(e){
+    msg.textContent = "Error: " + e.message;
+  }
+}
+
+function render(items){
+  const tb = document.getElementById("tb");
+  tb.innerHTML = "";
+  for(const it of items){
+    const specs = \`\${esc(it.paper_size)} / \${esc(it.color_mode)} / pages:\${esc(it.pages)} / $ \${esc(it.price)}\`;
+    const cust = \`\${esc(it.customer_city||"")} \${esc(it.customer_country||"")}<div class="small">\${esc(it.customer_email||"")}</div>\`;
+    const instr = \`<div class="small">\${esc(it.instructions||"")}</div>\`;
+    const row = document.createElement("tr");
+    row.innerHTML = \`
+      <td><span class="pill">\${esc(it.status)}</span><div class="small">#\${esc(it.id)}</div></td>
+      <td>#\${esc(it.job_id)}</td>
+      <td>\${esc(it.copy_index)}</td>
+      <td>\${specs}</td>
+      <td>\${cust}</td>
+      <td>\${instr}</td>
+      <td>
+        <input id="notes_\${it.id}" placeholder="Notes (optional)" style="width:220px"/>
+        <div style="margin-top:8px">
+          <button onclick="claim(\${it.id})">Claim</button>
+        </div>
+      </td>
+    \`;
+    tb.appendChild(row);
+  }
+}
+
+async function claim(dispatchId){
+  const agentName = document.getElementById("agentName").value.trim();
+  const agentLocation = document.getElementById("agentLoc").value.trim();
+  const notes = document.getElementById("notes_"+dispatchId).value.trim();
+
+  if(!agentName || !agentLocation) return alert("Enter your name and location first.");
+
+  await api("/api/dispatch/claim","POST",{dispatchId, agentName, agentLocation, notes});
+  alert("Claimed. Now a worker can Assign printer or Email link.");
+  await load();
+}
+
+setKey();
+load();
+</script>
+</body>
+</html>`);
+});
 // -------------------- Startup (NO top-level await) --------------------
 (async () => {
   try {
