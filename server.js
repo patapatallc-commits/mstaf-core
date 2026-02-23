@@ -123,7 +123,7 @@ function verifyToken(token) {
 }
 
 async function ensureSchema() {
-  // We create ONLY tables we control. This avoids “missing column” crashes.
+  // Create tables we control (safe)
   await pool.query(`
     CREATE TABLE IF NOT EXISTS files (
       id BIGSERIAL PRIMARY KEY,
@@ -135,14 +135,15 @@ async function ensureSchema() {
     );
   `);
 
+  // Create print_jobs if missing (but DO NOT assume columns exist if table already exists)
   await pool.query(`
     CREATE TABLE IF NOT EXISTS print_jobs (
       id BIGSERIAL PRIMARY KEY,
-      status TEXT NOT NULL DEFAULT 'queued', -- queued | printing | done | error | dispatch
+      status TEXT NOT NULL DEFAULT 'queued',
       printer_id TEXT NOT NULL DEFAULT '${DEFAULT_AUTO_PRINTER_ID}',
-      service_type TEXT NOT NULL DEFAULT 'print', -- print | edit | etc
-      paper_size TEXT NOT NULL DEFAULT 'A4', -- A4 | LETTER | A3 | CARD
-      color_mode TEXT NOT NULL DEFAULT 'bw', -- bw | color
+      service_type TEXT NOT NULL DEFAULT 'print',
+      paper_size TEXT NOT NULL DEFAULT 'A4',
+      color_mode TEXT NOT NULL DEFAULT 'bw',
       pages INTEGER NOT NULL DEFAULT 1,
       copies INTEGER NOT NULL DEFAULT 1,
       price NUMERIC(10,2) NOT NULL DEFAULT 0.00,
@@ -155,9 +156,77 @@ async function ensureSchema() {
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       error_message TEXT
     );
-    CREATE INDEX IF NOT EXISTS idx_print_jobs_status_created ON print_jobs(status, created_at);
-    CREATE INDEX IF NOT EXISTS idx_print_jobs_printer_status ON print_jobs(printer_id, status, created_at);
   `);
+
+  // ✅ AUTO-MIGRATE old tables (this is your missing "price" fix)
+  // Run each ALTER separately so one failure doesn't stop all.
+  const alters = [
+    `ALTER TABLE print_jobs ADD COLUMN IF NOT EXISTS price NUMERIC(10,2) NOT NULL DEFAULT 0.00`,
+    `ALTER TABLE print_jobs ADD COLUMN IF NOT EXISTS service_type TEXT`,
+    `ALTER TABLE print_jobs ADD COLUMN IF NOT EXISTS paper_size TEXT`,
+    `ALTER TABLE print_jobs ADD COLUMN IF NOT EXISTS color_mode TEXT`,
+    `ALTER TABLE print_jobs ADD COLUMN IF NOT EXISTS pages INTEGER NOT NULL DEFAULT 1`,
+    `ALTER TABLE print_jobs ADD COLUMN IF NOT EXISTS copies INTEGER NOT NULL DEFAULT 1`,
+    `ALTER TABLE print_jobs ADD COLUMN IF NOT EXISTS instructions TEXT`,
+    `ALTER TABLE print_jobs ADD COLUMN IF NOT EXISTS customer_email TEXT`,
+    `ALTER TABLE print_jobs ADD COLUMN IF NOT EXISTS customer_city TEXT`,
+    `ALTER TABLE print_jobs ADD COLUMN IF NOT EXISTS customer_country TEXT`,
+    `ALTER TABLE print_jobs ADD COLUMN IF NOT EXISTS file_id BIGINT`,
+    `ALTER TABLE print_jobs ADD COLUMN IF NOT EXISTS error_message TEXT`,
+    `ALTER TABLE print_jobs ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()`,
+    `ALTER TABLE print_jobs ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()`,
+    `ALTER TABLE print_jobs ADD COLUMN IF NOT EXISTS printer_id TEXT`,
+    `ALTER TABLE print_jobs ADD COLUMN IF NOT EXISTS status TEXT`,
+  ];
+
+  for (const sql of alters) {
+    try {
+      await pool.query(sql);
+    } catch (e) {
+      console.error("ensureSchema ALTER failed:", sql, e.message);
+      // continue
+    }
+  }
+
+  // ✅ Ensure indexes exist (safe)
+  try {
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_print_jobs_status_created ON print_jobs(status, created_at)`);
+  } catch (e) {
+    console.error("index create failed:", e.message);
+  }
+  try {
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_print_jobs_printer_status ON print_jobs(printer_id, status, created_at)`);
+  } catch (e) {
+    console.error("index create failed:", e.message);
+  }
+
+  // Dispatch queue
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS dispatch_queue (
+      id BIGSERIAL PRIMARY KEY,
+      job_id BIGINT REFERENCES print_jobs(id),
+      copy_index INTEGER NOT NULL DEFAULT 2,
+      assigned_printer_id TEXT,
+      status TEXT NOT NULL DEFAULT 'pending',
+      customer_email TEXT,
+      secure_token TEXT,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+  `);
+
+  try {
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_dispatch_status_created ON dispatch_queue(status, created_at DESC)`);
+  } catch (e) {
+    console.error("dispatch index failed:", e.message);
+  }
+  try {
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_dispatch_job ON dispatch_queue(job_id)`);
+  } catch (e) {
+    console.error("dispatch index failed:", e.message);
+  }
+}
+    
 
   await pool.query(`
     CREATE TABLE IF NOT EXISTS dispatch_queue (
