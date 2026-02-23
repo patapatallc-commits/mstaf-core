@@ -1,21 +1,22 @@
 "use strict";
 
 /**
- * MSTAF Core Server — Stable Print Pipeline + Auto DB Migration + Dispatch APIs
+ * MSTAF Core Server — Stable Upload + Worker Printing + Auto DB Migration + Dispatch APIs
  *
- * Fixes:
- * - Upload 500 due to missing columns (e.g., price) by auto-migrating schema on startup.
- * - Worker "fileUrl undefined" by always generating a secure file URL from stored file_id.
- * - Avoids top-level await (Render deploy crash).
+ * Key fixes:
+ * - Auto-migrate existing DB schema (adds missing columns like price) WITHOUT psql access.
+ * - Worker can poll EITHER /api/worker/next OR /api/worker/next-job (compatibility).
+ * - Always returns a valid fileUrl (never undefined) from stored file_id.
+ * - No top-level await (Render deploy safe).
  *
- * Requirements (Render env):
+ * Required env (Render):
  * - DATABASE_URL
- * - WORKER_KEY   (same value as worker .env WORKER_KEY / PRINTER_KEY)
+ * - WORKER_KEY  (same value as worker .env WORKER_KEY / PRINTER_KEY)
  *
  * Optional:
  * - PUBLIC_BASE_URL or BASE_URL (recommended: https://mstaf-core-1.onrender.com)
  * - DEFAULT_AUTO_PRINTER_ID (default: PP-USA-001)
- * - DASHBOARD_KEY (required if you want dispatch dashboard endpoints secured)
+ * - DASHBOARD_KEY (for dispatch endpoints auth)
  * - DISPATCH_LINK_SECRET (defaults to WORKER_KEY)
  */
 
@@ -154,7 +155,7 @@ async function safeQuery(sql) {
  * Works even if you cannot run psql.
  */
 async function ensureSchema() {
-  // Files table (store uploaded file bytes)
+  // Files table
   await safeQuery(`
     CREATE TABLE IF NOT EXISTS files (
       id BIGSERIAL PRIMARY KEY,
@@ -166,11 +167,11 @@ async function ensureSchema() {
     );
   `);
 
-  // print_jobs table (create if missing)
+  // print_jobs table
   await safeQuery(`
     CREATE TABLE IF NOT EXISTS print_jobs (
       id BIGSERIAL PRIMARY KEY,
-      status TEXT NOT NULL DEFAULT 'queued',
+      status TEXT,
       printer_id TEXT,
       service_type TEXT,
       paper_size TEXT,
@@ -189,7 +190,7 @@ async function ensureSchema() {
     );
   `);
 
-  // ✅ MIGRATE: add missing columns safely (fixes your "price does not exist" error)
+  // ✅ MIGRATE: add missing columns safely
   const alters = [
     `ALTER TABLE print_jobs ADD COLUMN IF NOT EXISTS status TEXT`,
     `ALTER TABLE print_jobs ADD COLUMN IF NOT EXISTS printer_id TEXT`,
@@ -208,10 +209,9 @@ async function ensureSchema() {
     `ALTER TABLE print_jobs ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()`,
     `ALTER TABLE print_jobs ADD COLUMN IF NOT EXISTS error_message TEXT`,
   ];
-
   for (const sql of alters) await safeQuery(sql);
 
-  // Defaults for existing rows (avoid NULLs causing logic problems)
+  // Defaults for existing rows
   await safeQuery(`UPDATE print_jobs SET status='queued' WHERE status IS NULL;`);
   await safeQuery(`UPDATE print_jobs SET printer_id='${DEFAULT_AUTO_PRINTER_ID}' WHERE printer_id IS NULL;`);
   await safeQuery(`UPDATE print_jobs SET service_type='print' WHERE service_type IS NULL;`);
@@ -225,7 +225,7 @@ async function ensureSchema() {
   await safeQuery(`CREATE INDEX IF NOT EXISTS idx_print_jobs_status_created ON print_jobs(status, created_at);`);
   await safeQuery(`CREATE INDEX IF NOT EXISTS idx_print_jobs_printer_status ON print_jobs(printer_id, status, created_at);`);
 
-  // dispatch queue
+  // dispatch queue table
   await safeQuery(`
     CREATE TABLE IF NOT EXISTS dispatch_queue (
       id BIGSERIAL PRIMARY KEY,
@@ -248,18 +248,6 @@ app.get("/health", (req, res) => res.json({ ok: true, time: new Date().toISOStri
 
 /**
  * Shopify upload endpoint (multipart/form-data)
- * Fields supported:
- * - file (required)
- * - printerId / printer_id
- * - paperSize / paper_size
- * - colorMode / color_mode / color
- * - pages
- * - copies
- * - serviceType / service_type
- * - instructions / details
- * - email / customer_email
- * - city / customer_city
- * - country / customer_country
  */
 app.post("/api/upload", upload.single("file"), async (req, res) => {
   try {
@@ -279,7 +267,7 @@ app.post("/api/upload", upload.single("file"), async (req, res) => {
 
     const price = computePrice({ pages, copies, colorMode });
 
-    // Save file in DB
+    // Save file
     const fileIns = await pool.query(
       `INSERT INTO files(original_name, mime_type, size_bytes, data)
        VALUES ($1,$2,$3,$4) RETURNING id`,
@@ -321,7 +309,7 @@ app.post("/api/upload", upload.single("file"), async (req, res) => {
 
     const jobId = jobIns.rows[0].id;
 
-    // create dispatch queue entries for copy #2..N
+    // Dispatch queue entries for copy #2..N
     if (copies > 1) {
       for (let i = 2; i <= copies; i++) {
         await pool.query(
@@ -332,7 +320,7 @@ app.post("/api/upload", upload.single("file"), async (req, res) => {
       }
     }
 
-    // Customer preview link (public)
+    // Public preview link
     const token = makeToken({ jobId, fileId, ts: Date.now() });
     const publicFileUrl = `${baseUrl(req)}/api/public/file/${encodeURIComponent(token)}`;
 
@@ -358,15 +346,14 @@ app.post("/api/upload", upload.single("file"), async (req, res) => {
   }
 });
 
-// Backward compatible alias if your Shopify HTML calls this:
+// Backward-compatible alias if Shopify calls this:
 app.post("/api/print/upload", upload.single("file"), (req, res) => {
   req.url = "/api/upload";
   app._router.handle(req, res);
 });
 
 /**
- * Public file link (no worker key needed)
- * Used for customer preview
+ * Public file link for preview (no worker key)
  */
 app.get("/api/public/file/:token", async (req, res) => {
   try {
@@ -391,7 +378,6 @@ app.get("/api/public/file/:token", async (req, res) => {
 
 /**
  * Worker secure file download endpoint
- * Worker uses x-worker-key header
  */
 app.get("/api/files/:fileId", requireWorkerAuth, async (req, res) => {
   try {
@@ -410,15 +396,12 @@ app.get("/api/files/:fileId", requireWorkerAuth, async (req, res) => {
 });
 
 /**
- * Worker: get next job
- * Returns:
- * { ok:true, job:null } OR { ok:true, job:{... fileUrl ...} }
+ * Internal handler for "next job" (used by both routes)
  */
-app.get("/api/worker/next", requireWorkerAuth, async (req, res) => {
+async function handleWorkerNext(req, res) {
   try {
     const printerId = String(req.query.printerId || DEFAULT_AUTO_PRINTER_ID).trim();
 
-    // accept old status naming too
     const r = await pool.query(
       `
       SELECT * FROM print_jobs
@@ -446,9 +429,8 @@ app.get("/api/worker/next", requireWorkerAuth, async (req, res) => {
       return res.json({ ok: false, error: "job_missing_file_id", jobId: jobRow.id });
     }
 
-    // ✅ Always generate a real file URL (no undefined)
-    const token = makeToken({ jobId: jobRow.id, fileId: jobRow.file_id, ts: Date.now() });
-    const fileUrl = `${baseUrl(req)}/api/files/${jobRow.file_id}?token=${encodeURIComponent(token)}`;
+    // Always generate a real file URL (never undefined)
+    const fileUrl = `${baseUrl(req)}/api/files/${jobRow.file_id}`;
 
     return res.json({
       ok: true,
@@ -458,7 +440,7 @@ app.get("/api/worker/next", requireWorkerAuth, async (req, res) => {
         paperSize: jobRow.paper_size,
         colorMode: jobRow.color_mode,
         pages: jobRow.pages,
-        copies: 1, // copy #1 only (dispatch handles other copies)
+        copies: 1, // auto print copy #1 only
         price: jobRow.price,
         instructions: jobRow.instructions || "",
         fileId: jobRow.file_id,
@@ -467,10 +449,20 @@ app.get("/api/worker/next", requireWorkerAuth, async (req, res) => {
       },
     });
   } catch (e) {
-    console.error("GET /api/worker/next error:", e);
+    console.error("GET worker next error:", e);
     return res.status(500).json({ ok: false, error: "Server error" });
   }
-});
+}
+
+/**
+ * Worker: get next job (NEW)
+ */
+app.get("/api/worker/next", requireWorkerAuth, handleWorkerNext);
+
+/**
+ * Worker: get next job (OLD compatibility)
+ */
+app.get("/api/worker/next-job", requireWorkerAuth, handleWorkerNext);
 
 app.post("/api/worker/done", requireWorkerAuth, async (req, res) => {
   try {
@@ -571,7 +563,6 @@ app.post("/api/dispatch/email", requireDashboardAuth, async (req, res) => {
       [email, token, dispatchId]
     );
 
-    // Stub: return link even if SMTP not configured
     return res.json({ ok: true, email, link, note: "Email sending not configured; link generated." });
   } catch (e) {
     console.error("POST /api/dispatch/email error:", e);
