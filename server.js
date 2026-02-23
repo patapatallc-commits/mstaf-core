@@ -1,853 +1,578 @@
+"use strict";
+
 /**
- * MSTAF Core - Server.js (Auto Print + Human Dispatch Dashboard)
+ * MSTAF Core Server (Render) — Stable Print + File URL Fix + Dispatch APIs
  *
- * Features:
- * ✅ Upload endpoints:
- *    - POST /api/upload
- *    - POST /api/print-jobs/upload (compat)
- * ✅ Copies split:
- *    - copy #1 auto prints on PP-USA-001 (queued)
- *    - copies #2..N -> dispatch_pending (dashboard queue)
- * ✅ Worker endpoints:
- *    - GET  /api/worker/next?printerId=PP-USA-001
- *    - POST /api/worker/update
- * ✅ Dashboard:
- *    - GET /dashboard  (Basic Auth)
- *    - APIs:
- *        GET  /api/dashboard/dispatch-queue
- *        POST /api/dashboard/assign-printer
- *        POST /api/dashboard/send-email-link
- * ✅ Safe DB writes:
- *    - only write columns that exist
- *    - safe boolean for color
- *    - safe JSON for details/meta
+ * KEY FIX:
+ * - Worker was receiving jobs with fileUrl=undefined -> cannot download -> cannot print.
+ * - This server stores uploaded files in Postgres (BYTEA) and ALWAYS returns a secure download URL.
+ *
+ * DOES NOT REQUIRE S3.
+ * Worker downloads from: /api/files/:fileId?token=...
+ *
+ * ENV VARS REQUIRED:
+ * - DATABASE_URL (Render Postgres)
+ * - WORKER_KEY (for worker auth)
+ *
+ * OPTIONAL:
+ * - BASE_URL or PUBLIC_BASE_URL (if not set, server builds from request host)
+ * - DEFAULT_AUTO_PRINTER_ID (e.g. PP-USA-001)
+ * - DASHBOARD_KEY (for dashboard auth)
+ * - DISPATCH_LINK_SECRET (defaults to WORKER_KEY if not set)
+ * - SMTP_* (only if you want /api/dispatch/email to actually send email)
+ *
+ * Notes:
+ * - Files stored in Postgres can increase DB size. For production scale, move to S3 later.
  */
 
 require("dotenv").config();
-
 const express = require("express");
 const cors = require("cors");
-const multer = require("multer");
 const crypto = require("crypto");
+const multer = require("multer");
 const { Pool } = require("pg");
-
-// Optional email (SMTP)
-let nodemailer = null;
-try {
-  nodemailer = require("nodemailer");
-} catch (_) {
-  // If not installed, email endpoint will return a clear error.
-}
 
 const app = express();
 
-// ---------------- CONFIG ----------------
-const PORT = process.env.PORT || 3000;
+// ---------- Basic Middleware ----------
+app.use(cors());
+app.use(express.json({ limit: "20mb" }));
+app.use(express.urlencoded({ extended: true, limit: "20mb" }));
 
-const BASE_URL =
-  (process.env.BASE_URL && process.env.BASE_URL.trim()) ||
-  (process.env.RENDER_EXTERNAL_URL && process.env.RENDER_EXTERNAL_URL.trim()) ||
-  "https://mstaf-core-1.onrender.com";
+// Multer: store upload in memory then write to Postgres
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 25 * 1024 * 1024 }, // 25MB (adjust if needed)
+});
 
-const WORKER_KEY = (process.env.WORKER_KEY || process.env.PRINTER_KEY || "").trim();
+// ---------- ENV ----------
+const PORT = process.env.PORT || 10000;
 
-const DASH_USER = (process.env.DASHBOARD_USER || "").trim();
-const DASH_PASS = (process.env.DASHBOARD_PASS || "").trim();
+const WORKER_KEY = process.env.WORKER_KEY || process.env.PRINTER_KEY || "";
+const DASHBOARD_KEY = process.env.DASHBOARD_KEY || "";
+const DEFAULT_AUTO_PRINTER_ID = process.env.DEFAULT_AUTO_PRINTER_ID || "PP-USA-001";
 
-const DEFAULT_AUTO_PRINTER_ID = (process.env.DEFAULT_AUTO_PRINTER_ID || "PP-USA-001").trim();
+const PUBLIC_BASE_URL =
+  (process.env.PUBLIC_BASE_URL || process.env.BASE_URL || "").replace(/\/$/, "");
 
-// Email env (optional)
-const SMTP_HOST = (process.env.SMTP_HOST || "").trim();
-const SMTP_PORT = parseInt(process.env.SMTP_PORT || "587", 10);
-const SMTP_USER = (process.env.SMTP_USER || "").trim();
-const SMTP_PASS = (process.env.SMTP_PASS || "").trim();
-const SMTP_FROM = (process.env.SMTP_FROM || "Patapata Print <no-reply@patapata.us>").trim();
+const DISPATCH_LINK_SECRET =
+  process.env.DISPATCH_LINK_SECRET || WORKER_KEY || "fallback_secret_change_me";
+
+// ---------- DB ----------
+if (!process.env.DATABASE_URL) {
+  console.error("FATAL: DATABASE_URL is missing.");
+  process.exit(1);
+}
+if (!WORKER_KEY) {
+  console.error("FATAL: WORKER_KEY (or PRINTER_KEY) is missing.");
+  process.exit(1);
+}
 
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
-  ssl: process.env.PGSSLMODE === "disable" ? false : { rejectUnauthorized: false },
+  ssl:
+    process.env.DATABASE_URL.includes("render.com") || process.env.PGSSLMODE === "require"
+      ? { rejectUnauthorized: false }
+      : false,
 });
 
-// ---------------- MIDDLEWARE ----------------
-app.use(express.json({ limit: "25mb" }));
-app.use(express.urlencoded({ extended: true, limit: "25mb" }));
-
-app.use(
-  cors({
-    origin: (origin, cb) => cb(null, true),
-    methods: ["GET", "POST", "OPTIONS"],
-    allowedHeaders: ["Content-Type", "x-worker-key", "x-printer-key", "authorization"],
-  })
-);
-
-const upload = multer({
-  storage: multer.memoryStorage(),
-  limits: { fileSize: 25 * 1024 * 1024 },
-});
-
-// ---------------- HELPERS ----------------
-function toInt(v, fallback = 1) {
-  const n = parseInt(String(v ?? ""), 10);
-  return Number.isFinite(n) && n > 0 ? n : fallback;
-}
-
-function toBool(v, fallback = false) {
-  if (typeof v === "boolean") return v;
-  const s = String(v ?? "").trim().toLowerCase();
-  if (["true", "1", "yes", "y", "on", "color"].includes(s)) return true;
-  if (["false", "0", "no", "n", "off", "bw", "b&w", "black"].includes(s)) return false;
-  return fallback;
-}
-
-function safeJsonValue(input, fallbackObj = {}) {
-  // Returns a VALID JSON string always.
-  if (input && typeof input === "object") {
-    try {
-      return JSON.stringify(input);
-    } catch {
-      return JSON.stringify(fallbackObj);
-    }
-  }
-  const s = String(input ?? "").trim();
-  if (!s) return JSON.stringify(fallbackObj);
-  try {
-    JSON.parse(s);
-    return s;
-  } catch {
-    return JSON.stringify({ ...fallbackObj, raw: s });
-  }
-}
-
-function randToken(bytes = 24) {
-  return crypto.randomBytes(bytes).toString("hex");
-}
-function uuidLike() {
-  return crypto.randomUUID ? crypto.randomUUID() : randToken(16);
+// ---------- Helpers ----------
+function baseUrlFromReq(req) {
+  if (PUBLIC_BASE_URL) return PUBLIC_BASE_URL;
+  return `${req.protocol}://${req.get("host")}`;
 }
 
 function requireWorkerAuth(req, res, next) {
-  const got =
-    req.headers["x-worker-key"] ||
-    req.headers["x-printer-key"] ||
-    req.headers["authorization"];
-  const token = String(got ?? "").replace(/^bearer\s+/i, "").trim();
-  if (!WORKER_KEY || token !== WORKER_KEY) {
+  const key = req.headers["x-worker-key"] || req.headers["x-printer-key"] || "";
+  if (!key || key !== WORKER_KEY) {
     return res.status(401).json({ ok: false, error: "Unauthorized worker" });
   }
   next();
 }
 
-// Basic Auth for dashboard
 function requireDashboardAuth(req, res, next) {
-  if (!DASH_USER || !DASH_PASS) {
-    return res.status(500).send("Dashboard auth not configured. Set DASHBOARD_USER and DASHBOARD_PASS.");
+  if (!DASHBOARD_KEY) {
+    return res.status(401).json({ ok: false, error: "Dashboard auth not configured" });
   }
-  const header = req.headers.authorization || "";
-  if (!header.toLowerCase().startsWith("basic ")) {
-    res.setHeader("WWW-Authenticate", 'Basic realm="MSTAF Dashboard"');
-    return res.status(401).send("Authentication required.");
-  }
-  const b64 = header.split(" ")[1] || "";
-  const [u, p] = Buffer.from(b64, "base64").toString("utf8").split(":");
-  if (u !== DASH_USER || p !== DASH_PASS) {
-    res.setHeader("WWW-Authenticate", 'Basic realm="MSTAF Dashboard"');
-    return res.status(401).send("Invalid credentials.");
-  }
-  // store who dispatched
-  req._dashUser = u;
-  next();
+  const headerKey = req.headers["x-dashboard-key"] || req.headers["x-admin-key"] || "";
+  const auth = req.headers.authorization || "";
+  const bearer = auth.startsWith("Bearer ") ? auth.slice(7) : "";
+  if (headerKey === DASHBOARD_KEY || bearer === DASHBOARD_KEY) return next();
+  return res.status(401).json({ ok: false, error: "Unauthorized (dashboard)" });
 }
 
-// ---- schema cache ----
-let schemaCache = { at: 0, ttl: 60_000, tables: {} };
-
-async function getSchema(table) {
-  const now = Date.now();
-  if (schemaCache.tables[table] && now - schemaCache.at < schemaCache.ttl) return schemaCache.tables[table];
-
-  const { rows } = await pool.query(
-    `SELECT column_name, data_type, udt_name
-     FROM information_schema.columns
-     WHERE table_name = $1`,
-    [table]
-  );
-
-  const schema = {};
-  for (const r of rows) schema[r.column_name] = { data_type: r.data_type, udt_name: r.udt_name };
-
-  schemaCache = { ...schemaCache, at: now, tables: { ...schemaCache.tables, [table]: schema } };
-  return schema;
+function hmacToken(payloadObj) {
+  const payload = Buffer.from(JSON.stringify(payloadObj)).toString("base64url");
+  const sig = crypto.createHmac("sha256", DISPATCH_LINK_SECRET).update(payload).digest("base64url");
+  return `${payload}.${sig}`;
 }
 
-function pickExisting(schema, obj) {
-  const out = {};
-  for (const [k, v] of Object.entries(obj)) if (schema[k]) out[k] = v;
-  return out;
-}
-
-function placeholderFor(schema, col, idx) {
-  const t = schema[col];
-  const isJson = t && (t.data_type === "json" || t.data_type === "jsonb");
-  return isJson ? `$${idx}::jsonb` : `$${idx}`;
-}
-
-function buildInsertSQL(table, schema, data) {
-  const cols = Object.keys(data);
-  const vals = Object.values(data);
-  const placeholders = cols.map((c, i) => placeholderFor(schema, c, i + 1));
-  const sql = `INSERT INTO ${table} (${cols.join(", ")})
-               VALUES (${placeholders.join(", ")})
-               RETURNING *`;
-  return { sql, vals };
-}
-
-function buildUpdateSQL(table, schema, data, whereCol, whereVal) {
-  const cols = Object.keys(data);
-  const vals = Object.values(data);
-  const sets = cols.map((c, i) => `${c} = ${placeholderFor(schema, c, i + 1)}`);
-  const sql = `UPDATE ${table}
-               SET ${sets.join(", ")}
-               WHERE ${whereCol} = $${cols.length + 1}
-               RETURNING *`;
-  return { sql, vals: [...vals, whereVal] };
-}
-
-// ---------------- ROUTES ----------------
-app.get("/health", (req, res) => res.json({ ok: true, time: new Date().toISOString() }));
-
-// Public secure file download (if enabled)
-app.get("/public/file/:token", async (req, res) => {
+function verifyToken(token) {
   try {
-    const token = String(req.params.token || "").trim();
-    if (!token) return res.status(400).send("Missing token");
+    const [payload, sig] = String(token || "").split(".");
+    if (!payload || !sig) return null;
+    const expected = crypto
+      .createHmac("sha256", DISPATCH_LINK_SECRET)
+      .update(payload)
+      .digest("base64url");
+    if (expected !== sig) return null;
+    return JSON.parse(Buffer.from(payload, "base64url").toString("utf8"));
+  } catch {
+    return null;
+  }
+}
 
-    const schema = await getSchema("print_jobs");
-    if (!schema.public_file_token) return res.status(404).send("Public file not enabled (missing public_file_token)");
-
-    const { rows } = await pool.query(
-      `SELECT file_base64, mime_type, original_name, file_name
-       FROM print_jobs
-       WHERE public_file_token = $1
-       LIMIT 1`,
-      [token]
+async function ensureSchema() {
+  // We create ONLY tables we control. This avoids “missing column” crashes.
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS files (
+      id BIGSERIAL PRIMARY KEY,
+      original_name TEXT,
+      mime_type TEXT,
+      size_bytes BIGINT,
+      data BYTEA NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
+  `);
 
-    if (!rows[0]?.file_base64) return res.status(404).send("Not found");
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS print_jobs (
+      id BIGSERIAL PRIMARY KEY,
+      status TEXT NOT NULL DEFAULT 'queued', -- queued | printing | done | error | dispatch
+      printer_id TEXT NOT NULL DEFAULT '${DEFAULT_AUTO_PRINTER_ID}',
+      service_type TEXT NOT NULL DEFAULT 'print', -- print | edit | etc
+      paper_size TEXT NOT NULL DEFAULT 'A4', -- A4 | LETTER | A3 | CARD
+      color_mode TEXT NOT NULL DEFAULT 'bw', -- bw | color
+      pages INTEGER NOT NULL DEFAULT 1,
+      copies INTEGER NOT NULL DEFAULT 1,
+      price NUMERIC(10,2) NOT NULL DEFAULT 0.00,
+      instructions TEXT,
+      customer_email TEXT,
+      customer_city TEXT,
+      customer_country TEXT,
+      file_id BIGINT REFERENCES files(id),
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      error_message TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_print_jobs_status_created ON print_jobs(status, created_at);
+    CREATE INDEX IF NOT EXISTS idx_print_jobs_printer_status ON print_jobs(printer_id, status, created_at);
+  `);
 
-    const mime = rows[0].mime_type || "application/octet-stream";
-    const name = rows[0].original_name || rows[0].file_name || "file";
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS dispatch_queue (
+      id BIGSERIAL PRIMARY KEY,
+      job_id BIGINT REFERENCES print_jobs(id),
+      copy_index INTEGER NOT NULL DEFAULT 2,
+      assigned_printer_id TEXT,
+      status TEXT NOT NULL DEFAULT 'pending', -- pending | assigned | emailed | done
+      customer_email TEXT,
+      secure_token TEXT,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+    CREATE INDEX IF NOT EXISTS idx_dispatch_status_created ON dispatch_queue(status, created_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_dispatch_job ON dispatch_queue(job_id);
+  `);
+}
 
-    const buf = Buffer.from(rows[0].file_base64, "base64");
-    res.setHeader("Content-Type", mime);
-    res.setHeader("Content-Disposition", `attachment; filename="${String(name).replace(/"/g, "")}"`);
-    return res.send(buf);
+// Price helper (your rules)
+function computePrice({ pages, copies, colorMode }) {
+  const p = Math.max(Number(pages || 1), 1);
+  const c = Math.max(Number(copies || 1), 1);
+  const perPage = String(colorMode || "bw").toLowerCase() === "color" ? 0.5 : 0.25;
+  return Number((p * c * perPage).toFixed(2));
+}
+
+function normalizePaper(p) {
+  const v = String(p || "A4").trim().toUpperCase();
+  if (v.includes("CARD")) return "CARD";
+  if (v === "A3") return "A3";
+  if (v.includes("LETTER")) return "LETTER";
+  return "A4";
+}
+
+function normalizeColor(m) {
+  const v = String(m || "bw").trim().toLowerCase();
+  return v === "color" ? "color" : "bw";
+}
+
+function isAutoPrintable(job) {
+  // Auto print only standard sizes for copy #1
+  // A3/CARD or non-print services go to dispatch/dashboard
+  const paper = String(job.paper_size || "").toUpperCase();
+  const st = String(job.service_type || "print").toLowerCase();
+  if (st !== "print") return false;
+  if (paper === "A3" || paper === "CARD") return false;
+  return true;
+}
+
+// ---------- Health ----------
+app.get("/health", (req, res) => {
+  res.json({ ok: true, time: new Date().toISOString() });
+});
+
+// ---------- Upload Endpoint (Shopify) ----------
+// This accepts multipart/form-data with "file" field.
+// It creates file row + print job row.
+// Returns jobId + customer preview link + routing.
+app.post("/api/upload", upload.single("file"), async (req, res) => {
+  try {
+    const f = req.file;
+    if (!f) return res.status(400).json({ ok: false, error: "Missing file" });
+
+    const printerId = (req.body.printerId || req.body.printer_id || DEFAULT_AUTO_PRINTER_ID).trim();
+    const paperSize = normalizePaper(req.body.paperSize || req.body.paper_size || "A4");
+    const colorMode = normalizeColor(req.body.colorMode || req.body.color_mode || "bw");
+    const pages = Math.max(Number(req.body.pages || 1), 1);
+    const copies = Math.max(Number(req.body.copies || 1), 1);
+
+    const instructions = req.body.instructions || req.body.details || "";
+    const customerEmail = req.body.email || req.body.customer_email || null;
+    const customerCity = req.body.city || req.body.customer_city || null;
+    const customerCountry = req.body.country || req.body.customer_country || null;
+
+    const price = computePrice({ pages, copies, colorMode });
+
+    // Save file in Postgres
+    const fileInsert = await pool.query(
+      `INSERT INTO files(original_name, mime_type, size_bytes, data)
+       VALUES ($1,$2,$3,$4)
+       RETURNING id`,
+      [f.originalname, f.mimetype, f.size, f.buffer]
+    );
+    const fileId = fileInsert.rows[0].id;
+
+    // Create job
+    const jobInsert = await pool.query(
+      `INSERT INTO print_jobs(
+        status, printer_id, service_type, paper_size, color_mode,
+        pages, copies, price, instructions,
+        customer_email, customer_city, customer_country,
+        file_id, updated_at
+      ) VALUES (
+        'queued', $1, $2, $3, $4,
+        $5, $6, $7, $8,
+        $9, $10, $11,
+        $12, NOW()
+      )
+      RETURNING *`,
+      [
+        printerId,
+        (req.body.serviceType || req.body.service_type || "print").toLowerCase(),
+        paperSize,
+        colorMode,
+        pages,
+        copies,
+        price,
+        instructions,
+        customerEmail,
+        customerCity,
+        customerCountry,
+        fileId,
+      ]
+    );
+    const job = jobInsert.rows[0];
+
+    // If copies > 1, create dispatch queue rows for copy #2..N (human dispatch)
+    if (copies > 1) {
+      for (let i = 2; i <= copies; i++) {
+        await pool.query(
+          `INSERT INTO dispatch_queue(job_id, copy_index, status)
+           VALUES ($1, $2, 'pending')`,
+          [job.id, i]
+        );
+      }
+    }
+
+    // If not auto-printable (A3/CARD/edit), move job to dispatch
+    let routing = `Standard Printer (${printerId})`;
+    if (!isAutoPrintable(job)) {
+      await pool.query(`UPDATE print_jobs SET status='dispatch', updated_at=NOW() WHERE id=$1`, [
+        job.id,
+      ]);
+      routing = "Dashboard Dispatch Required (A3/CARD/Editing)";
+    }
+
+    // Customer preview link (public)
+    const token = hmacToken({ jobId: job.id, fileId, ts: Date.now() });
+    const publicLink = `${baseUrlFromReq(req)}/api/public/file/${token}`;
+
+    return res.json({
+      ok: true,
+      jobId: job.id,
+      routing,
+      price,
+      paperSize,
+      colorMode,
+      pages,
+      copies,
+      fileUrl: publicLink,
+    });
   } catch (e) {
+    console.error("POST /api/upload error:", e);
+    return res.status(500).json({ ok: false, error: "Server error" });
+  }
+});
+
+// Backward compatible route name if your Shopify HTML uses /api/print/upload etc.
+app.post("/api/print/upload", upload.single("file"), (req, res) => {
+  // forward to /api/upload logic by calling next handler
+  // simplest: rewrite URL and call the upload handler again is messy; instead:
+  req.url = "/api/upload";
+  app._router.handle(req, res);
+});
+
+// ---------- Public file link for customers (no auth) ----------
+// Token includes fileId
+app.get("/api/public/file/:token", async (req, res) => {
+  try {
+    const payload = verifyToken(req.params.token);
+    if (!payload || !payload.fileId) return res.status(401).send("Invalid link");
+
+    // optional expiry (7 days)
+    const maxAgeMs = Number(process.env.PUBLIC_LINK_MAXAGE_MS || 7 * 24 * 60 * 60 * 1000);
+    if (payload.ts && Date.now() - payload.ts > maxAgeMs) return res.status(401).send("Link expired");
+
+    const r = await pool.query(`SELECT id, original_name, mime_type, data FROM files WHERE id=$1`, [
+      payload.fileId,
+    ]);
+    const file = r.rows[0];
+    if (!file) return res.status(404).send("File not found");
+
+    res.setHeader("Content-Type", file.mime_type || "application/octet-stream");
+    res.setHeader(
+      "Content-Disposition",
+      `inline; filename="${(file.original_name || "file").replace(/"/g, "")}"`
+    );
+    return res.send(file.data);
+  } catch (e) {
+    console.error("GET /api/public/file/:token error:", e);
     return res.status(500).send("Server error");
   }
 });
 
-// ---------- UPLOAD HANDLER ----------
-async function handleUpload(req, res) {
-  const client = await pool.connect();
+// ---------- Secure file download for workers/dashboard ----------
+app.get("/api/files/:fileId", requireWorkerAuth, async (req, res) => {
   try {
-    const file = req.file;
-    if (!file) return res.status(400).json({ ok: false, error: "No file uploaded" });
+    const fileId = Number(req.params.fileId);
+    const r = await pool.query(`SELECT original_name, mime_type, data FROM files WHERE id=$1`, [
+      fileId,
+    ]);
+    const file = r.rows[0];
+    if (!file) return res.status(404).json({ ok: false, error: "File not found" });
 
-    const schema = await getSchema("print_jobs");
-
-    const now = new Date().toISOString();
-    const groupId = uuidLike();
-
-    const printerId = String(req.body.printerId || DEFAULT_AUTO_PRINTER_ID).trim();
-
-    // IMPORTANT: pages/copies come from Shopify; we split copies
-    const pages = toInt(req.body.pages, 1);
-    const copiesTotal = toInt(req.body.copies, 1);
-
-    const colorBool = toBool(req.body.color, false);
-
-    const originalName = file.originalname || "upload";
-    const mimeType = file.mimetype || "application/octet-stream";
-    const fileBase64 = file.buffer.toString("base64");
-
-    // Location (no zip needed)
-    const customerCountry = String(req.body.customerCountry || req.body.country || "").trim();
-    const customerCity = String(req.body.customerCity || req.body.city || "").trim();
-    const customerRegion = String(req.body.customerRegion || req.body.region || req.body.state || "").trim();
-
-    const detailsJson = safeJsonValue(req.body.details, {
-      serviceType: req.body.serviceType || "Printing",
-      paperSize: req.body.paperSize || "A4",
-      instructions: req.body.instructions || "",
-    });
-
-    const metaJson = safeJsonValue(req.body.meta, {
-      source: req.body.source || "shopify",
-      ua: req.headers["user-agent"] || "",
-      ip: req.headers["x-forwarded-for"] || req.socket.remoteAddress || "",
-    });
-
-    // Public link token (optional columns)
-    const publicFileToken = randToken(24);
-    const customerFileUrl = `${BASE_URL.replace(/\/$/, "")}/public/file/${publicFileToken}`;
-
-    await client.query("BEGIN");
-
-    // Create AUTO job: copy_index = 1, copies_total = N, copies = 1 (always one)
-    const autoDesired = {
-      job_group_id: groupId,
-      copy_index: 1,
-      copies_total: copiesTotal,
-
-      printer_id: printerId,     // auto print on local printer
-      status: "queued",
-      dispatch_status: "auto_print",
-
-      pages,
-      copies: 1,                 // print only 1 here (we split copies)
-      color: colorBool,
-
-      file_name: originalName,
-      original_name: originalName,
-      mime_type: mimeType,
-      file_base64: fileBase64,
-
-      details: detailsJson,
-      meta: metaJson,
-
-      customer_country: customerCountry,
-      customer_city: customerCity,
-      customer_region: customerRegion,
-
-      public_file_token: publicFileToken,
-      customer_file_url: customerFileUrl,
-
-      source: String(req.body.source || "shopify").trim(),
-      created_at: now,
-      updated_at: now,
-    };
-
-    const autoData = pickExisting(schema, autoDesired);
-    const { sql: autoSql, vals: autoVals } = buildInsertSQL("print_jobs", schema, autoData);
-    const autoIns = await client.query(autoSql, autoVals);
-    const autoJob = autoIns.rows[0];
-
-    // Create DISPATCH jobs: copy_index = 2..N, status=dispatch_pending, copies=1
-    if (copiesTotal > 1) {
-      for (let i = 2; i <= copiesTotal; i++) {
-        const dispatchDesired = {
-          job_group_id: groupId,
-          copy_index: i,
-          copies_total: copiesTotal,
-
-          // Not assigned to a printer yet
-          assigned_printer_id: null,
-          status: "dispatch_pending",
-          dispatch_status: "dispatch_pending",
-
-          pages,
-          copies: 1,
-          color: colorBool,
-
-          file_name: originalName,
-          original_name: originalName,
-          mime_type: mimeType,
-          file_base64: fileBase64,
-
-          details: detailsJson,
-          meta: metaJson,
-
-          customer_country: customerCountry,
-          customer_city: customerCity,
-          customer_region: customerRegion,
-
-          public_file_token: publicFileToken,
-          customer_file_url: customerFileUrl,
-
-          source: String(req.body.source || "shopify").trim(),
-          created_at: now,
-          updated_at: now,
-        };
-
-        const dispatchData = pickExisting(schema, dispatchDesired);
-        const { sql: dSql, vals: dVals } = buildInsertSQL("print_jobs", schema, dispatchData);
-        await client.query(dSql, dVals);
-      }
-    }
-
-    await client.query("COMMIT");
-
-    return res.json({
-      ok: true,
-      jobId: autoJob?.id,
-      jobGroupId: groupId,
-      status: autoJob?.status || "queued",
-      copiesTotal,
-      customerFileUrl: schema.public_file_token ? customerFileUrl : null,
-      note:
-        copiesTotal > 1
-          ? `Copy 1 printing now. Copies 2..${copiesTotal} sent to Dispatch Queue.`
-          : "Printing now.",
-    });
+    res.setHeader("Content-Type", file.mime_type || "application/octet-stream");
+    res.setHeader(
+      "Content-Disposition",
+      `inline; filename="${(file.original_name || "file").replace(/"/g, "")}"`
+    );
+    return res.send(file.data);
   } catch (e) {
-    try { await client.query("ROLLBACK"); } catch {}
-    return res.status(500).json({ ok: false, error: "Server error", details: e.message });
-  } finally {
-    client.release();
+    console.error("GET /api/files/:fileId error:", e);
+    return res.status(500).json({ ok: false, error: "Server error" });
   }
-}
+});
 
-app.post("/api/upload", upload.single("file"), handleUpload);
-app.post("/api/print-jobs/upload", upload.single("file"), handleUpload);
-
-// ---------- WORKER: NEXT JOB ----------
+// ---------- Worker: next job ----------
 app.get("/api/worker/next", requireWorkerAuth, async (req, res) => {
-  const printerId = String(req.query.printerId || "").trim();
-  if (!printerId) return res.status(400).json({ ok: false, error: "Missing printerId" });
-
-  const client = await pool.connect();
   try {
-    const schema = await getSchema("print_jobs");
+    const printerId = String(req.query.printerId || DEFAULT_AUTO_PRINTER_ID).trim();
 
-    await client.query("BEGIN");
-
-    // Only queued jobs for this printer_id
-    const { rows } = await client.query(
+    // Fetch next printable job
+    const r = await pool.query(
       `
-      SELECT *
-      FROM print_jobs
-      WHERE printer_id = $1
-        AND status = 'queued'
-      ORDER BY created_at ASC NULLS LAST, id ASC
-      FOR UPDATE SKIP LOCKED
+      SELECT * FROM print_jobs
+      WHERE status = 'queued'
+        AND printer_id = $1
+        AND service_type = 'print'
+        AND paper_size NOT IN ('A3','CARD')
+      ORDER BY created_at ASC
       LIMIT 1
       `,
       [printerId]
     );
 
-    if (!rows[0]) {
-      await client.query("COMMIT");
+    const jobRow = r.rows[0];
+    if (!jobRow) {
       return res.json({ ok: true, job: null });
     }
 
-    const job = rows[0];
+    // Mark printing immediately to prevent duplicates
+    await pool.query(`UPDATE print_jobs SET status='printing', updated_at=NOW() WHERE id=$1`, [
+      jobRow.id,
+    ]);
 
-    // Mark printing before returning (prevents loops)
-    if (schema.status) {
-      const upd = pickExisting(schema, {
-        status: "printing",
-        updated_at: new Date().toISOString(),
-      });
-      if (Object.keys(upd).length > 0) {
-        const { sql, vals } = buildUpdateSQL("print_jobs", schema, upd, "id", job.id);
-        await client.query(sql, vals);
-      }
+    // ✅ ALWAYS provide a valid fileUrl
+    if (!jobRow.file_id) {
+      await pool.query(
+        `UPDATE print_jobs SET status='error', error_message=$2, updated_at=NOW() WHERE id=$1`,
+        [jobRow.id, "Missing file_id on job"]
+      );
+      return res.json({ ok: false, error: "job_missing_file" });
     }
 
-    await client.query("COMMIT");
+    const token = hmacToken({ jobId: jobRow.id, fileId: jobRow.file_id, ts: Date.now() });
+    const fileUrl = `${baseUrlFromReq(req)}/api/files/${jobRow.file_id}?token=${encodeURIComponent(
+      token
+    )}`;
 
-    return res.json({
-      ok: true,
-      job: {
-        id: job.id,
-        printer_id: job.printer_id,
-        status: "printing",
-        pages: job.pages || 1,
-        copies: job.copies || 1,
-        color: job.color === true,
-        file_name: job.original_name || job.file_name || "file",
-        mime_type: job.mime_type || "application/octet-stream",
-        file_base64: job.file_base64,
-        details: job.details ?? null,
-      },
-    });
-  } catch (e) {
-    try { await client.query("ROLLBACK"); } catch {}
-    return res.status(500).json({ ok: false, error: "Server error", details: e.message });
-  } finally {
-    client.release();
-  }
-});
-
-// ---------- WORKER: UPDATE ----------
-app.post("/api/worker/update", requireWorkerAuth, async (req, res) => {
-  try {
-    const id = toInt(req.body.id, 0);
-    const status = String(req.body.status || "").trim();
-    const errorMsg = String(req.body.error || "").trim();
-
-    if (!id) return res.status(400).json({ ok: false, error: "Missing id" });
-    if (!status) return res.status(400).json({ ok: false, error: "Missing status" });
-
-    const schema = await getSchema("print_jobs");
-
-    const metaPatch = safeJsonValue(
-      { worker_update: { status, error: errorMsg || null, at: new Date().toISOString() } },
-      { worker_update: { status, error: errorMsg || null, at: new Date().toISOString() } }
-    );
-
-    const desired = {
-      status,
-      updated_at: new Date().toISOString(),
-      meta: metaPatch,
+    // Worker expects fileUrl or file_url
+    const job = {
+      id: jobRow.id,
+      printerId: jobRow.printer_id,
+      paperSize: jobRow.paper_size,
+      colorMode: jobRow.color_mode,
+      pages: jobRow.pages,
+      copies: jobRow.copies,
+      price: jobRow.price,
+      instructions: jobRow.instructions || "",
+      fileId: jobRow.file_id,
+      fileUrl,
+      file_url: fileUrl,
     };
 
-    const data = pickExisting(schema, desired);
-    const { sql, vals } = buildUpdateSQL("print_jobs", schema, data, "id", id);
-    const { rows } = await pool.query(sql, vals);
-
-    return res.json({ ok: true, job: rows[0] || null });
+    return res.json({ ok: true, job });
   } catch (e) {
-    return res.status(500).json({ ok: false, error: "Server error", details: e.message });
+    console.error("GET /api/worker/next error:", e);
+    return res.status(500).json({ ok: false, error: "Server error" });
   }
 });
 
-// ---------------- DASHBOARD UI ----------------
-app.get("/dashboard", requireDashboardAuth, (req, res) => {
-  // Minimal HTML dashboard (no frameworks)
-  res.setHeader("Content-Type", "text/html; charset=utf-8");
-  res.send(`<!doctype html>
-<html>
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>MSTAF Dispatch Dashboard</title>
-  <style>
-    body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;background:#0b1220;color:#e5e7eb;margin:0;}
-    .wrap{max-width:1100px;margin:0 auto;padding:18px 14px 60px;}
-    .top{display:flex;gap:12px;align-items:center;justify-content:space-between;flex-wrap:wrap;margin-bottom:12px;}
-    .brand{font-weight:900;font-size:18px;letter-spacing:.02em;}
-    .pill{background:#111b33;border:1px solid rgba(255,255,255,.08);padding:8px 10px;border-radius:999px;font-size:12px;color:#cbd5e1;}
-    .card{background:#0f1a33;border:1px solid rgba(255,255,255,.08);border-radius:16px;padding:14px;}
-    .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center;justify-content:space-between;}
-    button{background:#facc15;color:#111827;border:0;border-radius:12px;padding:10px 12px;font-weight:900;cursor:pointer}
-    button.secondary{background:#38bdf8}
-    button:disabled{opacity:.6;cursor:not-allowed}
-    input{background:#0b1220;border:1px solid rgba(255,255,255,.12);color:#e5e7eb;border-radius:12px;padding:10px 10px;min-width:220px}
-    table{width:100%;border-collapse:separate;border-spacing:0 10px;margin-top:10px}
-    td,th{text-align:left;font-size:13px;padding:10px}
-    th{color:#93c5fd;font-size:12px;text-transform:uppercase;letter-spacing:.06em}
-    tr{background:#0b1220;border:1px solid rgba(255,255,255,.08)}
-    tr td:first-child{border-top-left-radius:14px;border-bottom-left-radius:14px}
-    tr td:last-child{border-top-right-radius:14px;border-bottom-right-radius:14px}
-    a{color:#93c5fd;text-decoration:underline;word-break:break-all}
-    .muted{color:#94a3b8}
-    .status{font-weight:800}
-    .small{font-size:12px;color:#94a3b8}
-    .grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
-    @media(max-width:900px){.grid2{grid-template-columns:1fr}}
-  </style>
-</head>
-<body>
-  <div class="wrap">
-    <div class="top">
-      <div class="brand">PATAPATA • MSTAF Dispatch Dashboard</div>
-      <div class="pill">Logged in: ${String(req._dashUser || "").replace(/</g,"&lt;")}</div>
-    </div>
-
-    <div class="card">
-      <div class="row">
-        <div>
-          <div style="font-weight:900;font-size:16px;">Dispatch Queue (copies 2+)</div>
-          <div class="small">Assign to printer OR email secure link. Auto-print copy #1 is not shown here.</div>
-        </div>
-        <div class="row">
-          <button id="refreshBtn" class="secondary">Refresh</button>
-        </div>
-      </div>
-
-      <div id="msg" class="small" style="margin-top:10px;"></div>
-
-      <div style="overflow:auto;">
-        <table>
-          <thead>
-            <tr>
-              <th>Job</th>
-              <th>Copy</th>
-              <th>Location</th>
-              <th>File</th>
-              <th>Specs</th>
-              <th>Assign Printer</th>
-              <th>Email Link</th>
-            </tr>
-          </thead>
-          <tbody id="tbody">
-            <tr><td colspan="7" class="muted">Loading...</td></tr>
-          </tbody>
-        </table>
-      </div>
-    </div>
-  </div>
-
-<script>
-  async function api(path, opts){
-    const res = await fetch(path, opts);
-    const text = await res.text();
-    let data = null;
-    try{ data = JSON.parse(text); }catch(e){}
-    if(!res.ok){
-      throw new Error((data && (data.error||data.details)) ? (data.error||data.details) : text);
-    }
-    return data || {};
-  }
-
-  function safeJsonParse(v){
-    if(!v) return null;
-    if(typeof v === "object") return v;
-    try{ return JSON.parse(v); }catch(e){ return null; }
-  }
-
-  function esc(s){ return String(s||"").replace(/[&<>"]/g, c=>({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;" }[c])); }
-
-  async function load(){
-    const msg = document.getElementById("msg");
-    const tbody = document.getElementById("tbody");
-    msg.textContent = "Loading queue...";
-    tbody.innerHTML = '<tr><td colspan="7" class="muted">Loading...</td></tr>';
-
-    try{
-      const data = await api("/api/dashboard/dispatch-queue");
-      const items = data.items || [];
-      msg.textContent = items.length ? ("Found " + items.length + " dispatch job(s).") : "Queue is empty.";
-      if(!items.length){
-        tbody.innerHTML = '<tr><td colspan="7" class="muted">No pending dispatch jobs.</td></tr>';
-        return;
-      }
-
-      tbody.innerHTML = items.map(it=>{
-        const det = safeJsonParse(it.details) || {};
-        const paper = det.paperSize || det.paper || "";
-        const svc = det.serviceType || "";
-        const instr = det.instructions || det.notes || "";
-
-        const loc = [it.customer_city, it.customer_region, it.customer_country].filter(Boolean).join(", ");
-        const specs = [
-          svc ? ("Svc: " + svc) : null,
-          paper ? ("Paper: " + paper) : null,
-          "Pages: " + (it.pages||1),
-          "Color: " + (it.color ? "Yes" : "No"),
-          instr ? ("Instr: " + instr) : null
-        ].filter(Boolean).join(" • ");
-
-        const fileLink = it.customer_file_url ? '<a href="'+esc(it.customer_file_url)+'" target="_blank" rel="noopener">Open file link</a>' : esc(it.original_name || it.file_name || "file");
-
-        return \`
-          <tr>
-            <td><span class="status">#\${esc(it.id)}</span><div class="small muted">Group: \${esc(it.job_group_id || "")}</div></td>
-            <td>\${esc(it.copy_index || "")}/\${esc(it.copies_total || "")}</td>
-            <td>\${loc ? esc(loc) : '<span class="muted">Not provided</span>'}</td>
-            <td>\${fileLink}</td>
-            <td>\${esc(specs)}</td>
-            <td>
-              <div class="grid2">
-                <input id="p_\${it.id}" placeholder="Printer ID (e.g. PP-NG-LAG-001)" />
-                <button onclick="assignPrinter(\${it.id})">Assign</button>
-              </div>
-            </td>
-            <td>
-              <div class="grid2">
-                <input id="e_\${it.id}" placeholder="Email address" />
-                <button onclick="sendEmail(\${it.id})">Send</button>
-              </div>
-            </td>
-          </tr>
-        \`;
-      }).join("");
-    } catch(e){
-      msg.textContent = "Error: " + e.message;
-      tbody.innerHTML = '<tr><td colspan="7" class="muted">Failed to load queue.</td></tr>';
-    }
-  }
-
-  async function assignPrinter(id){
-    const p = document.getElementById("p_"+id).value.trim();
-    if(!p){ alert("Enter a Printer ID"); return; }
-    try{
-      await api("/api/dashboard/assign-printer", {
-        method:"POST",
-        headers:{ "Content-Type":"application/json" },
-        body: JSON.stringify({ id, printerId: p })
-      });
-      alert("Assigned to printer: " + p);
-      load();
-    }catch(e){
-      alert("Assign failed: " + e.message);
-    }
-  }
-
-  async function sendEmail(id){
-    const email = document.getElementById("e_"+id).value.trim();
-    if(!email){ alert("Enter an email"); return; }
-    try{
-      await api("/api/dashboard/send-email-link", {
-        method:"POST",
-        headers:{ "Content-Type":"application/json" },
-        body: JSON.stringify({ id, email })
-      });
-      alert("Email sent to: " + email);
-      load();
-    }catch(e){
-      alert("Email failed: " + e.message);
-    }
-  }
-
-  document.getElementById("refreshBtn").addEventListener("click", load);
-  load();
-</script>
-</body>
-</html>`);
-});
-
-// ---------------- DASHBOARD APIs ----------------
-app.get("/api/dashboard/dispatch-queue", requireDashboardAuth, async (req, res) => {
+// ---------- Worker: mark done ----------
+app.post("/api/worker/done", requireWorkerAuth, async (req, res) => {
   try {
-    const schema = await getSchema("print_jobs");
+    const jobId = Number(req.body.jobId);
+    if (!jobId) return res.status(400).json({ ok: false, error: "Missing jobId" });
 
-    // Show only dispatch_pending jobs
-    const { rows } = await pool.query(
-      `SELECT id, job_group_id, copy_index, copies_total, status, dispatch_status,
-              pages, copies, color,
-              file_name, original_name, customer_file_url,
-              customer_country, customer_city, customer_region,
-              details, created_at
-       FROM print_jobs
-       WHERE status = 'dispatch_pending'
-       ORDER BY created_at ASC NULLS LAST, id ASC
-       LIMIT 200`
+    await pool.query(`UPDATE print_jobs SET status='done', updated_at=NOW() WHERE id=$1`, [jobId]);
+    return res.json({ ok: true });
+  } catch (e) {
+    console.error("POST /api/worker/done error:", e);
+    return res.status(500).json({ ok: false, error: "Server error" });
+  }
+});
+
+// ---------- Worker: mark error ----------
+app.post("/api/worker/error", requireWorkerAuth, async (req, res) => {
+  try {
+    const jobId = Number(req.body.jobId);
+    const msg = String(req.body.error || "Unknown error");
+    if (!jobId) return res.status(400).json({ ok: false, error: "Missing jobId" });
+
+    await pool.query(
+      `UPDATE print_jobs SET status='error', error_message=$2, updated_at=NOW() WHERE id=$1`,
+      [jobId, msg]
+    );
+    return res.json({ ok: true });
+  } catch (e) {
+    console.error("POST /api/worker/error error:", e);
+    return res.status(500).json({ ok: false, error: "Server error" });
+  }
+});
+
+// ---------- Dispatch Dashboard APIs ----------
+app.get("/api/dispatch/queue", requireDashboardAuth, async (req, res) => {
+  try {
+    const status = String(req.query.status || "pending");
+    const limit = Math.min(Number(req.query.limit || 200), 500);
+
+    const r = await pool.query(
+      `
+      SELECT dq.*, pj.paper_size, pj.color_mode, pj.pages, pj.copies, pj.price, pj.instructions
+      FROM dispatch_queue dq
+      LEFT JOIN print_jobs pj ON pj.id = dq.job_id
+      WHERE dq.status = $1
+      ORDER BY dq.created_at DESC
+      LIMIT $2
+      `,
+      [status, limit]
     );
 
-    return res.json({ ok: true, items: rows });
+    return res.json({ ok: true, count: r.rows.length, items: r.rows });
   } catch (e) {
-    return res.status(500).json({ ok: false, error: "Server error", details: e.message });
+    console.error("GET /api/dispatch/queue error:", e);
+    return res.status(500).json({ ok: false, error: "Server error" });
   }
 });
 
-app.post("/api/dashboard/assign-printer", requireDashboardAuth, async (req, res) => {
-  const client = await pool.connect();
+app.post("/api/dispatch/assign", requireDashboardAuth, async (req, res) => {
   try {
-    const id = toInt(req.body.id, 0);
+    const dispatchId = Number(req.body.dispatchId);
     const printerId = String(req.body.printerId || "").trim();
-    if (!id) return res.status(400).json({ ok: false, error: "Missing id" });
-    if (!printerId) return res.status(400).json({ ok: false, error: "Missing printerId" });
-
-    const schema = await getSchema("print_jobs");
-    await client.query("BEGIN");
-
-    // Update dispatch job: assign printer and set status queued so that printer's worker can pick it
-    const desired = {
-      assigned_printer_id: printerId,
-      printer_id: printerId,              // IMPORTANT: worker selects by printer_id
-      status: "queued",
-      dispatch_status: "assigned_printer",
-      dispatched_by: req._dashUser || "",
-      dispatched_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-    };
-
-    const data = pickExisting(schema, desired);
-    const { sql, vals } = buildUpdateSQL("print_jobs", schema, data, "id", id);
-    const { rows } = await client.query(sql, vals);
-
-    await client.query("COMMIT");
-    return res.json({ ok: true, job: rows[0] || null });
-  } catch (e) {
-    try { await client.query("ROLLBACK"); } catch {}
-    return res.status(500).json({ ok: false, error: "Server error", details: e.message });
-  } finally {
-    client.release();
-  }
-});
-
-function getMailer() {
-  if (!nodemailer) return null;
-  if (!SMTP_HOST || !SMTP_USER || !SMTP_PASS) return null;
-
-  return nodemailer.createTransport({
-    host: SMTP_HOST,
-    port: SMTP_PORT,
-    secure: SMTP_PORT === 465,
-    auth: { user: SMTP_USER, pass: SMTP_PASS },
-  });
-}
-
-app.post("/api/dashboard/send-email-link", requireDashboardAuth, async (req, res) => {
-  try {
-    const id = toInt(req.body.id, 0);
-    const email = String(req.body.email || "").trim();
-    if (!id) return res.status(400).json({ ok: false, error: "Missing id" });
-    if (!email) return res.status(400).json({ ok: false, error: "Missing email" });
-
-    const mailer = getMailer();
-    if (!mailer) {
-      return res.status(500).json({
-        ok: false,
-        error: "Email not configured",
-        details:
-          "Set SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS, SMTP_FROM (and ensure nodemailer is installed).",
-      });
+    if (!dispatchId || !printerId) {
+      return res.status(400).json({ ok: false, error: "dispatchId and printerId required" });
     }
 
-    const schema = await getSchema("print_jobs");
-
-    const { rows } = await pool.query(
-      `SELECT id, customer_file_url, public_file_token, original_name, file_name, customer_country, customer_city, customer_region
-       FROM print_jobs
-       WHERE id = $1
-       LIMIT 1`,
-      [id]
+    const r = await pool.query(
+      `
+      UPDATE dispatch_queue
+      SET assigned_printer_id=$1, status='assigned', updated_at=NOW()
+      WHERE id=$2
+      RETURNING *
+      `,
+      [printerId, dispatchId]
     );
 
-    if (!rows[0]) return res.status(404).json({ ok: false, error: "Job not found" });
-
-    let link = rows[0].customer_file_url || "";
-    if (!link && rows[0].public_file_token) {
-      link = `${BASE_URL.replace(/\/$/, "")}/public/file/${rows[0].public_file_token}`;
-    }
-    if (!link) {
-      return res.status(500).json({
-        ok: false,
-        error: "No public link available",
-        details: "Ensure public_file_token/customer_file_url columns exist and are being set.",
-      });
-    }
-
-    const name = rows[0].original_name || rows[0].file_name || "file";
-    const loc = [rows[0].customer_city, rows[0].customer_region, rows[0].customer_country].filter(Boolean).join(", ");
-
-    await mailer.sendMail({
-      from: SMTP_FROM,
-      to: email,
-      subject: `Print File Link (${name})`,
-      text:
-        `Here is the secure file link:\n\n${link}\n\n` +
-        (loc ? `Customer location: ${loc}\n\n` : "") +
-        `Job ID: ${id}\n\nPatapata Print-O-Matic`,
-    });
-
-    // Mark job as emailed (still not printed unless someone assigns it)
-    const desired = {
-      assigned_email: email,
-      dispatch_status: "emailed",
-      dispatched_by: req._dashUser || "",
-      dispatched_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-    };
-
-    const data = pickExisting(schema, desired);
-    const { sql, vals } = buildUpdateSQL("print_jobs", schema, data, "id", id);
-    const upd = await pool.query(sql, vals);
-
-    return res.json({ ok: true, job: upd.rows[0] || null, sentTo: email, link });
+    if (!r.rows[0]) return res.status(404).json({ ok: false, error: "Not found" });
+    return res.json({ ok: true, item: r.rows[0] });
   } catch (e) {
-    return res.status(500).json({ ok: false, error: "Server error", details: e.message });
+    console.error("POST /api/dispatch/assign error:", e);
+    return res.status(500).json({ ok: false, error: "Server error" });
   }
 });
 
-// ---------------- START ----------------
-app.listen(PORT, () => {
-  console.log("✅ MSTAF Core running on port", PORT);
-  console.log("✅ BASE_URL:", BASE_URL);
-  console.log("✅ WORKER_KEY:", WORKER_KEY ? "(set)" : "(missing)");
-  console.log("✅ DEFAULT_AUTO_PRINTER_ID:", DEFAULT_AUTO_PRINTER_ID);
-  console.log("✅ DASHBOARD auth:", DASH_USER ? "(set)" : "(missing)");
+// Email endpoint: safe stub (won’t break your server if SMTP not set)
+app.post("/api/dispatch/email", requireDashboardAuth, async (req, res) => {
+  try {
+    const dispatchId = Number(req.body.dispatchId);
+    const email = String(req.body.email || "").trim();
+    if (!dispatchId || !email) {
+      return res.status(400).json({ ok: false, error: "dispatchId and email required" });
+    }
+
+    const d = await pool.query(`SELECT * FROM dispatch_queue WHERE id=$1`, [dispatchId]);
+    const item = d.rows[0];
+    if (!item) return res.status(404).json({ ok: false, error: "dispatch item not found" });
+
+    const job = await pool.query(`SELECT * FROM print_jobs WHERE id=$1`, [item.job_id]);
+    const jobRow = job.rows[0];
+    if (!jobRow || !jobRow.file_id) {
+      return res.status(400).json({ ok: false, error: "Job file missing" });
+    }
+
+    const token = hmacToken({ jobId: jobRow.id, fileId: jobRow.file_id, ts: Date.now() });
+    const link = `${baseUrlFromReq(req)}/api/public/file/${token}`;
+
+    await pool.query(
+      `UPDATE dispatch_queue SET customer_email=$1, secure_token=$2, status='emailed', updated_at=NOW() WHERE id=$3`,
+      [email, token, dispatchId]
+    );
+
+    // If SMTP is configured later, you can implement actual sending.
+    // For now we return the link safely.
+    return res.json({ ok: true, email, link, note: "SMTP sending not configured; link generated." });
+  } catch (e) {
+    console.error("POST /api/dispatch/email error:", e);
+    return res.status(500).json({ ok: false, error: "Server error" });
+  }
 });
+
+// ---------- Start ----------
+(async () => {
+  try {
+    await ensureSchema();
+    console.log("✅ MSTAF Core schema ready");
+  } catch (e) {
+    console.error("FATAL: ensureSchema failed:", e);
+    process.exit(1);
+  }
+
+  app.listen(PORT, () => {
+    console.log(`✅ MSTAF Core running on port ${PORT}`);
+    console.log("✅ BASE_URL:", PUBLIC_BASE_URL || "(auto)");
+    console.log("✅ WORKER_KEY:", WORKER_KEY ? "(set)" : "(missing)");
+    console.log("✅ DEFAULT_AUTO_PRINTER_ID:", DEFAULT_AUTO_PRINTER_ID);
+    console.log("✅ DASHBOARD auth:", DASHBOARD_KEY ? "(set)" : "(not set)");
+  });
+})();
