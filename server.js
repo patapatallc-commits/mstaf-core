@@ -277,7 +277,7 @@ app.post("/api/upload", upload.single("file"), async (req, res) => {
 
     // Create job
     const status = isAutoPrintable({ serviceType, paperSize }) ? "queued" : "dispatch";
-
+const autoPrintable = (status === "queued");
     const jobIns = await pool.query(
       `INSERT INTO print_jobs(
         status, printer_id, service_type, paper_size, color_mode,
@@ -309,16 +309,29 @@ app.post("/api/upload", upload.single("file"), async (req, res) => {
 
     const jobId = jobIns.rows[0].id;
 
-    // Dispatch queue entries for copy #2..N
-    if (copies > 1) {
-      for (let i = 2; i <= copies; i++) {
-        await pool.query(
-          `INSERT INTO dispatch_queue(job_id, copy_index, status, created_at, updated_at)
-           VALUES ($1,$2,'pending',NOW(),NOW())`,
-          [jobId, i]
-        );
-      }
-    }
+    // ✅ DISPATCH QUEUE CREATION (FIX)
+// If NOT auto-printable (A3/CARD/Editing), put ALL copies (1..copies) into dispatch_queue as pending.
+// If auto-printable (A4 print), auto-print copy #1 and dispatch only copy #2..copies.
+// ✅ DISPATCH QUEUE CREATION (FIX)
+if (!autoPrintable) {
+  // A3 / CARD / Editing → ALL copies go to dispatch queue
+  for (let i = 1; i <= copies; i++) {
+    await pool.query(
+      `INSERT INTO dispatch_queue(job_id, copy_index, status, created_at, updated_at)
+       VALUES ($1,$2,'pending',NOW(),NOW())`,
+      [jobId, i]
+    );
+  }
+} else if (copies > 1) {
+  // A4 auto-print → only copies 2..N go to dispatch
+  for (let i = 2; i <= copies; i++) {
+    await pool.query(
+      `INSERT INTO dispatch_queue(job_id, copy_index, status, created_at, updated_at)
+       VALUES ($1,$2,'pending',NOW(),NOW())`,
+      [jobId, i]
+    );
+  }
+}
 
     // Public preview link
     const token = makeToken({ jobId, fileId, ts: Date.now() });
