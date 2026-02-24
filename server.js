@@ -258,11 +258,35 @@ app.post("/api/upload", upload.single("file"), async (req, res) => {
     if (!req.file) return res.status(400).json({ ok: false, error: "Missing file" });
 
     const printerId = String(req.body.printerId || req.body.printer_id || DEFAULT_AUTO_PRINTER_ID).trim();
-    const paperSize = normalizePaper(req.body.paperSize || req.body.paper_size);
-    const colorMode = normalizeColor(req.body.colorMode || req.body.color_mode || req.body.color);
-    const pages = Math.max(Number(req.body.pages || 1), 1);
-    const copies = Math.max(Number(req.body.copies || 1), 1);
-    const serviceType = normalizeServiceType(req.body.serviceType || req.body.service_type);
+    let detailsObj = {};
+try {
+  if (req.body.details) {
+    detailsObj = JSON.parse(req.body.details);
+  }
+} catch (e) {
+  console.log("Failed to parse details JSON");
+}
+
+const paperSize = normalizePaper(
+  req.body.paperSize ||
+  req.body.paper_size ||
+  detailsObj.paperSize
+);
+
+const serviceType = normalizeServiceType(
+  req.body.serviceType ||
+  req.body.service_type ||
+  detailsObj.serviceType
+);
+
+const colorMode = normalizeColor(
+  req.body.colorMode ||
+  req.body.color_mode ||
+  req.body.color
+);
+
+const pages = Math.max(Number(req.body.pages || 1), 1);
+const copies = Math.max(Number(req.body.copies || 1), 1);
 
     const instructions = String(req.body.instructions || req.body.details || "");
     const customerEmail = req.body.email || req.body.customer_email || null;
