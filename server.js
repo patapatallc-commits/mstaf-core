@@ -118,9 +118,13 @@ function computePrice({ pages, copies, colorMode }) {
 }
 
 function isAutoPrintable({ serviceType, paperSize }) {
-  if (String(serviceType || "print").toLowerCase() !== "print") return false;
-  const p = String(paperSize || "A4").toUpperCase();
-  if (p === "A3" || p === "CARD") return false;
+  const st = String(serviceType || "").toLowerCase();
+  const ps = String(paperSize || "").toUpperCase();
+
+  // Only auto-print real A4 printing jobs
+  if (st !== "print" && st !== "printing") return false;
+  if (ps !== "A4" && ps !== "LETTER") return false;
+
   return true;
 }
 
