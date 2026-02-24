@@ -254,7 +254,7 @@ app.get("/health", (req, res) => res.json({ ok: true, time: new Date().toISOStri
  * Shopify upload endpoint (multipart/form-data)
  */
 app.post("/api/upload", upload.single("file"), async (req, res) => {
-  try {
+  try { console.log("UPLOAD BODY:", req.body);
     if (!req.file) return res.status(400).json({ ok: false, error: "Missing file" });
 
     const printerId = String(req.body.printerId || req.body.printer_id || DEFAULT_AUTO_PRINTER_ID).trim();
