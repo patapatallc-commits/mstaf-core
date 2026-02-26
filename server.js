@@ -1040,7 +1040,7 @@ app.get("/d/:id", async (req, res) => {
   }
 
 // -------------------- Startup --------------------
-const PORT = process.env.PORT || 10000;
+const PORT = process.env.PORT;
 
 (async () => {
   try {
