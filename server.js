@@ -1039,7 +1039,7 @@ app.get("/d/:id", async (req, res) => {
     process.exit(1);
   }
 
-  // -------------------- Startup --------------------
+// -------------------- Startup --------------------
 const PORT = process.env.PORT || 10000;
 
 (async () => {
