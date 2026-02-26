@@ -972,11 +972,13 @@ app.post("/api/dispatch/link", requireDashboardKey, (req, res) => {
 });
 
 
-// ✅ PASTE SHORT LINK ROUTE HERE
+// ✅ Short dispatch link: /d/:id  -> redirects to secure token file link
 app.get("/d/:id", async (req, res) => {
   try {
     const id = Number(req.params.id);
-    if (!Number.isFinite(id)) return res.status(400).send("Invalid link");
+    if (!Number.isFinite(id)) {
+      return res.status(400).send("Invalid link");
+    }
 
     const q = await pool.query(
       `SELECT id, status, secure_token
@@ -986,6 +988,26 @@ app.get("/d/:id", async (req, res) => {
       [id]
     );
 
+    if (q.rows.length === 0) {
+      return res.status(404).send("Link not found");
+    }
+
+    const row = q.rows[0];
+
+    if (String(row.status || "").toLowerCase() === "done") {
+      return res.status(410).send("This link has expired.");
+    }
+
+    if (!row.secure_token) {
+      return res.status(404).send("Secure token missing.");
+    }
+
+    return res.redirect(`/api/public/file/${row.secure_token}`);
+  } catch (e) {
+    console.error("GET /d/:id error:", e);
+    return res.status(500).send("Server error");
+  }
+});
     if (q.rows.length === 0) return res.status(404).send("Link not found");
 
     const row = q.rows[0];
