@@ -916,6 +916,52 @@ load();
 </html>`);
 });
 // -------------------- Startup (NO top-level await) --------------------
+// ===============================
+// DASHBOARD AUTH (x-dashboard-key)
+// ===============================
+function requireDashboardKey(req, res, next) {
+  const key = req.headers["x-dashboard-key"];
+  const expected = process.env.DASHBOARD_KEY;
+
+  if (!expected) {
+    return res.status(500).json({ ok: false, error: "DASHBOARD_KEY not set on server" });
+  }
+
+  if (!key || key !== expected) {
+    return res.status(401).json({ ok: false, error: "Unauthorized" });
+  }
+
+  next();
+}
+
+// ===============================
+// DISPATCH LINK ROUTES
+// ===============================
+function buildDispatchLink({ dispatchId, email }) {
+  const base = process.env.PUBLIC_BASE_URL || "https://mstaf-core-1.onrender.com";
+  const params = new URLSearchParams();
+  params.set("dispatchId", String(dispatchId));
+  if (email) params.set("email", String(email));
+  return `${base}/dispatch?${params.toString()}`;
+}
+
+app.post("/api/dispatch/create-link", requireDashboardKey, (req, res) => {
+  const { dispatchId, email } = req.body || {};
+  if (!dispatchId) {
+    return res.status(400).json({ ok: false, error: "dispatchId required" });
+  }
+  const link = buildDispatchLink({ dispatchId, email });
+  return res.json({ ok: true, dispatchId, email: email || null, link });
+});
+
+app.post("/api/dispatch/link", requireDashboardKey, (req, res) => {
+  const { dispatchId, email } = req.body || {};
+  if (!dispatchId) {
+    return res.status(400).json({ ok: false, error: "dispatchId required" });
+  }
+  const link = buildDispatchLink({ dispatchId, email });
+  return res.json({ ok: true, dispatchId, email: email || null, link });
+});
 (async () => {
   try {
     await ensureSchema();
