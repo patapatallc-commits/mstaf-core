@@ -1039,9 +1039,19 @@ app.get("/d/:id", async (req, res) => {
     process.exit(1);
   }
 
+  // -------------------- Startup --------------------
+const PORT = process.env.PORT || 10000;
+
+(async () => {
+  try {
+    await ensureSchema();
+    console.log("✅ MSTAF Core schema ready");
+  } catch (e) {
+    console.error("FATAL: ensureSchema failed:", e);
+    process.exit(1);
+  }
+
   app.listen(PORT, "0.0.0.0", () => {
-  console.log(`✅ MSTAF Core running on port ${PORT}`);
-});
     console.log(`✅ MSTAF Core running on port ${PORT}`);
     console.log("✅ PUBLIC_BASE_URL:", PUBLIC_BASE_URL || "(auto)");
     console.log("✅ WORKER_KEY:", WORKER_KEY ? "(set)" : "(missing)");
