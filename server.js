@@ -5,6 +5,10 @@
  * - Secure file serving via token
  * - Dispatch queue + short link /d/:id redirect
  * - FIXES: single startup wrapper + proper Render PORT binding
+ *
+ * UPDATE (Debug Patch):
+ * - Upload route logs request basics
+ * - Upload catch returns real error message + stack trace in logs
  */
 
 require("dotenv").config();
@@ -34,7 +38,9 @@ const DASHBOARD_KEY = (process.env.DASHBOARD_KEY || "").trim();
 const DEFAULT_AUTO_PRINTER_ID = (process.env.DEFAULT_AUTO_PRINTER_ID || "PP-USA-001").trim();
 
 // Base URL (used to build public links)
-const PUBLIC_BASE_URL = (process.env.PUBLIC_BASE_URL || process.env.BASE_URL || "").trim().replace(/\/$/, "");
+const PUBLIC_BASE_URL = (process.env.PUBLIC_BASE_URL || process.env.BASE_URL || "")
+  .trim()
+  .replace(/\/$/, "");
 
 // Dispatch secret (for tokens)
 const DISPATCH_LINK_SECRET = (process.env.DISPATCH_LINK_SECRET || WORKER_KEY || "change_me_secret").trim();
@@ -110,10 +116,15 @@ function safeBaseUrl(req) {
 }
 
 function requireWorkerKey(req, res, next) {
-  const key =
-    (req.headers["x-worker-key"] || req.headers["x-printer-key"] || req.query.worker_key || "")
-      .toString()
-      .trim();
+  const key = (
+    req.headers["x-worker-key"] ||
+    req.headers["x-printer-key"] ||
+    req.query.worker_key ||
+    ""
+  )
+    .toString()
+    .trim();
+
   if (!key || key !== WORKER_KEY) {
     return res.status(401).json({ ok: false, error: "Unauthorized worker" });
   }
@@ -121,8 +132,7 @@ function requireWorkerKey(req, res, next) {
 }
 
 function requireDashboardKey(req, res, next) {
-  const key =
-    (req.headers["x-dashboard-key"] || req.query.dashboard_key || "").toString().trim();
+  const key = (req.headers["x-dashboard-key"] || req.query.dashboard_key || "").toString().trim();
   if (!key || key !== DASHBOARD_KEY) {
     return res.status(401).json({ ok: false, error: "Unauthorized dashboard" });
   }
@@ -270,6 +280,13 @@ app.get("/api/public/file/:token", async (req, res) => {
  * fields: file, printerId, paperSize, colorMode, copies, pages, instructions, name, email, country, city
  */
 app.post("/api/upload", upload.single("file"), async (req, res) => {
+  // ---- DEBUG PATCH (safe logging) ----
+  console.log("📥 Upload hit:", req.method, req.path);
+  console.log("📥 Content-Type:", req.headers["content-type"]);
+  console.log("📥 Has x-dashboard-key:", !!req.headers["x-dashboard-key"]);
+  console.log("📥 Has x-worker-key:", !!req.headers["x-worker-key"]);
+  console.log("📥 Has x-printer-key:", !!req.headers["x-printer-key"]);
+
   try {
     const f = req.file;
     if (!f) return res.status(400).json({ ok: false, error: "File required" });
@@ -349,9 +366,15 @@ app.post("/api/upload", upload.single("file"), async (req, res) => {
     }
 
     return res.json({ ok: true, job });
-  } catch (e) {
-    console.error("POST /api/upload error:", e);
-    return res.status(500).json({ ok: false, error: "Server error" });
+  } catch (err) {
+    // ---- DEBUG PATCH (real error + stack) ----
+    console.error("❌ UPLOAD FAILED:", err?.message);
+    console.error(err?.stack || err);
+
+    return res.status(500).json({
+      ok: false,
+      error: err?.message || "Server error",
+    });
   }
 });
 
@@ -527,10 +550,10 @@ app.post("/api/dispatch/link", requireDashboardKey, async (req, res) => {
 
     // optionally store email
     if (email) {
-      await pool.query(
-        `UPDATE dispatch_queue SET email = $1, updated_at = NOW() WHERE id = $2`,
-        [email, dispatchId]
-      );
+      await pool.query(`UPDATE dispatch_queue SET email = $1, updated_at = NOW() WHERE id = $2`, [
+        email,
+        dispatchId,
+      ]);
     }
 
     const link = buildDispatchLink(req, dispatchId);
