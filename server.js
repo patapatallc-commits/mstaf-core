@@ -1027,7 +1027,7 @@ app.get("/d/:id", async (req, res) => {
   }
 });
 
-// -------------------- Startup --------------------
+// ------------------ Startup ------------------
 (async () => {
   try {
     await ensureSchema();
@@ -1037,7 +1037,7 @@ app.get("/d/:id", async (req, res) => {
     process.exit(1);
   }
 
-  const PORT = process.env.PORT;
+  const PORT = Number(process.env.PORT || 10000);
 
   app.listen(PORT, "0.0.0.0", () => {
     console.log(`✅ MSTAF Core running on port ${PORT}`);
