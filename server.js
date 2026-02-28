@@ -1027,9 +1027,7 @@ app.get("/d/:id", async (req, res) => {
   }
 });
 
-
 // -------------------- Startup --------------------
-(async () => {
 (async () => {
   try {
     await ensureSchema();
@@ -1038,17 +1036,8 @@ app.get("/d/:id", async (req, res) => {
     console.error("FATAL: ensureSchema failed:", e);
     process.exit(1);
   }
-// -------------------- Startup --------------------
-const PORT = Number(process.env.PORT || 10000);
 
-(async () => {
-  try {
-    await ensureSchema();
-    console.log("✅ MSTAF Core schema ready");
-  } catch (e) {
-    console.error("FATAL: ensureSchema failed:", e);
-    process.exit(1);
-  }
+  const PORT = Number(process.env.PORT || 10000);
 
   app.listen(PORT, "0.0.0.0", () => {
     console.log(`✅ MSTAF Core running on port ${PORT}`);
