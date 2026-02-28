@@ -1038,7 +1038,6 @@ app.get("/d/:id", async (req, res) => {
     console.error("FATAL: ensureSchema failed:", e);
     process.exit(1);
   }
-
 // -------------------- Startup --------------------
 const PORT = process.env.PORT || 10000;
 
