@@ -414,7 +414,27 @@ app.get("/api/worker/next", requireWorkerKey, async (req, res) => {
     }
 
     const job = claim.rows[0];
-    return res.json({ ok: true, job });
+
+// Compatibility: worker expects fileUrl (camelCase).
+// DB stores public_url (snake_case). Provide aliases.
+const jobOut = {
+  ...job,
+
+  // URL aliases
+  fileUrl: job.public_url || null,
+  file_url: job.public_url || null,
+  publicUrl: job.public_url || null,
+
+  // Helpful field aliases (optional)
+  paperSize: job.paper_size || null,
+  colorMode: job.color_mode || null,
+  printerId: job.printer_id || null,
+
+  originalName: job.original_name || null,
+  mimeType: job.mime_type || null,
+};
+
+return res.json({ ok: true, job: jobOut });
   } catch (e) {
     console.error("GET /api/worker/next error:", e);
     return res.status(500).json({ ok: false, error: "Server error" });
