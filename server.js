@@ -1037,7 +1037,7 @@ app.get("/d/:id", async (req, res) => {
     process.exit(1);
   }
 
-  const PORT = Number(process.env.PORT || 10000);
+  const PORT = process.env.PORT;
 
   app.listen(PORT, "0.0.0.0", () => {
     console.log(`✅ MSTAF Core running on port ${PORT}`);
