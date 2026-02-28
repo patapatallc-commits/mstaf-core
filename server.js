@@ -614,7 +614,186 @@ app.get("/d/:id", async (req, res) => {
     return res.status(500).send("Server error");
   }
 });
+// -------------------- Worker Dashboard Page --------------------
+// URL: /worker-dashboard?key=YOUR_DASHBOARD_KEY
+app.get("/worker-dashboard", (req, res) => {
+  // Allow key via query for convenience (workers). Still protected.
+  const key = (req.query.key || "").toString().trim();
+  if (!key || key !== DASHBOARD_KEY) {
+    return res.status(401).send("Unauthorized");
+  }
 
+  res.setHeader("Content-Type", "text/html; charset=utf-8");
+  res.send(`<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>MSTAF Worker Dashboard</title>
+  <style>
+    body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;margin:20px;background:#f8fafc;color:#0f172a}
+    .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+    .card{background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:14px;margin-top:12px}
+    table{width:100%;border-collapse:collapse;margin-top:10px}
+    th,td{border-bottom:1px solid #e2e8f0;padding:10px;text-align:left;font-size:14px;vertical-align:top}
+    th{background:#f1f5f9;font-weight:700}
+    button{padding:8px 10px;border:1px solid #cbd5e1;border-radius:10px;background:#fff;cursor:pointer}
+    button.primary{background:#0ea5e9;color:#fff;border-color:#0284c7}
+    input,select{padding:8px;border:1px solid #cbd5e1;border-radius:10px}
+    .muted{color:#64748b}
+    .ok{color:#16a34a;font-weight:700}
+    .warn{color:#b45309;font-weight:700}
+    .err{color:#dc2626;font-weight:700}
+    .small{font-size:12px}
+    .pill{display:inline-block;padding:2px 8px;border-radius:999px;background:#eef2ff;border:1px solid #e2e8f0;font-size:12px}
+  </style>
+</head>
+<body>
+  <h2>MSTAF Worker Dashboard</h2>
+  <div class="muted small">Secure access. Refreshes pending jobs and lets workers create dispatch links (auto-copy).</div>
+
+  <div class="card">
+    <div class="row">
+      <button class="primary" id="refreshBtn">Refresh</button>
+      <span class="muted">Showing:</span>
+      <select id="statusSel">
+        <option value="pending" selected>pending</option>
+        <option value="printing">printing</option>
+        <option value="done">done</option>
+        <option value="error">error</option>
+      </select>
+      <span id="statusMsg" class="muted"></span>
+    </div>
+  </div>
+
+  <div class="card">
+    <table>
+      <thead>
+        <tr>
+          <th>ID</th>
+          <th>Details</th>
+          <th>File</th>
+          <th>Dispatch Link</th>
+        </tr>
+      </thead>
+      <tbody id="tbody">
+        <tr><td colspan="4" class="muted">No data yet.</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+<script>
+  const DASH_KEY = ${JSON.stringify(key)};
+
+  async function copyTextToClipboard(text) {
+    try {
+      if (navigator.clipboard && window.isSecureContext) {
+        await navigator.clipboard.writeText(text);
+        return true;
+      }
+    } catch (e) {}
+    try {
+      const ta = document.createElement("textarea");
+      ta.value = text;
+      ta.setAttribute("readonly", "");
+      ta.style.position = "fixed";
+      ta.style.left = "-9999px";
+      document.body.appendChild(ta);
+      ta.select();
+      const ok = document.execCommand("copy");
+      document.body.removeChild(ta);
+      return ok;
+    } catch (e) { return false; }
+  }
+
+  async function apiGetJobs(status) {
+    const r = await fetch("/api/dashboard/jobs?status=" + encodeURIComponent(status), {
+      headers: { "x-dashboard-key": DASH_KEY }
+    });
+    const data = await r.json();
+    if (!data.ok) throw new Error(data.error || "Failed to load jobs");
+    return data.jobs || [];
+  }
+
+  async function apiCreateDispatchLink(jobId, email) {
+    // If you later want dispatch by dispatchId, we can extend API.
+    // For now, we create a dispatch link using /api/dispatch/link requires dispatchId.
+    // Your current server creates dispatch_queue rows for A3/CARD only.
+    // So for regular A4 jobs, we’ll just copy the public file URL instead.
+    return null;
+  }
+
+  function esc(s){return String(s||"").replace(/[&<>"']/g,m=>({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[m]));}
+
+  function renderJobs(jobs){
+    const tb = document.getElementById("tbody");
+    if (!jobs.length){
+      tb.innerHTML = '<tr><td colspan="4" class="muted">No jobs found.</td></tr>';
+      return;
+    }
+    tb.innerHTML = jobs.map(j => {
+      const file = j.public_url ? '<a href="'+esc(j.public_url)+'" target="_blank">Open file</a>' : '<span class="muted">No link</span>';
+      const details = \`
+        <div><span class="pill">\${esc(j.paper_size)}</span> <span class="pill">\${esc(j.color_mode)}</span> <span class="pill">copies:\${esc(j.copies)}</span> <span class="pill">pages:\${esc(j.pages)}</span></div>
+        <div class="small muted">\${esc(j.customer_name)} \${j.customer_email ? "• " + esc(j.customer_email) : ""}</div>
+        <div class="small">\${j.instructions ? "<b>Note:</b> " + esc(j.instructions) : ""}</div>
+      \`;
+
+      // For A3/CARD jobs, you will have dispatch_queue entry; we’ll add a button later to fetch dispatch link by dispatchId.
+      // For now, button copies public_url (works for all jobs).
+      return \`
+        <tr>
+          <td><b>\${esc(j.id)}</b><div class="small muted">\${new Date(j.created_at).toLocaleString()}</div></td>
+          <td>\${details}</td>
+          <td>\${file}</td>
+          <td>
+            <button data-copy="\${esc(j.public_url || "")}" class="copyBtn">Copy File Link</button>
+            <span class="small muted" id="m_\${esc(j.id)}"></span>
+          </td>
+        </tr>
+      \`;
+    }).join("");
+
+    document.querySelectorAll(".copyBtn").forEach(btn => {
+      btn.addEventListener("click", async () => {
+        const link = btn.getAttribute("data-copy") || "";
+        const row = btn.closest("tr");
+        const idCell = row.querySelector("td b");
+        const id = idCell ? idCell.textContent : "";
+        const msgEl = document.getElementById("m_" + id);
+
+        if (!link) {
+          if (msgEl) msgEl.textContent = "No link";
+          return;
+        }
+        const ok = await copyTextToClipboard(link);
+        if (msgEl) msgEl.textContent = ok ? "✅ Copied!" : "⚠️ Copy failed";
+        if (!ok) alert("Copy failed. Here is the link:\\n" + link);
+      });
+    });
+  }
+
+  async function refresh(){
+    const status = document.getElementById("statusSel").value;
+    const msg = document.getElementById("statusMsg");
+    msg.textContent = "Loading...";
+    try {
+      const jobs = await apiGetJobs(status);
+      renderJobs(jobs);
+      msg.textContent = "Loaded " + jobs.length + " job(s).";
+    } catch(e){
+      msg.textContent = "Error: " + (e.message || e);
+      msg.className = "err";
+    }
+  }
+
+  document.getElementById("refreshBtn").addEventListener("click", refresh);
+  document.getElementById("statusSel").addEventListener("change", refresh);
+  refresh();
+</script>
+</body>
+</html>`);
+});
 /* ------------------------------- STARTUP ---------------------------------- */
 /**
  * CRITICAL: only ONE startup wrapper in the whole file.
