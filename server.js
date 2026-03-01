@@ -455,7 +455,7 @@ app.get("/dashboard", async (req, res) => {
   <div id="out">Loading...</div>
 
 <script>
-  const DASH_KEY = ${JSON.stringify(process.env.DASHBOARD_KEY)};
+  const DASH_KEY = const DASH_KEY = ${JSON.stringify(key)};
   async function loadJobs(){
     const out = document.getElementById('out');
     out.innerHTML = "Loading...";
