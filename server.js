@@ -393,7 +393,99 @@ app.post("/api/dashboard/job/:id/assign", requireDashboardAuth, async (req, res)
     res.status(500).json({ error: "Assign failed", details: String(err.message || err) });
   }
 });
+// ============================
+// Health + Dashboard (RESTORE)
+// ============================
 
+// Health check
+app.get("/api/health", (req, res) => {
+  res.json({ ok: true, ts: new Date().toISOString() });
+});
+
+// List jobs for dashboard (DISPATCH + blocked)
+app.get("/api/dashboard/jobs", requireDashboardAuth, async (req, res) => {
+  try {
+    const printerId = String(req.query.printer_id || "DISPATCH").trim().toUpperCase();
+    const limit = Math.min(parseInt(req.query.limit || "100", 10) || 100, 500);
+
+    // NOTE: adjust column names if yours differ
+    const sql = `
+      SELECT id, created_at, status, printer_id, paper_size, color_mode, copies, file_url, error_message
+      FROM print_jobs
+      WHERE (printer_id = $1 OR status = 'blocked')
+      ORDER BY created_at DESC
+      LIMIT $2
+    `;
+    const { rows } = await pool.query(sql, [printerId, limit]);
+    res.json({ ok: true, printer_id: printerId, count: rows.length, rows });
+  } catch (e) {
+    console.error("dashboard/jobs error:", e);
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+// Basic HTML dashboard page (uses ?key=YOUR_DASHBOARD_KEY)
+app.get("/dashboard", async (req, res) => {
+  // allow key via query string for browser access
+  const key = String(req.query.key || "").trim();
+  if (!process.env.DASHBOARD_KEY) return res.status(500).send("Server DASHBOARD_KEY not configured");
+  if (key !== process.env.DASHBOARD_KEY) return res.status(401).send("Unauthorized (missing/invalid key)");
+
+  res.setHeader("content-type", "text/html; charset=utf-8");
+  res.send(`
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>MSTAF Dashboard</title>
+  <style>
+    body{font-family:system-ui,Segoe UI,Roboto,Arial,sans-serif;padding:20px}
+    .row{border:1px solid #ddd;border-radius:10px;padding:12px;margin:10px 0}
+    .meta{color:#555;font-size:13px}
+    code{background:#f4f4f4;padding:2px 6px;border-radius:6px}
+    button{padding:8px 12px;border-radius:10px;border:1px solid #ccc;cursor:pointer}
+  </style>
+</head>
+<body>
+  <h2>MSTAF Dispatch Dashboard</h2>
+  <div class="meta">Showing <code>DISPATCH</code> + <code>blocked</code> jobs</div>
+  <p>
+    <button onclick="loadJobs()">Refresh</button>
+  </p>
+  <div id="out">Loading...</div>
+
+<script>
+  const DASH_KEY = ${JSON.stringify(process.env.DASHBOARD_KEY)};
+  async function loadJobs(){
+    const out = document.getElementById('out');
+    out.innerHTML = "Loading...";
+    const r = await fetch("/api/dashboard/jobs?printer_id=DISPATCH&limit=200", {
+      headers: { "x-dashboard-key": DASH_KEY }
+    });
+    const j = await r.json();
+    if(!j.ok){ out.innerHTML = "<pre>"+JSON.stringify(j,null,2)+"</pre>"; return; }
+    out.innerHTML = j.rows.map(row => {
+      return \`
+        <div class="row">
+          <div><b>ID:</b> \${row.id} &nbsp; <b>Status:</b> \${row.status} &nbsp; <b>Printer:</b> \${row.printer_id}</div>
+          <div class="meta">
+            <b>Paper:</b> \${row.paper_size || ""} &nbsp;
+            <b>Color:</b> \${row.color_mode || ""} &nbsp;
+            <b>Copies:</b> \${row.copies || 1} &nbsp;
+            <b>Created:</b> \${row.created_at || ""}
+          </div>
+          \${row.file_url ? \`<div class="meta"><a href="\${row.file_url}" target="_blank">Open file</a></div>\` : ""}
+          \${row.error_message ? \`<div class="meta"><b>Error:</b> \${row.error_message}</div>\` : ""}
+        </div>
+      \`;
+    }).join("");
+  }
+  loadJobs();
+</script>
+</body>
+</html>
+  `);
+});
 // ---------- Start ----------
 (async () => {
   try {
