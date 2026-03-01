@@ -69,13 +69,36 @@ const upload = multer({ storage });
 
 // ---------- Helpers ----------
 function requireWorkerAuth(req, res, next) {
+  // Accept either header
   const k1 = req.headers["x-worker-key"];
   const k2 = req.headers["x-printer-key"];
   const provided = String(k1 || k2 || "").trim();
-  if (!WORKER_KEY) {
-    return res.status(500).json({ error: "Server WORKER_KEY not configured" });
+
+  // Allow single-key OR multi-key list
+  const single = String(process.env.WORKER_KEY || process.env.PRINTER_KEY || "").trim();
+  const list = String(process.env.WORKER_KEYS || "").trim();
+
+  const allowed = new Set(
+    [single, ...list.split(",")]
+      .map((s) => String(s || "").trim())
+      .filter(Boolean)
+  );
+
+  // Helpful log in Render logs (does NOT print the key)
+  if (!allowed.size) {
+    console.log("❌ WORKER auth: no keys configured (WORKER_KEY/PRINTER_KEY/WORKER_KEYS)");
+    return res.status(500).json({ error: "Server WORKER key not configured" });
   }
-  if (provided !== WORKER_KEY) return res.status(401).json({ error: "Unauthorized" });
+
+  if (!allowed.has(provided)) {
+    console.log("❌ WORKER auth failed:", {
+      providedLen: provided.length,
+      allowedCount: allowed.size,
+      headerUsed: k1 ? "x-worker-key" : (k2 ? "x-printer-key" : "none"),
+    });
+    return res.status(401).json({ error: "Unauthorized" });
+  }
+
   next();
 }
 
