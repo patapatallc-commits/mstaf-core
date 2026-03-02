@@ -465,7 +465,7 @@ app.get("/api/dashboard/jobs", requireDashboardAuth, async (req, res) => {
         OR COALESCE(instructions,'') ILIKE $${idx}
         OR COALESCE(service_type,'') ILIKE $${idx}
       )`);
-      params.push(\`%\${q}%\`);
+      params.push(`%${q}%`);
       idx++;
     }
 
