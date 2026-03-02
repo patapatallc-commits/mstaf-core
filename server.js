@@ -16,7 +16,10 @@ const multer = require("multer");
 const { Pool } = require("pg");
 
 const app = express();
+const path = require("path");
 
+// Serve uploaded files so dashboard "file" links open in browser
+app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 /* ---------------- ENV ---------------- */
 const PORT = process.env.PORT || 10000;
 
