@@ -17,8 +17,12 @@ const { Pool } = require("pg");
 
 const app = express();
 
-// Serve uploaded files so dashboard "file" links open in browser
-app.use("/uploads", express.static(path.join(__dirname, "uploads")));
+// --- uploads directory (Render-safe) ---
+const uploadsDir = path.resolve(process.cwd(), "uploads");
+fs.mkdirSync(uploadsDir, { recursive: true });
+
+// Serve uploaded files so dashboard file links open
+app.use("/uploads", express.static(uploadsDir));
 /* ---------------- ENV ---------------- */
 const PORT = process.env.PORT || 10000;
 
