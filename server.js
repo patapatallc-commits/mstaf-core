@@ -1,11 +1,3 @@
-/**
- * MSTAF Core (Render) - server.js (FULL REPLACEMENT)
- * - Worker polling + status updates (+ legacy compat endpoint)
- * - Upload endpoint creates print job + returns file link
- * - Dashboard auth accepts header OR ?key=
- * - Worker + Agent dashboard with routing, delete, instructions, printer registry
- */
-
 require("dotenv").config();
 
 const express = require("express");
@@ -20,27 +12,21 @@ const app = express();
 // --- uploads directory (Render-safe) ---
 const uploadsDir = path.resolve(process.cwd(), "uploads");
 fs.mkdirSync(uploadsDir, { recursive: true });
-
-// Serve uploaded files so dashboard file links open
 app.use("/uploads", express.static(uploadsDir));
+
 /* ---------------- ENV ---------------- */
 const PORT = process.env.PORT || 10000;
 
-// Public base URL (Render)
 const BASE_URL =
   process.env.PUBLIC_BASE_URL ||
   process.env.RENDER_EXTERNAL_URL ||
   `http://localhost:${PORT}`;
 
-// Auth keys
 const DASHBOARD_KEY = String(process.env.DASHBOARD_KEY || "").trim();
-
-// Worker key can come from either env var (compat)
 const WORKER_KEY =
   String(process.env.WORKER_KEY || "").trim() ||
   String(process.env.PRINTER_KEY || "").trim();
 
-// Defaults / routing queues
 const DEFAULT_PRINTER_ID = String(process.env.PRINTER_ID || "PP-USA-001").trim();
 const A3_PRINTER_ID = String(process.env.A3_PRINTER_ID || "PP-USA-A3-001").trim();
 const CARD_PRINTER_ID = String(process.env.CARD_PRINTER_ID || "PP-USA-CARD-001").trim();
@@ -72,8 +58,6 @@ const storage = multer.diskStorage({
   },
 });
 const upload = multer({ storage });
-
-// Serve uploaded files
 app.use("/uploads", express.static(UPLOAD_DIR, { maxAge: "1h" }));
 
 /* ---------------- HELPERS ---------------- */
@@ -92,7 +76,6 @@ function escHtml(s) {
   });
 }
 
-// Costs (your rules)
 function calcUnitPrice(colorMode) {
   const m = String(colorMode || "").toLowerCase();
   if (m.includes("bw") || m.includes("black")) return 0.25;
@@ -100,13 +83,19 @@ function calcUnitPrice(colorMode) {
 }
 
 function requireWorkerAuth(req, res, next) {
-  const provided = safeTrim(req.headers["x-worker-key"] || req.headers["x-printer-key"] || "");
+  const provided = safeTrim(
+    req.headers["x-worker-key"] ||
+      req.headers["x-printer-key"] ||
+      req.query.key ||
+      req.query.worker_key ||
+      req.query.printer_key ||
+      ""
+  );
   if (!WORKER_KEY) return res.status(500).json({ error: "Server WORKER_KEY/PRINTER_KEY not configured" });
   if (provided !== WORKER_KEY) return res.status(401).json({ error: "Unauthorized" });
   next();
 }
 
-// ✅ accept dashboard key from header OR query (?key=)
 function requireDashboardAuth(req, res, next) {
   const provided = safeTrim(req.headers["x-dashboard-key"] || req.query.key || "");
   if (!DASHBOARD_KEY) return res.status(500).json({ error: "Server DASHBOARD_KEY not configured" });
@@ -115,7 +104,6 @@ function requireDashboardAuth(req, res, next) {
 }
 
 /* ---------------- PRINTER REGISTRY ---------------- */
-// Two printers per Nigerian state: A4 hub + SPECIAL A3/CARD hub
 const NG_STATE_CODES = [
   ["Abia", "AB"],
   ["Adamawa", "AD"],
@@ -157,17 +145,13 @@ const NG_STATE_CODES = [
 
 function buildPrinterRegistry() {
   const printers = [];
-
-  // Queues
   printers.push({ id: DISPATCH_QUEUE_ID, label: "DISPATCH — Manual Routing Queue", kind: "queue" });
   printers.push({ id: AGENT_QUEUE_ID, label: "AGENT — Image/Video Editing Queue", kind: "queue" });
 
-  // USA
   printers.push({ id: DEFAULT_PRINTER_ID, label: `USA — A4 Hub Printer (Default) (${DEFAULT_PRINTER_ID})`, kind: "printer", country: "USA" });
   printers.push({ id: A3_PRINTER_ID, label: `USA — A3 Printer (${A3_PRINTER_ID})`, kind: "printer", country: "USA" });
   printers.push({ id: CARD_PRINTER_ID, label: `USA — CARD Printer (${CARD_PRINTER_ID})`, kind: "printer", country: "USA" });
 
-  // Nigeria (2 per state)
   for (const [name, code] of NG_STATE_CODES) {
     const a4 = `PP-NG-${code}-A4-001`;
     const sp = `PP-NG-${code}-SP-001`;
@@ -196,6 +180,23 @@ function routeQueue({ printer_id, paper_size, service_type }) {
   return DEFAULT_PRINTER_ID;
 }
 
+function normalizeUploadBody(body = {}) {
+  return {
+    paper_size: safeTrim(body.paper_size || body.paperSize || body.size || "A4"),
+    color_mode: safeTrim(body.color_mode || body.colorMode || body.printType || "BW"),
+    copies: num(body.copies || body.quantity || 1, 1),
+    pages: num(body.pages || body.pageCount || 1, 1),
+    service_type: safeTrim(body.service_type || body.serviceType || body.service || "PRINT"),
+    instructions: safeTrim(body.instructions || body.instruction || body.message || ""),
+    customer_name: safeTrim(body.customer_name || body.customerName || body.name || ""),
+    customer_email: safeTrim(body.customer_email || body.customerEmail || body.email || ""),
+    country: safeTrim(body.country || ""),
+    city: safeTrim(body.city || ""),
+    notes: safeTrim(body.notes || body.note || ""),
+    printer_id: safeTrim(body.printer_id || body.printerId || ""),
+  };
+}
+
 /* ---------------- HEALTH ---------------- */
 app.get("/", (req, res) => res.status(200).send("MSTAF Core is running ✅"));
 
@@ -220,34 +221,58 @@ app.get("/health", async (req, res) => {
   }
 });
 
-/* ---------------- CREATE PRINT JOB (UPLOAD) ----------------
-   form-data fields supported:
-   - file (required)
-   - paper_size, color_mode, copies, pages
-   - service_type (optional: "PRINT", "IMAGE EDITING", "VIDEO EDITING", etc.)
-   - printer_id (optional; if empty we auto-route)
-   - instructions (optional)
-   - customer_name, customer_email, country, city, notes
-*/
-app.post("/api/print-jobs", upload.single("file"), async (req, res) => {
+app.get("/api/health", async (req, res) => {
+  try {
+    const r = await pool.query("SELECT 1 as ok");
+    res.json({
+      ok: true,
+      db: r.rows?.[0]?.ok === 1,
+      base_url: BASE_URL,
+      printer_count: PRINTERS.length,
+      defaults: {
+        DEFAULT_PRINTER_ID,
+        A3_PRINTER_ID,
+        CARD_PRINTER_ID,
+        DISPATCH_QUEUE_ID,
+        AGENT_QUEUE_ID,
+      },
+    });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+app.get("/debug", async (req, res) => {
+  try {
+    const r = await pool.query("SELECT NOW() as now");
+    res.json({ ok: true, message: "MSTAF debug route working", now: r.rows?.[0]?.now || null, base_url: BASE_URL });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+/* ---------------- CREATE PRINT JOB (UPLOAD) ---------------- */
+async function createPrintJobHandler(req, res) {
   try {
     if (!req.file) return res.status(400).json({ error: "No file uploaded" });
 
-    const paper_size = safeTrim(req.body.paper_size || "A4");
-    const color_mode = safeTrim(req.body.color_mode || "BW");
-    const copies = Math.max(1, num(req.body.copies, 1));
-    const pages = Math.max(1, num(req.body.pages, 1));
+    const normalized = normalizeUploadBody(req.body);
 
-    const service_type = safeTrim(req.body.service_type || "PRINT");
-    const instructions = safeTrim(req.body.instructions || "");
+    const paper_size = normalized.paper_size || "A4";
+    const color_mode = normalized.color_mode || "BW";
+    const copies = Math.max(1, num(normalized.copies, 1));
+    const pages = Math.max(1, num(normalized.pages, 1));
 
-    const customer_name = safeTrim(req.body.customer_name || "");
-    const customer_email = safeTrim(req.body.customer_email || "");
-    const country = safeTrim(req.body.country || "");
-    const city = safeTrim(req.body.city || "");
-    const notes = safeTrim(req.body.notes || "");
+    const service_type = normalized.service_type || "PRINT";
+    const instructions = normalized.instructions || "";
 
-    const requested_printer_id = safeTrim(req.body.printer_id || "");
+    const customer_name = normalized.customer_name || "";
+    const customer_email = normalized.customer_email || "";
+    const country = normalized.country || "";
+    const city = normalized.city || "";
+    const notes = normalized.notes || "";
+
+    const requested_printer_id = normalized.printer_id || "";
     const printer_id = routeQueue({ printer_id: requested_printer_id, paper_size, service_type });
 
     const file_url = `${BASE_URL}/uploads/${encodeURIComponent(req.file.filename)}`;
@@ -256,7 +281,6 @@ app.post("/api/print-jobs", upload.single("file"), async (req, res) => {
     const unit = calcUnitPrice(color_mode);
     const total_cost = Number((unit * pages * copies).toFixed(2));
 
-    // Insert (schema-tolerant; if your DB has extra columns it won't break)
     const q = `
       INSERT INTO print_jobs
         (status, printer_id, file_url, original_name, paper_size, color_mode, copies, pages, total_cost,
@@ -300,10 +324,13 @@ app.post("/api/print-jobs", upload.single("file"), async (req, res) => {
       hint: "If your table is missing instructions/service_type columns, add them or remove from INSERT.",
     });
   }
-});
+}
+
+app.post("/api/print-jobs", upload.single("file"), createPrintJobHandler);
+app.post("/api/upload", upload.single("file"), createPrintJobHandler);
 
 /* ---------------- WORKER: CLAIM NEXT JOB ---------------- */
-app.get("/api/worker/next", requireWorkerAuth, async (req, res) => {
+async function claimNextJob(req, res) {
   const printer_id = safeTrim(req.query.printer_id || DEFAULT_PRINTER_ID);
 
   const client = await pool.connect();
@@ -330,7 +357,6 @@ app.get("/api/worker/next", requireWorkerAuth, async (req, res) => {
 
     const job = sel.rows[0];
 
-    // Mark as printing immediately (prevents loops)
     const upd = await client.query(
       `
       UPDATE print_jobs
@@ -349,7 +375,10 @@ app.get("/api/worker/next", requireWorkerAuth, async (req, res) => {
   } finally {
     client.release();
   }
-});
+}
+
+app.get("/api/worker/next", requireWorkerAuth, claimNextJob);
+app.get("/worker/next", requireWorkerAuth, claimNextJob);
 
 /* ---------------- WORKER: UPDATE JOB STATUS ---------------- */
 app.post("/api/worker/jobs/:id/status", requireWorkerAuth, async (req, res) => {
@@ -357,7 +386,7 @@ app.post("/api/worker/jobs/:id/status", requireWorkerAuth, async (req, res) => {
     const id = Number(req.params.id);
     if (!Number.isFinite(id)) return res.status(400).json({ error: "Invalid id" });
 
-    const status = safeTrim(req.body.status || ""); // done / error / printing / pending
+    const status = safeTrim(req.body.status || "");
     const error_message = safeTrim(req.body.error_message || "");
 
     if (!status) return res.status(400).json({ error: "Missing status" });
@@ -380,7 +409,6 @@ app.post("/api/worker/jobs/:id/status", requireWorkerAuth, async (req, res) => {
   }
 });
 
-/* ---------------- WORKER: LEGACY STATUS ENDPOINT (compat) ---------------- */
 app.post("/api/worker/status", requireWorkerAuth, async (req, res) => {
   try {
     const id = Number(req.body.id);
@@ -426,7 +454,6 @@ app.get("/api/dashboard/jobs", requireDashboardAuth, async (req, res) => {
       params.push(status);
     }
 
-    // Search (id, filename, email, instructions)
     if (q) {
       where.push(`(
         CAST(id AS TEXT) ILIKE $${idx} OR
@@ -456,6 +483,20 @@ app.get("/api/dashboard/jobs", requireDashboardAuth, async (req, res) => {
     res.json({ ok: true, jobs: r.rows });
   } catch (e) {
     res.status(500).json({ error: e.message });
+  }
+});
+
+app.get("/jobs", async (req, res) => {
+  try {
+    const r = await pool.query(`
+      SELECT id, status, printer_id, original_name, copies, pages, total_cost, created_at
+      FROM print_jobs
+      ORDER BY created_at DESC
+      LIMIT 50
+    `);
+    res.json({ ok: true, jobs: r.rows });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
   }
 });
 
@@ -528,14 +569,9 @@ app.post("/api/dashboard/jobs/:id/delete", requireDashboardAuth, async (req, res
   }
 });
 
-/* ---------------- DASHBOARD UI (Worker + Agent) ---------------- */
+/* ---------------- DASHBOARD UI ---------------- */
 function dashboardHtml({ initialPrinter }) {
-  const printers = PRINTERS;
-  const options = printers
-    .map((p) => `<option value="${escHtml(p.id)}">${escHtml(p.label)}</option>`)
-    .join("");
-
-  // ✅ CRITICAL FIX: initialPrinter must be safely injected as a JS string
+  const options = PRINTERS.map((p) => `<option value="${escHtml(p.id)}">${escHtml(p.label)}</option>`).join("");
   const initialPrinterSafe = JSON.stringify(initialPrinter || DISPATCH_QUEUE_ID);
 
   return `<!doctype html>
@@ -552,7 +588,6 @@ function dashboardHtml({ initialPrinter }) {
     input,select,button{padding:10px 12px;border-radius:12px;border:1px solid #334155;background:#0b1730;color:#e5e7eb}
     button{cursor:pointer}
     .muted{color:#94a3b8}
-    .ok{color:#86efac}
     .err{color:#fca5a5;white-space:pre-wrap}
     .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
     table{width:100%;border-collapse:collapse;margin-top:12px;font-size:13px}
@@ -613,7 +648,6 @@ function dashboardHtml({ initialPrinter }) {
   </div>
 
 <script>
-  // Read key from URL: /dashboard?key=...
   const urlParams = new URLSearchParams(location.search);
   const DASH_KEY = urlParams.get("key") || "";
 
@@ -627,16 +661,14 @@ function dashboardHtml({ initialPrinter }) {
   const tableEl = document.getElementById("table");
   const loadStateEl = document.getElementById("loadState");
 
-  function esc(s){ return String(s ?? "").replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m])); }
+  function esc(s){ return String(s ?? "").replace(/[&<>\"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;',"'":'&#39;'}[m])); }
 
-  // ✅ FIX: safe initial selection (no bare DISPATCH token)
   const INITIAL_PRINTER = ${initialPrinterSafe};
   printerEl.value = INITIAL_PRINTER;
 
   let timer = null;
 
   function apiUrl(path){
-    // Send key both as query + header supported
     const sep = path.includes("?") ? "&" : "?";
     return path + sep + "key=" + encodeURIComponent(DASH_KEY);
   }
@@ -698,7 +730,6 @@ function dashboardHtml({ initialPrinter }) {
       "</tr></thead>" +
       "<tbody>"+rows+"</tbody></table>";
 
-    // Bind actions
     document.querySelectorAll("[data-move]").forEach(btn => {
       btn.addEventListener("click", async () => {
         const id = btn.getAttribute("data-move");
@@ -820,13 +851,11 @@ function dashboardHtml({ initialPrinter }) {
 </html>`;
 }
 
-/* Main dashboard */
 app.get("/dashboard", (req, res) => {
   res.setHeader("content-type", "text/html; charset=utf-8");
   res.end(dashboardHtml({ initialPrinter: safeTrim(req.query.printer_id || DISPATCH_QUEUE_ID) }));
 });
 
-/* Convenience pages */
 app.get("/worker", (req, res) => {
   res.setHeader("content-type", "text/html; charset=utf-8");
   res.end(dashboardHtml({ initialPrinter: DISPATCH_QUEUE_ID }));
@@ -837,7 +866,6 @@ app.get("/agent", (req, res) => {
   res.end(dashboardHtml({ initialPrinter: AGENT_QUEUE_ID }));
 });
 
-/* ---------------- START ---------------- */
 app.listen(PORT, () => {
   console.log(`MSTAF Core listening on ${PORT}`);
   console.log(`BASE_URL: ${BASE_URL}`);
