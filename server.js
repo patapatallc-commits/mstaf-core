@@ -500,7 +500,7 @@ app.get("/jobs", async (req, res) => {
   }
 });
 
-/* ---------------- DASHBOARD API: ROUTE / DELETE / MARK ---------------- */
+2/* ---------------- DASHBOARD API: ROUTE / DELETE / MARK ---------------- */
 app.post("/api/dashboard/jobs/:id/route", requireDashboardAuth, async (req, res) => {
   try {
     const id = Number(req.params.id);
@@ -864,27 +864,39 @@ app.get("/worker", (req, res) => {
 app.get("/agent", (req, res) => {
   res.setHeader("content-type", "text/html; charset=utf-8");
   res.end(dashboardHtml({ initialPrinter: AGENT_QUEUE_ID }));
-});
-/* ---------------- WHATSAPP WEBHOOK ---------------- */
 
-const VERIFY_TOKEN = "PATAPATA_MSTAF_WEBHOOK";
+// ===============================
+// WhatsApp / Meta Webhook
+// ===============================
+const VERIFY_TOKEN = process.env.WHATSAPP_VERIFY_TOKEN || "PATAPATA_MSTAF_WEBHOOK";
 
 app.get("/webhook", (req, res) => {
-  const mode = req.query["hub.mode"];
-  const token = req.query["hub.verify_token"];
-  const challenge = req.query["hub.challenge"];
+  try {
+    const mode = req.query["hub.mode"];
+    const token = req.query["hub.verify_token"];
+    const challenge = req.query["hub.challenge"];
 
-  if (mode === "subscribe" && token === VERIFY_TOKEN) {
-    console.log("Webhook verified");
-    return res.status(200).send(challenge);
+    if (mode === "subscribe" && token === VERIFY_TOKEN) {
+      console.log("✅ Webhook verified by Meta");
+      return res.status(200).send(challenge);
+    }
+
+    console.log("❌ Webhook verification failed");
+    return res.sendStatus(403);
+  } catch (err) {
+    console.error("GET /webhook error:", err);
+    return res.sendStatus(500);
   }
-
-  return res.sendStatus(403);
 });
 
-app.post("/webhook", (req, res) => {
-  console.log("Incoming WhatsApp message:", JSON.stringify(req.body, null, 2));
-  res.sendStatus(200);
+app.post("/webhook", async (req, res) => {
+  try {
+    console.log("📩 Incoming webhook:", JSON.stringify(req.body, null, 2));
+    return res.sendStatus(200);
+  } catch (err) {
+    console.error("POST /webhook error:", err);
+    return res.sendStatus(500);
+  }
 });
 app.listen(PORT, () => {
   console.log(`MSTAF Core listening on ${PORT}`);
