@@ -534,7 +534,7 @@ app.post("/api/dashboard/jobs/:id/mark", requireDashboardAuth, async (req, res) 
     const status = safeTrim(req.body.status || "");
     const error_message = safeTrim(req.body.error_message || "");
 
-    if (!Number.isFinite(id)) return res.status(400).json({ error: "Invalid id" });
+    if8 (!Number.isFinite(id)) return res.status(400).json({ error: "Invalid id" });
     if (!status) return res.status(400).json({ error: "Missing status" });
 
     const r = await pool.query(
@@ -572,7 +572,7 @@ app.post("/api/dashboard/jobs/:id/delete", requireDashboardAuth, async (req, res
 /* ---------------- DASHBOARD UI ---------------- */
 function dashboardHtml({ initialPrinter }) {
   const options = PRINTERS.map((p) => `<option value="${escHtml(p.id)}">${escHtml(p.label)}</option>`).join("");
-  const initialPrinterSafe = JSON.stringify(initialPrinter || DISPATCH_QUEUE_ID);
+  con8st initialPrinterSafe = JSON.stringify(initialPrinter || DISPATCH_QUEUE_ID);
 
   return `<!doctype html>
 <html>
@@ -610,7 +610,7 @@ function dashboardHtml({ initialPrinter }) {
     <div class="card">
       <div class="top">
         <div>
-          <div class="muted" style="margin-bottom:6px;">Queue/Printer</div>
+    8      <div class="muted" style="margin-bottom:6px;">Queue/Printer</div>
           <select id="printer" style="min-width:520px;max-width:520px">${options}</select>
         </div>
 
@@ -648,7 +648,7 @@ function dashboardHtml({ initialPrinter }) {
   </div>
 
 <script>
-  const urlParams = new URLSearchParams(location.search);
+  c8onst urlParams = new URLSearchParams(location.search);
   const DASH_KEY = urlParams.get("key") || "";
 
   const printerEl = document.getElementById("printer");
@@ -686,7 +686,7 @@ function dashboardHtml({ initialPrinter }) {
 
   function renderJobs(jobs){
     if(!Array.isArray(jobs) || jobs.length === 0){
-      tableEl.innerHTML = "<div class='muted'>0 jobs</div>";
+  8    tableEl.innerHTML = "<div class='muted'>0 jobs</div>";
       return;
     }
 
@@ -724,7 +724,7 @@ function dashboardHtml({ initialPrinter }) {
     }).join("");
 
     tableEl.innerHTML =
-      "<table>" +
+ 8     "<table>" +
       "<thead><tr>" +
       "<th>ID/Status</th><th>Queue/Printer</th><th>Mode</th><th>Copies/Pages</th><th>File</th><th>Customer</th><th>Instructions</th><th>Actions</th>" +
       "</tr></thead>" +
@@ -762,7 +762,7 @@ function dashboardHtml({ initialPrinter }) {
         }
       });
     });
-
+8
     document.querySelectorAll("[data-err]").forEach(btn => {
       btn.addEventListener("click", async () => {
         const id = btn.getAttribute("data-err");
@@ -800,7 +800,7 @@ function dashboardHtml({ initialPrinter }) {
     errorEl.textContent = "";
 
     if(!DASH_KEY){
-      errorEl.textContent = "Missing dashboard key. Open: /dashboard?key=YOUR_KEY";
+ 8     errorEl.textContent = "Missing dashboard key. Open: /dashboard?key=YOUR_KEY";
       tableEl.innerHTML = "";
       return;
     }
@@ -838,7 +838,7 @@ function dashboardHtml({ initialPrinter }) {
       timer = setInterval(load, 4000);
     }
   }
-
+8
   refreshBtn.addEventListener("click", load);
   printerEl.addEventListener("change", load);
   statusEl.addEventListener("change", load);
@@ -865,7 +865,27 @@ app.get("/agent", (req, res) => {
   res.setHeader("content-type", "text/html; charset=utf-8");
   res.end(dashboardHtml({ initialPrinter: AGENT_QUEUE_ID }));
 });
+/* ---------------- WHATSAPP WEBHOOK ---------------- */
 
+const VERIFY_TOKEN = "PATAPATA_MSTAF_WEBHOOK";
+
+app.get("/webhook", (req, res) => {
+  const mode = req.query["hub.mode"];
+  const token = req.query["hub.verify_token"];
+  const challenge = req.query["hub.challenge"];
+
+  if (mode === "subscribe" && token === VERIFY_TOKEN) {
+    console.log("Webhook verified");
+    return res.status(200).send(challenge);
+  }
+
+  return res.sendStatus(403);
+});
+
+app.post("/webhook", (req, res) => {
+  console.log("Incoming WhatsApp message:", JSON.stringify(req.body, null, 2));
+  res.sendStatus(200);
+});
 app.listen(PORT, () => {
   console.log(`MSTAF Core listening on ${PORT}`);
   console.log(`BASE_URL: ${BASE_URL}`);
