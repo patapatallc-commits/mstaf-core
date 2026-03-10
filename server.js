@@ -9,18 +9,13 @@ const { Pool } = require("pg");
 
 const app = express();
 
-// --- uploads directory (Render-safe) ---
-const uploadsDir = path.resolve(process.cwd(), "uploads");
-fs.mkdirSync(uploadsDir, { recursive: true });
-app.use("/uploads", express.static(uploadsDir));
-
 /* ---------------- ENV ---------------- */
 const PORT = process.env.PORT || 10000;
 
 const BASE_URL =
   process.env.PUBLIC_BASE_URL ||
   process.env.RENDER_EXTERNAL_URL ||
-  `http://localhost:${PORT}`;2
+  `http://localhost:${PORT}`;
 
 const DASHBOARD_KEY = String(process.env.DASHBOARD_KEY || "").trim();
 const WORKER_KEY =
@@ -32,6 +27,10 @@ const A3_PRINTER_ID = String(process.env.A3_PRINTER_ID || "PP-USA-A3-001").trim(
 const CARD_PRINTER_ID = String(process.env.CARD_PRINTER_ID || "PP-USA-CARD-001").trim();
 const DISPATCH_QUEUE_ID = String(process.env.DISPATCH_QUEUE_ID || "DISPATCH").trim();
 const AGENT_QUEUE_ID = String(process.env.AGENT_QUEUE_ID || "AGENT").trim();
+
+const VERIFY_TOKEN = String(
+  process.env.WHATSAPP_VERIFY_TOKEN || "PATAPATA_MSTAF_WEBHOOK"
+).trim();
 
 /* ---------------- MIDDLEWARE ---------------- */
 app.use(cors());
@@ -45,6 +44,10 @@ const pool = new Pool({
 });
 
 /* ---------------- UPLOADS ---------------- */
+const uploadsDir = path.resolve(process.cwd(), "uploads");
+fs.mkdirSync(uploadsDir, { recursive: true });
+app.use("/uploads", express.static(uploadsDir));
+
 const UPLOAD_DIR = process.env.UPLOAD_DIR || path.join(__dirname, "uploads");
 if (!fs.existsSync(UPLOAD_DIR)) fs.mkdirSync(UPLOAD_DIR, { recursive: true });
 
@@ -57,6 +60,7 @@ const storage = multer.diskStorage({
     cb(null, `${Date.now()}_${Math.random().toString(16).slice(2)}_${safe}`);
   },
 });
+
 const upload = multer({ storage });
 app.use("/uploads", express.static(UPLOAD_DIR, { maxAge: "1h" }));
 
@@ -72,7 +76,13 @@ function num(v, d) {
 
 function escHtml(s) {
   return String(s ?? "").replace(/[&<>"']/g, (m) => {
-    return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[m];
+    return {
+      "&": "&amp;",
+      "<": "&lt;",
+      ">": "&gt;",
+      '"': "&quot;",
+      "'": "&#39;",
+    }[m];
   });
 }
 
@@ -80,6 +90,19 @@ function calcUnitPrice(colorMode) {
   const m = String(colorMode || "").toLowerCase();
   if (m.includes("bw") || m.includes("black")) return 0.25;
   return 0.5;
+}
+
+function normalizeServiceType(v) {
+  const s = safeTrim(v).toLowerCase();
+
+  if (!s) return "PRINT";
+  if (s.includes("laminat")) return "LAMINATING";
+  if (s.includes("id") && s.includes("card")) return "ID_CARD_PRINTING";
+  if (s.includes("video")) return "VIDEO_EDITING";
+  if (s.includes("image")) return "IMAGE_EDITING";
+  if (s.includes("edit")) return "EDITING";
+  if (s.includes("card")) return "CARD_PRINTING";
+  return s.toUpperCase();
 }
 
 function requireWorkerAuth(req, res, next) {
@@ -91,15 +114,29 @@ function requireWorkerAuth(req, res, next) {
       req.query.printer_key ||
       ""
   );
-  if (!WORKER_KEY) return res.status(500).json({ error: "Server WORKER_KEY/PRINTER_KEY not configured" });
-  if (provided !== WORKER_KEY) return res.status(401).json({ error: "Unauthorized" });
+
+  if (!WORKER_KEY) {
+    return res.status(500).json({ error: "Server WORKER_KEY/PRINTER_KEY not configured" });
+  }
+
+  if (provided !== WORKER_KEY) {
+    return res.status(401).json({ error: "Unauthorized" });
+  }
+
   next();
 }
 
 function requireDashboardAuth(req, res, next) {
   const provided = safeTrim(req.headers["x-dashboard-key"] || req.query.key || "");
-  if (!DASHBOARD_KEY) return res.status(500).json({ error: "Server DASHBOARD_KEY not configured" });
-  if (provided !== DASHBOARD_KEY) return res.status(401).json({ error: "Unauthorized" });
+
+  if (!DASHBOARD_KEY) {
+    return res.status(500).json({ error: "Server DASHBOARD_KEY not configured" });
+  }
+
+  if (provided !== DASHBOARD_KEY) {
+    return res.status(401).json({ error: "Unauthorized" });
+  }
+
   next();
 }
 
@@ -145,18 +182,59 @@ const NG_STATE_CODES = [
 
 function buildPrinterRegistry() {
   const printers = [];
-  printers.push({ id: DISPATCH_QUEUE_ID, label: "DISPATCH — Manual Routing Queue", kind: "queue" });
-  printers.push({ id: AGENT_QUEUE_ID, label: "AGENT — Image/Video Editing Queue", kind: "queue" });
 
-  printers.push({ id: DEFAULT_PRINTER_ID, label: `USA — A4 Hub Printer (Default) (${DEFAULT_PRINTER_ID})`, kind: "printer", country: "USA" });
-  printers.push({ id: A3_PRINTER_ID, label: `USA — A3 Printer (${A3_PRINTER_ID})`, kind: "printer", country: "USA" });
-  printers.push({ id: CARD_PRINTER_ID, label: `USA — CARD Printer (${CARD_PRINTER_ID})`, kind: "printer", country: "USA" });
+  printers.push({
+    id: DISPATCH_QUEUE_ID,
+    label: "DISPATCH — Manual Routing Queue",
+    kind: "queue",
+  });
+
+  printers.push({
+    id: AGENT_QUEUE_ID,
+    label: "AGENT — Image/Video Editing Queue",
+    kind: "queue",
+  });
+
+  printers.push({
+    id: DEFAULT_PRINTER_ID,
+    label: `USA — A4 Hub Printer (Default) (${DEFAULT_PRINTER_ID})`,
+    kind: "printer",
+    country: "USA",
+  });
+
+  printers.push({
+    id: A3_PRINTER_ID,
+    label: `USA — A3 Printer (${A3_PRINTER_ID})`,
+    kind: "printer",
+    country: "USA",
+  });
+
+  printers.push({
+    id: CARD_PRINTER_ID,
+    label: `USA — CARD Printer (${CARD_PRINTER_ID})`,
+    kind: "printer",
+    country: "USA",
+  });
 
   for (const [name, code] of NG_STATE_CODES) {
     const a4 = `PP-NG-${code}-A4-001`;
     const sp = `PP-NG-${code}-SP-001`;
-    printers.push({ id: a4, label: `Nigeria — ${name} A4 Hub (${a4})`, kind: "printer", country: "Nigeria", state: name });
-    printers.push({ id: sp, label: `Nigeria — ${name} SPECIAL A3/CARD (${sp})`, kind: "printer", country: "Nigeria", state: name });
+
+    printers.push({
+      id: a4,
+      label: `Nigeria — ${name} A4 Hub (${a4})`,
+      kind: "printer",
+      country: "Nigeria",
+      state: name,
+    });
+
+    printers.push({
+      id: sp,
+      label: `Nigeria — ${name} SPECIAL A3/CARD (${sp})`,
+      kind: "printer",
+      country: "Nigeria",
+      state: name,
+    });
   }
 
   return printers;
@@ -167,15 +245,31 @@ const PRINTER_BY_ID = new Map(PRINTERS.map((p) => [p.id, p]));
 
 /* ---------------- ROUTING LOGIC ---------------- */
 function routeQueue({ printer_id, paper_size, service_type }) {
-  const p = safeTrim(printer_id);
-  if (p) return p;
+  const requested = safeTrim(printer_id);
+  if (requested) return requested;
 
-  const svc = safeTrim(service_type).toLowerCase();
-  if (svc.includes("image") || svc.includes("video") || svc.includes("edit")) return AGENT_QUEUE_ID;
-
+  const svc = normalizeServiceType(service_type);
   const ps = safeTrim(paper_size).toUpperCase();
-  if (ps === "A3") return DISPATCH_QUEUE_ID;
-  if (ps.includes("CARD")) return DISPATCH_QUEUE_ID;
+
+  if (
+    svc === "IMAGE_EDITING" ||
+    svc === "VIDEO_EDITING" ||
+    svc === "EDITING"
+  ) {
+    return AGENT_QUEUE_ID;
+  }
+
+  if (
+    svc === "LAMINATING" ||
+    svc === "ID_CARD_PRINTING" ||
+    svc === "CARD_PRINTING"
+  ) {
+    return DISPATCH_QUEUE_ID;
+  }
+
+  if (ps === "A3" || ps.includes("CARD")) {
+    return DISPATCH_QUEUE_ID;
+  }
 
   return DEFAULT_PRINTER_ID;
 }
@@ -186,7 +280,9 @@ function normalizeUploadBody(body = {}) {
     color_mode: safeTrim(body.color_mode || body.colorMode || body.printType || "BW"),
     copies: num(body.copies || body.quantity || 1, 1),
     pages: num(body.pages || body.pageCount || 1, 1),
-    service_type: safeTrim(body.service_type || body.serviceType || body.service || "PRINT"),
+    service_type: normalizeServiceType(
+      body.service_type || body.serviceType || body.service || "PRINT"
+    ),
     instructions: safeTrim(body.instructions || body.instruction || body.message || ""),
     customer_name: safeTrim(body.customer_name || body.customerName || body.name || ""),
     customer_email: safeTrim(body.customer_email || body.customerEmail || body.email || ""),
@@ -215,6 +311,15 @@ app.get("/health", async (req, res) => {
         DISPATCH_QUEUE_ID,
         AGENT_QUEUE_ID,
       },
+      services: [
+        "PRINT",
+        "CARD_PRINTING",
+        "IMAGE_EDITING",
+        "VIDEO_EDITING",
+        "EDITING",
+        "LAMINATING",
+        "ID_CARD_PRINTING",
+      ],
     });
   } catch (e) {
     res.status(500).json({ ok: false, error: e.message });
@@ -236,6 +341,15 @@ app.get("/api/health", async (req, res) => {
         DISPATCH_QUEUE_ID,
         AGENT_QUEUE_ID,
       },
+      services: [
+        "PRINT",
+        "CARD_PRINTING",
+        "IMAGE_EDITING",
+        "VIDEO_EDITING",
+        "EDITING",
+        "LAMINATING",
+        "ID_CARD_PRINTING",
+      ],
     });
   } catch (e) {
     res.status(500).json({ ok: false, error: e.message });
@@ -245,7 +359,12 @@ app.get("/api/health", async (req, res) => {
 app.get("/debug", async (req, res) => {
   try {
     const r = await pool.query("SELECT NOW() as now");
-    res.json({ ok: true, message: "MSTAF debug route working", now: r.rows?.[0]?.now || null, base_url: BASE_URL });
+    res.json({
+      ok: true,
+      message: "MSTAF debug route working",
+      now: r.rows?.[0]?.now || null,
+      base_url: BASE_URL,
+    });
   } catch (e) {
     res.status(500).json({ ok: false, error: e.message });
   }
@@ -262,18 +381,20 @@ async function createPrintJobHandler(req, res) {
     const color_mode = normalized.color_mode || "BW";
     const copies = Math.max(1, num(normalized.copies, 1));
     const pages = Math.max(1, num(normalized.pages, 1));
-
     const service_type = normalized.service_type || "PRINT";
     const instructions = normalized.instructions || "";
-
     const customer_name = normalized.customer_name || "";
     const customer_email = normalized.customer_email || "";
     const country = normalized.country || "";
     const city = normalized.city || "";
     const notes = normalized.notes || "";
-
     const requested_printer_id = normalized.printer_id || "";
-    const printer_id = routeQueue({ printer_id: requested_printer_id, paper_size, service_type });
+
+    const printer_id = routeQueue({
+      printer_id: requested_printer_id,
+      paper_size,
+      service_type,
+    });
 
     const file_url = `${BASE_URL}/uploads/${encodeURIComponent(req.file.filename)}`;
     const original_name = safeTrim(req.file.originalname || "");
@@ -311,15 +432,21 @@ async function createPrintJobHandler(req, res) {
 
     const created = await pool.query(q, values);
 
-    res.status(201).json({
+    return res.status(201).json({
       ok: true,
       job: created.rows[0],
       file_url,
-      pricing: { unit_price: unit, pages, copies, total_cost },
+      pricing: {
+        unit_price: unit,
+        pages,
+        copies,
+        total_cost,
+      },
       routed_to: printer_id,
+      service_type,
     });
   } catch (e) {
-    res.status(500).json({
+    return res.status(500).json({
       error: e.message,
       hint: "If your table is missing instructions/service_type columns, add them or remove from INSERT.",
     });
@@ -332,8 +459,8 @@ app.post("/api/upload", upload.single("file"), createPrintJobHandler);
 /* ---------------- WORKER: CLAIM NEXT JOB ---------------- */
 async function claimNextJob(req, res) {
   const printer_id = safeTrim(req.query.printer_id || DEFAULT_PRINTER_ID);
-
   const client = await pool.connect();
+
   try {
     await client.query("BEGIN");
 
@@ -368,10 +495,10 @@ async function claimNextJob(req, res) {
     );
 
     await client.query("COMMIT");
-    res.json({ ok: true, job: upd.rows[0] });
+    return res.json({ ok: true, job: upd.rows[0] });
   } catch (e) {
     await client.query("ROLLBACK");
-    res.status(500).json({ error: e.message });
+    return res.status(500).json({ error: e.message });
   } finally {
     client.release();
   }
@@ -403,9 +530,9 @@ app.post("/api/worker/jobs/:id/status", requireWorkerAuth, async (req, res) => {
     );
 
     if (r.rowCount === 0) return res.status(404).json({ error: "Job not found" });
-    res.json({ ok: true, job: r.rows[0] });
+    return res.json({ ok: true, job: r.rows[0] });
   } catch (e) {
-    res.status(500).json({ error: e.message });
+    return res.status(500).json({ error: e.message });
   }
 });
 
@@ -416,6 +543,7 @@ app.post("/api/worker/status", requireWorkerAuth, async (req, res) => {
 
     const status = safeTrim(req.body.status || "");
     const error_message = safeTrim(req.body.error_message || "");
+
     if (!status) return res.status(400).json({ error: "Missing status" });
 
     const r = await pool.query(
@@ -461,7 +589,8 @@ app.get("/api/dashboard/jobs", requireDashboardAuth, async (req, res) => {
         COALESCE(customer_email,'') ILIKE $${idx} OR
         COALESCE(customer_name,'') ILIKE $${idx} OR
         COALESCE(instructions,'') ILIKE $${idx} OR
-        COALESCE(notes,'') ILIKE $${idx}
+        COALESCE(notes,'') ILIKE $${idx} OR
+        COALESCE(service_type,'') ILIKE $${idx}
       )`);
       params.push(`%${q}%`);
       idx++;
@@ -480,34 +609,37 @@ app.get("/api/dashboard/jobs", requireDashboardAuth, async (req, res) => {
       params
     );
 
-    res.json({ ok: true, jobs: r.rows });
+    return res.json({ ok: true, jobs: r.rows });
   } catch (e) {
-    res.status(500).json({ error: e.message });
+    return res.status(500).json({ error: e.message });
   }
 });
 
 app.get("/jobs", async (req, res) => {
   try {
     const r = await pool.query(`
-      SELECT id, status, printer_id, original_name, copies, pages, total_cost, created_at
+      SELECT id, status, printer_id, original_name, copies, pages, total_cost, created_at, service_type
       FROM print_jobs
       ORDER BY created_at DESC
       LIMIT 50
     `);
-    res.json({ ok: true, jobs: r.rows });
+    return res.json({ ok: true, jobs: r.rows });
   } catch (e) {
-    res.status(500).json({ ok: false, error: e.message });
+    return res.status(500).json({ ok: false, error: e.message });
   }
 });
 
-2/* ---------------- DASHBOARD API: ROUTE / DELETE / MARK ---------------- */
+/* ---------------- DASHBOARD API: ROUTE / DELETE / MARK ---------------- */
 app.post("/api/dashboard/jobs/:id/route", requireDashboardAuth, async (req, res) => {
   try {
     const id = Number(req.params.id);
     const to_printer_id = safeTrim(req.body.to_printer_id || "");
+
     if (!Number.isFinite(id)) return res.status(400).json({ error: "Invalid id" });
     if (!to_printer_id) return res.status(400).json({ error: "Missing to_printer_id" });
-    if (!PRINTER_BY_ID.has(to_printer_id)) return res.status(400).json({ error: "Unknown printer/queue id" });
+    if (!PRINTER_BY_ID.has(to_printer_id)) {
+      return res.status(400).json({ error: "Unknown printer/queue id" });
+    }
 
     const r = await pool.query(
       `
@@ -522,9 +654,9 @@ app.post("/api/dashboard/jobs/:id/route", requireDashboardAuth, async (req, res)
     );
 
     if (r.rowCount === 0) return res.status(404).json({ error: "Job not found" });
-    res.json({ ok: true, job: r.rows[0] });
+    return res.json({ ok: true, job: r.rows[0] });
   } catch (e) {
-    res.status(500).json({ error: e.message });
+    return res.status(500).json({ error: e.message });
   }
 });
 
@@ -534,14 +666,14 @@ app.post("/api/dashboard/jobs/:id/mark", requireDashboardAuth, async (req, res) 
     const status = safeTrim(req.body.status || "");
     const error_message = safeTrim(req.body.error_message || "");
 
-    if (!Number.isFinite(id)) return res.status(400).json({ error: 'Invalid id' });
+    if (!Number.isFinite(id)) return res.status(400).json({ error: "Invalid id" });
     if (!status) return res.status(400).json({ error: "Missing status" });
 
     const r = await pool.query(
       `
       UPDATE print_jobs
       SET status = $2,
-          error_message = NULLIF($3,'')
+          error_message = NULLIF($3, '')
       WHERE id = $1
       RETURNING *;
       `,
@@ -549,9 +681,9 @@ app.post("/api/dashboard/jobs/:id/mark", requireDashboardAuth, async (req, res) 
     );
 
     if (r.rowCount === 0) return res.status(404).json({ error: "Job not found" });
-    res.json({ ok: true, job: r.rows[0] });
+    return res.json({ ok: true, job: r.rows[0] });
   } catch (e) {
-    res.status(500).json({ error: e.message });
+    return res.status(500).json({ error: e.message });
   }
 });
 
@@ -561,18 +693,24 @@ app.post("/api/dashboard/jobs/:id/delete", requireDashboardAuth, async (req, res
     if (!Number.isFinite(id)) return res.status(400).json({ error: "Invalid id" });
 
     const r = await pool.query(`DELETE FROM print_jobs WHERE id = $1 RETURNING id;`, [id]);
-    if (r.rowCount === 0) return res.status(404).json({ error: "Job not found" });
 
-    res.json({ ok: true, deleted: r.rows[0].id });
+    if (r.rowCount === 0) return res.status(404).json({ error: "Job not found" });
+    return res.json({ ok: true, deleted: r.rows[0].id });
   } catch (e) {
-    res.status(500).json({ error: e.message });
+    return res.status(500).json({ error: e.message });
   }
 });
 
 /* ---------------- DASHBOARD UI ---------------- */
 function dashboardHtml({ initialPrinter }) {
-  const options = PRINTERS.map((p) => `<option value="${escHtml(p.id)}">${escHtml(p.label)}</option>`).join("");
+  const options = PRINTERS.map(
+    (p) => `<option value="${escHtml(p.id)}">${escHtml(p.label)}</option>`
+  ).join("");
+
   const initialPrinterSafe = JSON.stringify(initialPrinter || DISPATCH_QUEUE_ID);
+  const routeOptionsJson = JSON.stringify(
+    PRINTERS.map((p) => ({ id: p.id, label: p.label }))
+  );
 
   return `<!doctype html>
 <html>
@@ -604,13 +742,15 @@ function dashboardHtml({ initialPrinter }) {
     <h2 style="margin:0 0 6px 0;">MSTAF Worker + Agent Dashboard</h2>
     <div class="muted" style="margin-bottom:16px;">
       DISPATCH routing • printers • editing queue • Nigeria hubs
-      <span style="float:right" class="muted">Auto: A4→${escHtml(DEFAULT_PRINTER_ID)} • A3/CARD→${escHtml(DISPATCH_QUEUE_ID)} • IMAGE/VIDEO→${escHtml(AGENT_QUEUE_ID)}</span>
+      <span style="float:right" class="muted">
+        Auto: A4→${escHtml(DEFAULT_PRINTER_ID)} • A3/CARD/LAMINATING/ID CARD→${escHtml(DISPATCH_QUEUE_ID)} • IMAGE/VIDEO→${escHtml(AGENT_QUEUE_ID)}
+      </span>
     </div>
 
     <div class="card">
       <div class="top">
         <div>
-    8      <div class="muted" style="margin-bottom:6px;">Queue/Printer</div>
+          <div class="muted" style="margin-bottom:6px;">Queue/Printer</div>
           <select id="printer" style="min-width:520px;max-width:520px">${options}</select>
         </div>
 
@@ -648,7 +788,7 @@ function dashboardHtml({ initialPrinter }) {
   </div>
 
 <script>
-  c8onst urlParams = new URLSearchParams(location.search);
+  const urlParams = new URLSearchParams(location.search);
   const DASH_KEY = urlParams.get("key") || "";
 
   const printerEl = document.getElementById("printer");
@@ -661,7 +801,15 @@ function dashboardHtml({ initialPrinter }) {
   const tableEl = document.getElementById("table");
   const loadStateEl = document.getElementById("loadState");
 
-  function esc(s){ return String(s ?? "").replace(/[&<>\"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;',"'":'&#39;'}[m])); }
+  function esc(s){
+    return String(s ?? "").replace(/[&<>\"']/g, m => ({
+      '&':'&amp;',
+      '<':'&lt;',
+      '>':'&gt;',
+      '\"':'&quot;',
+      "'":'&#39;'
+    }[m]));
+  }
 
   const INITIAL_PRINTER = ${initialPrinterSafe};
   printerEl.value = INITIAL_PRINTER;
@@ -676,73 +824,86 @@ function dashboardHtml({ initialPrinter }) {
   async function apiPost(path, body){
     const r = await fetch(apiUrl(path), {
       method: "POST",
-      headers: { "content-type":"application/json", "x-dashboard-key": DASH_KEY },
+      headers: {
+        "content-type": "application/json",
+        "x-dashboard-key": DASH_KEY
+      },
       body: JSON.stringify(body || {})
     });
-    const data = await r.json().catch(()=> ({}));
-    if(!r.ok) throw new Error("HTTP "+r.status+": "+JSON.stringify(data));
+
+    const data = await r.json().catch(() => ({}));
+    if(!r.ok) throw new Error("HTTP " + r.status + ": " + JSON.stringify(data));
     return data;
   }
 
   function renderJobs(jobs){
     if(!Array.isArray(jobs) || jobs.length === 0){
-  8    tableEl.innerHTML = "<div class='muted'>0 jobs</div>";
+      tableEl.innerHTML = "<div class='muted'>0 jobs</div>";
       return;
     }
 
-    const routeOptions = ${JSON.stringify(PRINTERS.map(p => ({ id: p.id, label: p.label })))};
+    const routeOptions = ${routeOptionsJson};
 
     const rows = jobs.map(j => {
-      const file = j.file_url ? "<a href='"+esc(j.file_url)+"' target='_blank'>file</a>" : "";
+      const file = j.file_url
+        ? "<a href='" + esc(j.file_url) + "' target='_blank'>file</a>"
+        : "";
+
       const instr = esc(j.instructions || "");
       const svc = esc(j.service_type || "");
       const who = [j.customer_name, j.customer_email].filter(Boolean).map(esc).join("<br/>");
       const loc = [j.city, j.country].filter(Boolean).map(esc).join(", ");
 
-      const routeSel = "<select data-route='"+esc(j.id)+"'>" +
-        routeOptions.map(p => "<option value='"+esc(p.id)+"' "+(p.id===j.printer_id?"selected":"")+">"+esc(p.label)+"</option>").join("") +
+      const routeSel =
+        "<select data-route='" + esc(j.id) + "'>" +
+        routeOptions.map(p =>
+          "<option value='" + esc(p.id) + "' " + (p.id === j.printer_id ? "selected" : "") + ">" +
+          esc(p.label) +
+          "</option>"
+        ).join("") +
         "</select>";
 
       const actions =
         "<div class='actions'>" +
-          "<button class='btn-sm' data-move='"+esc(j.id)+"'>Route</button>" +
-          "<button class='btn-sm' data-done='"+esc(j.id)+"'>Done</button>" +
-          "<button class='btn-sm' data-err='"+esc(j.id)+"'>Error</button>" +
-          "<button class='btn-sm danger' data-del='"+esc(j.id)+"'>Delete</button>" +
+          "<button class='btn-sm' data-move='" + esc(j.id) + "'>Route</button>" +
+          "<button class='btn-sm' data-done='" + esc(j.id) + "'>Done</button>" +
+          "<button class='btn-sm' data-err='" + esc(j.id) + "'>Error</button>" +
+          "<button class='btn-sm danger' data-del='" + esc(j.id) + "'>Delete</button>" +
         "</div>";
 
       return "<tr>" +
-        "<td><div><b>"+esc(j.id)+"</b></div><div class='pill'>"+esc(j.status)+"</div></td>" +
-        "<td>"+esc(j.printer_id)+"</td>" +
-        "<td>"+esc(j.paper_size || "")+" / "+esc(j.color_mode || "")+"<br/><span class='muted'>"+svc+"</span></td>" +
-        "<td>"+esc(j.copies || "")+" / "+esc(j.pages || "")+"<br/><span class='muted'>₦/$ "+esc(j.total_cost ?? "")+"</span></td>" +
-        "<td>"+file+"<br/><span class='muted'>"+esc(j.original_name || "")+"</span></td>" +
-        "<td>"+(who || "<span class='muted'>—</span>")+"<br/><span class='muted'>"+(loc||"")+"</span></td>" +
-        "<td style='max-width:280px;white-space:pre-wrap'>"+(instr || "<span class='muted'>—</span>")+"</td>" +
-        "<td style='min-width:360px'>"+routeSel+"<br/>"+actions+"</td>" +
+        "<td><div><b>" + esc(j.id) + "</b></div><div class='pill'>" + esc(j.status) + "</div></td>" +
+        "<td>" + esc(j.printer_id) + "</td>" +
+        "<td>" + esc(j.paper_size || "") + " / " + esc(j.color_mode || "") + "<br/><span class='muted'>" + svc + "</span></td>" +
+        "<td>" + esc(j.copies || "") + " / " + esc(j.pages || "") + "<br/><span class='muted'>₦/$ " + esc(j.total_cost ?? "") + "</span></td>" +
+        "<td>" + file + "<br/><span class='muted'>" + esc(j.original_name || "") + "</span></td>" +
+        "<td>" + (who || "<span class='muted'>—</span>") + "<br/><span class='muted'>" + (loc || "") + "</span></td>" +
+        "<td style='max-width:280px;white-space:pre-wrap'>" + (instr || "<span class='muted'>—</span>") + "</td>" +
+        "<td style='min-width:360px'>" + routeSel + "<br/>" + actions + "</td>" +
       "</tr>";
     }).join("");
 
     tableEl.innerHTML =
- 8     "<table>" +
+      "<table>" +
       "<thead><tr>" +
       "<th>ID/Status</th><th>Queue/Printer</th><th>Mode</th><th>Copies/Pages</th><th>File</th><th>Customer</th><th>Instructions</th><th>Actions</th>" +
       "</tr></thead>" +
-      "<tbody>"+rows+"</tbody></table>";
+      "<tbody>" + rows + "</tbody></table>";
 
     document.querySelectorAll("[data-move]").forEach(btn => {
       btn.addEventListener("click", async () => {
         const id = btn.getAttribute("data-move");
-        const sel = document.querySelector("[data-route='"+CSS.escape(id)+"']");
+        const sel = document.querySelector("[data-route='" + CSS.escape(id) + "']");
         const to = sel ? sel.value : "";
         if(!to) return;
+
         loadStateEl.textContent = "Routing...";
-        try{
-          await apiPost("/api/dashboard/jobs/"+encodeURIComponent(id)+"/route", { to_printer_id: to });
+        try {
+          await apiPost("/api/dashboard/jobs/" + encodeURIComponent(id) + "/route", { to_printer_id: to });
           await load();
-        }catch(e){
+        } catch(e) {
           errorEl.textContent = String(e.message || e);
-        }finally{
+        } finally {
           loadStateEl.textContent = "Idle";
         }
       });
@@ -752,28 +913,31 @@ function dashboardHtml({ initialPrinter }) {
       btn.addEventListener("click", async () => {
         const id = btn.getAttribute("data-done");
         loadStateEl.textContent = "Marking done...";
-        try{
-          await apiPost("/api/dashboard/jobs/"+encodeURIComponent(id)+"/mark", { status: "done" });
+        try {
+          await apiPost("/api/dashboard/jobs/" + encodeURIComponent(id) + "/mark", { status: "done" });
           await load();
-        }catch(e){
+        } catch(e) {
           errorEl.textContent = String(e.message || e);
-        }finally{
+        } finally {
           loadStateEl.textContent = "Idle";
         }
       });
     });
-8
+
     document.querySelectorAll("[data-err]").forEach(btn => {
       btn.addEventListener("click", async () => {
         const id = btn.getAttribute("data-err");
         const msg = prompt("Error message (optional):", "");
         loadStateEl.textContent = "Marking error...";
-        try{
-          await apiPost("/api/dashboard/jobs/"+encodeURIComponent(id)+"/mark", { status: "error", error_message: msg || "" });
+        try {
+          await apiPost("/api/dashboard/jobs/" + encodeURIComponent(id) + "/mark", {
+            status: "error",
+            error_message: msg || ""
+          });
           await load();
-        }catch(e){
+        } catch(e) {
           errorEl.textContent = String(e.message || e);
-        }finally{
+        } finally {
           loadStateEl.textContent = "Idle";
         }
       });
@@ -782,14 +946,15 @@ function dashboardHtml({ initialPrinter }) {
     document.querySelectorAll("[data-del]").forEach(btn => {
       btn.addEventListener("click", async () => {
         const id = btn.getAttribute("data-del");
-        if(!confirm("Delete job #"+id+" ?")) return;
+        if(!confirm("Delete job #" + id + " ?")) return;
+
         loadStateEl.textContent = "Deleting...";
-        try{
-          await apiPost("/api/dashboard/jobs/"+encodeURIComponent(id)+"/delete", {});
+        try {
+          await apiPost("/api/dashboard/jobs/" + encodeURIComponent(id) + "/delete", {});
           await load();
-        }catch(e){
+        } catch(e) {
           errorEl.textContent = String(e.message || e);
-        }finally{
+        } finally {
           loadStateEl.textContent = "Idle";
         }
       });
@@ -800,7 +965,7 @@ function dashboardHtml({ initialPrinter }) {
     errorEl.textContent = "";
 
     if(!DASH_KEY){
- 8     errorEl.textContent = "Missing dashboard key. Open: /dashboard?key=YOUR_KEY";
+      errorEl.textContent = "Missing dashboard key. Open: /dashboard?key=YOUR_KEY";
       tableEl.innerHTML = "";
       return;
     }
@@ -818,13 +983,17 @@ function dashboardHtml({ initialPrinter }) {
       (status ? "&status=" + encodeURIComponent(status) : "") +
       (q ? "&q=" + encodeURIComponent(q) : "");
 
-    try{
-      const r = await fetch(apiUrl(url), { headers: { "x-dashboard-key": DASH_KEY } });
-      const data = await r.json().catch(()=> ({}));
-      if(!r.ok) throw new Error("HTTP "+r.status+": "+JSON.stringify(data));
+    try {
+      const r = await fetch(apiUrl(url), {
+        headers: { "x-dashboard-key": DASH_KEY }
+      });
+
+      const data = await r.json().catch(() => ({}));
+      if(!r.ok) throw new Error("HTTP " + r.status + ": " + JSON.stringify(data));
+
       renderJobs(data.jobs || []);
       loadStateEl.textContent = "Idle";
-    }catch(e){
+    } catch(e) {
       loadStateEl.textContent = "Idle";
       errorEl.textContent = String(e.message || e);
       tableEl.innerHTML = "";
@@ -834,16 +1003,14 @@ function dashboardHtml({ initialPrinter }) {
   function setAuto(on){
     if(timer) clearInterval(timer);
     timer = null;
-    if(on){
-      timer = setInterval(load, 4000);
-    }
+    if(on) timer = setInterval(load, 4000);
   }
-8
+
   refreshBtn.addEventListener("click", load);
   printerEl.addEventListener("change", load);
   statusEl.addEventListener("change", load);
-  qEl.addEventListener("keydown", (e)=>{ if(e.key==="Enter") load(); });
-  autoEl.addEventListener("change", ()=> setAuto(autoEl.checked));
+  qEl.addEventListener("keydown", (e) => { if (e.key === "Enter") load(); });
+  autoEl.addEventListener("change", () => setAuto(autoEl.checked));
 
   load();
 </script>
@@ -853,7 +1020,11 @@ function dashboardHtml({ initialPrinter }) {
 
 app.get("/dashboard", (req, res) => {
   res.setHeader("content-type", "text/html; charset=utf-8");
-  res.end(dashboardHtml({ initialPrinter: safeTrim(req.query.printer_id || DISPATCH_QUEUE_ID) }));
+  res.end(
+    dashboardHtml({
+      initialPrinter: safeTrim(req.query.printer_id || DISPATCH_QUEUE_ID),
+    })
+  );
 });
 
 app.get("/worker", (req, res) => {
@@ -864,12 +1035,31 @@ app.get("/worker", (req, res) => {
 app.get("/agent", (req, res) => {
   res.setHeader("content-type", "text/html; charset=utf-8");
   res.end(dashboardHtml({ initialPrinter: AGENT_QUEUE_ID }));
+});
 
-// ===============================
-// WhatsApp / Meta Webhook
-// ===============================
-const VERIFY_TOKEN = process.env.WHATSAPP_VERIFY_TOKEN || "PATAPATA_MSTAF_WEBHOOK";
+/* ---------------- SERVICES LIST ---------------- */
+app.get("/api/services", (req, res) => {
+  res.json({
+    ok: true,
+    services: [
+      "Document Printing",
+      "Photo Printing",
+      "A3 Printing",
+      "A4 Printing",
+      "Black & White Printing",
+      "Color Printing",
+      "Card Printing",
+      "Large Format Printing",
+      "Editing Services",
+      "Image Editing",
+      "Video Editing",
+      "Laminating",
+      "ID Card Printing",
+    ],
+  });
+});
 
+/* ---------------- WhatsApp / Meta Webhook ---------------- */
 app.get("/webhook", (req, res) => {
   try {
     const mode = req.query["hub.mode"];
@@ -898,6 +1088,8 @@ app.post("/webhook", async (req, res) => {
     return res.sendStatus(500);
   }
 });
+
+/* ---------------- START ---------------- */
 app.listen(PORT, () => {
   console.log(`MSTAF Core listening on ${PORT}`);
   console.log(`BASE_URL: ${BASE_URL}`);
