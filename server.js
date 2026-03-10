@@ -534,7 +534,7 @@ app.post("/api/dashboard/jobs/:id/mark", requireDashboardAuth, async (req, res) 
     const status = safeTrim(req.body.status || "");
     const error_message = safeTrim(req.body.error_message || "");
 
-    if8 (!Number.isFinite(id)) return res.status(400).json({ error: "Invalid id" });
+    if (!Number.isFinite(id)) return res.status(400).json({ error: 'Invalid id' });
     if (!status) return res.status(400).json({ error: "Missing status" });
 
     const r = await pool.query(
