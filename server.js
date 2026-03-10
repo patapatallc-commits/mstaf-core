@@ -20,7 +20,7 @@ const PORT = process.env.PORT || 10000;
 const BASE_URL =
   process.env.PUBLIC_BASE_URL ||
   process.env.RENDER_EXTERNAL_URL ||
-  `http://localhost:${PORT}`;
+  `http://localhost:${PORT}`;2
 
 const DASHBOARD_KEY = String(process.env.DASHBOARD_KEY || "").trim();
 const WORKER_KEY =
@@ -58,7 +58,7 @@ const storage = multer.diskStorage({
   },
 });
 const upload = multer({ storage });
-app.use("/uploads", express.static(UPLOAD_DIR, { maxAge: "1h" }));
+app.use("/uploads", express.st2atic(UPLOAD_DIR, { maxAge: "1h" }));
 
 /* ---------------- HELPERS ---------------- */
 function safeTrim(v) {
@@ -572,7 +572,7 @@ app.post("/api/dashboard/jobs/:id/delete", requireDashboardAuth, async (req, res
 /* ---------------- DASHBOARD UI ---------------- */
 function dashboardHtml({ initialPrinter }) {
   const options = PRINTERS.map((p) => `<option value="${escHtml(p.id)}">${escHtml(p.label)}</option>`).join("");
-  con8st initialPrinterSafe = JSON.stringify(initialPrinter || DISPATCH_QUEUE_ID);
+  const initialPrinterSafe = JSON.stringify(initialPrinter || DISPATCH_QUEUE_ID);
 
   return `<!doctype html>
 <html>
