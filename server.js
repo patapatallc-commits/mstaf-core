@@ -58,7 +58,7 @@ const storage = multer.diskStorage({
   },
 });
 const upload = multer({ storage });
-app.use("/uploads", express.st2atic(UPLOAD_DIR, { maxAge: "1h" }));
+app.use("/uploads", express.static(UPLOAD_DIR, { maxAge: "1h" }));
 
 /* ---------------- HELPERS ---------------- */
 function safeTrim(v) {
