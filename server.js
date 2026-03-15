@@ -140,6 +140,67 @@ function requireDashboardAuth(req, res, next) {
   next();
 }
 
+function isVideoFilename(name) {
+  const n = safeTrim(name).toLowerCase();
+  return /\.(mp4|mov|avi|mkv|webm|m4v|3gp)$/i.test(n);
+}
+
+function appendLine(parts, label, value) {
+  const v = safeTrim(value);
+  if (v) parts.push(`${label}: ${v}`);
+}
+
+function appendIfUrl(parts, label, value) {
+  const v = safeTrim(value);
+  if (/^https?:\/\//i.test(v)) {
+    parts.push(`${label}: ${v}`);
+  }
+}
+
+function buildCombinedInstructions(data) {
+  const parts = [];
+
+  if (safeTrim(data.instructions)) {
+    parts.push(safeTrim(data.instructions));
+  }
+
+  if (data.service_type === "LAMINATING") {
+    if (safeTrim(data.laminating_type) && safeTrim(data.laminating_type).toUpperCase() !== "NONE") {
+      parts.push(`Laminating Type: ${safeTrim(data.laminating_type)}`);
+    }
+    if (Number(data.laminating_qty) > 0) {
+      parts.push(`Laminating Qty: ${Number(data.laminating_qty)}`);
+    }
+    if (safeTrim(data.laminating_note)) {
+      parts.push(`Laminating Note: ${safeTrim(data.laminating_note)}`);
+    }
+  } else if (safeTrim(data.laminating_note)) {
+    parts.push(`Laminating Note: ${safeTrim(data.laminating_note)}`);
+  }
+
+  appendIfUrl(parts, "Video Link", data.video_link);
+  appendIfUrl(parts, "Embedded Video Link", data.embed_link);
+  appendIfUrl(parts, "Reference Link", data.reference_link);
+
+  return parts.filter(Boolean).join("\n");
+}
+
+function buildCombinedNotes(data) {
+  const parts = [];
+
+  if (safeTrim(data.notes)) {
+    parts.push(safeTrim(data.notes));
+  }
+
+  appendLine(parts, "Laminating Type", data.laminating_type && data.laminating_type !== "NONE" ? data.laminating_type : "");
+  appendLine(parts, "Laminating Qty", Number(data.laminating_qty) > 0 ? data.laminating_qty : "");
+  appendIfUrl(parts, "Video Link", data.video_link);
+  appendIfUrl(parts, "Embedded Video Link", data.embed_link);
+  appendIfUrl(parts, "Reference Link", data.reference_link);
+
+  return parts.filter(Boolean).join("\n");
+}
+
 /* ---------------- PRINTER REGISTRY ---------------- */
 const NG_STATE_CODES = [
   ["Abia", "AB"],
@@ -290,6 +351,33 @@ function normalizeUploadBody(body = {}) {
     city: safeTrim(body.city || ""),
     notes: safeTrim(body.notes || body.note || ""),
     printer_id: safeTrim(body.printer_id || body.printerId || ""),
+
+    laminating_type: safeTrim(body.laminating_type || body.lamination_type || "NONE"),
+    laminating_qty: num(body.laminating_qty || body.lamination_qty || 0, 0),
+    laminating_note: safeTrim(body.laminating_note || body.lamination_note || ""),
+
+    video_link: safeTrim(
+      body.video_link ||
+        body.video_url ||
+        body.videoUrl ||
+        body.video_hyperlink ||
+        ""
+    ),
+    embed_link: safeTrim(
+      body.embed_link ||
+        body.embedded_video_link ||
+        body.embedded_content_link ||
+        body.embedUrl ||
+        body.embed_url ||
+        ""
+    ),
+    reference_link: safeTrim(
+      body.reference_link ||
+        body.reference_url ||
+        body.hyperlink ||
+        body.link ||
+        ""
+    ),
   };
 }
 
@@ -382,13 +470,14 @@ async function createPrintJobHandler(req, res) {
     const copies = Math.max(1, num(normalized.copies, 1));
     const pages = Math.max(1, num(normalized.pages, 1));
     const service_type = normalized.service_type || "PRINT";
-    const instructions = normalized.instructions || "";
     const customer_name = normalized.customer_name || "";
     const customer_email = normalized.customer_email || "";
     const country = normalized.country || "";
     const city = normalized.city || "";
-    const notes = normalized.notes || "";
     const requested_printer_id = normalized.printer_id || "";
+
+    const combinedInstructions = buildCombinedInstructions(normalized);
+    const combinedNotes = buildCombinedNotes(normalized);
 
     const printer_id = routeQueue({
       printer_id: requested_printer_id,
@@ -425,8 +514,8 @@ async function createPrintJobHandler(req, res) {
       customer_email,
       country,
       city,
-      notes,
-      instructions,
+      combinedNotes,
+      combinedInstructions,
       service_type,
     ];
 
@@ -444,6 +533,12 @@ async function createPrintJobHandler(req, res) {
       },
       routed_to: printer_id,
       service_type,
+      extras: {
+        laminating_type: normalized.laminating_type,
+        laminating_qty: normalized.laminating_qty,
+        laminating_note: normalized.laminating_note,
+        video_link: normalized.video_link || normalized.embed_link || normalized.reference_link || "",
+      },
     });
   } catch (e) {
     return res.status(500).json({
@@ -590,7 +685,8 @@ app.get("/api/dashboard/jobs", requireDashboardAuth, async (req, res) => {
         COALESCE(customer_name,'') ILIKE $${idx} OR
         COALESCE(instructions,'') ILIKE $${idx} OR
         COALESCE(notes,'') ILIKE $${idx} OR
-        COALESCE(service_type,'') ILIKE $${idx}
+        COALESCE(service_type,'') ILIKE $${idx} OR
+        COALESCE(file_url,'') ILIKE $${idx}
       )`);
       params.push(`%${q}%`);
       idx++;
@@ -720,21 +816,25 @@ function dashboardHtml({ initialPrinter }) {
   <title>MSTAF Worker + Agent Dashboard</title>
   <style>
     body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;margin:0;background:#071225;color:#e5e7eb}
-    .wrap{max-width:1240px;margin:0 auto;padding:24px}
+    .wrap{max-width:1360px;margin:0 auto;padding:24px}
     .top{display:flex;gap:16px;flex-wrap:wrap;align-items:flex-end;margin-bottom:14px}
     .card{background:rgba(15,23,42,.9);border:1px solid #1f2a44;border-radius:16px;padding:14px}
-    input,select,button{padding:10px 12px;border-radius:12px;border:1px solid #334155;background:#0b1730;color:#e5e7eb}
+    input,select,button,textarea{padding:10px 12px;border-radius:12px;border:1px solid #334155;background:#0b1730;color:#e5e7eb}
     button{cursor:pointer}
     .muted{color:#94a3b8}
     .err{color:#fca5a5;white-space:pre-wrap}
     .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
     table{width:100%;border-collapse:collapse;margin-top:12px;font-size:13px}
     th,td{border-bottom:1px solid #1f2a44;padding:10px;text-align:left;vertical-align:top}
-    a{color:#93c5fd}
+    a{color:#93c5fd;text-decoration:none}
+    a:hover{text-decoration:underline}
     .pill{display:inline-block;padding:2px 8px;border-radius:999px;border:1px solid #334155;color:#cbd5e1;font-size:12px}
     .actions{display:flex;gap:8px;flex-wrap:wrap}
     .btn-sm{padding:7px 10px;border-radius:10px}
     .danger{border-color:#7f1d1d}
+    .file-links{display:flex;flex-direction:column;gap:4px}
+    .text-block{white-space:pre-wrap;word-break:break-word}
+    .mini-label{display:block;color:#94a3b8;font-size:11px;margin:6px 0 2px}
   </style>
 </head>
 <body>
@@ -767,7 +867,7 @@ function dashboardHtml({ initialPrinter }) {
 
         <div style="flex:1;min-width:240px">
           <div class="muted" style="margin-bottom:6px;">Search</div>
-          <input id="q" placeholder="id, name, email, filename, instructions..." style="width:100%"/>
+          <input id="q" placeholder="id, name, email, filename, instructions, links..." style="width:100%"/>
         </div>
 
         <div>
@@ -811,6 +911,32 @@ function dashboardHtml({ initialPrinter }) {
     }[m]));
   }
 
+  function isVideoFilename(name){
+    return /\\.(mp4|mov|avi|mkv|webm|m4v|3gp)$/i.test(String(name || ""));
+  }
+
+  function linkifyText(s){
+    const txt = String(s ?? "");
+    if(!txt) return "";
+    return esc(txt).replace(/(https?:\\/\\/[^\\s<]+)/gi, function(url){
+      return "<a href='" + url + "' target='_blank' rel='noopener noreferrer'>" + url + "</a>";
+    });
+  }
+
+  function extractUrlsFromText(s){
+    const txt = String(s ?? "");
+    const matches = txt.match(/https?:\\/\\/[^\\s]+/gi) || [];
+    const uniq = [];
+    const seen = new Set();
+    for (const m of matches) {
+      if (!seen.has(m)) {
+        seen.add(m);
+        uniq.push(m);
+      }
+    }
+    return uniq;
+  }
+
   const INITIAL_PRINTER = ${initialPrinterSafe};
   printerEl.value = INITIAL_PRINTER;
 
@@ -845,11 +971,48 @@ function dashboardHtml({ initialPrinter }) {
     const routeOptions = ${routeOptionsJson};
 
     const rows = jobs.map(j => {
-      const file = j.file_url
-        ? "<a href='" + esc(j.file_url) + "' target='_blank'>file</a>"
-        : "";
+      const fileLinks = [];
+      const mainFileLabel =
+        (String(j.service_type || "").toUpperCase() === "VIDEO_EDITING" || isVideoFilename(j.original_name))
+          ? "Open Video"
+          : "Open File";
 
-      const instr = esc(j.instructions || "");
+      if (j.file_url) {
+        fileLinks.push(
+          "<a href='" + esc(j.file_url) + "' target='_blank' rel='noopener noreferrer'>" + esc(mainFileLabel) + "</a>"
+        );
+      }
+
+      const textUrls = [
+        ...extractUrlsFromText(j.instructions || ""),
+        ...extractUrlsFromText(j.notes || "")
+      ];
+
+      const uniqueUrls = [];
+      const seenUrls = new Set(j.file_url ? [String(j.file_url)] : []);
+      for (const u of textUrls) {
+        if (!seenUrls.has(u)) {
+          seenUrls.add(u);
+          uniqueUrls.push(u);
+        }
+      }
+
+      uniqueUrls.forEach((u, idx) => {
+        const isVid = /\\.(mp4|mov|avi|mkv|webm|m4v|3gp)(\\?|#|$)/i.test(u) || String(j.service_type || "").toUpperCase() === "VIDEO_EDITING";
+        fileLinks.push(
+          "<a href='" + esc(u) + "' target='_blank' rel='noopener noreferrer'>" +
+          esc(isVid ? ("Open Video Link " + (idx + 1)) : ("Open Link " + (idx + 1))) +
+          "</a>"
+        );
+      });
+
+      const file =
+        fileLinks.length
+          ? "<div class='file-links'>" + fileLinks.join("") + "</div>"
+          : "<span class='muted'>—</span>";
+
+      const instrRaw = String(j.instructions || "");
+      const notesRaw = String(j.notes || "");
       const svc = esc(j.service_type || "");
       const who = [j.customer_name, j.customer_email].filter(Boolean).map(esc).join("<br/>");
       const loc = [j.city, j.country].filter(Boolean).map(esc).join(", ");
@@ -871,6 +1034,14 @@ function dashboardHtml({ initialPrinter }) {
           "<button class='btn-sm danger' data-del='" + esc(j.id) + "'>Delete</button>" +
         "</div>";
 
+      const instructionsBlock = instrRaw
+        ? "<div class='text-block'>" + linkifyText(instrRaw) + "</div>"
+        : "<span class='muted'>—</span>";
+
+      const notesBlock = notesRaw
+        ? "<div class='text-block'>" + linkifyText(notesRaw) + "</div>"
+        : "<span class='muted'>—</span>";
+
       return "<tr>" +
         "<td><div><b>" + esc(j.id) + "</b></div><div class='pill'>" + esc(j.status) + "</div></td>" +
         "<td>" + esc(j.printer_id) + "</td>" +
@@ -878,7 +1049,12 @@ function dashboardHtml({ initialPrinter }) {
         "<td>" + esc(j.copies || "") + " / " + esc(j.pages || "") + "<br/><span class='muted'>₦/$ " + esc(j.total_cost ?? "") + "</span></td>" +
         "<td>" + file + "<br/><span class='muted'>" + esc(j.original_name || "") + "</span></td>" +
         "<td>" + (who || "<span class='muted'>—</span>") + "<br/><span class='muted'>" + (loc || "") + "</span></td>" +
-        "<td style='max-width:280px;white-space:pre-wrap'>" + (instr || "<span class='muted'>—</span>") + "</td>" +
+        "<td style='min-width:320px;max-width:420px'>" +
+          "<span class='mini-label'>Instructions / Laminating Note</span>" +
+          instructionsBlock +
+          "<span class='mini-label'>Notes / Extra Links</span>" +
+          notesBlock +
+        "</td>" +
         "<td style='min-width:360px'>" + routeSel + "<br/>" + actions + "</td>" +
       "</tr>";
     }).join("");
@@ -886,7 +1062,7 @@ function dashboardHtml({ initialPrinter }) {
     tableEl.innerHTML =
       "<table>" +
       "<thead><tr>" +
-      "<th>ID/Status</th><th>Queue/Printer</th><th>Mode</th><th>Copies/Pages</th><th>File</th><th>Customer</th><th>Instructions</th><th>Actions</th>" +
+      "<th>ID/Status</th><th>Queue/Printer</th><th>Mode</th><th>Copies/Pages</th><th>File / Video</th><th>Customer</th><th>Instructions / Notes</th><th>Actions</th>" +
       "</tr></thead>" +
       "<tbody>" + rows + "</tbody></table>";
 
