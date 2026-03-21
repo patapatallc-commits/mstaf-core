@@ -1270,10 +1270,48 @@ app.get("/webhook", (req, res) => {
 
 app.post("/webhook", async (req, res) => {
   try {
-    console.log("📩 Incoming webhook:", JSON.stringify(req.body, null, 2));
-    return res.sendStatus(200);
+    const body = req.body;
+
+    console.log("📩 Incoming webhook:", JSON.stringify(body, null, 2));
+
+    if (body.object) {
+      const entry = body.entry?.[0];
+      const changes = entry?.changes?.[0];
+      const value = changes?.value;
+      const messages = value?.messages;
+
+      if (messages && messages.length > 0) {
+        const msg = messages[0];
+        const from = msg.from;
+
+        console.log("📩 Message from:", from);
+
+        const replyText = `Hello 👋 Welcome to PATAPATA Print-O-Matic.
+Send your document, image, or video for printing, editing, or design.`;
+
+        await fetch(`https://graph.facebook.com/v18.0/${process.env.WHATSAPP_PHONE_NUMBER_ID}/messages`, {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${process.env.WHATSAPP_TOKEN}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            messaging_product: "whatsapp",
+            to: from,
+            type: "text",
+            text: { body: replyText },
+          }),
+        });
+
+        console.log("✅ Reply sent to:", from);
+      }
+
+      return res.sendStatus(200);
+    }
+
+    return res.sendStatus(404);
   } catch (err) {
-    console.error("POST /webhook error:", err);
+    console.error("❌ POST /webhook error:", err);
     return res.sendStatus(500);
   }
 });
