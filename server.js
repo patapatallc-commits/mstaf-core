@@ -6,7 +6,7 @@ const path = require("path");
 const fs = require("fs");
 const multer = require("multer");
 const { Pool } = require("pg");
-
+const axios = require("axios");
 const app = express();
 
 /* ---------------- ENV ---------------- */
@@ -31,7 +31,39 @@ const AGENT_QUEUE_ID = String(process.env.AGENT_QUEUE_ID || "AGENT").trim();
 const VERIFY_TOKEN = String(
   process.env.WHATSAPP_VERIFY_TOKEN || "PATAPATA_MSTAF_WEBHOOK"
 ).trim();
+const WHATSAPP_VERIFY_TOKEN = String(process.env.WHATSAPP_VERIFY_TOKEN || "").trim();
+const WHATSAPP_PHONE_NUMBER_ID = String(process.env.WHATSAPP_PHONE_NUMBER_ID || "").trim();
+const WHATSAPP_ACCESS_TOKEN = String(process.env.WHATSAPP_ACCESS_TOKEN || "").trim();
 
+async function sendWhatsAppText(to, body) {
+  const url = `https://graph.facebook.com/v18.0/${WHATSAPP_PHONE_NUMBER_ID}/messages`;
+
+  const payload = {
+    messaging_product: "whatsapp",
+    to,
+    type: "text",
+    text: { body }
+  };
+
+  const { data } = await axios.post(url, payload, {
+    headers: {
+      Authorization: `Bearer ${WHATSAPP_ACCESS_TOKEN}`,
+      "Content-Type": "application/json"
+    }
+  });
+
+  return data;
+}
+
+function getIncomingWhatsApp(body) {
+  const msg = body?.entry?.[0]?.changes?.[0]?.value?.messages?.[0];
+  if (!msg) return null;
+
+  return {
+    from: msg.from,
+    text: msg.text?.body || ""
+  };
+}
 /* ---------------- MIDDLEWARE ---------------- */
 app.use(cors());
 app.use(express.json({ limit: "30mb" }));
@@ -1286,24 +1318,10 @@ app.post("/webhook", async (req, res) => {
 
         console.log("📩 Message from:", from);
 
-        const replyText = `Hello 👋 Welcome to PATAPATA Print-O-Matic.
-Send your document, image, or video for printing, editing, or design.`;
+      await sendWhatsAppText(from, "MSTAF reply is now working 🚀");
 
-        await fetch(`https://graph.facebook.com/v18.0/${process.env.WHATSAPP_PHONE_NUMBER_ID}/messages`, {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${process.env.WHATSAPP_TOKEN}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            messaging_product: "whatsapp",
-            to: from,
-            type: "text",
-            text: { body: replyText },
-          }),
-        });
-
-        console.log("✅ Reply sent to:", from);
+console.log("✅ Reply sent to:", from);
+      
       }
 
       return res.sendStatus(200);
