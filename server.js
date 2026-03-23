@@ -559,7 +559,7 @@ async function createPrintJobHandler(req, res) {
       customer_name,
       customer_email,
       country,
- 2     city,
+     city,
       notes,
       instructions,
       service_type,
