@@ -98,7 +98,6 @@ const storage = multer.diskStorage({
 
 const upload = multer({ storage });
 
-const upload = multer({ storage });
 app.use("/uploads", express.static(UPLOAD_DIR, { maxAge: "1h" }));
 
 /* ---------------- HELPERS ---------------- */
