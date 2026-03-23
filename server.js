@@ -89,7 +89,7 @@ const storage = multer.diskStorage({
     const safe = (file.originalname || "file")
       .replace(/[^a-zA-Z0-9._-]/g, "_")
       .slice(-90);
-    cb(null, `${Date.now()}_${Math.random().toString(16).slice(2)}_${safe}`);
+2    cb(null, `${Date.now()}_${Math.random().toString(16).slice(2)}_${safe}`);
   },
 });
 
@@ -158,7 +158,7 @@ function requireWorkerAuth(req, res, next) {
   next();
 }
 
-function requireDashboardAuth(req, res, next) {
+function requireDashboardAuth(req, res, next) {8
   const provided = safeTrim(req.headers["x-dashboard-key"] || req.query.key || "");
 
   if (!DASHBOARD_KEY) {
@@ -481,7 +481,7 @@ app.get("/api/health", async (req, res) => {
         "IMAGE_EDITING",
         "VIDEO_EDITING",
         "EDITING",
-        "LAMINATING",
+ 2       "LAMINATING",
         "ID_CARD_PRINTING",
       ],
     });
@@ -492,7 +492,7 @@ app.get("/api/health", async (req, res) => {
 
 app.get("/debug", async (req, res) => {
   try {
-    const r = await pool.query("SELECT NOW() as now");
+  const r = await pool.query("SELECT NOW() as now");
     res.json({
       ok: true,
       message: "MSTAF debug route working",
@@ -540,7 +540,7 @@ async function createPrintJobHandler(req, res) {
     const q = `
       INSERT INTO print_jobs
         (status, printer_id, file_url, original_name, paper_size, color_mode, copies, pages, total_cost,
-         customer_name, customer_email, country, city, notes, instructions, service_type)
+2         customer_name, customer_email, country, city, notes, instructions, service_type)
       VALUES
         ('pending', $1, $2, $3, $4, $5, $6, $7, $8,
          $9, $10, $11, $12, $13, $14, $15)
@@ -559,7 +559,7 @@ async function createPrintJobHandler(req, res) {
       customer_name,
       customer_email,
       country,
-      city,
+ 2     city,
       notes,
       instructions,
       service_type,
@@ -777,7 +777,7 @@ app.post("/api/dashboard/jobs/:id/route", requireDashboardAuth, async (req, res)
       return res.status(400).json({ error: "Unknown printer/queue id" });
     }
 
-    const r = await pool.query(
+    const r = await pool.query(2
       `
       UPDATE print_jobs
       SET printer_id = $2,
@@ -874,7 +874,7 @@ function dashboardHtml({ initialPrinter }) {
     .file-links{display:flex;flex-direction:column;gap:6px}
     .text-wrap{white-space:pre-wrap;word-break:break-word}
     .mini{font-size:11px;color:#94a3b8;margin-bottom:4px}
-  </style>
+  </style>2
 </head>
 <body>
   <div class="wrap">
@@ -1342,7 +1342,91 @@ app.post("/webhook", async (req, res) => {
       console.log("🚫 Ignoring self-message");
       return res.sendStatus(200);
     }
+// Deduplicate retries
+const now = Date.now();
+const TTL = 10 * 60 * 1000;
 
+for (const [key, ts] of global.processedWhatsAppMessageIds.entries()) {
+  if (now - ts > TTL) {
+    global.processedWhatsAppMessageIds.delete(key);
+  }
+}
+
+if (messageId && global.processedWhatsAppMessageIds.has(messageId)) {
+  console.log("Duplicate message ignored:", messageId);
+  return res.sendStatus(200);
+}
+
+if (messageId) {
+  global.processedWhatsAppMessageIds.set(messageId, now);
+}
+
+console.log("Processing message from:", from, "type:", message.type);
+
+let reply =
+  "Hello 👋 Welcome to PATAPATA Print-O-Matic\n" +
+  "Send your PDF, image, document, or video here for printing or editing.";
+
+// -------- TEXT HANDLING --------
+if (message.type === "text") {
+  const text = String(message.text?.body || "").trim().toLowerCase();
+
+  if (["hi", "hello", "hey", "hallo"].includes(text)) {
+    reply =
+      "Hello 👋 Welcome to PATAPATA Print-O-Matic\n" +
+      "Send your PDF, image, document, or video here for printing or editing.";
+  } else if (text === "1") {
+    reply = "Send your document or PDF now 📄";
+  } else if (text === "2") {
+    reply = "Send your image or passport photo 🖼️";
+  } else if (text === "3") {
+    reply = "Send your video 🎬";
+  }
+}
+
+// -------- IMAGE --------
+if (message.type === "image") {
+  const mediaId = message.image?.id;
+
+  if (mediaId) {
+    const fileBuffer = await downloadWhatsAppMedia(mediaId);
+    const saved = saveWhatsAppFile(fileBuffer, "jpg");
+    console.log("Image saved:", saved.filePath);
+  }
+
+  reply = "Image received ✅ We are processing it now.";
+}
+
+// -------- DOCUMENT --------
+if (message.type === "document") {
+  const mediaId = message.document?.id;
+
+  if (mediaId) {
+    const fileBuffer = await downloadWhatsAppMedia(mediaId);
+    const saved = saveWhatsAppFile(fileBuffer, "pdf");
+    console.log("Document saved:", saved.filePath);
+  }
+
+  reply = "Document received ✅ Ready for printing.";
+}
+
+// -------- VIDEO --------
+if (message.type === "video") {
+  const mediaId = message.video?.id;
+
+  if (mediaId) {
+    const fileBuffer = await downloadWhatsAppMedia(mediaId);
+    const saved = saveWhatsAppFile(fileBuffer, "mp4");
+    console.log("Video saved:", saved.filePath);
+  }
+
+  reply = "Video received ✅ We will process it shortly.";
+}
+
+// -------- SEND REPLY --------
+await sendWhatsAppText(from, reply);
+
+return res.sendStatus(200);
     // Deduplicate repeated webhook deliveries
     const now = Date.now();
     const TTL = 10 * 60 * 1000;
@@ -1355,7 +1439,7 @@ app.post("/webhook", async (req, res) => {
 
     if (messageId && global.processedWhatsAppMessageIds.has(messageId)) {
       console.log("🚫 Duplicate message ignored:", messageId);
-      return res.sendStatus(200);
+2      return res.sendStatus(200);
     }
 
     if (messageId) {
