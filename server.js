@@ -1346,7 +1346,7 @@ app.post("/webhook", async (req, res) => {
       console.log("🚫 Ignoring self-message");
       return res.sendStatus(200);
     }
-// Deduplicate retries
+// Deduplicate repeated webhook deliveries
 const now = Date.now();
 const TTL = 10 * 60 * 1000;
 
@@ -1364,13 +1364,7 @@ if (messageId && global.processedWhatsAppMessageIds.has(messageId)) {
 if (messageId) {
   global.processedWhatsAppMessageIds.set(messageId, now);
 }
-
 console.log("Processing message from:", from, "type:", message.type);
-
-let reply =
-  "Hello 👋 Welcome to PATAPATA Print-O-Matic\n" +
-  "Send your PDF, image, document, or video here for printing or editing.";
-
 // -------- TEXT HANDLING --------
 if (message.type === "text") {
   const text = String(message.text?.body || "").trim().toLowerCase();
