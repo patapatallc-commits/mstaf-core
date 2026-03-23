@@ -1281,6 +1281,8 @@ app.get("/api/services", (req, res) => {
 });
 
 /* ---------------- WhatsApp / Meta Webhook ---------------- */
+
+
 app.get("/webhook", (req, res) => {
   try {
     const mode = req.query["hub.mode"];
@@ -1288,49 +1290,117 @@ app.get("/webhook", (req, res) => {
     const challenge = req.query["hub.challenge"];
 
     if (mode === "subscribe" && token === VERIFY_TOKEN) {
-      console.log("✅ Webhook verified by Meta");
+      console.log("✅ Webhook verified successfully");
       return res.status(200).send(challenge);
     }
 
     console.log("❌ Webhook verification failed");
     return res.sendStatus(403);
-  } catch (err) {
-    console.error("GET /webhook error:", err);
+  } catch (error) {
+    console.error("GET /webhook error:", error?.message || error);
     return res.sendStatus(500);
   }
 });
+global.processedWhatsAppMessageIds = global.processedWhatsAppMessageIds || new Map();
 
 app.post("/webhook", async (req, res) => {
   try {
-    const body = req.body;
+    const entry = req.body?.entry?.[0];
+    const change = entry?.changes?.[0];
+    const value = change?.value;
 
-    console.log("📩 Incoming webhook:", JSON.stringify(body, null, 2));
+    console.log("📩 Incoming webhook:", JSON.stringify(req.body, null, 2));
 
-    if (body.object) {
-      const entry = body.entry?.[0];
-      const changes = entry?.changes?.[0];
-      const value = changes?.value;
-      const messages = value?.messages;
+    if (!value) return res.sendStatus(200);
 
-      if (messages && messages.length > 0) {
-        const msg = messages[0];
-        const from = msg.from;
-
-        console.log("📩 Message from:", from);
-
-      await sendWhatsAppText(from, "MSTAF reply is now working 🚀");
-
-console.log("✅ Reply sent to:", from);
-      
-      }
-
+    // ❌ Ignore status updates (delivered, read, etc.)
+    if (value.statuses) {
+      console.log("🚫 Ignoring status event");
       return res.sendStatus(200);
     }
 
-    return res.sendStatus(404);
-  } catch (err) {
-    console.error("❌ POST /webhook error:", err);
-    return res.sendStatus(500);
+    // ❌ Ignore if no actual message
+    if (!value.messages || value.messages.length === 0) {
+      console.log("🚫 No incoming messages");
+      return res.sendStatus(200);
+    }
+
+    const message = value.messages[0];
+    const from = String(message.from || "").trim();
+    const displayPhone = String(value.metadata?.display_phone_number || "").replace(/\D/g, "");
+    const messageId = String(message.id || "").trim();
+
+    // ❌ Safety checks
+    if (!from) return res.sendStatus(200);
+
+    if (displayPhone && from === displayPhone) {
+      console.log("🚫 Ignoring self-message");
+      return res.sendStatus(200);
+    }
+
+    // ❌ Deduplicate
+    const now = Date.now();
+    const TTL = 10 * 60 * 1000;
+
+    for (const [key, ts] of global.processedWhatsAppMessageIds.entries()) {
+      if (now - ts > TTL) {
+        global.processedWhatsAppMessageIds.delete(key);
+      }
+    }
+
+    if (messageId && global.processedWhatsAppMessageIds.has(messageId)) {
+      console.log("🚫 Duplicate message ignored:", messageId);
+      return res.sendStatus(200);
+    }
+
+    if (messa8geId) {
+      global.processedWhatsAppMessageIds.set(messageId, now);
+    }
+
+    console.log("✅ Processing message from:", from);
+
+    let reply =
+      "Welcome to PATAPATA Print-O-Matic 🚀\n\n" +
+      "Send your document, image, or video here for printing or editing.";
+
+    // 📌 TEXT
+    if (message.type === "text") {
+      const text = message.text?.body?.toLowerCase() || "";
+
+      if (["hi", "hello", "hey"].includes(text)) {
+        reply =
+          "Hello 👋 Welcome to PATAPATA Print-O-Matic\n\n" +
+          "Send your file (PDF, image, video) and we will process it for you.";
+      }
+    }
+
+    // 📌 IMAGE
+    if (message.type === "image") {
+      reply =
+        "🖼️ Image received\n\n" +
+        "We can print or edit this image.\nReply:\n1 - Print\n2 - ID Photo\n3 - Edit";
+    }
+
+    // 📌 DOCUMENT
+    if (message.type === "document") {
+      reply =
+        "📄 Document received\n\n" +
+        "We can print this for you.\nReply:\n1 - A4\n2 - A3\n3 - Laminating";
+    }
+
+    // 📌 VIDEO
+    if (message.type === "video") {
+      reply =
+        "🎥 Video received\n\n" +
+        "We can edit or process this video.\nReply:\n1 - Trim\n2 - Social media edit\n3 - Advanced edit";
+    }
+
+    await sendWhatsAppText(from, reply);
+
+    return res.sendStatus(200);
+  } catch (error) {
+    console.error("❌ Webhook error:", error?.message || error);
+    return res.sendStatus(200);
   }
 });
 
