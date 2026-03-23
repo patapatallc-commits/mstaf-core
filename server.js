@@ -481,7 +481,7 @@ app.get("/api/health", async (req, res) => {
         "IMAGE_EDITING",
         "VIDEO_EDITING",
         "EDITING",
- 2       "LAMINATING",
+       "LAMINATING",
         "ID_CARD_PRINTING",
       ],
     });
