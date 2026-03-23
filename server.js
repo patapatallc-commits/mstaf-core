@@ -1303,6 +1303,8 @@ app.get("/webhook", (req, res) => {
 });
 global.processedWhatsAppMessageIds = global.processedWhatsAppMessageIds || new Map();
 
+global.processedWhatsAppMessageIds = global.processedWhatsAppMessageIds || new Map();
+
 app.post("/webhook", async (req, res) => {
   try {
     const entry = req.body?.entry?.[0];
@@ -1313,13 +1315,13 @@ app.post("/webhook", async (req, res) => {
 
     if (!value) return res.sendStatus(200);
 
-    // ❌ Ignore status updates (delivered, read, etc.)
+    // Ignore status updates
     if (value.statuses) {
       console.log("🚫 Ignoring status event");
       return res.sendStatus(200);
     }
 
-    // ❌ Ignore if no actual message
+    // Ignore if no actual incoming message
     if (!value.messages || value.messages.length === 0) {
       console.log("🚫 No incoming messages");
       return res.sendStatus(200);
@@ -1330,15 +1332,18 @@ app.post("/webhook", async (req, res) => {
     const displayPhone = String(value.metadata?.display_phone_number || "").replace(/\D/g, "");
     const messageId = String(message.id || "").trim();
 
-    // ❌ Safety checks
-    if (!from) return res.sendStatus(200);
+    if (!from) {
+      console.log("🚫 Missing sender");
+      return res.sendStatus(200);
+    }
 
+    // Prevent self-loop
     if (displayPhone && from === displayPhone) {
       console.log("🚫 Ignoring self-message");
       return res.sendStatus(200);
     }
 
-    // ❌ Deduplicate
+    // Deduplicate repeated webhook deliveries
     const now = Date.now();
     const TTL = 10 * 60 * 1000;
 
@@ -1353,42 +1358,46 @@ app.post("/webhook", async (req, res) => {
       return res.sendStatus(200);
     }
 
-    if (messa8geId) {
+    if (messageId) {
       global.processedWhatsAppMessageIds.set(messageId, now);
     }
 
-    console.log("✅ Processing message from:", from);
+    console.log("✅ Processing message from:", from, "type:", message.type);
 
     let reply =
       "Welcome to PATAPATA Print-O-Matic 🚀\n\n" +
       "Send your document, image, or video here for printing or editing.";
 
-    // 📌 TEXT
     if (message.type === "text") {
-      const text = message.text?.body?.toLowerCase() || "";
+      const text = String(message.text?.body || "").trim().toLowerCase();
 
-      if (["hi", "hello", "hey"].includes(text)) {
+      if (["hi", "hello", "hey", "hallo"].includes(text)) {
         reply =
           "Hello 👋 Welcome to PATAPATA Print-O-Matic\n\n" +
           "Send your file (PDF, image, video) and we will process it for you.";
+      } else if (text === "1") {
+        reply = "Please send your document or PDF now. We’ll prepare it for printing.";
+      } else if (text === "2") {
+        reply = "Please send your image, passport photo, or ID card file now.";
+      } else if (text === "3") {
+        reply = "Please send your video and tell us the type of editing you want.";
+      } else if (text === "4") {
+        reply = "Please send your image and describe the editing you want.";
       }
     }
 
-    // 📌 IMAGE
     if (message.type === "image") {
       reply =
         "🖼️ Image received\n\n" +
         "We can print or edit this image.\nReply:\n1 - Print\n2 - ID Photo\n3 - Edit";
     }
 
-    // 📌 DOCUMENT
     if (message.type === "document") {
       reply =
         "📄 Document received\n\n" +
         "We can print this for you.\nReply:\n1 - A4\n2 - A3\n3 - Laminating";
     }
 
-    // 📌 VIDEO
     if (message.type === "video") {
       reply =
         "🎥 Video received\n\n" +
