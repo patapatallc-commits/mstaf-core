@@ -577,7 +577,7 @@ async function createPrintJobHandler(req, res) {
       file_url,
       pricing: {
         unit_price: unit,
-        pages,
+        pages,// Deduplicate repeated webhook deliveries
         copies,
         total_cost,
       },
@@ -1347,11 +1347,10 @@ app.post("/webhook", async (req, res) => {
       return res.sendStatus(200);
     }
 // Deduplicate repeated webhook deliveries
-const now = Date.now();
 const TTL = 10 * 60 * 1000;
 
 for (const [key, ts] of global.processedWhatsAppMessageIds.entries()) {
-  if (now - ts > TTL) {
+  if (Date.now() - ts > TTL) {
     global.processedWhatsAppMessageIds.delete(key);
   }
 }
@@ -1362,7 +1361,7 @@ if (messageId && global.processedWhatsAppMessageIds.has(messageId)) {
 }
 
 if (messageId) {
-  global.processedWhatsAppMessageIds.set(messageId, now);
+  global.processedWhatsAppMessageIds.set(messageId, Date.now());
 }
 console.log("Processing message from:", from, "type:", message.type);
 // -------- TEXT HANDLING --------
@@ -1426,7 +1425,7 @@ await sendWhatsAppText(from, reply);
 
 return res.sendStatus(200);
     // Deduplicate repeated webhook deliveries
-    const now = Date.now();
+    // Deduplicate repeated webhook deliveries
     const TTL = 10 * 60 * 1000;
 
     for (const [key, ts] of global.processedWhatsAppMessageIds.entries()) {
