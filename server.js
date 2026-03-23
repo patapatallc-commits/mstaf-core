@@ -7,6 +7,7 @@ const fs = require("fs");
 const multer = require("multer");
 const { Pool } = require("pg");
 const axios = require("axios");
+
 const app = express();
 
 /* ---------------- ENV ---------------- */
@@ -31,39 +32,9 @@ const AGENT_QUEUE_ID = String(process.env.AGENT_QUEUE_ID || "AGENT").trim();
 const VERIFY_TOKEN = String(
   process.env.WHATSAPP_VERIFY_TOKEN || "PATAPATA_MSTAF_WEBHOOK"
 ).trim();
-const WHATSAPP_VERIFY_TOKEN = String(process.env.WHATSAPP_VERIFY_TOKEN || "").trim();
 const WHATSAPP_PHONE_NUMBER_ID = String(process.env.WHATSAPP_PHONE_NUMBER_ID || "").trim();
 const WHATSAPP_ACCESS_TOKEN = String(process.env.WHATSAPP_ACCESS_TOKEN || "").trim();
 
-async function sendWhatsAppText(to, body) {
-  const url = `https://graph.facebook.com/v18.0/${WHATSAPP_PHONE_NUMBER_ID}/messages`;
-
-  const payload = {
-    messaging_product: "whatsapp",
-    to,
-    type: "text",
-    text: { body }
-  };
-
-  const { data } = await axios.post(url, payload, {
-    headers: {
-      Authorization: `Bearer ${WHATSAPP_ACCESS_TOKEN}`,
-      "Content-Type": "application/json"
-    }
-  });
-
-  return data;
-}
-
-function getIncomingWhatsApp(body) {
-  const msg = body?.entry?.[0]?.changes?.[0]?.value?.messages?.[0];
-  if (!msg) return null;
-
-  return {
-    from: msg.from,
-    text: msg.text?.body || ""
-  };
-}
 /* ---------------- MIDDLEWARE ---------------- */
 app.use(cors());
 app.use(express.json({ limit: "30mb" }));
@@ -78,27 +49,86 @@ const pool = new Pool({
 /* ---------------- UPLOADS ---------------- */
 const uploadsDir = path.resolve(process.cwd(), "uploads");
 fs.mkdirSync(uploadsDir, { recursive: true });
-app.use("/uploads", express.static(uploadsDir));
 
 const UPLOAD_DIR = process.env.UPLOAD_DIR || path.join(__dirname, "uploads");
 if (!fs.existsSync(UPLOAD_DIR)) fs.mkdirSync(UPLOAD_DIR, { recursive: true });
 
+app.use("/uploads", express.static(UPLOAD_DIR, { maxAge: "1h" }));
+
 const storage = multer.diskStorage({
   destination: (req, file, cb) => cb(null, UPLOAD_DIR),
-
   filename: (req, file, cb) => {
     const original = file.originalname || "file";
-    const safe = original
-      .replace(/[^a-zA-Z0-9._-]/g, "_")
-      .slice(-90);
-
+    const safe = original.replace(/[^a-zA-Z0-9._-]/g, "_").slice(-90);
     cb(null, `${Date.now()}_${Math.random().toString(16).slice(2)}_${safe}`);
-  }
+  },
 });
 
 const upload = multer({ storage });
 
-app.use("/uploads", express.static(UPLOAD_DIR, { maxAge: "1h" }));
+/* ---------------- WHATSAPP HELPERS ---------------- */
+async function sendWhatsAppText(to, body) {
+  if (!WHATSAPP_PHONE_NUMBER_ID || !WHATSAPP_ACCESS_TOKEN) {
+    throw new Error("WhatsApp credentials are not configured");
+  }
+
+  const url = `https://graph.facebook.com/v18.0/${WHATSAPP_PHONE_NUMBER_ID}/messages`;
+
+  const payload = {
+    messaging_product: "whatsapp",
+    to,
+    type: "text",
+    text: { body },
+  };
+
+  const { data } = await axios.post(url, payload, {
+    headers: {
+      Authorization: `Bearer ${WHATSAPP_ACCESS_TOKEN}`,
+      "Content-Type": "application/json",
+    },
+  });
+
+  return data;
+}
+
+async function getWhatsAppMediaUrl(mediaId) {
+  const url = `https://graph.facebook.com/v18.0/${mediaId}`;
+  const { data } = await axios.get(url, {
+    headers: {
+      Authorization: `Bearer ${WHATSAPP_ACCESS_TOKEN}`,
+    },
+  });
+  return data?.url || "";
+}
+
+async function downloadWhatsAppMedia(mediaId) {
+  if (!mediaId) throw new Error("Missing WhatsApp mediaId");
+
+  const mediaUrl = await getWhatsAppMediaUrl(mediaId);
+  if (!mediaUrl) throw new Error("Could not resolve WhatsApp media URL");
+
+  const { data } = await axios.get(mediaUrl, {
+    responseType: "arraybuffer",
+    headers: {
+      Authorization: `Bearer ${WHATSAPP_ACCESS_TOKEN}`,
+    },
+  });
+
+  return Buffer.from(data);
+}
+
+function saveWhatsAppFile(fileBuffer, ext = "bin") {
+  const safeExt = String(ext || "bin").replace(/[^a-zA-Z0-9]/g, "").toLowerCase() || "bin";
+  const filename = `wa_${Date.now()}_${Math.random().toString(16).slice(2)}.${safeExt}`;
+  const filePath = path.join(UPLOAD_DIR, filename);
+  fs.writeFileSync(filePath, fileBuffer);
+
+  return {
+    filename,
+    filePath,
+    fileUrl: `${BASE_URL}/uploads/${encodeURIComponent(filename)}`,
+  };
+}
 
 /* ---------------- HELPERS ---------------- */
 function safeTrim(v) {
@@ -162,7 +192,7 @@ function requireWorkerAuth(req, res, next) {
   next();
 }
 
-function requireDashboardAuth(req, res, next) {8
+function requireDashboardAuth(req, res, next) {
   const provided = safeTrim(req.headers["x-dashboard-key"] || req.query.key || "");
 
   if (!DASHBOARD_KEY) {
@@ -221,10 +251,7 @@ function buildCombinedNotes(data) {
     parts.push(safeTrim(data.notes));
   }
 
-  if (
-    !safeTrim(data.instructions) &&
-    safeTrim(data.laminating_note)
-  ) {
+  if (!safeTrim(data.instructions) && safeTrim(data.laminating_note)) {
     parts.push(`Laminating Note: ${safeTrim(data.laminating_note)}`);
   }
 
@@ -348,11 +375,7 @@ function routeQueue({ printer_id, paper_size, service_type }) {
   const svc = normalizeServiceType(service_type);
   const ps = safeTrim(paper_size).toUpperCase();
 
-  if (
-    svc === "IMAGE_EDITING" ||
-    svc === "VIDEO_EDITING" ||
-    svc === "EDITING"
-  ) {
+  if (svc === "IMAGE_EDITING" || svc === "VIDEO_EDITING" || svc === "EDITING") {
     return AGENT_QUEUE_ID;
   }
 
@@ -388,22 +411,9 @@ function normalizeUploadBody(body = {}) {
     notes: safeTrim(body.notes || body.note || ""),
     printer_id: safeTrim(body.printer_id || body.printerId || ""),
 
-    laminating_type: safeTrim(
-      body.laminating_type ||
-        body.lamination_type ||
-        "NONE"
-    ),
-    laminating_qty: num(
-      body.laminating_qty ||
-        body.lamination_qty ||
-        0,
-      0
-    ),
-    laminating_note: safeTrim(
-      body.laminating_note ||
-        body.lamination_note ||
-        ""
-    ),
+    laminating_type: safeTrim(body.laminating_type || body.lamination_type || "NONE"),
+    laminating_qty: num(body.laminating_qty || body.lamination_qty || 0, 0),
+    laminating_note: safeTrim(body.laminating_note || body.lamination_note || ""),
 
     video_link: safeTrim(
       body.video_link ||
@@ -485,7 +495,7 @@ app.get("/api/health", async (req, res) => {
         "IMAGE_EDITING",
         "VIDEO_EDITING",
         "EDITING",
-       "LAMINATING",
+        "LAMINATING",
         "ID_CARD_PRINTING",
       ],
     });
@@ -496,7 +506,7 @@ app.get("/api/health", async (req, res) => {
 
 app.get("/debug", async (req, res) => {
   try {
-  const r = await pool.query("SELECT NOW() as now");
+    const r = await pool.query("SELECT NOW() as now");
     res.json({
       ok: true,
       message: "MSTAF debug route working",
@@ -543,11 +553,30 @@ async function createPrintJobHandler(req, res) {
 
     const q = `
       INSERT INTO print_jobs
-        (status, printer_id, file_url, original_name, paper_size, color_mode, copies, pages, total_cost,
-2         customer_name, customer_email, country, city, notes, instructions, service_type)
+        (
+          status,
+          printer_id,
+          file_url,
+          original_name,
+          paper_size,
+          color_mode,
+          copies,
+          pages,
+          total_cost,
+          customer_name,
+          customer_email,
+          country,
+          city,
+          notes,
+          instructions,
+          service_type
+        )
       VALUES
-        ('pending', $1, $2, $3, $4, $5, $6, $7, $8,
-         $9, $10, $11, $12, $13, $14, $15)
+        (
+          'pending',
+          $1, $2, $3, $4, $5, $6, $7, $8,
+          $9, $10, $11, $12, $13, $14, $15
+        )
       RETURNING *;
     `;
 
@@ -563,7 +592,7 @@ async function createPrintJobHandler(req, res) {
       customer_name,
       customer_email,
       country,
-     city,
+      city,
       notes,
       instructions,
       service_type,
@@ -577,7 +606,7 @@ async function createPrintJobHandler(req, res) {
       file_url,
       pricing: {
         unit_price: unit,
-        pages,// Deduplicate repeated webhook deliveries
+        pages,
         copies,
         total_cost,
       },
@@ -781,7 +810,7 @@ app.post("/api/dashboard/jobs/:id/route", requireDashboardAuth, async (req, res)
       return res.status(400).json({ error: "Unknown printer/queue id" });
     }
 
-    const r = await pool.query(2
+    const r = await pool.query(
       `
       UPDATE print_jobs
       SET printer_id = $2,
@@ -878,7 +907,7 @@ function dashboardHtml({ initialPrinter }) {
     .file-links{display:flex;flex-direction:column;gap:6px}
     .text-wrap{white-space:pre-wrap;word-break:break-word}
     .mini{font-size:11px;color:#94a3b8;margin-bottom:4px}
-  </style>2
+  </style>
 </head>
 <body>
   <div class="wrap">
@@ -1285,8 +1314,6 @@ app.get("/api/services", (req, res) => {
 });
 
 /* ---------------- WhatsApp / Meta Webhook ---------------- */
-
-
 app.get("/webhook", (req, res) => {
   try {
     const mode = req.query["hub.mode"];
@@ -1305,9 +1332,9 @@ app.get("/webhook", (req, res) => {
     return res.sendStatus(500);
   }
 });
-global.processedWhatsAppMessageIds = global.processedWhatsAppMessageIds || new Map();
 
-global.processedWhatsAppMessageIds = global.processedWhatsAppMessageIds || new Map();
+global.processedWhatsAppMessageIds =
+  global.processedWhatsAppMessageIds || new Map();
 
 app.post("/webhook", async (req, res) => {
   try {
@@ -1319,13 +1346,11 @@ app.post("/webhook", async (req, res) => {
 
     if (!value) return res.sendStatus(200);
 
-    // Ignore status updates
     if (value.statuses) {
       console.log("🚫 Ignoring status event");
       return res.sendStatus(200);
     }
 
-    // Ignore if no actual incoming message
     if (!value.messages || value.messages.length === 0) {
       console.log("🚫 No incoming messages");
       return res.sendStatus(200);
@@ -1341,109 +1366,29 @@ app.post("/webhook", async (req, res) => {
       return res.sendStatus(200);
     }
 
-    // Prevent self-loop
     if (displayPhone && from === displayPhone) {
       console.log("🚫 Ignoring self-message");
       return res.sendStatus(200);
     }
-// Deduplicate repeated webhook deliveries
-const TTL = 10 * 60 * 1000;
 
-for (const [key, ts] of global.processedWhatsAppMessageIds.entries()) {
-  if (Date.now() - ts > TTL) {
-    global.processedWhatsAppMessageIds.delete(key);
-  }
-}
-
-if (messageId && global.processedWhatsAppMessageIds.has(messageId)) {
-  console.log("Duplicate message ignored:", messageId);
-  return res.sendStatus(200);
-}
-
-if (messageId) {
-  global.processedWhatsAppMessageIds.set(messageId, Date.now());
-}
-console.log("Processing message from:", from, "type:", message.type);
-// -------- TEXT HANDLING --------
-if (message.type === "text") {
-  const text = String(message.text?.body || "").trim().toLowerCase();
-
-  if (["hi", "hello", "hey", "hallo"].includes(text)) {
-    reply =
-      "Hello 👋 Welcome to PATAPATA Print-O-Matic\n" +
-      "Send your PDF, image, document, or video here for printing or editing.";
-  } else if (text === "1") {
-    reply = "Send your document or PDF now 📄";
-  } else if (text === "2") {
-    reply = "Send your image or passport photo 🖼️";
-  } else if (text === "3") {
-    reply = "Send your video 🎬";
-  }
-}
-
-// -------- IMAGE --------
-if (message.type === "image") {
-  const mediaId = message.image?.id;
-
-  if (mediaId) {
-    const fileBuffer = await downloadWhatsAppMedia(mediaId);
-    const saved = saveWhatsAppFile(fileBuffer, "jpg");
-    console.log("Image saved:", saved.filePath);
-  }
-
-  reply = "Image received ✅ We are processing it now.";
-}
-
-// -------- DOCUMENT --------
-if (message.type === "document") {
-  const mediaId = message.document?.id;
-
-  if (mediaId) {
-    const fileBuffer = await downloadWhatsAppMedia(mediaId);
-    const saved = saveWhatsAppFile(fileBuffer, "pdf");
-    console.log("Document saved:", saved.filePath);
-  }
-
-  reply = "Document received ✅ Ready for printing.";
-}
-
-// -------- VIDEO --------
-if (message.type === "video") {
-  const mediaId = message.video?.id;
-
-  if (mediaId) {
-    const fileBuffer = await downloadWhatsAppMedia(mediaId);
-    const saved = saveWhatsAppFile(fileBuffer, "mp4");
-    console.log("Video saved:", saved.filePath);
-  }
-
-  reply = "Video received ✅ We will process it shortly.";
-}
-
-// -------- SEND REPLY --------
-await sendWhatsAppText(from, reply);
-
-return res.sendStatus(200);
-    // Deduplicate repeated webhook deliveries
-    // Deduplicate repeated webhook deliveries
-    const TTL = 10 * 60 * 1000;
+    const DEDUP_TTL = 10 * 60 * 1000;
 
     for (const [key, ts] of global.processedWhatsAppMessageIds.entries()) {
-      if (now - ts > TTL) {
+      if (Date.now() - ts > DEDUP_TTL) {
         global.processedWhatsAppMessageIds.delete(key);
       }
     }
 
     if (messageId && global.processedWhatsAppMessageIds.has(messageId)) {
-      console.log("🚫 Duplicate message ignored:", messageId);
-2      return res.sendStatus(200);
+      console.log("Duplicate message ignored:", messageId);
+      return res.sendStatus(200);
     }
 
     if (messageId) {
-      global.processedWhatsAppMessageIds.set(messageId, now);
+      global.processedWhatsAppMessageIds.set(messageId, Date.now());
     }
 
-    console.log("✅ Processing message from:", from, "type:", message.type);
+    console.log("Processing message from:", from, "type:", message.type);
 
     let reply =
       "Welcome to PATAPATA Print-O-Matic 🚀\n\n" +
@@ -1455,38 +1400,57 @@ return res.sendStatus(200);
       if (["hi", "hello", "hey", "hallo"].includes(text)) {
         reply =
           "Hello 👋 Welcome to PATAPATA Print-O-Matic\n\n" +
-          "Send your file (PDF, image, video) and we will process it for you.";
+          "Send your PDF, image, document, or video here for printing or editing.";
       } else if (text === "1") {
-        reply = "Please send your document or PDF now. We’ll prepare it for printing.";
+        reply = "Send your document or PDF now 📄";
       } else if (text === "2") {
-        reply = "Please send your image, passport photo, or ID card file now.";
+        reply = "Send your image or passport photo 🖼️";
       } else if (text === "3") {
-        reply = "Please send your video and tell us the type of editing you want.";
+        reply = "Send your video 🎬";
       } else if (text === "4") {
-        reply = "Please send your image and describe the editing you want.";
+        reply = "Send your image and describe the editing you want.";
       }
     }
 
     if (message.type === "image") {
-      reply =
-        "🖼️ Image received\n\n" +
-        "We can print or edit this image.\nReply:\n1 - Print\n2 - ID Photo\n3 - Edit";
+      const mediaId = message.image?.id;
+
+      if (mediaId) {
+        const fileBuffer = await downloadWhatsAppMedia(mediaId);
+        const saved = saveWhatsAppFile(fileBuffer, "jpg");
+        console.log("Image saved:", saved.filePath);
+      }
+
+      reply = "🖼️ Image received\n\nWe can print or edit this image.\nReply:\n1 - Print\n2 - ID Photo\n3 - Edit";
     }
 
     if (message.type === "document") {
-      reply =
-        "📄 Document received\n\n" +
-        "We can print this for you.\nReply:\n1 - A4\n2 - A3\n3 - Laminating";
+      const mediaId = message.document?.id;
+      const fileName = safeTrim(message.document?.filename || "");
+      const ext = path.extname(fileName).replace(".", "").toLowerCase() || "pdf";
+
+      if (mediaId) {
+        const fileBuffer = await downloadWhatsAppMedia(mediaId);
+        const saved = saveWhatsAppFile(fileBuffer, ext);
+        console.log("Document saved:", saved.filePath);
+      }
+
+      reply = "📄 Document received\n\nWe can print this for you.\nReply:\n1 - A4\n2 - A3\n3 - Laminating";
     }
 
     if (message.type === "video") {
-      reply =
-        "🎥 Video received\n\n" +
-        "We can edit or process this video.\nReply:\n1 - Trim\n2 - Social media edit\n3 - Advanced edit";
+      const mediaId = message.video?.id;
+
+      if (mediaId) {
+        const fileBuffer = await downloadWhatsAppMedia(mediaId);
+        const saved = saveWhatsAppFile(fileBuffer, "mp4");
+        console.log("Video saved:", saved.filePath);
+      }
+
+      reply = "🎥 Video received\n\nWe can edit or process this video.\nReply:\n1 - Trim\n2 - Social media edit\n3 - Advanced edit";
     }
 
     await sendWhatsAppText(from, reply);
-
     return res.sendStatus(200);
   } catch (error) {
     console.error("❌ Webhook error:", error?.message || error);
