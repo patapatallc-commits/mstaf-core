@@ -1504,7 +1504,7 @@ return res.sendStatus(200);
 });
 
 /* ---------------- START ---------------- */
-app.listen(PORT, () => {
+app.listen(PORT, "0.0.0.0", () => {
   console.log(`MSTAF Core listening on ${PORT}`);
   console.log(`BASE_URL: ${BASE_URL}`);
   console.log(`Printers loaded: ${PRINTERS.length}`);
