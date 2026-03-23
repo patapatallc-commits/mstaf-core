@@ -89,7 +89,7 @@ const storage = multer.diskStorage({
     const safe = (file.originalname || "file")
       .replace(/[^a-zA-Z0-9._-]/g, "_")
       .slice(-90);
-2    cb(null, `${Date.now()}_${Math.random().toString(16).slice(2)}_${safe}`);
+cb(null, `${Date.now()}_${Math.random().toString(16).slice(2)}_${safe}`);
   },
 });
 
