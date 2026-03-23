@@ -84,13 +84,19 @@ const UPLOAD_DIR = process.env.UPLOAD_DIR || path.join(__dirname, "uploads");
 if (!fs.existsSync(UPLOAD_DIR)) fs.mkdirSync(UPLOAD_DIR, { recursive: true });
 
 const storage = multer.diskStorage({
-  destination: (req, file, cb) => cb(null, UPLOAD_DIR),
-  filename: (req, file, cb) => {
-    const safe = (file.originalname || "file")
-      .replace(/[^a-zA-Z0-9._-]/g, "_")
-      .slice(-90);
+destination: (req, file, cb) => cb(null, UPLOAD_DIR),
+
+filename: (req, file, cb) => {
+const original = file.originalname || "file";
+const safe = original
+.replace(/[^a-zA-Z0-9.*-]/g, "*")
+.slice(-90);
+
+```
 cb(null, `${Date.now()}_${Math.random().toString(16).slice(2)}_${safe}`);
-  },
+```
+
+}
 });
 
 const upload = multer({ storage });
