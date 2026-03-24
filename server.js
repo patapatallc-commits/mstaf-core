@@ -130,6 +130,78 @@ function saveWhatsAppFile(fileBuffer, ext = "bin") {
   };
 }
 
+async function createWhatsAppJob({
+  from,
+  service_type,
+  savedFile,
+  original_name = "",
+  paper_size = "A4",
+  color_mode = "BW",
+  copies = 1,
+  pages = 1,
+  instructions = "",
+  notes = "",
+}) {
+  const printer_id = routeQueue({
+    printer_id: "",
+    paper_size,
+    service_type,
+  });
+
+  const unit = calcUnitPrice(color_mode);
+  const total_cost = Number((unit * pages * copies).toFixed(2));
+
+  const q = `
+    INSERT INTO print_jobs
+      (
+        status,
+        printer_id,
+        file_url,
+        original_name,
+        paper_size,
+        color_mode,
+        copies,
+        pages,
+        total_cost,
+        customer_name,
+        customer_email,
+        country,
+        city,
+        notes,
+        instructions,
+        service_type
+      )
+    VALUES
+      (
+        'pending',
+        $1, $2, $3, $4, $5, $6, $7, $8,
+        $9, $10, $11, $12, $13, $14, $15
+      )
+    RETURNING *;
+  `;
+
+  const values = [
+    printer_id,
+    savedFile.fileUrl,
+    original_name || savedFile.filename,
+    paper_size,
+    color_mode,
+    copies,
+    pages,
+    total_cost,
+    `WhatsApp ${from}`,
+    "",
+    "",
+    "",
+    notes,
+    instructions,
+    service_type,
+  ];
+
+  const created = await pool.query(q, values);
+  return created.rows[0];
+}
+
 /* ---------------- HELPERS ---------------- */
 function safeTrim(v) {
   return String(v ?? "").trim();
@@ -1419,9 +1491,29 @@ app.post("/webhook", async (req, res) => {
         const fileBuffer = await downloadWhatsAppMedia(mediaId);
         const saved = saveWhatsAppFile(fileBuffer, "jpg");
         console.log("Image saved:", saved.filePath);
-      }
 
-      reply = "🖼️ Image received\n\nWe can print or edit this image.\nReply:\n1 - Print\n2 - ID Photo\n3 - Edit";
+        const job = await createWhatsAppJob({
+          from,
+          service_type: "IMAGE_EDITING",
+          savedFile: saved,
+          original_name: saved.filename,
+          paper_size: "A4",
+          color_mode: "COLOR",
+          copies: 1,
+          pages: 1,
+          instructions: "WhatsApp image upload",
+          notes: `WhatsApp sender: ${from}`,
+        });
+
+        console.log("WhatsApp image job created:", job.id);
+
+        reply =
+          "🖼️ Image received successfully.\n\n" +
+          `Job #${job.id} has been added to our system.\n` +
+          "Reply:\n1 - Print\n2 - ID Photo\n3 - Edit";
+      } else {
+        reply = "Image received, but media ID was missing.";
+      }
     }
 
     if (message.type === "document") {
@@ -1433,9 +1525,29 @@ app.post("/webhook", async (req, res) => {
         const fileBuffer = await downloadWhatsAppMedia(mediaId);
         const saved = saveWhatsAppFile(fileBuffer, ext);
         console.log("Document saved:", saved.filePath);
-      }
 
-      reply = "📄 Document received\n\nWe can print this for you.\nReply:\n1 - A4\n2 - A3\n3 - Laminating";
+        const job = await createWhatsAppJob({
+          from,
+          service_type: "PRINT",
+          savedFile: saved,
+          original_name: fileName || saved.filename,
+          paper_size: "A4",
+          color_mode: "BW",
+          copies: 1,
+          pages: 1,
+          instructions: "WhatsApp document upload",
+          notes: `WhatsApp sender: ${from}`,
+        });
+
+        console.log("WhatsApp document job created:", job.id);
+
+        reply =
+          "📄 Document received successfully.\n\n" +
+          `Job #${job.id} is now in our print queue.\n` +
+          "Reply:\n1 - A4\n2 - A3\n3 - Laminating";
+      } else {
+        reply = "Document received, but media ID was missing.";
+      }
     }
 
     if (message.type === "video") {
@@ -1445,9 +1557,29 @@ app.post("/webhook", async (req, res) => {
         const fileBuffer = await downloadWhatsAppMedia(mediaId);
         const saved = saveWhatsAppFile(fileBuffer, "mp4");
         console.log("Video saved:", saved.filePath);
-      }
 
-      reply = "🎥 Video received\n\nWe can edit or process this video.\nReply:\n1 - Trim\n2 - Social media edit\n3 - Advanced edit";
+        const job = await createWhatsAppJob({
+          from,
+          service_type: "VIDEO_EDITING",
+          savedFile: saved,
+          original_name: saved.filename,
+          paper_size: "A4",
+          color_mode: "COLOR",
+          copies: 1,
+          pages: 1,
+          instructions: "WhatsApp video upload",
+          notes: `WhatsApp sender: ${from}`,
+        });
+
+        console.log("WhatsApp video job created:", job.id);
+
+        reply =
+          "🎥 Video received successfully.\n\n" +
+          `Job #${job.id} has been added to our editing queue.\n` +
+          "Reply:\n1 - Trim\n2 - Social media edit\n3 - Advanced edit";
+      } else {
+        reply = "Video received, but media ID was missing.";
+      }
     }
 
     await sendWhatsAppText(from, reply);
