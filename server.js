@@ -32,8 +32,17 @@ const AGENT_QUEUE_ID = String(process.env.AGENT_QUEUE_ID || "AGENT").trim();
 const VERIFY_TOKEN = String(
   process.env.WHATSAPP_VERIFY_TOKEN || "PATAPATA_MSTAF_WEBHOOK"
 ).trim();
-const WHATSAPP_PHONE_NUMBER_ID = String(process.env.WHATSAPP_PHONE_NUMBER_ID || "").trim();
-const WHATSAPP_ACCESS_TOKEN = String(process.env.WHATSAPP_ACCESS_TOKEN || "").trim();
+
+const WHATSAPP_PHONE_NUMBER_ID = String(
+  process.env.WHATSAPP_PHONE_NUMBER_ID || ""
+).trim();
+
+const WHATSAPP_ACCESS_TOKEN = String(
+  process.env.WHATSAPP_ACCESS_TOKEN || ""
+).trim();
+
+/* legacy env only for warning/debug; NOT used for auth */
+const LEGACY_WHATSAPP_TOKEN = String(process.env.WHATSAPP_TOKEN || "").trim();
 
 /* ---------------- MIDDLEWARE ---------------- */
 app.use(cors());
@@ -65,142 +74,6 @@ const storage = multer.diskStorage({
 });
 
 const upload = multer({ storage });
-
-/* ---------------- WHATSAPP HELPERS ---------------- */
-async function sendWhatsAppText(to, body) {
-  if (!WHATSAPP_PHONE_NUMBER_ID || !WHATSAPP_ACCESS_TOKEN) {
-    throw new Error("WhatsApp credentials are not configured");
-  }
-
-  const url = `https://graph.facebook.com/v18.0/${WHATSAPP_PHONE_NUMBER_ID}/messages`;
-
-  const payload = {
-    messaging_product: "whatsapp",
-    to,
-    type: "text",
-    text: { body },
-  };
-
-  const { data } = await axios.post(url, payload, {
-    headers: {
-      Authorization: `Bearer ${WHATSAPP_ACCESS_TOKEN}`,
-      "Content-Type": "application/json",
-    },
-  });
-
-  return data;
-}
-
-async function getWhatsAppMediaUrl(mediaId) {
-  const url = `https://graph.facebook.com/v18.0/${mediaId}`;
-  const { data } = await axios.get(url, {
-    headers: {
-      Authorization: `Bearer ${WHATSAPP_ACCESS_TOKEN}`,
-    },
-  });
-  return data?.url || "";
-}
-
-async function downloadWhatsAppMedia(mediaId) {
-  if (!mediaId) throw new Error("Missing WhatsApp mediaId");
-
-  const mediaUrl = await getWhatsAppMediaUrl(mediaId);
-  if (!mediaUrl) throw new Error("Could not resolve WhatsApp media URL");
-
-  const { data } = await axios.get(mediaUrl, {
-    responseType: "arraybuffer",
-    headers: {
-      Authorization: `Bearer ${WHATSAPP_ACCESS_TOKEN}`,
-    },
-  });
-
-  return Buffer.from(data);
-}
-
-function saveWhatsAppFile(fileBuffer, ext = "bin") {
-  const safeExt = String(ext || "bin").replace(/[^a-zA-Z0-9]/g, "").toLowerCase() || "bin";
-  const filename = `wa_${Date.now()}_${Math.random().toString(16).slice(2)}.${safeExt}`;
-  const filePath = path.join(UPLOAD_DIR, filename);
-  fs.writeFileSync(filePath, fileBuffer);
-
-  return {
-    filename,
-    filePath,
-    fileUrl: `${BASE_URL}/uploads/${encodeURIComponent(filename)}`,
-  };
-}
-
-async function createWhatsAppJob({
-  from,
-  service_type,
-  savedFile,
-  original_name = "",
-  paper_size = "A4",
-  color_mode = "BW",
-  copies = 1,
-  pages = 1,
-  instructions = "",
-  notes = "",
-}) {
-  const printer_id = routeQueue({
-    printer_id: "",
-    paper_size,
-    service_type,
-  });
-
-  const unit = calcUnitPrice(color_mode);
-  const total_cost = Number((unit * pages * copies).toFixed(2));
-
-  const q = `
-    INSERT INTO print_jobs
-      (
-        status,
-        printer_id,
-        file_url,
-        original_name,
-        paper_size,
-        color_mode,
-        copies,
-        pages,
-        total_cost,
-        customer_name,
-        customer_email,
-        country,
-        city,
-        notes,
-        instructions,
-        service_type
-      )
-    VALUES
-      (
-        'pending',
-        $1, $2, $3, $4, $5, $6, $7, $8,
-        $9, $10, $11, $12, $13, $14, $15
-      )
-    RETURNING *;
-  `;
-
-  const values = [
-    printer_id,
-    savedFile.fileUrl,
-    original_name || savedFile.filename,
-    paper_size,
-    color_mode,
-    copies,
-    pages,
-    total_cost,
-    `WhatsApp ${from}`,
-    "",
-    "",
-    "",
-    notes,
-    instructions,
-    service_type,
-  ];
-
-  const created = await pool.query(q, values);
-  return created.rows[0];
-}
 
 /* ---------------- HELPERS ---------------- */
 function safeTrim(v) {
@@ -334,6 +207,179 @@ function buildCombinedNotes(data) {
   appendUrlLine(parts, "Reference Link", data.reference_link);
 
   return parts.filter(Boolean).join("\n");
+}
+
+function formatAxiosError(error) {
+  if (error?.response?.data) {
+    try {
+      return JSON.stringify(error.response.data);
+    } catch (_) {
+      return String(error.response.data);
+    }
+  }
+
+  if (error?.response?.status) {
+    return `HTTP ${error.response.status}`;
+  }
+
+  return error?.message || "Unknown error";
+}
+
+/* ---------------- WHATSAPP HELPERS ---------------- */
+async function sendWhatsAppText(to, body) {
+  if (!WHATSAPP_PHONE_NUMBER_ID || !WHATSAPP_ACCESS_TOKEN) {
+    throw new Error("WhatsApp credentials are not configured");
+  }
+
+  const url = `https://graph.facebook.com/v18.0/${WHATSAPP_PHONE_NUMBER_ID}/messages`;
+
+  const payload = {
+    messaging_product: "whatsapp",
+    to,
+    type: "text",
+    text: { body },
+  };
+
+  try {
+    const { data } = await axios.post(url, payload, {
+      headers: {
+        Authorization: `Bearer ${WHATSAPP_ACCESS_TOKEN}`,
+        "Content-Type": "application/json",
+      },
+    });
+    return data;
+  } catch (error) {
+    const metaError = formatAxiosError(error);
+    console.error("WhatsApp send error:", metaError);
+    throw error;
+  }
+}
+
+async function getWhatsAppMediaUrl(mediaId) {
+  if (!WHATSAPP_ACCESS_TOKEN) {
+    throw new Error("WhatsApp access token is not configured");
+  }
+
+  const url = `https://graph.facebook.com/v18.0/${mediaId}`;
+
+  try {
+    const { data } = await axios.get(url, {
+      headers: {
+        Authorization: `Bearer ${WHATSAPP_ACCESS_TOKEN}`,
+      },
+    });
+    return data?.url || "";
+  } catch (error) {
+    console.error("WhatsApp media URL error:", formatAxiosError(error));
+    throw error;
+  }
+}
+
+async function downloadWhatsAppMedia(mediaId) {
+  if (!mediaId) throw new Error("Missing WhatsApp mediaId");
+  if (!WHATSAPP_ACCESS_TOKEN) throw new Error("WhatsApp access token is not configured");
+
+  const mediaUrl = await getWhatsAppMediaUrl(mediaId);
+  if (!mediaUrl) throw new Error("Could not resolve WhatsApp media URL");
+
+  try {
+    const { data } = await axios.get(mediaUrl, {
+      responseType: "arraybuffer",
+      headers: {
+        Authorization: `Bearer ${WHATSAPP_ACCESS_TOKEN}`,
+      },
+    });
+
+    return Buffer.from(data);
+  } catch (error) {
+    console.error("WhatsApp media download error:", formatAxiosError(error));
+    throw error;
+  }
+}
+
+function saveWhatsAppFile(fileBuffer, ext = "bin") {
+  const safeExt = String(ext || "bin").replace(/[^a-zA-Z0-9]/g, "").toLowerCase() || "bin";
+  const filename = `wa_${Date.now()}_${Math.random().toString(16).slice(2)}.${safeExt}`;
+  const filePath = path.join(UPLOAD_DIR, filename);
+  fs.writeFileSync(filePath, fileBuffer);
+
+  return {
+    filename,
+    filePath,
+    fileUrl: `${BASE_URL}/uploads/${encodeURIComponent(filename)}`,
+  };
+}
+
+async function createWhatsAppJob({
+  from,
+  service_type,
+  savedFile,
+  original_name = "",
+  paper_size = "A4",
+  color_mode = "BW",
+  copies = 1,
+  pages = 1,
+  instructions = "",
+  notes = "",
+}) {
+  const printer_id = routeQueue({
+    printer_id: "",
+    paper_size,
+    service_type,
+  });
+
+  const unit = calcUnitPrice(color_mode);
+  const total_cost = Number((unit * pages * copies).toFixed(2));
+
+  const q = `
+    INSERT INTO print_jobs
+      (
+        status,
+        printer_id,
+        file_url,
+        original_name,
+        paper_size,
+        color_mode,
+        copies,
+        pages,
+        total_cost,
+        customer_name,
+        customer_email,
+        country,
+        city,
+        notes,
+        instructions,
+        service_type
+      )
+    VALUES
+      (
+        'pending',
+        $1, $2, $3, $4, $5, $6, $7, $8,
+        $9, $10, $11, $12, $13, $14, $15
+      )
+    RETURNING *;
+  `;
+
+  const values = [
+    printer_id,
+    savedFile.fileUrl,
+    original_name || savedFile.filename,
+    paper_size,
+    color_mode,
+    copies,
+    pages,
+    total_cost,
+    `WhatsApp ${from}`,
+    "",
+    "",
+    "",
+    notes,
+    instructions,
+    service_type,
+  ];
+
+  const created = await pool.query(q, values);
+  return created.rows[0];
 }
 
 /* ---------------- PRINTER REGISTRY ---------------- */
@@ -524,6 +570,11 @@ app.get("/health", async (req, res) => {
       db: r.rows?.[0]?.ok === 1,
       base_url: BASE_URL,
       printer_count: PRINTERS.length,
+      whatsapp: {
+        phone_number_id_configured: Boolean(WHATSAPP_PHONE_NUMBER_ID),
+        access_token_configured: Boolean(WHATSAPP_ACCESS_TOKEN),
+        legacy_whatsapp_token_detected: Boolean(LEGACY_WHATSAPP_TOKEN),
+      },
       defaults: {
         DEFAULT_PRINTER_ID,
         A3_PRINTER_ID,
@@ -554,6 +605,11 @@ app.get("/api/health", async (req, res) => {
       db: r.rows?.[0]?.ok === 1,
       base_url: BASE_URL,
       printer_count: PRINTERS.length,
+      whatsapp: {
+        phone_number_id_configured: Boolean(WHATSAPP_PHONE_NUMBER_ID),
+        access_token_configured: Boolean(WHATSAPP_ACCESS_TOKEN),
+        legacy_whatsapp_token_detected: Boolean(LEGACY_WHATSAPP_TOKEN),
+      },
       defaults: {
         DEFAULT_PRINTER_ID,
         A3_PRINTER_ID,
@@ -584,6 +640,11 @@ app.get("/debug", async (req, res) => {
       message: "MSTAF debug route working",
       now: r.rows?.[0]?.now || null,
       base_url: BASE_URL,
+      whatsapp: {
+        phone_number_id_configured: Boolean(WHATSAPP_PHONE_NUMBER_ID),
+        access_token_configured: Boolean(WHATSAPP_ACCESS_TOKEN),
+        legacy_whatsapp_token_detected: Boolean(LEGACY_WHATSAPP_TOKEN),
+      },
     });
   } catch (e) {
     res.status(500).json({ ok: false, error: e.message });
@@ -1585,7 +1646,7 @@ app.post("/webhook", async (req, res) => {
     await sendWhatsAppText(from, reply);
     return res.sendStatus(200);
   } catch (error) {
-    console.error("❌ Webhook error:", error?.message || error);
+    console.error("❌ Webhook error:", formatAxiosError(error));
     return res.sendStatus(200);
   }
 });
@@ -1595,4 +1656,13 @@ app.listen(PORT, "0.0.0.0", () => {
   console.log(`MSTAF Core listening on ${PORT}`);
   console.log(`BASE_URL: ${BASE_URL}`);
   console.log(`Printers loaded: ${PRINTERS.length}`);
+  console.log(
+    `WhatsApp configured: phone_id=${Boolean(WHATSAPP_PHONE_NUMBER_ID)} access_token=${Boolean(WHATSAPP_ACCESS_TOKEN)}`
+  );
+
+  if (LEGACY_WHATSAPP_TOKEN) {
+    console.warn(
+      "⚠️ Legacy WHATSAPP_TOKEN env detected. Remove it from Render. This server uses only WHATSAPP_ACCESS_TOKEN."
+    );
+  }
 });
