@@ -44,6 +44,22 @@ const WHATSAPP_ACCESS_TOKEN = String(
 /* legacy env only for warning/debug; NOT used for auth */
 const LEGACY_WHATSAPP_TOKEN = String(process.env.WHATSAPP_TOKEN || "").trim();
 
+/* ---------------- OPTIONAL LINKS / MODES ---------------- */
+const SHOPIFY_CHECKOUT_LINK = String(
+  process.env.SHOPIFY_CHECKOUT_LINK || "https://www.patapata.us"
+).trim();
+
+const AFRICA_PAYMENT_PORTAL = String(
+  process.env.AFRICA_PAYMENT_PORTAL ||
+    "https://www.patapata.us/pages/africa-payment-portal"
+).trim();
+
+const LESSON_ACCESS_MODE = String(
+  process.env.LESSON_ACCESS_MODE || "enrolled_only"
+)
+  .trim()
+  .toLowerCase();
+
 /* ---------------- MIDDLEWARE ---------------- */
 app.use(cors());
 app.use(express.json({ limit: "30mb" }));
@@ -109,9 +125,14 @@ function normalizeServiceType(v) {
   if (!s) return "PRINT";
   if (s.includes("laminat")) return "LAMINATING";
   if (s.includes("id") && s.includes("card")) return "ID_CARD_PRINTING";
+  if (s.includes("id") && s.includes("photo")) return "ID_PHOTO";
   if (s.includes("video")) return "VIDEO_EDITING";
   if (s.includes("image")) return "IMAGE_EDITING";
   if (s.includes("edit")) return "EDITING";
+  if (s.includes("homework")) return "HOMEWORK";
+  if (s.includes("transcript")) return "TRANSCRIPT";
+  if (s.includes("lesson")) return "LESSON";
+  if (s.includes("quiz")) return "QUIZ";
   if (s.includes("card")) return "CARD_PRINTING";
   return s.toUpperCase();
 }
@@ -493,13 +514,22 @@ function routeQueue({ printer_id, paper_size, service_type }) {
   const svc = normalizeServiceType(service_type);
   const ps = safeTrim(paper_size).toUpperCase();
 
-  if (svc === "IMAGE_EDITING" || svc === "VIDEO_EDITING" || svc === "EDITING") {
+  if (
+    svc === "IMAGE_EDITING" ||
+    svc === "VIDEO_EDITING" ||
+    svc === "EDITING" ||
+    svc === "LESSON" ||
+    svc === "QUIZ" ||
+    svc === "HOMEWORK" ||
+    svc === "TRANSCRIPT"
+  ) {
     return AGENT_QUEUE_ID;
   }
 
   if (
     svc === "LAMINATING" ||
     svc === "ID_CARD_PRINTING" ||
+    svc === "ID_PHOTO" ||
     svc === "CARD_PRINTING"
   ) {
     return DISPATCH_QUEUE_ID;
@@ -590,6 +620,11 @@ app.get("/health", async (req, res) => {
         "EDITING",
         "LAMINATING",
         "ID_CARD_PRINTING",
+        "ID_PHOTO",
+        "LESSON",
+        "QUIZ",
+        "HOMEWORK",
+        "TRANSCRIPT",
       ],
     });
   } catch (e) {
@@ -625,6 +660,11 @@ app.get("/api/health", async (req, res) => {
         "EDITING",
         "LAMINATING",
         "ID_CARD_PRINTING",
+        "ID_PHOTO",
+        "LESSON",
+        "QUIZ",
+        "HOMEWORK",
+        "TRANSCRIPT",
       ],
     });
   } catch (e) {
@@ -1048,7 +1088,7 @@ function dashboardHtml({ initialPrinter }) {
     <div class="muted" style="margin-bottom:16px;">
       DISPATCH routing • printers • editing queue • Nigeria hubs
       <span style="float:right" class="muted">
-        Auto: A4→${escHtml(DEFAULT_PRINTER_ID)} • A3/CARD/LAMINATING/ID CARD→${escHtml(DISPATCH_QUEUE_ID)} • IMAGE/VIDEO→${escHtml(AGENT_QUEUE_ID)}
+        Auto: A4→${escHtml(DEFAULT_PRINTER_ID)} • A3/CARD/LAMINATING/ID CARD→${escHtml(DISPATCH_QUEUE_ID)} • IMAGE/VIDEO/LESSON→${escHtml(AGENT_QUEUE_ID)}
       </span>
     </div>
 
@@ -1442,9 +1482,1016 @@ app.get("/api/services", (req, res) => {
       "Video Editing",
       "Laminating",
       "ID Card Printing",
+      "ID Photo",
+      "Lessons / Courses",
+      "Quiz",
+      "Homework Submission",
+      "Transcript Submission",
     ],
   });
 });
+
+/* ---------------- SMART WHATSAPP SESSION STATE ---------------- */
+global.processedWhatsAppMessageIds =
+  global.processedWhatsAppMessageIds || new Map();
+
+global.whatsAppSessions =
+  global.whatsAppSessions || new Map();
+
+function getWhatsAppSession(from) {
+  const existing = global.whatsAppSessions.get(from) || {
+    state: "idle",
+    data: {},
+    lastFile: null,
+    updatedAt: Date.now(),
+  };
+  existing.updatedAt = Date.now();
+  global.whatsAppSessions.set(from, existing);
+  return existing;
+}
+
+function setWhatsAppSession(from, patch = {}) {
+  const current = getWhatsAppSession(from);
+  const next = {
+    ...current,
+    ...patch,
+    data: {
+      ...(current.data || {}),
+      ...(patch.data || {}),
+    },
+    updatedAt: Date.now(),
+  };
+  global.whatsAppSessions.set(from, next);
+  return next;
+}
+
+function resetWhatsAppSession(from) {
+  global.whatsAppSessions.set(from, {
+    state: "idle",
+    data: {},
+    lastFile: null,
+    updatedAt: Date.now(),
+  });
+}
+
+function cleanupWhatsAppSessions() {
+  const TTL = 24 * 60 * 60 * 1000;
+  const now = Date.now();
+  for (const [key, session] of global.whatsAppSessions.entries()) {
+    if (now - Number(session?.updatedAt || 0) > TTL) {
+      global.whatsAppSessions.delete(key);
+    }
+  }
+}
+
+function getFileExtFromMimeOrName(mime, filename, fallback = "bin") {
+  const nameExt = path.extname(String(filename || "")).replace(".", "").toLowerCase();
+  if (nameExt) return nameExt;
+
+  const m = String(mime || "").toLowerCase();
+  if (m.includes("pdf")) return "pdf";
+  if (m.includes("word")) return "docx";
+  if (m.includes("document")) return "docx";
+  if (m.includes("jpeg")) return "jpg";
+  if (m.includes("jpg")) return "jpg";
+  if (m.includes("png")) return "png";
+  if (m.includes("mp4")) return "mp4";
+  if (m.includes("quicktime")) return "mov";
+  return fallback;
+}
+
+function isGreetingText(text) {
+  const t = safeTrim(text).toLowerCase();
+  return ["hi", "hello", "hey", "hallo", "menu", "start"].includes(t);
+}
+
+function isBackCommand(text) {
+  const t = safeTrim(text).toLowerCase();
+  return t === "0" || t === "back" || t === "menu" || t === "main menu";
+}
+
+function looksLikeAfricaPaymentProof(text) {
+  const t = safeTrim(text).toLowerCase();
+  return Boolean(t);
+}
+
+function getMainMenuText() {
+  return (
+    "Hello 👋 Welcome to PATAPATA MSTAF\n\n" +
+    "I can help you with printing, laminating, ID photo, editing, lessons, quizzes, homework, transcripts, and payments.\n\n" +
+    "Reply with a number:\n\n" +
+    "1 - Print Documents / Images\n" +
+    "2 - Laminating\n" +
+    "3 - ID Photo\n" +
+    "4 - Image Editing\n" +
+    "5 - Video Editing\n" +
+    "6 - Lessons / Courses\n" +
+    "7 - Prices\n" +
+    "8 - Talk to Agent\n" +
+    "9 - Africa Local Payment Option\n\n" +
+    "You can also send your PDF, image, document, video, transcript, or homework here directly.\n\n" +
+    "For T-Shirt, Mug, or Towel design printing, please contact the Agent with your instructions for pricing."
+  );
+}
+
+function getFileServiceMenuText() {
+  return (
+    "✅ File received successfully.\n\n" +
+    "What would you like to do with this file?\n\n" +
+    "Reply with a number:\n\n" +
+    "1 - Print\n" +
+    "2 - Laminate\n" +
+    "3 - ID Photo\n" +
+    "4 - Image Editing\n" +
+    "5 - Video Editing\n" +
+    "6 - Lesson / Homework / Transcript\n" +
+    "7 - Talk to Agent\n" +
+    "9 - Africa Local Payment Option"
+  );
+}
+
+function getLessonMenuText() {
+  return (
+    "📘 LESSON / COURSE MENU\n\n" +
+    "Reply with a number:\n\n" +
+    "1 - Get Lesson Video\n" +
+    "2 - Get Quiz\n" +
+    "3 - Get Quiz Answers\n" +
+    "4 - Submit Homework\n" +
+    "5 - Submit Transcript / Assignment\n" +
+    "6 - Talk to Course Support\n" +
+    "7 - Back to Main Menu"
+  );
+}
+
+function getLessonPaymentText() {
+  return (
+    "💳 Lesson access requires payment.\n\n" +
+    "Reply:\n" +
+    "1 - Pay with Shopify\n" +
+    "2 - Africa Local Payment\n" +
+    "3 - Talk to Agent"
+  );
+}
+
+function getShopifyPaymentText() {
+  return (
+    "✅ Order Confirmed\n\n" +
+    "Please complete payment here:\n" +
+    `${SHOPIFY_CHECKOUT_LINK}\n\n` +
+    "After payment, your request will be processed immediately."
+  );
+}
+
+function getAfricaPaymentText() {
+  return (
+    "🌍 Africa Local Payment Selected\n\n" +
+    "Please complete your payment here:\n" +
+    `${AFRICA_PAYMENT_PORTAL}\n\n` +
+    "After payment, reply with your payment reference or proof of payment."
+  );
+}
+
+function getPricesText() {
+  return (
+    "💵 PATAPATA MSTAF Prices\n\n" +
+    "Printing:\n" +
+    "• A4 Black & White — $0.25/page\n" +
+    "• A4 Color — $0.50/page\n\n" +
+    "Laminating:\n" +
+    "• Letter — $1.50\n" +
+    "• Legal — $2.00\n" +
+    "• Tabloid — $3.00\n\n" +
+    "Custom Merchandise:\n" +
+    "• T-Shirt design printing — Contact Agent for pricing\n" +
+    "• Mug design printing — Contact Agent for pricing\n" +
+    "• Towel design printing — Contact Agent for pricing\n\n" +
+    "For ID Photo, Image Editing, Video Editing, Lessons, Homework, Transcript, T-Shirt, Mug, or Towel design printing, contact Agent with your instructions for pricing."
+  );
+}
+
+function buildAgentPromptText() {
+  return (
+    "👨‍💼 Talk to Agent selected.\n\n" +
+    "Please send your message now and an agent will assist you.\n\n" +
+    "For T-Shirt, Mug, or Towel design printing, include:\n" +
+    "• Item type\n" +
+    "• Quantity\n" +
+    "• Design details\n" +
+    "• Print side(s)\n" +
+    "• Deadline\n\n" +
+    "We will review it and give you pricing."
+  );
+}
+
+function getTextFromMessage(message) {
+  if (!message) return "";
+  if (message.type === "text") return safeTrim(message.text?.body || "");
+  if (message.button?.text) return safeTrim(message.button.text);
+  if (message.interactive?.button_reply?.title) {
+    return safeTrim(message.interactive.button_reply.title);
+  }
+  if (message.interactive?.list_reply?.title) {
+    return safeTrim(message.interactive.list_reply.title);
+  }
+  return "";
+}
+
+async function notifyAgentRequest({
+  from,
+  category,
+  text,
+  session,
+}) {
+  const notes = [
+    `WhatsApp sender: ${from}`,
+    `Agent Category: ${category || "GENERAL"}`,
+    text ? `Message: ${text}` : "",
+    session?.lastFile?.fileUrl ? `Attached File: ${session.lastFile.fileUrl}` : "",
+  ]
+    .filter(Boolean)
+    .join("\n");
+
+  const instructions = [
+    `Agent support request from WhatsApp`,
+    category ? `Category: ${category}` : "",
+    session?.lastFile?.filename ? `Original File: ${session.lastFile.filename}` : "",
+  ]
+    .filter(Boolean)
+    .join("\n");
+
+  const pseudoFile = session?.lastFile || {
+    filename: "agent_request.txt",
+    fileUrl: "",
+  };
+
+  try {
+    await pool.query(
+      `
+      INSERT INTO print_jobs
+        (
+          status,
+          printer_id,
+          file_url,
+          original_name,
+          paper_size,
+          color_mode,
+          copies,
+          pages,
+          total_cost,
+          customer_name,
+          customer_email,
+          country,
+          city,
+          notes,
+          instructions,
+          service_type
+        )
+      VALUES
+        (
+          'pending',
+          $1, $2, $3, 'A4', 'COLOR', 1, 1, 0,
+          $4, '', '', '', $5, $6, 'EDITING'
+        )
+      `,
+      [
+        AGENT_QUEUE_ID,
+        pseudoFile.fileUrl || "",
+        pseudoFile.filename || "agent_request.txt",
+        `WhatsApp ${from}`,
+        notes,
+        instructions,
+      ]
+    );
+  } catch (error) {
+    console.error("notifyAgentRequest insert error:", error.message);
+  }
+
+  return "✅ Your message has been sent to an agent. We will reply soon.";
+}
+
+async function createWhatsAppServiceJob({
+  from,
+  serviceType,
+  session,
+  detailsText = "",
+}) {
+  const lastFile = session?.lastFile;
+  if (!lastFile?.fileUrl) {
+    throw new Error("No uploaded file found in session");
+  }
+
+  let paperSize = "A4";
+  let colorMode = "BW";
+  let copies = 1;
+  let pages = 1;
+
+  if (serviceType === "IMAGE_EDITING" || serviceType === "VIDEO_EDITING" || serviceType === "ID_PHOTO") {
+    colorMode = "COLOR";
+  }
+
+  if (serviceType === "LAMINATING" || serviceType === "ID_PHOTO") {
+    paperSize = "A4";
+  }
+
+  const notes = [
+    `WhatsApp sender: ${from}`,
+    session?.data?.paymentChoice ? `Payment Choice: ${session.data.paymentChoice}` : "",
+    session?.data?.customerMessage ? `Customer Message: ${session.data.customerMessage}` : "",
+  ]
+    .filter(Boolean)
+    .join("\n");
+
+  const instructions = [
+    `WhatsApp ${serviceType} request`,
+    detailsText || "",
+  ]
+    .filter(Boolean)
+    .join("\n");
+
+  const job = await createWhatsAppJob({
+    from,
+    service_type: serviceType,
+    savedFile: lastFile,
+    original_name: lastFile.filename || "whatsapp_file",
+    paper_size: paperSize,
+    color_mode: colorMode,
+    copies,
+    pages,
+    instructions,
+    notes,
+  });
+
+  return job;
+}
+
+async function handleLessonGateOrContinue(from, nextStateAfterPayment, payload) {
+  if (LESSON_ACCESS_MODE === "paid_access") {
+    setWhatsAppSession(from, {
+      state: "await_lesson_payment_choice",
+      data: {
+        nextStateAfterPayment,
+        lessonPayload: payload || {},
+      },
+    });
+    await sendWhatsAppText(from, getLessonPaymentText());
+    return true;
+  }
+  return false;
+}
+
+async function completeLessonAction(from, actionKey, payload = {}, session) {
+  const textBits = [];
+
+  if (actionKey === "lesson_video") {
+    textBits.push("🎬 Lesson video request received.");
+  } else if (actionKey === "quiz") {
+    textBits.push("📝 Quiz request received.");
+  } else if (actionKey === "quiz_answers") {
+    textBits.push("✅ Quiz answers request received.");
+  }
+
+  if (payload?.details) {
+    textBits.push("");
+    textBits.push(payload.details);
+  }
+
+  try {
+    await pool.query(
+      `
+      INSERT INTO print_jobs
+        (
+          status,
+          printer_id,
+          file_url,
+          original_name,
+          paper_size,
+          color_mode,
+          copies,
+          pages,
+          total_cost,
+          customer_name,
+          customer_email,
+          country,
+          city,
+          notes,
+          instructions,
+          service_type
+        )
+      VALUES
+        (
+          'pending',
+          $1, '', $2, 'A4', 'COLOR', 1, 1, 0,
+          $3, '', '', '', $4, $5, $6
+        )
+      `,
+      [
+        AGENT_QUEUE_ID,
+        `${actionKey}.txt`,
+        `WhatsApp ${from}`,
+        `WhatsApp sender: ${from}`,
+        payload?.details || "",
+        actionKey === "lesson_video" ? "LESSON" : "QUIZ",
+      ]
+    );
+  } catch (error) {
+    console.error("completeLessonAction insert error:", error.message);
+  }
+
+  resetWhatsAppSession(from);
+  await sendWhatsAppText(from, textBits.join("\n"));
+}
+
+async function handleHomeworkOrTranscriptSubmission(from, typeLabel, detailsText, session) {
+  if (!session?.lastFile?.fileUrl) {
+    resetWhatsAppSession(from);
+    await sendWhatsAppText(from, "No file was found for this submission. Please send the file again.");
+    return;
+  }
+
+  const serviceType = typeLabel === "HOMEWORK" ? "HOMEWORK" : "TRANSCRIPT";
+
+  try {
+    const job = await createWhatsAppJob({
+      from,
+      service_type: serviceType,
+      savedFile: session.lastFile,
+      original_name: session.lastFile.filename || `${serviceType.toLowerCase()}.bin`,
+      paper_size: "A4",
+      color_mode: "COLOR",
+      copies: 1,
+      pages: 1,
+      instructions: `${typeLabel} submission\n${detailsText || ""}`.trim(),
+      notes: `WhatsApp sender: ${from}`,
+    });
+
+    resetWhatsAppSession(from);
+    await sendWhatsAppText(
+      from,
+      `✅ ${typeLabel === "HOMEWORK" ? "Homework" : "Transcript / assignment"} submitted successfully.\n\nSubmission Job #${job.id} has been added to our system.`
+    );
+  } catch (error) {
+    console.error("handleHomeworkOrTranscriptSubmission error:", error.message);
+    resetWhatsAppSession(from);
+    await sendWhatsAppText(
+      from,
+      `Your ${typeLabel === "HOMEWORK" ? "homework" : "transcript / assignment"} was received, but there was an issue saving it. Please contact Agent.`
+    );
+  }
+}
+
+async function handleMainMenuChoice(from, choice) {
+  switch (choice) {
+    case "1":
+      setWhatsAppSession(from, { state: "await_print_details" });
+      await sendWhatsAppText(
+        from,
+        "🖨️ Print selected.\n\nPlease reply with your print details in one message:\n• Paper size (A4, Letter, A3)\n• Color or B&W\n• Copies\n• Pages\n• Delivery or pickup\n\nExample:\nA4, Color, 2 copies, 5 pages, pickup"
+      );
+      return;
+
+    case "2":
+      setWhatsAppSession(from, { state: "await_laminate_details" });
+      await sendWhatsAppText(
+        from,
+        "📎 Laminating selected.\n\nPlease reply with:\n• Size (Letter, Legal, Tabloid)\n• Quantity\n• Pickup or delivery"
+      );
+      return;
+
+    case "3":
+      setWhatsAppSession(from, { state: "await_id_details" });
+      await sendWhatsAppText(
+        from,
+        "🪪 ID Photo selected.\n\nPlease send or reply with:\n• Country or ID type\n• Background color needed\n• Passport style or custom size"
+      );
+      return;
+
+    case "4":
+      setWhatsAppSession(from, { state: "await_image_edit_details" });
+      await sendWhatsAppText(
+        from,
+        "🖼️ Image Editing selected.\n\nPlease describe what you want:\n• Background removal\n• Retouch\n• Resize\n• Product photo edit\n• Custom design"
+      );
+      return;
+
+    case "5":
+      setWhatsAppSession(from, { state: "await_video_edit_details" });
+      await sendWhatsAppText(
+        from,
+        "🎬 Video Editing selected.\n\nPlease describe:\n• Type of video\n• What edit you want\n• Duration\n• Platform (TikTok, Instagram, YouTube, etc.)"
+      );
+      return;
+
+    case "6":
+      setWhatsAppSession(from, { state: "await_lesson_menu" });
+      await sendWhatsAppText(from, getLessonMenuText());
+      return;
+
+    case "7":
+      resetWhatsAppSession(from);
+      await sendWhatsAppText(from, getPricesText());
+      return;
+
+    case "8":
+      setWhatsAppSession(from, { state: "await_agent_message" });
+      await sendWhatsAppText(from, buildAgentPromptText());
+      return;
+
+    case "9":
+      setWhatsAppSession(from, { state: "await_africa_payment_choice" });
+      await sendWhatsAppText(from, getAfricaPaymentText());
+      return;
+
+    default:
+      resetWhatsAppSession(from);
+      await sendWhatsAppText(from, getMainMenuText());
+  }
+}
+
+async function handleFileServiceChoice(from, choice, session) {
+  switch (choice) {
+    case "1":
+      setWhatsAppSession(from, { state: "await_print_details" });
+      await sendWhatsAppText(
+        from,
+        "🖨️ Print selected for your file.\n\nPlease reply with:\n• Paper size\n• Color or B&W\n• Copies\n• Pages\n• Pickup or delivery"
+      );
+      return;
+
+    case "2":
+      setWhatsAppSession(from, { state: "await_laminate_details" });
+      await sendWhatsAppText(
+        from,
+        "📎 Laminate selected for your file.\n\nPlease reply with:\n• Size\n• Quantity\n• Pickup or delivery"
+      );
+      return;
+
+    case "3":
+      setWhatsAppSession(from, { state: "await_id_details" });
+      await sendWhatsAppText(
+        from,
+        "🪪 ID Photo selected.\n\nPlease reply with the ID/photo requirement details."
+      );
+      return;
+
+    case "4":
+      setWhatsAppSession(from, { state: "await_image_edit_details" });
+      await sendWhatsAppText(
+        from,
+        "🖼️ Image Editing selected.\n\nPlease describe the image edit you want."
+      );
+      return;
+
+    case "5":
+      setWhatsAppSession(from, { state: "await_video_edit_details" });
+      await sendWhatsAppText(
+        from,
+        "🎬 Video Editing selected.\n\nPlease describe the video edit you want."
+      );
+      return;
+
+    case "6":
+      setWhatsAppSession(from, { state: "await_lesson_menu" });
+      await sendWhatsAppText(from, getLessonMenuText());
+      return;
+
+    case "7":
+      setWhatsAppSession(from, { state: "await_agent_message" });
+      await sendWhatsAppText(from, buildAgentPromptText());
+      return;
+
+    case "9":
+      setWhatsAppSession(from, { state: "await_africa_payment_choice" });
+      await sendWhatsAppText(from, getAfricaPaymentText());
+      return;
+
+    default:
+      await sendWhatsAppText(from, getFileServiceMenuText());
+      return;
+  }
+}
+
+async function handleLessonMenuChoice(from, choice) {
+  switch (choice) {
+    case "1":
+      setWhatsAppSession(from, { state: "await_lesson_video_details" });
+      await sendWhatsAppText(
+        from,
+        "🎬 Get Lesson Video selected.\n\nPlease reply with:\n• Course name\n• Lesson title or week\n• Student name"
+      );
+      return;
+
+    case "2":
+      setWhatsAppSession(from, { state: "await_quiz_details" });
+      await sendWhatsAppText(
+        from,
+        "📝 Get Quiz selected.\n\nPlease reply with:\n• Course name\n• Quiz title or week\n• Student name"
+      );
+      return;
+
+    case "3":
+      setWhatsAppSession(from, { state: "await_quiz_answers_details" });
+      await sendWhatsAppText(
+        from,
+        "✅ Get Quiz Answers selected.\n\nPlease reply with:\n• Course name\n• Quiz title or week\n• Student name"
+      );
+      return;
+
+    case "4":
+      setWhatsAppSession(from, { state: "await_homework_file" });
+      await sendWhatsAppText(
+        from,
+        "📤 Submit Homework selected.\n\nPlease send your homework file now."
+      );
+      return;
+
+    case "5":
+      setWhatsAppSession(from, { state: "await_transcript_file" });
+      await sendWhatsAppText(
+        from,
+        "📄 Submit Transcript / Assignment selected.\n\nPlease send your transcript or assignment file now."
+      );
+      return;
+
+    case "6":
+      setWhatsAppSession(from, { state: "await_course_support_message" });
+      await sendWhatsAppText(
+        from,
+        "🎓 Course Support selected.\n\nPlease send your support message now."
+      );
+      return;
+
+    case "7":
+      resetWhatsAppSession(from);
+      await sendWhatsAppText(from, getMainMenuText());
+      return;
+
+    default:
+      await sendWhatsAppText(from, getLessonMenuText());
+      return;
+  }
+}
+
+async function handleServiceConfirmState(from, text, session, serviceType, successLabel) {
+  if (text === "1") {
+    try {
+      const detailsFieldMap = {
+        PRINT: "printDetails",
+        LAMINATING: "laminateDetails",
+        ID_PHOTO: "idDetails",
+        IMAGE_EDITING: "imageEditDetails",
+        VIDEO_EDITING: "videoEditDetails",
+      };
+
+      const detailsText = safeTrim(session?.data?.[detailsFieldMap[serviceType]] || "");
+
+      if (session?.lastFile?.fileUrl) {
+        const job = await createWhatsAppServiceJob({
+          from,
+          serviceType,
+          session,
+          detailsText,
+        });
+
+        resetWhatsAppSession(from);
+        await sendWhatsAppText(
+          from,
+          `✅ ${successLabel} request confirmed.\n\nJob #${job.id} has been added to our system.`
+        );
+        return;
+      }
+
+      if (serviceType === "PRINT" || serviceType === "LAMINATING" || serviceType === "ID_PHOTO") {
+        resetWhatsAppSession(from);
+        await sendWhatsAppText(
+          from,
+          `✅ ${successLabel} details received.\n\nPlease send your file now so we can continue.`
+        );
+        return;
+      }
+
+      resetWhatsAppSession(from);
+      await sendWhatsAppText(
+        from,
+        `✅ ${successLabel} request confirmed.\n\nPlease send the related file now if needed, or contact Agent for help.`
+      );
+      return;
+    } catch (error) {
+      console.error("handleServiceConfirmState error:", error.message);
+      resetWhatsAppSession(from);
+      await sendWhatsAppText(from, "There was an issue creating your request. Please try again or contact Agent.");
+      return;
+    }
+  }
+
+  if (text === "2") {
+    setWhatsAppSession(from, {
+      data: {
+        paymentChoice: "SHOPIFY",
+      },
+    });
+    resetWhatsAppSession(from);
+    await sendWhatsAppText(from, getShopifyPaymentText());
+    return;
+  }
+
+  if (text === "3") {
+    setWhatsAppSession(from, {
+      state: "await_africa_payment_choice",
+      data: {
+        paymentChoice: "AFRICA_LOCAL_PAYMENT",
+      },
+      lastFile: session?.lastFile || null,
+    });
+    await sendWhatsAppText(from, getAfricaPaymentText());
+    return;
+  }
+
+  if (text === "4") {
+    setWhatsAppSession(from, {
+      state: "await_agent_message",
+      lastFile: session?.lastFile || null,
+      data: {
+        ...session?.data,
+      },
+    });
+    await sendWhatsAppText(from, buildAgentPromptText());
+    return;
+  }
+
+  if (text === "5") {
+    resetWhatsAppSession(from);
+    await sendWhatsAppText(from, getMainMenuText());
+    return;
+  }
+
+  await sendWhatsAppText(from, "Reply with 1, 2, 3, 4, or 5.");
+}
+
+async function handleIncomingText(from, textRaw) {
+  cleanupWhatsAppSessions();
+
+  const text = safeTrim(textRaw);
+  const session = getWhatsAppSession(from);
+
+  if (!text) {
+    await sendWhatsAppText(from, getMainMenuText());
+    return;
+  }
+
+  if (isBackCommand(text)) {
+    resetWhatsAppSession(from);
+    await sendWhatsAppText(from, getMainMenuText());
+    return;
+  }
+
+  if (isGreetingText(text) && (!session.state || session.state === "idle")) {
+    resetWhatsAppSession(from);
+    await sendWhatsAppText(from, getMainMenuText());
+    return;
+  }
+
+  switch (session.state) {
+    case "idle":
+      await handleMainMenuChoice(from, text);
+      return;
+
+    case "await_service_choice":
+      await handleFileServiceChoice(from, text, session);
+      return;
+
+    case "await_print_details":
+      setWhatsAppSession(from, {
+        state: "await_print_confirm",
+        data: { printDetails: text },
+      });
+      await sendWhatsAppText(
+        from,
+        `✅ Print details received:\n\n${text}\n\nReply:\n1 - Confirm\n2 - Shopify Payment\n3 - Africa Local Payment\n4 - Talk to Agent\n5 - Cancel`
+      );
+      return;
+
+    case "await_print_confirm":
+      await handleServiceConfirmState(from, text, session, "PRINT", "Print");
+      return;
+
+    case "await_laminate_details":
+      setWhatsAppSession(from, {
+        state: "await_laminate_confirm",
+        data: { laminateDetails: text },
+      });
+      await sendWhatsAppText(
+        from,
+        `✅ Laminating details received:\n\n${text}\n\nReply:\n1 - Confirm\n2 - Shopify Payment\n3 - Africa Local Payment\n4 - Talk to Agent\n5 - Cancel`
+      );
+      return;
+
+    case "await_laminate_confirm":
+      await handleServiceConfirmState(from, text, session, "LAMINATING", "Laminating");
+      return;
+
+    case "await_id_details":
+      setWhatsAppSession(from, {
+        state: "await_id_confirm",
+        data: { idDetails: text },
+      });
+      await sendWhatsAppText(
+        from,
+        `✅ ID Photo details received:\n\n${text}\n\nReply:\n1 - Confirm\n2 - Shopify Payment\n3 - Africa Local Payment\n4 - Talk to Agent\n5 - Cancel`
+      );
+      return;
+
+    case "await_id_confirm":
+      await handleServiceConfirmState(from, text, session, "ID_PHOTO", "ID Photo");
+      return;
+
+    case "await_image_edit_details":
+      setWhatsAppSession(from, {
+        state: "await_image_edit_confirm",
+        data: { imageEditDetails: text },
+      });
+      await sendWhatsAppText(
+        from,
+        `✅ Image editing details received:\n\n${text}\n\nReply:\n1 - Confirm\n2 - Shopify Payment\n3 - Africa Local Payment\n4 - Talk to Agent\n5 - Cancel`
+      );
+      return;
+
+    case "await_image_edit_confirm":
+      await handleServiceConfirmState(from, text, session, "IMAGE_EDITING", "Image editing");
+      return;
+
+    case "await_video_edit_details":
+      setWhatsAppSession(from, {
+        state: "await_video_edit_confirm",
+        data: { videoEditDetails: text },
+      });
+      await sendWhatsAppText(
+        from,
+        `✅ Video editing details received:\n\n${text}\n\nReply:\n1 - Confirm\n2 - Shopify Payment\n3 - Africa Local Payment\n4 - Talk to Agent\n5 - Cancel`
+      );
+      return;
+
+    case "await_video_edit_confirm":
+      await handleServiceConfirmState(from, text, session, "VIDEO_EDITING", "Video editing");
+      return;
+
+    case "await_lesson_menu":
+      await handleLessonMenuChoice(from, text);
+      return;
+
+    case "await_lesson_video_details": {
+      const gated = await handleLessonGateOrContinue(from, "lesson_video", { details: text });
+      if (gated) return;
+      await completeLessonAction(from, "lesson_video", { details: text }, session);
+      return;
+    }
+
+    case "await_quiz_details": {
+      const gated = await handleLessonGateOrContinue(from, "quiz", { details: text });
+      if (gated) return;
+      await completeLessonAction(from, "quiz", { details: text }, session);
+      return;
+    }
+
+    case "await_quiz_answers_details": {
+      const gated = await handleLessonGateOrContinue(from, "quiz_answers", { details: text });
+      if (gated) return;
+      await completeLessonAction(from, "quiz_answers", { details: text }, session);
+      return;
+    }
+
+    case "await_homework_details":
+      await handleHomeworkOrTranscriptSubmission(from, "HOMEWORK", text, session);
+      return;
+
+    case "await_transcript_details":
+      await handleHomeworkOrTranscriptSubmission(from, "TRANSCRIPT", text, session);
+      return;
+
+    case "await_course_support_message": {
+      const responseText = await notifyAgentRequest({
+        from,
+        category: "COURSE_SUPPORT",
+        text,
+        session,
+      });
+      resetWhatsAppSession(from);
+      await sendWhatsAppText(from, responseText);
+      return;
+    }
+
+    case "await_agent_message": {
+      const responseText = await notifyAgentRequest({
+        from,
+        category: "AGENT_SUPPORT",
+        text,
+        session,
+      });
+      resetWhatsAppSession(from);
+      await sendWhatsAppText(from, responseText);
+      return;
+    }
+
+    case "await_africa_payment_choice":
+      if (looksLikeAfricaPaymentProof(text)) {
+        try {
+          const responseText = await notifyAgentRequest({
+            from,
+            category: "AFRICA_PAYMENT_PROOF",
+            text: `Payment proof/reference: ${text}`,
+            session,
+          });
+          resetWhatsAppSession(from);
+          await sendWhatsAppText(
+            from,
+            `✅ Africa payment update received.\n\n${responseText}`
+          );
+          return;
+        } catch (error) {
+          console.error("await_africa_payment_choice error:", error.message);
+          resetWhatsAppSession(from);
+          await sendWhatsAppText(
+            from,
+            "Your payment reference was received, but there was an issue forwarding it. Please contact Agent."
+          );
+          return;
+        }
+      }
+      await sendWhatsAppText(from, getAfricaPaymentText());
+      return;
+
+    case "await_lesson_payment_choice":
+      if (text === "1") {
+        resetWhatsAppSession(from);
+        await sendWhatsAppText(from, getShopifyPaymentText());
+        return;
+      }
+      if (text === "2") {
+        setWhatsAppSession(from, {
+          state: "await_africa_payment_choice",
+          data: {
+            paymentChoice: "AFRICA_LOCAL_PAYMENT",
+          },
+        });
+        await sendWhatsAppText(from, getAfricaPaymentText());
+        return;
+      }
+      if (text === "3") {
+        setWhatsAppSession(from, {
+          state: "await_agent_message",
+        });
+        await sendWhatsAppText(from, buildAgentPromptText());
+        return;
+      }
+      await sendWhatsAppText(from, getLessonPaymentText());
+      return;
+
+    default:
+      resetWhatsAppSession(from);
+      await sendWhatsAppText(from, getMainMenuText());
+      return;
+  }
+}
+
+async function handleIncomingWhatsAppFile(from, fileInfo, currentState) {
+  cleanupWhatsAppSessions();
+
+  if (!fileInfo?.fileUrl) {
+    await sendWhatsAppText(from, "The file was received, but there was an issue saving it. Please resend.");
+    return;
+  }
+
+  if (currentState === "await_homework_file") {
+    setWhatsAppSession(from, {
+      state: "await_homework_details",
+      lastFile: fileInfo,
+    });
+    await sendWhatsAppText(
+      from,
+      "✅ Homework file received successfully.\n\nPlease reply with:\n• Course name\n• Student name\n• Week or lesson\n• Any note for the instructor"
+    );
+    return;
+  }
+
+  if (currentState === "await_transcript_file") {
+    setWhatsAppSession(from, {
+      state: "await_transcript_details",
+      lastFile: fileInfo,
+    });
+    await sendWhatsAppText(
+      from,
+      "✅ Transcript / assignment file received successfully.\n\nPlease reply with:\n• Course name\n• Student name\n• What this file is for\n• Any extra note"
+    );
+    return;
+  }
+
+  setWhatsAppSession(from, {
+    state: "await_service_choice",
+    lastFile: fileInfo,
+  });
+
+  await sendWhatsAppText(from, getFileServiceMenuText());
+}
 
 /* ---------------- WhatsApp / Meta Webhook ---------------- */
 app.get("/webhook", (req, res) => {
@@ -1465,9 +2512,6 @@ app.get("/webhook", (req, res) => {
     return res.sendStatus(500);
   }
 });
-
-global.processedWhatsAppMessageIds =
-  global.processedWhatsAppMessageIds || new Map();
 
 app.post("/webhook", async (req, res) => {
   try {
@@ -1523,127 +2567,103 @@ app.post("/webhook", async (req, res) => {
 
     console.log("Processing message from:", from, "type:", message.type);
 
-    let reply =
-      "Welcome to PATAPATA Print-O-Matic 🚀\n\n" +
-      "Send your document, image, or video here for printing or editing.";
+    const session = getWhatsAppSession(from);
 
     if (message.type === "text") {
-      const text = String(message.text?.body || "").trim().toLowerCase();
-
-      if (["hi", "hello", "hey", "hallo"].includes(text)) {
-        reply =
-          "Hello 👋 Welcome to PATAPATA Print-O-Matic\n\n" +
-          "Send your PDF, image, document, or video here for printing or editing.";
-      } else if (text === "1") {
-        reply = "Send your document or PDF now 📄";
-      } else if (text === "2") {
-        reply = "Send your image or passport photo 🖼️";
-      } else if (text === "3") {
-        reply = "Send your video 🎬";
-      } else if (text === "4") {
-        reply = "Send your image and describe the editing you want.";
-      }
+      const text = getTextFromMessage(message);
+      await handleIncomingText(from, text);
+      return res.sendStatus(200);
     }
 
     if (message.type === "image") {
       const mediaId = message.image?.id;
+      const mimeType = message.image?.mime_type || "image/jpeg";
+      const ext = getFileExtFromMimeOrName(mimeType, "image", "jpg");
 
-      if (mediaId) {
-        const fileBuffer = await downloadWhatsAppMedia(mediaId);
-        const saved = saveWhatsAppFile(fileBuffer, "jpg");
-        console.log("Image saved:", saved.filePath);
-
-        const job = await createWhatsAppJob({
-          from,
-          service_type: "IMAGE_EDITING",
-          savedFile: saved,
-          original_name: saved.filename,
-          paper_size: "A4",
-          color_mode: "COLOR",
-          copies: 1,
-          pages: 1,
-          instructions: "WhatsApp image upload",
-          notes: `WhatsApp sender: ${from}`,
-        });
-
-        console.log("WhatsApp image job created:", job.id);
-
-        reply =
-          "🖼️ Image received successfully.\n\n" +
-          `Job #${job.id} has been added to our system.\n` +
-          "Reply:\n1 - Print\n2 - ID Photo\n3 - Edit";
-      } else {
-        reply = "Image received, but media ID was missing.";
+      if (!mediaId) {
+        await sendWhatsAppText(from, "Image received, but media ID was missing.");
+        return res.sendStatus(200);
       }
+
+      const fileBuffer = await downloadWhatsAppMedia(mediaId);
+      const saved = saveWhatsAppFile(fileBuffer, ext);
+
+      const fileInfo = {
+        kind: "image",
+        filename: saved.filename,
+        originalName: "image",
+        mimeType,
+        mediaId,
+        filePath: saved.filePath,
+        fileUrl: saved.fileUrl,
+      };
+
+      console.log("Image saved:", saved.filePath);
+      await handleIncomingWhatsAppFile(from, fileInfo, session.state);
+      return res.sendStatus(200);
     }
 
     if (message.type === "document") {
       const mediaId = message.document?.id;
       const fileName = safeTrim(message.document?.filename || "");
-      const ext = path.extname(fileName).replace(".", "").toLowerCase() || "pdf";
+      const mimeType = message.document?.mime_type || "";
+      const ext = getFileExtFromMimeOrName(mimeType, fileName, "pdf");
 
-      if (mediaId) {
-        const fileBuffer = await downloadWhatsAppMedia(mediaId);
-        const saved = saveWhatsAppFile(fileBuffer, ext);
-        console.log("Document saved:", saved.filePath);
-
-        const job = await createWhatsAppJob({
-          from,
-          service_type: "PRINT",
-          savedFile: saved,
-          original_name: fileName || saved.filename,
-          paper_size: "A4",
-          color_mode: "BW",
-          copies: 1,
-          pages: 1,
-          instructions: "WhatsApp document upload",
-          notes: `WhatsApp sender: ${from}`,
-        });
-
-        console.log("WhatsApp document job created:", job.id);
-
-        reply =
-          "📄 Document received successfully.\n\n" +
-          `Job #${job.id} is now in our print queue.\n` +
-          "Reply:\n1 - A4\n2 - A3\n3 - Laminating";
-      } else {
-        reply = "Document received, but media ID was missing.";
+      if (!mediaId) {
+        await sendWhatsAppText(from, "Document received, but media ID was missing.");
+        return res.sendStatus(200);
       }
+
+      const fileBuffer = await downloadWhatsAppMedia(mediaId);
+      const saved = saveWhatsAppFile(fileBuffer, ext);
+
+      const fileInfo = {
+        kind: "document",
+        filename: fileName || saved.filename,
+        originalName: fileName || saved.filename,
+        mimeType,
+        mediaId,
+        filePath: saved.filePath,
+        fileUrl: saved.fileUrl,
+      };
+
+      console.log("Document saved:", saved.filePath);
+      await handleIncomingWhatsAppFile(from, fileInfo, session.state);
+      return res.sendStatus(200);
     }
 
     if (message.type === "video") {
       const mediaId = message.video?.id;
+      const mimeType = message.video?.mime_type || "video/mp4";
+      const ext = getFileExtFromMimeOrName(mimeType, "video", "mp4");
 
-      if (mediaId) {
-        const fileBuffer = await downloadWhatsAppMedia(mediaId);
-        const saved = saveWhatsAppFile(fileBuffer, "mp4");
-        console.log("Video saved:", saved.filePath);
-
-        const job = await createWhatsAppJob({
-          from,
-          service_type: "VIDEO_EDITING",
-          savedFile: saved,
-          original_name: saved.filename,
-          paper_size: "A4",
-          color_mode: "COLOR",
-          copies: 1,
-          pages: 1,
-          instructions: "WhatsApp video upload",
-          notes: `WhatsApp sender: ${from}`,
-        });
-
-        console.log("WhatsApp video job created:", job.id);
-
-        reply =
-          "🎥 Video received successfully.\n\n" +
-          `Job #${job.id} has been added to our editing queue.\n` +
-          "Reply:\n1 - Trim\n2 - Social media edit\n3 - Advanced edit";
-      } else {
-        reply = "Video received, but media ID was missing.";
+      if (!mediaId) {
+        await sendWhatsAppText(from, "Video received, but media ID was missing.");
+        return res.sendStatus(200);
       }
+
+      const fileBuffer = await downloadWhatsAppMedia(mediaId);
+      const saved = saveWhatsAppFile(fileBuffer, ext);
+
+      const fileInfo = {
+        kind: "video",
+        filename: saved.filename,
+        originalName: saved.filename,
+        mimeType,
+        mediaId,
+        filePath: saved.filePath,
+        fileUrl: saved.fileUrl,
+      };
+
+      console.log("Video saved:", saved.filePath);
+      await handleIncomingWhatsAppFile(from, fileInfo, session.state);
+      return res.sendStatus(200);
     }
 
-    await sendWhatsAppText(from, reply);
+    await sendWhatsAppText(
+      from,
+      "✅ Message received.\n\nI currently support text, PDF, Word file, image, and video uploads.\n\nReply with:\n1 - Main Menu\n8 - Talk to Agent"
+    );
     return res.sendStatus(200);
   } catch (error) {
     console.error("❌ Webhook error:", formatAxiosError(error));
