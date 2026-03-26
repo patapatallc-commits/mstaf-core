@@ -46,12 +46,13 @@ const LEGACY_WHATSAPP_TOKEN = String(process.env.WHATSAPP_TOKEN || "").trim();
 
 /* ---------------- OPTIONAL LINKS / MODES ---------------- */
 const SHOPIFY_CHECKOUT_LINK = String(
-  process.env.SHOPIFY_CHECKOUT_LINK || "https://www.patapata.us"
+  process.env.SHOPIFY_CHECKOUT_LINK ||
+  "https://www.patapata.us/cart/52582037061931:1"
 ).trim();
 
 const AFRICA_PAYMENT_PORTAL = String(
   process.env.AFRICA_PAYMENT_PORTAL ||
-    "https://www.patapata.us/pages/africa-payment-portal"
+    "https://www.patapata.us/pages/africa-payment"
 ).trim();
 
 const LESSON_ACCESS_MODE = String(
@@ -2659,7 +2660,45 @@ app.post("/webhook", async (req, res) => {
       await handleIncomingWhatsAppFile(from, fileInfo, session.state);
       return res.sendStatus(200);
     }
+if (message.type === "audio") {
+  const mediaId = message.audio?.id;
+  const mimeType = message.audio?.mime_type || "audio/ogg";
 
+  const ext = mimeType.includes("mpeg")
+    ? "mp3"
+    : mimeType.includes("wav")
+    ? "wav"
+    : mimeType.includes("aac")
+    ? "aac"
+    : mimeType.includes("m4a")
+    ? "m4a"
+    : "ogg";
+if (!mediaId) {
+  await sendWhatsAppText(from, "Audio received, but media ID was missing.");
+  return res.sendStatus(200);
+}
+  if (mediaId) {
+    const fileBuffer = await downloadWhatsAppMedia(mediaId);
+
+    const saved = saveWhatsAppFile(fileBuffer, ext);
+
+    const fileInfo = {
+      kind: "audio",
+      filename: saved.filename,
+      originalName: saved.filename,
+      mimeType,
+      mediaId,
+      filePath: saved.filePath,
+      fileUrl: saved.fileUrl,
+    };
+
+    console.log("Audio saved:", saved.filePath);
+
+    await handleIncomingWhatsAppFile(from, fileInfo, session.state);
+
+    return res.sendStatus(200);
+  }
+}
     await sendWhatsAppText(
       from,
       "✅ Message received.\n\nI currently support text, PDF, Word file, image, and video uploads.\n\nReply with:\n1 - Main Menu\n8 - Talk to Agent"
