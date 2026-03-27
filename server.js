@@ -1,11 +1,9 @@
-import express from "express";
-import multer from "multer";
-import fs from "fs";
-import path from "path";
-import axios from "axios";
-import dotenv from "dotenv";
-
-dotenv.config();
+const express = require("express");
+const multer = require("multer");
+const fs = require("fs");
+const path = require("path");
+const axios = require("axios");
+require("dotenv").config();
 
 const app = express();
 app.use(express.json());
