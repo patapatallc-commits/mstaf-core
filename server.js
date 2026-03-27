@@ -90,165 +90,7 @@ async function sendMessage(to, text) {
     }
   );
 }
-app.post("/webhook", async (req, res) => {
-  try {
-    const entry = req.body.entry?.[0];
-    const changes = entry?.changes?.[0];
-    const message = changes?.value?.messages?.[0];
 
-    if (!message) return res.sendStatus(200);
-
-    const from = message.from;
-    const type = message.type;
-
-    const session = getSession(from);
-
-    let text = "";
-
-    if (type === "text") {
-      text = message.text.body;
-    }
-
-const lower = text.toLowerCase().trim();
-
-if (["hi", "hello", "hey", "start"].includes(lower)) {
-  await sendMessage(
-    from,
-    `Hello 👋 Welcome to PATAPATA Print-O-Matic
-
-What would you like to do?
-
-1 - Print
-2 - Laminate
-3 - Image Editing
-4 - Video Editing
-5 - ID Photo
-6 - Lesson / Homework Help
-
-Or type:
-🚗 ride to work
-🔧 find mechanic
-🏠 rent apartment`
-  );
-  return res.sendStatus(200);
-}
-    // ===== AUTO DETECT =====
-    const intent = detectIntent(text);
-
-    if (intent === "MECHANIC" || intent === "RIDE" || intent === "APARTMENT") {
-      const contact = getReferral(intent);
-      await sendMessage(
-        from,
-        `📞 Contact: ${contact}\nCall directly for assistance.`
-      );
-      return res.sendStatus(200);
-    }
-
-    // ===== FILE HANDLING =====
-    if (
-      type === "document" ||
-      type === "image" ||
-      type === "video" ||
-      type === "audio"
-    ) {
-      const mediaId =
-        message[type]?.id || message.document?.id;
-
-      const media = await axios.get(
-        `https://graph.facebook.com/v18.0/${mediaId}`,
-        {
-          headers: { Authorization: `Bearer ${TOKEN}` }
-        }
-      );
-
-      const url = media.data.url;
-
-      const fileRes = await axios.get(url, {
-        headers: { Authorization: `Bearer ${TOKEN}` },
-        responseType: "arraybuffer"
-      });
-
-      const ext =
-        type === "audio"
-          ? ".ogg"
-          : type === "video"
-          ? ".mp4"
-          : type === "image"
-          ? ".jpg"
-          : ".pdf";
-
-      const filename = `${Date.now()}${ext}`;
-      const filepath = path.join(UPLOAD_DIR, filename);
-
-      fs.writeFileSync(filepath, fileRes.data);
-
-      const fileUrl = `${req.protocol}://${req.get("host")}/uploads/${filename}`;
-
-      session.file = fileUrl;
-
-      await sendMessage(
-        from,
-        `✅ File received!\n\nWhat would you like to do?\n1 - Print\n2 - Laminate\n3 - Edit\n4 - ID`
-      );
-
-      return res.sendStatus(200);
-    }
-
-    // ===== CONTINUE FLOW =====
-    if (lower === "1") {
-  if (session.file) {
-    await sendMessage(
-      from,
-      "🖨 Printing selected.\n\nYour file is already received.\n\nReply YES to continue to checkout or reply AGENT for manual assistance."
-    );
-  } else {
-    await sendMessage(
-      from,
-      "🖨 Printing selected.\n\nPlease send your PDF, image, or document now.\n\nAfter upload, reply 1 again or reply YES to continue."
-    );
-  }
-  return res.sendStatus(200);
-}
-
-if (lower === "2") {
-  await sendMessage(
-    from,
-    "📄 Laminating:\nLetter $1.50\nLegal $2.00\nTabloid $3.00\n\nReply YES to continue to checkout."
-  );
-  return res.sendStatus(200);
-}
-
-if (lower === "yes") {
-  await sendMessage(
-    from,
-    "🛒 Checkout:\nhttps://www.patapata.us/cart/52221221437739:1\n\nIf you have not uploaded your file yet, please send it now."
-  );
-  return res.sendStatus(200);
-}
-
-    // ===== DEFAULT =====
-    await sendMessage(
-      from,
-      `Hello 👋 Welcome to PATAPATA Print-O-Matic
-
-Send your PDF, image, video, or audio.
-
-We support:
-🖨 Printing
-📄 Laminating
-🎨 Editing
-🎥 Video Editing
-🚗 Ride to work
-🔧 Auto mechanic
-🏠 Apartment rental`
-    );
-
-    res.sendStatus(200);
-  } catch (err) {
-    console.error(err.message);
-    res.sendStatus(500);
-  }
-});
 app.get("/webhook", (req, res) => {
   const verify_token = process.env.VERIFY_TOKEN;
 
@@ -261,8 +103,141 @@ app.get("/webhook", (req, res) => {
   }
 
   res.sendStatus(403);
-});
+})
+// ===== WHATSAPP MESSAGE HANDLER =====
+app.post("/webhook", async (req, res) => {
+  try {
+    const message = req.body.entry?.[0]?.changes?.[0]?.value?.messages?.[0];
+    if (!message) return res.sendStatus(200);
 
+    const from = message.from;
+    const type = message.type;
+
+    let text = "";
+    if (type === "text") {
+      text = message.text.body;
+    }
+
+    const lower = (text || "").toLowerCase().trim();
+
+    // ===== HELLO MENU =====
+    if (["hi", "hello", "start", "menu"].includes(lower)) {
+      await sendMessage(
+        from,
+        `Hello 👋 Welcome to PATAPATA Print-O-Matic
+
+What would you like to do?
+
+1 - Print
+2 - Laminate
+3 - Image Editing
+4 - Video Editing
+5 - ID Photo
+
+Or type:
+🚗 ride to work
+🔧 find mechanic
+🏠 rent apartment`
+      );
+      return res.sendStatus(200);
+    }
+
+    // ===== RIDE / MECHANIC / APARTMENT =====
+    if (lower.includes("ride")) {
+      await sendMessage(from, `🚗 Ride Service:\n+1 862 230 6637`);
+      return res.sendStatus(200);
+    }
+
+    if (lower.includes("mechanic")) {
+      await sendMessage(from, `🔧 Auto Mechanic:\n+1 862 230 6637`);
+      return res.sendStatus(200);
+    }
+
+    if (lower.includes("apartment") || lower.includes("rent")) {
+      await sendMessage(from, `🏠 Apartment Rentals:\n+1 862 230 6637`);
+      return res.sendStatus(200);
+    }
+
+    // ===== FILE RECEIVED =====
+    if (["image", "document", "video", "audio"].includes(type)) {
+      await sendMessage(
+        from,
+        `✅ File received successfully!
+
+What would you like to do with your file?
+
+1 - Print
+2 - Laminate
+3 - Image Editing
+4 - Video Editing
+5 - ID Photo`
+      );
+      return res.sendStatus(200);
+    }
+
+    // ===== MENU SELECTION =====
+    if (lower === "1") {
+      await sendMessage(
+        from,
+        "🖨 Printing selected.\n\nReply YES to proceed to checkout."
+      );
+      return res.sendStatus(200);
+    }
+
+    if (lower === "2") {
+      await sendMessage(
+        from,
+        "📄 Laminating selected.\nLetter $1.50\nLegal $2.00\nTabloid $3.00\n\nReply YES to continue."
+      );
+      return res.sendStatus(200);
+    }
+
+    if (lower === "3") {
+      await sendMessage(
+        from,
+        "🎨 Image Editing selected.\n\nSend your instructions (e.g., background removal, enhancement)."
+      );
+      return res.sendStatus(200);
+    }
+
+    if (lower === "4") {
+      await sendMessage(
+        from,
+        "🎥 Video Editing selected.\n\nSend your instructions."
+      );
+      return res.sendStatus(200);
+    }
+
+    if (lower === "5") {
+      await sendMessage(
+        from,
+        "🪪 ID Photo selected.\n\nSend your photo and instructions."
+      );
+      return res.sendStatus(200);
+    }
+
+    // ===== YES → CHECKOUT =====
+    if (lower === "yes") {
+      await sendMessage(
+        from,
+     2   "🛒 Checkout:\nhttps://www.patapata.us/cart/52221221437739:1\n\nIf you have not uploaded your file yet, please send it now."
+      );
+      return res.sendStatus(200);
+    }
+
+    // ===== DEFAULT RESPONSE =====
+    await sendMessage(
+      from,
+      "Hello 👋 Send *hello* to start or upload your file."
+    );
+
+    return res.sendStatus(200);
+
+  } catch (err) {
+    console.error("Webhook error:", err.message);
+    return res.sendStatus(500);
+  }
+});
 app.listen(PORT, () => {
   console.log(`Server running on ${PORT}`);
 });
