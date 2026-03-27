@@ -218,9 +218,9 @@ What would you like to do with your file?
 
     // ===== YES → CHECKOUT =====
     if (lower === "yes") {
-      await sendMessage(
+     await sendMessage(
         from,
-     2   "🛒 Checkout:\nhttps://www.patapata.us/cart/52221221437739:1\n\nIf you have not uploaded your file yet, please send it now."
+       "🛒 Checkout:\nhttps://www.patapata.us/cart/52221221437739:1\n\nIf you have not uploaded your file yet, please send it now."
       );
       return res.sendStatus(200);
     }
