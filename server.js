@@ -195,7 +195,7 @@ Or type:
     }
 
     // ===== CONTINUE FLOW =====
-    if (text === "1") {
+    if (lower === "1") {
   if (session.file) {
     await sendMessage(
       from,
@@ -210,21 +210,21 @@ Or type:
   return res.sendStatus(200);
 }
 
-    if (text === "2") {
+if (lower === "2") {
   await sendMessage(
     from,
-    "📄 Laminating:\nLetter $1.50\nLegal $2.00\nTabloid $3.00\n\nProceed to checkout?"
+    "📄 Laminating:\nLetter $1.50\nLegal $2.00\nTabloid $3.00\n\nReply YES to continue to checkout."
   );
   return res.sendStatus(200);
 }
 
-    if (text === "yes") {
-      await sendMessage(
-        from,
-        "🛒 Checkout:\nhttps://www.patapata.us/cart/52221221437739:1\n\nIf you have not uploaded your file yet, please send it now."
-      );
-      return res.sendStatus(200);
-    }
+if (lower === "yes") {
+  await sendMessage(
+    from,
+    "🛒 Checkout:\nhttps://www.patapata.us/cart/52221221437739:1\n\nIf you have not uploaded your file yet, please send it now."
+  );
+  return res.sendStatus(200);
+}
 
     // ===== DEFAULT =====
     await sendMessage(
