@@ -109,6 +109,29 @@ app.post("/webhook", async (req, res) => {
       text = message.text.body;
     }
 
+const lower = text.toLowerCase().trim();
+
+if (["hi", "hello", "hey", "start"].includes(lower)) {
+  await sendMessage(
+    from,
+    `Hello 👋 Welcome to PATAPATA Print-O-Matic
+
+What would you like to do?
+
+1 - Print
+2 - Laminate
+3 - Image Editing
+4 - Video Editing
+5 - ID Photo
+6 - Lesson / Homework Help
+
+Or type:
+🚗 ride to work
+🔧 find mechanic
+🏠 rent apartment`
+  );
+  return res.sendStatus(200);
+}
     // ===== AUTO DETECT =====
     const intent = detectIntent(text);
 
@@ -183,7 +206,7 @@ app.post("/webhook", async (req, res) => {
         "📄 Laminating:\nLetter $1.50\nLegal $2.00\nTabloid $3.00\n\nProceed to checkout?"
       );
       return res.sendStatus(200);
-    }
+   }
 
     if (text === "yes") {
       await sendMessage(
