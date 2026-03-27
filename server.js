@@ -196,10 +196,17 @@ Or type:
 
     // ===== CONTINUE FLOW =====
     if (text === "1") {
-  await sendMessage(
-    from,
-    "🖨 Printing selected.\n\nPlease send your PDF, image, or document now.\n\nAfter upload, I will continue the printing flow automatically."
-  );
+  if (session.file) {
+    await sendMessage(
+      from,
+      "🖨 Printing selected.\n\nYour file is already received.\n\nReply YES to continue to checkout or reply AGENT for manual assistance."
+    );
+  } else {
+    await sendMessage(
+      from,
+      "🖨 Printing selected.\n\nPlease send your PDF, image, or document now.\n\nAfter upload, reply 1 again or reply YES to continue."
+    );
+  }
   return res.sendStatus(200);
 }
 
