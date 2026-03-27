@@ -196,22 +196,25 @@ Or type:
 
     // ===== CONTINUE FLOW =====
     if (text === "1") {
-      await sendMessage(from, "🖨 Printing selected.");
-      return res.sendStatus(200);
-    }
+  await sendMessage(
+    from,
+    "🖨 Printing selected.\n\nPlease send your PDF, image, or document now.\n\nAfter upload, I will continue the printing flow automatically."
+  );
+  return res.sendStatus(200);
+}
 
     if (text === "2") {
-      await sendMessage(
-        from,
-        "📄 Laminating:\nLetter $1.50\nLegal $2.00\nTabloid $3.00\n\nProceed to checkout?"
-      );
-      return res.sendStatus(200);
-   }
+  await sendMessage(
+    from,
+    "📄 Laminating:\nLetter $1.50\nLegal $2.00\nTabloid $3.00\n\nProceed to checkout?"
+  );
+  return res.sendStatus(200);
+}
 
     if (text === "yes") {
       await sendMessage(
         from,
-        "💳 Checkout:\nhttps://www.patapata.us/cart/52221221437739:1"
+        "🛒 Checkout:\nhttps://www.patapata.us/cart/52221221437739:1\n\nIf you have not uploaded your file yet, please send it now."
       );
       return res.sendStatus(200);
     }
