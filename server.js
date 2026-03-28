@@ -954,55 +954,83 @@ app.get("/dashboard", (req, res) => {
   res.send(`
     <html>
     <head>
-      <title>MSTAF Worker Dashboard</title>
+      <title>MSTAF Dashboard</title>
       <style>
-        body { font-family: Arial; padding: 20px; background: #f5f5f5; }
-        h1 { color: #333; }
-        .job { background: #fff; padding: 15px; margin-bottom: 15px; border-radius: 8px; }
-        .file { margin-top: 10px; }
-        button { padding: 8px 12px; margin-top: 10px; }
+        body {
+          font-family: Arial, sans-serif;
+          background: #f3f4f6;
+          margin: 0;
+          padding: 24px;
+        }
+        h1 {
+          margin-top: 0;
+        }
+        .job {
+          background: #fff;
+          border: 1px solid #ddd;
+          border-radius: 10px;
+          padding: 16px;
+          margin-bottom: 16px;
+        }
+        .empty {
+          background: #fff;
+          border-radius: 10px;
+          padding: 16px;
+          border: 1px solid #ddd;
+        }
+        audio {
+          margin-top: 8px;
+          display: block;
+        }
+        button {
+          margin-top: 10px;
+          padding: 8px 12px;
+          cursor: pointer;
+        }
       </style>
     </head>
     <body>
       <h1>🖨 MSTAF Worker / Agent Dashboard</h1>
-      <div id="jobs"></div>
+      <div id="jobs"><div class="empty">Loading jobs...</div></div>
 
       <script>
         async function loadJobs() {
-          const res = await fetch('/jobs');
-          const data = await res.json();
           const container = document.getElementById('jobs');
 
-          container.innerHTML = '';
+          try {
+            const res = await fetch('/jobs');
+            const data = await res.json();
 
-          data.jobs.forEach(job => {
-            const div = document.createElement('div');
-            div.className = 'job';
+            container.innerHTML = '';
 
-            div.innerHTML = \`
-              <b>Job ID:</b> \${job.id}<br/>
-              <b>Service:</b> \${job.service}<br/>
-              <b>Status:</b> \${job.status}<br/>
+            if (!data.jobs || data.jobs.length === 0) {
+              container.innerHTML = '<div class="empty">No jobs yet.</div>';
+              return;
+            }
 
-              <b>Instructions:</b> \${job.instructions || 'None'}<br/>
+            data.jobs.forEach(job => {
+              const div = document.createElement('div');
+              div.className = 'job';
 
-              \${job.file?.url ? \`
-                <div class="file">
-                  <a href="\${job.file.url}" target="_blank">📎 View File</a>
-                </div>
-              \` : ''}
+              div.innerHTML =
+                '<p><b>Job ID:</b> ' + job.id + '</p>' +
+                '<p><b>Service:</b> ' + (job.service || 'None') + '</p>' +
+                '<p><b>Status:</b> ' + (job.status || 'None') + '</p>' +
+                '<p><b>Instructions:</b> ' + (job.instructions || 'None') + '</p>' +
+                (job.file && job.file.url
+                  ? '<p><a href="' + job.file.url + '" target="_blank">📎 View File</a></p>'
+                  : '') +
+                (job.instruction_audio_url
+                  ? '<p><b>Audio Instruction:</b></p><audio controls src="' + job.instruction_audio_url + '"></audio>'
+                  : '') +
+                '<button onclick="markDone(' + job.id + ')">✅ Done</button>';
 
-              \${job.instruction_audio_url ? \`
-                <div class="file">
-                  <audio controls src="\${job.instruction_audio_url}"></audio>
-                </div>
-              \` : ''}
-
-              <button onclick="markDone(\${job.id})">✅ Done</button>
-            \`;
-
-            container.appendChild(div);
-          });
+              container.appendChild(div);
+            });
+          } catch (err) {
+            container.innerHTML = '<div class="empty">Failed to load jobs.</div>';
+            console.error(err);
+          }
         }
 
         async function markDone(id) {
