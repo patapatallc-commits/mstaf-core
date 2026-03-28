@@ -42,37 +42,39 @@ const CONTACTS = {
   SHIPPING: process.env.SHIPPING_CONTACTS || "+1 862 230 6637"
 };
 
+// ===== LINKS =====
+const LINKS = {
+  PRINT_CHECKOUT: process.env.PRINT_CHECKOUT_LINK || "https://www.patapata.us/cart/52221221437739:1",
+  LAMINATE_CHECKOUT: process.env.LAMINATE_CHECKOUT_LINK || "https://www.patapata.us/pages/how-to-upload"
+};
+
 // ===== SIMPLE SESSION STORE =====
 const sessions = new Map();
 
 // ===== SIMPLE IN-MEMORY JOB STORE =====
-// This fixes worker.js 404 by giving your worker something to poll.
-// Later you can reconnect this to PostgreSQL without changing the bot flow.
 let jobCounter = 1;
 const jobs = [];
 
 // ===== HELPERS =====
-function getSession(from) {
-  if (!sessions.has(from)) {
-    sessions.set(from, {
-      stage: null,
-      selectedService: null,
-      pendingFile: null,
-      lastJobId: null,
-      lastMenuShownAt: null
-    });
-  }
-  return sessions.get(from);
-}
-
-function resetSession(from) {
-  sessions.set(from, {
+function createEmptySession() {
+  return {
     stage: null,
     selectedService: null,
     pendingFile: null,
     lastJobId: null,
     lastMenuShownAt: null
-  });
+  };
+}
+
+function getSession(from) {
+  if (!sessions.has(from)) {
+    sessions.set(from, createEmptySession());
+  }
+  return sessions.get(from);
+}
+
+function resetSession(from) {
+  sessions.set(from, createEmptySession());
 }
 
 function normalizeText(text = "") {
@@ -249,7 +251,6 @@ app.post("/api/upload", upload.single("file"), (req, res) => {
 });
 
 // ===== WORKER COMPATIBILITY ROUTES =====
-// This fixes the current worker.js 404 error.
 app.get("/api/worker/next", (req, res) => {
   const nextJob = jobs.find((j) => j.status === "pending");
 
@@ -347,12 +348,16 @@ app.post("/webhook", async (req, res) => {
 
     // ===== HANDLE RIDE / MECHANIC / APARTMENT / SHIPPING REFERRAL =====
     const referralIntent = type === "text" ? detectReferralIntent(lower) : null;
+
     if (referralIntent === "RIDE") {
       session.selectedService = "RIDE";
       session.stage = "referral_shared";
       await sendMessage(
         from,
-        `🚗 Ride to Work:\nCall ${CONTACTS.RIDE}\n\nAfter your call, reply here on WhatsApp and we can continue chatting with you about the cost or next step.`
+        `🚗 Ride to Work:
+Call ${CONTACTS.RIDE}
+
+After your call, reply here on WhatsApp and we can continue chatting with you about the cost or next step.`
       );
       return res.sendStatus(200);
     }
@@ -362,7 +367,10 @@ app.post("/webhook", async (req, res) => {
       session.stage = "referral_shared";
       await sendMessage(
         from,
-        `🔧 Auto Mechanic:\nCall ${CONTACTS.MECHANIC}\n\nAfter your call, reply here on WhatsApp and we can continue chatting with you about the cost or next step.`
+        `🔧 Auto Mechanic:
+Call ${CONTACTS.MECHANIC}
+
+After your call, reply here on WhatsApp and we can continue chatting with you about the cost or next step.`
       );
       return res.sendStatus(200);
     }
@@ -372,7 +380,10 @@ app.post("/webhook", async (req, res) => {
       session.stage = "referral_shared";
       await sendMessage(
         from,
-        `🏠 Apartment Rentals:\nCall ${CONTACTS.APARTMENT}\n\nAfter your call, reply here on WhatsApp and we can continue chatting with you here if needed.`
+        `🏠 Apartment Rentals:
+Call ${CONTACTS.APARTMENT}
+
+After your call, reply here on WhatsApp and we can continue chatting with you here if needed.`
       );
       return res.sendStatus(200);
     }
@@ -382,9 +393,70 @@ app.post("/webhook", async (req, res) => {
       session.stage = "awaiting_shipping_details";
       await sendMessage(
         from,
-        `📦 Need Shipping selected.\n\nPlease send your shipping details:\n- pickup or delivery\n- item type\n- destination city/state\n- quantity/weight if known`
+        `📦 Need Shipping selected.
+
+Please send your shipping details:
+- pickup or delivery
+- item type
+- destination city/state
+- quantity/weight if known`
       );
       return res.sendStatus(200);
+    }
+
+    // ===== HANDLE PAY / CHAT OPTION FOR PRINT & LAMINATE =====
+    if (type === "text" && lower === "1") {
+      if (session.stage === "print_selected") {
+        await sendMessage(
+          from,
+          `🛒 Printing payment:
+${LINKS.PRINT_CHECKOUT}
+
+After payment, reply here on WhatsApp if you want us to continue with your order.`
+        );
+        session.stage = "checkout_shared";
+        return res.sendStatus(200);
+      }
+
+      if (session.stage === "laminate_selected") {
+        await sendMessage(
+          from,
+          `🛒 Laminating payment:
+${LINKS.LAMINATE_CHECKOUT}
+
+After payment, reply here on WhatsApp if you want us to continue with your order.`
+        );
+        session.stage = "checkout_shared";
+        return res.sendStatus(200);
+      }
+    }
+
+    if (type === "text" && lower === "2") {
+      if (session.stage === "print_selected") {
+        session.stage = "awaiting_followup_details";
+        await sendMessage(
+          from,
+          `✅ Okay.
+
+Please send your print details here on WhatsApp, such as copies, pages, color mode, paper size, delivery/pickup, or any special instructions.
+
+Our team will reply here with the cost or next step.`
+        );
+        return res.sendStatus(200);
+      }
+
+      if (session.stage === "laminate_selected") {
+        session.stage = "awaiting_followup_details";
+        await sendMessage(
+          from,
+          `✅ Okay.
+
+Please send your laminating details here on WhatsApp, such as size, quantity, and any special instructions.
+
+Our team will reply here with the cost or next step.`
+        );
+        return res.sendStatus(200);
+      }
     }
 
     // ===== FILE RECEIVED =====
@@ -406,10 +478,128 @@ app.post("/webhook", async (req, res) => {
         mime_type: downloaded?.mimeType || null
       };
 
+      // If user already chose image editing before upload
+      if (session.stage === "awaiting_file_for_image" && session.selectedService === "IMAGE_EDIT") {
+        session.stage = "awaiting_instructions";
+        await sendMessage(
+          from,
+          `✅ Your image file has been received.
+
+Now send your instructions.
+After review, our agent will reply here on WhatsApp with the cost or next step.`
+        );
+        return res.sendStatus(200);
+      }
+
+      // If user already chose video editing before upload
+      if (session.stage === "awaiting_file_for_video" && session.selectedService === "VIDEO_EDIT") {
+        session.stage = "awaiting_instructions";
+        await sendMessage(
+          from,
+          `✅ Your video file has been received.
+
+Now send your instructions.
+After review, our agent will reply here on WhatsApp with the cost or next step.`
+        );
+        return res.sendStatus(200);
+      }
+
+      // If user already chose ID photo before upload
+      if (session.stage === "awaiting_file_for_id" && session.selectedService === "ID_PHOTO") {
+        session.stage = "awaiting_instructions";
+        await sendMessage(
+          from,
+          `✅ Your photo has been received.
+
+Now send your instructions.
+Example: Passport size, white background, 4 copies.
+
+After review, our agent will reply here on WhatsApp with the cost or next step.`
+        );
+        return res.sendStatus(200);
+      }
+
+      // If user already chose print before upload
+      if (session.stage === "awaiting_file_for_print" && session.selectedService === "PRINT") {
+        createJob(from, session, {});
+        session.stage = "print_selected";
+        await sendMessage(
+          from,
+          `🖨 Printing selected.
+
+Your file has been received.
+
+Reply with:
+1 - Pay on Shopify now
+2 - Chat here on WhatsApp for assistance, pricing, or special instructions
+
+You can also send details like:
+2 copies, 5 pages, color or black and white`
+        );
+        return res.sendStatus(200);
+      }
+
+      // If user already chose laminate before upload
+      if (session.stage === "awaiting_file_for_laminate" && session.selectedService === "LAMINATE") {
+        createJob(from, session, {});
+        session.stage = "laminate_selected";
+        await sendMessage(
+          from,
+          `📄 Laminating selected.
+
+Your file has been received.
+
+Prices:
+Letter $1.50
+Legal $2.00
+Tabloid $3.00
+
+Reply with:
+1 - Pay on Shopify now
+2 - Chat here on WhatsApp for assistance or special instructions
+
+You can also send your size and quantity.`
+        );
+        return res.sendStatus(200);
+      }
+
       session.stage = "awaiting_service";
       session.selectedService = null;
 
       await sendMessage(from, serviceMenuText(true));
+      return res.sendStatus(200);
+    }
+
+    // ===== HANDLE YES CHECKOUT =====
+    if (type === "text" && lower === "yes") {
+      if (session.selectedService === "PRINT") {
+        await sendMessage(
+          from,
+          `🛒 Printing payment:
+${LINKS.PRINT_CHECKOUT}
+
+After payment, reply here on WhatsApp if you want us to continue with your order.`
+        );
+        session.stage = "checkout_shared";
+        return res.sendStatus(200);
+      }
+
+      if (session.selectedService === "LAMINATE") {
+        await sendMessage(
+          from,
+          `🛒 Laminating payment:
+${LINKS.LAMINATE_CHECKOUT}
+
+After payment, reply here on WhatsApp if you want us to continue with your order.`
+        );
+        session.stage = "checkout_shared";
+        return res.sendStatus(200);
+      }
+
+      await sendMessage(
+        from,
+        "✅ Okay. Send your file or details here and I will continue."
+      );
       return res.sendStatus(200);
     }
 
@@ -421,66 +611,152 @@ app.post("/webhook", async (req, res) => {
         session.selectedService = service;
 
         if (service === "PRINT") {
-          session.stage = "print_selected";
+          if (!session.pendingFile) {
+            session.stage = "awaiting_file_for_print";
+            await sendMessage(
+              from,
+              `🖨 Printing selected.
+
+Please upload your file first.
+
+After upload, you can:
+1 - Pay on Shopify now
+2 - Chat here on WhatsApp for assistance, pricing, or special instructions`
+            );
+            return res.sendStatus(200);
+          }
+
           createJob(from, session, {});
+          session.stage = "print_selected";
+
           await sendMessage(
             from,
-            `🖨 Printing selected.\n\nReply YES to proceed to checkout.\n\nYou can also reply with copies/pages if you want, for example:\n2 copies, 5 pages`
+            `🖨 Printing selected.
+
+Your file/details have been received.
+
+Reply with:
+1 - Pay on Shopify now
+2 - Chat here on WhatsApp for assistance, pricing, or special instructions
+
+You can also send details like:
+2 copies, 5 pages, color or black and white`
           );
           return res.sendStatus(200);
         }
 
         if (service === "LAMINATE") {
-          session.stage = "laminate_selected";
+          if (!session.pendingFile) {
+            session.stage = "awaiting_file_for_laminate";
+            await sendMessage(
+              from,
+              `📄 Laminating selected.
+
+Please upload your file first.
+
+After upload, you can:
+1 - Pay on Shopify now
+2 - Chat here on WhatsApp for assistance or special instructions`
+            );
+            return res.sendStatus(200);
+          }
+
           createJob(from, session, {});
+          session.stage = "laminate_selected";
+
           await sendMessage(
             from,
-            `📄 Laminating selected.\n\nPrices:\nLetter $1.50\nLegal $2.00\nTabloid $3.00\n\nReply YES to continue to checkout or send your size and quantity.`
+            `📄 Laminating selected.
+
+Prices:
+Letter $1.50
+Legal $2.00
+Tabloid $3.00
+
+Reply with:
+1 - Pay on Shopify now
+2 - Chat here on WhatsApp for assistance or special instructions
+
+You can also send your size and quantity.`
           );
           return res.sendStatus(200);
         }
 
         if (service === "IMAGE_EDIT") {
-  if (!session.pendingFile) {
-    session.stage = "awaiting_file_for_image";
-    await sendMessage(
-      from,
-      "🎨 Image Editing selected.\n\nPlease upload your image file first, then send your instructions.\nExample: Change the sides of the image to blue."
-    );
-    return res.sendStatus(200);
-  }
+          if (!session.pendingFile) {
+            session.stage = "awaiting_file_for_image";
+            await sendMessage(
+              from,
+              `🎨 Image Editing selected.
 
-  session.stage = "awaiting_instructions";
-  await sendMessage(
-    from,
-    "🎨 Image Editing selected.\n\nYour file is already received.\nNow send your instructions.\nExample: Change the sides of the image to blue."
-  );
-  return res.sendStatus(200);
-}
+Please upload your image file first, then send your instructions.
+Example: Change the sides of the image to blue.`
+            );
+            return res.sendStatus(200);
+          }
 
-        if (service === "VIDEO_EDIT") {
-  if (!session.pendingFile) {
-    session.stage = "awaiting_file_for_video";
-    await sendMessage(
-      from,
-      "🎥 Video Editing selected.\n\nPlease upload your video file first, then send your instructions.\nExample: Edit the background and change the front colors to red."
-    );
-    return res.sendStatus(200);
-  }
-
-  session.stage = "awaiting_instructions";
-  await sendMessage(
-    from,
-    "🎥 Video Editing selected.\n\nYour file is already received.\nNow send your instructions.\nExample: Edit the background and change the front colors to red."
-  );
-  return res.sendStatus(200);
-}
-
-        if (service === "ID_PHOTO") {
           session.stage = "awaiting_instructions";
           await sendMessage(
             from,
-            "🪪 ID Photo selected.\n\nSend your instructions now.\nExample: Passport size, white background, 4 copies."
+            `🎨 Image Editing selected.
+
+Your image file has been received.
+Now send your instructions.
+
+After review, our agent will reply here on WhatsApp with the cost or next step.`
+          );
+          return res.sendStatus(200);
+        }
+
+        if (service === "VIDEO_EDIT") {
+          if (!session.pendingFile) {
+            session.stage = "awaiting_file_for_video";
+            await sendMessage(
+              from,
+              `🎥 Video Editing selected.
+
+Please upload your video file first, then send your instructions.
+Example: Edit the background and change the front colors to red.`
+            );
+            return res.sendStatus(200);
+          }
+
+          session.stage = "awaiting_instructions";
+          await sendMessage(
+            from,
+            `🎥 Video Editing selected.
+
+Your video file has been received.
+Now send your instructions.
+
+After review, our agent will reply here on WhatsApp with the cost or next step.`
+          );
+          return res.sendStatus(200);
+        }
+
+        if (service === "ID_PHOTO") {
+          if (!session.pendingFile) {
+            session.stage = "awaiting_file_for_id";
+            await sendMessage(
+              from,
+              `🪪 ID Photo selected.
+
+Please upload your photo first, then send your instructions.
+Example: Passport size, white background, 4 copies.`
+            );
+            return res.sendStatus(200);
+          }
+
+          session.stage = "awaiting_instructions";
+          await sendMessage(
+            from,
+            `🪪 ID Photo selected.
+
+Your photo has been received.
+Now send your instructions.
+Example: Passport size, white background, 4 copies.
+
+After review, our agent will reply here on WhatsApp with the cost or next step.`
           );
           return res.sendStatus(200);
         }
@@ -489,38 +765,17 @@ app.post("/webhook", async (req, res) => {
           session.stage = "awaiting_shipping_details";
           await sendMessage(
             from,
-            `📦 Need Shipping selected.\n\nPlease send your shipping details:\n- pickup or delivery\n- item type\n- destination city/state\n- quantity/weight if known`
+            `📦 Need Shipping selected.
+
+Please send your shipping details:
+- pickup or delivery
+- item type
+- destination city/state
+- quantity/weight if known`
           );
           return res.sendStatus(200);
         }
       }
-    }
-
-    // ===== YES → CHECKOUT =====
-    if (type === "text" && lower === "yes") {
-      if (session.selectedService === "PRINT") {
-        await sendMessage(
-          from,
-          "🛒 Printing checkout:\nhttps://www.patapata.us/cart/52221221437739:1\n\nIf you have not uploaded your file yet, send it here now."
-        );
-        session.stage = "checkout_shared";
-        return res.sendStatus(200);
-      }
-
-      if (session.selectedService === "LAMINATE") {
-        await sendMessage(
-          from,
-          "🛒 Laminating checkout:\nhttps://www.patapata.us/pages/how-to-upload\n\nSend your size and quantity if you want us to prepare the order details for you."
-        );
-        session.stage = "checkout_shared";
-        return res.sendStatus(200);
-      }
-
-      await sendMessage(
-        from,
-        "✅ Okay. Send your file or details here and I will continue."
-      );
-      return res.sendStatus(200);
     }
 
     // ===== HANDLE INSTRUCTIONS AFTER IMAGE / VIDEO / ID SELECTION =====
@@ -537,7 +792,13 @@ app.post("/webhook", async (req, res) => {
 
       await sendMessage(
         from,
-        `✅ Your ${label} instructions have been received successfully.\n\nJob ID: ${job.id}\n\nWe have sent it to the dashboard/agent for processing.\n\nYou can send another file anytime or type hello for the menu.`
+        `✅ Your ${label} file and instructions have been received successfully.
+
+Job ID: ${job.id}
+
+Our agent will review it and reply here on WhatsApp with the cost or next step.
+
+You can send another file anytime or type hello for the menu.`
       );
       return res.sendStatus(200);
     }
@@ -550,12 +811,18 @@ app.post("/webhook", async (req, res) => {
 
       await sendMessage(
         from,
-        `✅ Your shipping request has been received successfully.\n\nJob ID: ${job.id}\n\nWe will review the details and reply here on WhatsApp with the cost or next step.\n\nYou can also call ${CONTACTS.SHIPPING} if urgent.`
+        `✅ Your shipping request has been received successfully.
+
+Job ID: ${job.id}
+
+We will review the details and reply here on WhatsApp with the cost or next step.
+
+You can also call ${CONTACTS.SHIPPING} if urgent.`
       );
       return res.sendStatus(200);
     }
 
-    // ===== HANDLE POST-CALL FOLLOW-UP =====
+    // ===== HANDLE POST-CALL FOLLOW-UP / PRINT / LAMINATE CHAT DETAILS =====
     if (type === "text" && session.stage === "referral_shared") {
       await sendMessage(
         from,
@@ -571,7 +838,11 @@ app.post("/webhook", async (req, res) => {
 
       await sendMessage(
         from,
-        `✅ Your follow-up details have been received.\n\nJob ID: ${job.id}\n\nWe will reply here on WhatsApp with the cost or next step.`
+        `✅ Your details have been received.
+
+Job ID: ${job.id}
+
+We will reply here on WhatsApp with the cost or next step.`
       );
       return res.sendStatus(200);
     }
