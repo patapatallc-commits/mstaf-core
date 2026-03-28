@@ -974,27 +974,41 @@ app.get("/dashboard", (req, res) => {
           box-shadow: 0 2px 10px rgba(0,0,0,0.08);
         }
 
+        .row {
+          margin-bottom: 6px;
+        }
+
         .label {
           font-weight: bold;
         }
 
-        .file-preview {
+        .preview {
           margin-top: 10px;
         }
 
-        video, audio {
-          width: 100%;
-          margin-top: 10px;
+        img {
+          max-width: 300px;
           border-radius: 8px;
+          display: block;
+        }
+
+        video {
+          max-width: 400px;
+          border-radius: 8px;
+          display: block;
+        }
+
+        audio {
+          width: 300px;
+          margin-top: 8px;
         }
 
         .btn {
           margin-top: 12px;
-          padding: 10px 14px;
+          padding: 8px 12px;
           border: none;
           border-radius: 6px;
           cursor: pointer;
-          font-weight: bold;
         }
 
         .done {
@@ -1005,12 +1019,12 @@ app.get("/dashboard", (req, res) => {
         .error {
           background: #dc2626;
           color: white;
-          margin-left: 10px;
+          margin-left: 8px;
         }
 
         .empty {
-          padding: 20px;
           background: white;
+          padding: 20px;
           border-radius: 10px;
         }
       </style>
@@ -1018,7 +1032,7 @@ app.get("/dashboard", (req, res) => {
 
     <body>
       <h1>🖨 MSTAF Worker / Agent Dashboard</h1>
-      <div id="jobs"><div class="empty">Loading jobs...</div></div>
+      <div id="jobs">Loading jobs...</div>
 
       <script>
         async function loadJobs() {
@@ -1031,7 +1045,7 @@ app.get("/dashboard", (req, res) => {
             container.innerHTML = '';
 
             if (!data.jobs || data.jobs.length === 0) {
-              container.innerHTML = '<div class="empty">No jobs available.</div>';
+              container.innerHTML = '<div class="empty">No jobs available</div>';
               return;
             }
 
@@ -1039,29 +1053,30 @@ app.get("/dashboard", (req, res) => {
               const div = document.createElement('div');
               div.className = 'job';
 
-              let fileHTML = '';
+              let preview = '';
+
               if (job.file && job.file.url) {
-                if (job.file.mime_type && job.file.mime_type.startsWith('video')) {
-                  fileHTML = '<video controls src="' + job.file.url + '"></video>';
-                } else if (job.file.mime_type && job.file.mime_type.startsWith('image')) {
-                  fileHTML = '<img src="' + job.file.url + '" style="max-width:100%; border-radius:8px;" />';
+                if (job.file.mime_type && job.file.mime_type.startsWith('image')) {
+                  preview = '<img src="' + job.file.url + '">';
+                } else if (job.file.mime_type && job.file.mime_type.startsWith('video')) {
+                  preview = '<video controls src="' + job.file.url + '"></video>';
                 } else {
-                  fileHTML = '<a href="' + job.file.url + '" target="_blank">📎 View File</a>';
+                  preview = '<a href="' + job.file.url + '" target="_blank">📎 View File</a>';
                 }
               }
 
-              let audioHTML = '';
+              let audio = '';
               if (job.instruction_audio_url) {
-                audioHTML = '<audio controls src="' + job.instruction_audio_url + '"></audio>';
+                audio = '<audio controls src="' + job.instruction_audio_url + '"></audio>';
               }
 
               div.innerHTML =
-                '<div><span class="label">Job ID:</span> ' + job.id + '</div>' +
-                '<div><span class="label">Service:</span> ' + job.service + '</div>' +
-                '<div><span class="label">Status:</span> ' + job.status + '</div>' +
-                '<div><span class="label">Instructions:</span> ' + (job.instructions || 'None') + '</div>' +
-                '<div class="file-preview">' + fileHTML + '</div>' +
-                '<div>' + (audioHTML ? '<span class="label">Audio Instruction:</span>' + audioHTML : '') + '</div>' +
+                '<div class="row"><span class="label">Job ID:</span> ' + job.id + '</div>' +
+                '<div class="row"><span class="label">Service:</span> ' + job.service + '</div>' +
+                '<div class="row"><span class="label">Status:</span> ' + job.status + '</div>' +
+                '<div class="row"><span class="label">Instructions:</span> ' + (job.instructions || 'None') + '</div>' +
+                '<div class="preview">' + preview + '</div>' +
+                '<div>' + audio + '</div>' +
                 '<button class="btn done" onclick="markDone(' + job.id + ')">✅ Done</button>' +
                 '<button class="btn error" onclick="markError(' + job.id + ')">❌ Error</button>';
 
@@ -1069,7 +1084,7 @@ app.get("/dashboard", (req, res) => {
             });
 
           } catch (err) {
-            container.innerHTML = '<div class="empty">Failed to load jobs.</div>';
+            container.innerHTML = '<div class="empty">Failed to load jobs</div>';
           }
         }
 
@@ -1086,7 +1101,7 @@ app.get("/dashboard", (req, res) => {
           await fetch('/api/worker/jobs/' + id + '/status', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ status: 'error', error_message: 'Manual error from dashboard' })
+            body: JSON.stringify({ status: 'error' })
           });
           loadJobs();
         }
