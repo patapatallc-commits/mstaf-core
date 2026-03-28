@@ -133,7 +133,11 @@ function createJob(from, session, extra = {}) {
     service: session.selectedService || null,
     file: session.pendingFile || null,
     status: "pending",
+
     instructions: extra.instructions || "",
+    instruction_audio_url: extra.instructionAudioUrl || "",
+    instruction_audio: extra.instructionAudio || null,
+
     shipping_details: extra.shippingDetails || "",
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString()
@@ -341,7 +345,9 @@ app.post("/webhook", async (req, res) => {
 
       await sendMessage(
         from,
-        `Hello 👋 Welcome to PATAPATA Print-O-Matic\n\n${serviceMenuText(false)}`
+        `Hello 👋 Welcome to PATAPATA Print-O-Matic
+
+${serviceMenuText(false)}`
       );
       return res.sendStatus(200);
     }
@@ -404,7 +410,7 @@ Please send your shipping details:
       return res.sendStatus(200);
     }
 
-    // ===== HANDLE PAY / CHAT OPTION FOR PRINT & LAMINATE =====
+    // ===== PAY / CHAT OPTION FOR PRINT & LAMINATE =====
     if (type === "text" && lower === "1") {
       if (session.stage === "print_selected") {
         await sendMessage(
@@ -440,6 +446,8 @@ After payment, reply here on WhatsApp if you want us to continue with your order
 
 Please send your print details here on WhatsApp, such as copies, pages, color mode, paper size, delivery/pickup, or any special instructions.
 
+You can type the instruction or send a voice note.
+
 Our team will reply here with the cost or next step.`
         );
         return res.sendStatus(200);
@@ -453,13 +461,94 @@ Our team will reply here with the cost or next step.`
 
 Please send your laminating details here on WhatsApp, such as size, quantity, and any special instructions.
 
+You can type the instruction or send a voice note.
+
 Our team will reply here with the cost or next step.`
         );
         return res.sendStatus(200);
       }
     }
 
-    // ===== FILE RECEIVED =====
+    // ===== AUDIO INSTRUCTION HANDLER =====
+    // This is the key new feature:
+    // if bot is already waiting for instruction/details and user sends a voice note,
+    // save it as instruction_audio_url and create the job.
+    if (type === "audio") {
+      const mediaId = message.audio?.id;
+      const downloaded = await downloadWhatsAppMedia(mediaId);
+
+      // AUDIO AS EDIT / ID INSTRUCTION
+      if (session.stage === "awaiting_instructions") {
+        const job = createJob(from, session, {
+          instructions: "[Audio instruction received via WhatsApp voice note]",
+          instructionAudioUrl: downloaded?.url || "",
+          instructionAudio: downloaded || null
+        });
+
+        session.stage = "instruction_received";
+
+        let label = "service";
+        if (session.selectedService === "IMAGE_EDIT") label = "image editing";
+        if (session.selectedService === "VIDEO_EDIT") label = "video editing";
+        if (session.selectedService === "ID_PHOTO") label = "ID photo";
+
+        await sendMessage(
+          from,
+          `✅ Your ${label} audio instruction has been received successfully.
+
+Job ID: ${job.id}
+
+Our agent will review it and reply here on WhatsApp with the cost or next step.`
+        );
+        return res.sendStatus(200);
+      }
+
+      // AUDIO AS PRINT / LAMINATE / REFERRAL FOLLOW-UP DETAILS
+      if (session.stage === "awaiting_followup_details") {
+        const job = createJob(from, session, {
+          instructions: "[Audio follow-up instruction received via WhatsApp voice note]",
+          instructionAudioUrl: downloaded?.url || "",
+          instructionAudio: downloaded || null
+        });
+
+        session.stage = "followup_received";
+
+        await sendMessage(
+          from,
+          `✅ Your audio details have been received.
+
+Job ID: ${job.id}
+
+We will reply here on WhatsApp with the cost or next step.`
+        );
+        return res.sendStatus(200);
+      }
+
+      // AUDIO AS SHIPPING DETAILS
+      if (session.stage === "awaiting_shipping_details") {
+        const job = createJob(from, session, {
+          shippingDetails: "[Audio shipping details received via WhatsApp voice note]",
+          instructionAudioUrl: downloaded?.url || "",
+          instructionAudio: downloaded || null
+        });
+
+        session.stage = "shipping_received";
+
+        await sendMessage(
+          from,
+          `✅ Your shipping audio details have been received successfully.
+
+Job ID: ${job.id}
+
+We will review the details and reply here on WhatsApp with the cost or next step.`
+        );
+        return res.sendStatus(200);
+      }
+    }
+
+    // ===== GENERAL FILE RECEIVED =====
+    // image/document/video are treated as main files
+    // audio only reaches here when it was NOT meant as an instruction
     if (["image", "document", "video", "audio"].includes(type)) {
       let mediaId = null;
 
@@ -478,7 +567,6 @@ Our team will reply here with the cost or next step.`
         mime_type: downloaded?.mimeType || null
       };
 
-      // If user already chose image editing before upload
       if (session.stage === "awaiting_file_for_image" && session.selectedService === "IMAGE_EDIT") {
         session.stage = "awaiting_instructions";
         await sendMessage(
@@ -486,12 +574,13 @@ Our team will reply here with the cost or next step.`
           `✅ Your image file has been received.
 
 Now send your instructions.
+You can type the instruction or send a voice note.
+
 After review, our agent will reply here on WhatsApp with the cost or next step.`
         );
         return res.sendStatus(200);
       }
 
-      // If user already chose video editing before upload
       if (session.stage === "awaiting_file_for_video" && session.selectedService === "VIDEO_EDIT") {
         session.stage = "awaiting_instructions";
         await sendMessage(
@@ -499,12 +588,13 @@ After review, our agent will reply here on WhatsApp with the cost or next step.`
           `✅ Your video file has been received.
 
 Now send your instructions.
+You can type the instruction or send a voice note.
+
 After review, our agent will reply here on WhatsApp with the cost or next step.`
         );
         return res.sendStatus(200);
       }
 
-      // If user already chose ID photo before upload
       if (session.stage === "awaiting_file_for_id" && session.selectedService === "ID_PHOTO") {
         session.stage = "awaiting_instructions";
         await sendMessage(
@@ -514,12 +604,13 @@ After review, our agent will reply here on WhatsApp with the cost or next step.`
 Now send your instructions.
 Example: Passport size, white background, 4 copies.
 
+You can type the instruction or send a voice note.
+
 After review, our agent will reply here on WhatsApp with the cost or next step.`
         );
         return res.sendStatus(200);
       }
 
-      // If user already chose print before upload
       if (session.stage === "awaiting_file_for_print" && session.selectedService === "PRINT") {
         createJob(from, session, {});
         session.stage = "print_selected";
@@ -531,15 +622,11 @@ Your file has been received.
 
 Reply with:
 1 - Pay on Shopify now
-2 - Chat here on WhatsApp for assistance, pricing, or special instructions
-
-You can also send details like:
-2 copies, 5 pages, color or black and white`
+2 - Chat here on WhatsApp for assistance, pricing, or special instructions`
         );
         return res.sendStatus(200);
       }
 
-      // If user already chose laminate before upload
       if (session.stage === "awaiting_file_for_laminate" && session.selectedService === "LAMINATE") {
         createJob(from, session, {});
         session.stage = "laminate_selected";
@@ -556,9 +643,7 @@ Tabloid $3.00
 
 Reply with:
 1 - Pay on Shopify now
-2 - Chat here on WhatsApp for assistance or special instructions
-
-You can also send your size and quantity.`
+2 - Chat here on WhatsApp for assistance or special instructions`
         );
         return res.sendStatus(200);
       }
@@ -570,7 +655,7 @@ You can also send your size and quantity.`
       return res.sendStatus(200);
     }
 
-    // ===== HANDLE YES CHECKOUT =====
+    // ===== YES CHECKOUT =====
     if (type === "text" && lower === "yes") {
       if (session.selectedService === "PRINT") {
         await sendMessage(
@@ -637,10 +722,7 @@ Your file/details have been received.
 
 Reply with:
 1 - Pay on Shopify now
-2 - Chat here on WhatsApp for assistance, pricing, or special instructions
-
-You can also send details like:
-2 copies, 5 pages, color or black and white`
+2 - Chat here on WhatsApp for assistance, pricing, or special instructions`
           );
           return res.sendStatus(200);
         }
@@ -677,7 +759,7 @@ Reply with:
 1 - Pay on Shopify now
 2 - Chat here on WhatsApp for assistance or special instructions
 
-You can also send your size and quantity.`
+You can also send your size and quantity by text or voice note.`
           );
           return res.sendStatus(200);
         }
@@ -690,7 +772,7 @@ You can also send your size and quantity.`
               `🎨 Image Editing selected.
 
 Please upload your image file first, then send your instructions.
-Example: Change the sides of the image to blue.`
+You can type the instruction or send a voice note.`
             );
             return res.sendStatus(200);
           }
@@ -702,6 +784,8 @@ Example: Change the sides of the image to blue.`
 
 Your image file has been received.
 Now send your instructions.
+
+You can type the instruction or send a voice note.
 
 After review, our agent will reply here on WhatsApp with the cost or next step.`
           );
@@ -716,7 +800,7 @@ After review, our agent will reply here on WhatsApp with the cost or next step.`
               `🎥 Video Editing selected.
 
 Please upload your video file first, then send your instructions.
-Example: Edit the background and change the front colors to red.`
+You can type the instruction or send a voice note.`
             );
             return res.sendStatus(200);
           }
@@ -728,6 +812,8 @@ Example: Edit the background and change the front colors to red.`
 
 Your video file has been received.
 Now send your instructions.
+
+You can type the instruction or send a voice note.
 
 After review, our agent will reply here on WhatsApp with the cost or next step.`
           );
@@ -742,7 +828,8 @@ After review, our agent will reply here on WhatsApp with the cost or next step.`
               `🪪 ID Photo selected.
 
 Please upload your photo first, then send your instructions.
-Example: Passport size, white background, 4 copies.`
+
+You can type the instruction or send a voice note.`
             );
             return res.sendStatus(200);
           }
@@ -754,7 +841,8 @@ Example: Passport size, white background, 4 copies.`
 
 Your photo has been received.
 Now send your instructions.
-Example: Passport size, white background, 4 copies.
+
+You can type the instruction or send a voice note.
 
 After review, our agent will reply here on WhatsApp with the cost or next step.`
           );
@@ -771,14 +859,16 @@ Please send your shipping details:
 - pickup or delivery
 - item type
 - destination city/state
-- quantity/weight if known`
+- quantity/weight if known
+
+You can type the details or send a voice note.`
           );
           return res.sendStatus(200);
         }
       }
     }
 
-    // ===== HANDLE INSTRUCTIONS AFTER IMAGE / VIDEO / ID SELECTION =====
+    // ===== TEXT INSTRUCTIONS AFTER IMAGE / VIDEO / ID =====
     if (type === "text" && session.stage === "awaiting_instructions") {
       const instructions = text.trim();
 
@@ -796,14 +886,12 @@ Please send your shipping details:
 
 Job ID: ${job.id}
 
-Our agent will review it and reply here on WhatsApp with the cost or next step.
-
-You can send another file anytime or type hello for the menu.`
+Our agent will review it and reply here on WhatsApp with the cost or next step.`
       );
       return res.sendStatus(200);
     }
 
-    // ===== HANDLE SHIPPING DETAILS =====
+    // ===== TEXT SHIPPING DETAILS =====
     if (type === "text" && session.stage === "awaiting_shipping_details") {
       const shippingDetails = text.trim();
       const job = createJob(from, session, { shippingDetails });
@@ -822,11 +910,15 @@ You can also call ${CONTACTS.SHIPPING} if urgent.`
       return res.sendStatus(200);
     }
 
-    // ===== HANDLE POST-CALL FOLLOW-UP / PRINT / LAMINATE CHAT DETAILS =====
+    // ===== TEXT FOLLOW-UP DETAILS =====
     if (type === "text" && session.stage === "referral_shared") {
       await sendMessage(
         from,
-        "✅ Message received.\n\nPlease send the details discussed on the call, and we will continue with the pricing or next step here on WhatsApp."
+        `✅ Message received.
+
+Please send the details discussed on the call.
+
+You can type the details or send a voice note, and we will continue with the pricing or next step here on WhatsApp.`
       );
       session.stage = "awaiting_followup_details";
       return res.sendStatus(200);
