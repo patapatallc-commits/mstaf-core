@@ -1388,10 +1388,6 @@ function renderDashboardPage(title, initialFilterPrinterId = "") {
         margin-bottom: 10px;
       }
 
-      .info {
-        min-width: 0;
-      }
-
       .label {
         color: var(--muted);
         font-size: 12px;
@@ -1570,12 +1566,7 @@ function renderDashboardPage(title, initialFilterPrinterId = "") {
       <div class="hero-title">🖨 MSTAF Worker / Agent Dashboard</div>
       <div class="hero-sub">Dispatch smarter. Route faster. Monitor print, editing, and support queues in one place.</div>
 
-      <div class="nav">
-        <a href="/dashboard${dashboardKeySuffix()}">Main</a>
-        <a href="/dispatch${dashboardKeySuffix()}">Dispatch</a>
-        <a href="/agent${dashboardKeySuffix()}">Agent</a>
-        <a href="/printer${dashboardKeySuffix()}">Printer</a>
-      </div>
+      <div class="nav" id="navLinks"></div>
     </div>
 
     <div class="toolbar">
@@ -1595,7 +1586,7 @@ function renderDashboardPage(title, initialFilterPrinterId = "") {
         <option value="${DISPATCH_QUEUE_ID}">${DISPATCH_QUEUE_ID}</option>
         <option value="${AGENT_QUEUE_ID}">${AGENT_QUEUE_ID}</option>
       </select>
-      <button onclick="loadJobs()">Refresh</button>
+      <button id="refreshBtn" type="button">Refresh</button>
     </div>
 
     <div class="stats">
@@ -1611,7 +1602,6 @@ function renderDashboardPage(title, initialFilterPrinterId = "") {
     </div>
 
     <script>
-      const DASH_KEY = ${JSON.stringify(DASHBOARD_KEY)};
       const INITIAL_PRINTER_ID = ${JSON.stringify(initialFilterPrinterId)};
       const DEFAULT_PRINTER_ID = ${JSON.stringify(DEFAULT_PRINTER_ID)};
       const A3_PRINTER_ID = ${JSON.stringify(A3_PRINTER_ID)};
@@ -1619,9 +1609,21 @@ function renderDashboardPage(title, initialFilterPrinterId = "") {
       const DISPATCH_QUEUE_ID = ${JSON.stringify(DISPATCH_QUEUE_ID)};
       const AGENT_QUEUE_ID = ${JSON.stringify(AGENT_QUEUE_ID)};
 
+      function getDashboardKey() {
+        const params = new URLSearchParams(window.location.search);
+        return params.get("key") || "";
+      }
+
+      function withKey(url) {
+        const key = getDashboardKey();
+        if (!key) return url;
+        return url + (url.includes("?") ? "&" : "?") + "key=" + encodeURIComponent(key);
+      }
+
       function dashHeaders(withJson = false) {
         const h = {};
-        if (DASH_KEY) h["x-dashboard-key"] = DASH_KEY;
+        const key = getDashboardKey();
+        if (key) h["x-dashboard-key"] = key;
         if (withJson) h["Content-Type"] = "application/json";
         return h;
       }
@@ -1641,6 +1643,15 @@ function renderDashboardPage(title, initialFilterPrinterId = "") {
         return "badge pending";
       }
 
+      function renderNav() {
+        const nav = document.getElementById("navLinks");
+        nav.innerHTML = ''
+          + '<a href="' + withKey('/dashboard') + '">Main</a>'
+          + '<a href="' + withKey('/dispatch') + '">Dispatch</a>'
+          + '<a href="' + withKey('/agent') + '">Agent</a>'
+          + '<a href="' + withKey('/printer') + '">Printer</a>';
+      }
+
       function mediaHTML(job) {
         if (!job.file || !job.file.url) {
           return '<div class="panel"><div class="panel-title">File</div><div class="instruction">No file attached</div></div>';
@@ -1648,7 +1659,6 @@ function renderDashboardPage(title, initialFilterPrinterId = "") {
 
         const mime = String(job.file.mime_type || "");
         const url = job.file.url;
-        const title = ${JSON.stringify("Preview")};
 
         let body = "";
         if (mime.startsWith("image")) {
@@ -1661,7 +1671,7 @@ function renderDashboardPage(title, initialFilterPrinterId = "") {
 
         return ''
           + '<div class="panel">'
-          + '  <div class="panel-title">' + esc(job.file.mime_type ? (${JSON.stringify("Preview")}) : (${JSON.stringify("File")})) + '</div>'
+          + '  <div class="panel-title">File Preview</div>'
           +      body
           + '  <div class="media-links">'
           + '    <a class="btnlink" target="_blank" href="' + url + '">Open File</a>'
@@ -1698,24 +1708,24 @@ function renderDashboardPage(title, initialFilterPrinterId = "") {
         const printer_id = select.value;
         if (!printer_id) return;
 
-        await fetch("/api/dashboard/jobs/" + id + "/route", {
+        await fetch(withKey("/api/dashboard/jobs/" + id + "/route"), {
           method: "POST",
           headers: dashHeaders(true),
           body: JSON.stringify({ printer_id })
         });
 
-        loadJobs();
+        await loadJobs();
       }
 
       async function markJob(id, status) {
         const error_message = status === "error" ? "Manual error from dashboard" : "";
-        await fetch("/api/dashboard/jobs/" + id + "/mark", {
+        await fetch(withKey("/api/dashboard/jobs/" + id + "/mark"), {
           method: "POST",
           headers: dashHeaders(true),
           body: JSON.stringify({ status, error_message })
         });
 
-        loadJobs();
+        await loadJobs();
       }
 
       function setStats(allJobs) {
@@ -1744,76 +1754,84 @@ function renderDashboardPage(title, initialFilterPrinterId = "") {
         if (q) params.set("q", q);
         if (status) params.set("status", status);
         if (printer_id) params.set("printer_id", printer_id);
+        const key = getDashboardKey();
+        if (key) params.set("key", key);
 
-        const res = await fetch("/api/dashboard/jobs?" + params.toString(), {
-          headers: dashHeaders(false)
-        });
-
-        const data = await res.json();
         const meta = document.getElementById("meta");
         const wrap = document.getElementById("jobsWrap");
 
-        setStats(data.jobs || []);
-        meta.innerHTML = "Showing " + (data.count || 0) + " job(s)";
+        try {
+          const res = await fetch("/api/dashboard/jobs?" + params.toString(), {
+            headers: dashHeaders(false)
+          });
 
-        if (!data.jobs || !data.jobs.length) {
-          wrap.innerHTML = '<div class="empty">No jobs found in this queue right now.</div>';
-          return;
+          const data = await res.json();
+
+          if (!res.ok) {
+            wrap.innerHTML = '<div class="empty">Failed to load jobs. ' + esc(data.error || "Unknown error") + '</div>';
+            meta.innerHTML = "Dashboard API error";
+            setStats([]);
+            return;
+          }
+
+          setStats(data.jobs || []);
+          meta.innerHTML = "Showing " + (data.count || 0) + " job(s)";
+
+          if (!data.jobs || !data.jobs.length) {
+            wrap.innerHTML = '<div class="empty">No jobs found in this queue right now.</div>';
+            return;
+          }
+
+          wrap.innerHTML = '<div class="grid">' + data.jobs.map(job => {
+            return ''
+              + '<div class="card">'
+              + '  <div class="job-top">'
+              + '    <div>'
+              + '      <div class="job-id">Job #' + esc(job.id) + '</div>'
+              + '      <div class="public-id">' + esc(job.public_job_id || "") + '</div>'
+              + '    </div>'
+              + '    <span class="' + statusClass(job.status) + '">' + esc(job.status || "pending") + '</span>'
+              + '  </div>'
+
+              + '  <div class="info-grid">'
+              + '    <div><div class="label">Service</div><div class="value">' + esc(job.service || "") + '</div></div>'
+              + '    <div><div class="label">Route</div><div class="value">' + esc(job.printer_id || "") + '</div></div>'
+              + '    <div><div class="label">Customer</div><div class="value">' + esc(job.customer_phone || "") + '</div></div>'
+              + '    <div><div class="label">Paper / Color</div><div class="value">' + esc((job.paper_size || "-") + " / " + (job.color_mode || "-")) + '</div></div>'
+              + '    <div><div class="label">Copies / Pages</div><div class="value">' + esc((job.copies || 1) + " / " + (job.pages || 1)) + '</div></div>'
+              + '    <div><div class="label">Created</div><div class="value">' + esc(job.created_at || "") + '</div></div>'
+              + '  </div>'
+
+              + '  <div class="panel"><div class="panel-title">Instructions</div><div class="instruction">' + esc(job.instructions || "None") + '</div></div>'
+              + '  <div class="panel"><div class="panel-title">Shipping / Notes</div><div class="instruction">' + esc(job.shipping_details || job.notes || "None") + '</div></div>'
+              + '  <div class="panel"><div class="panel-title">Error Message</div><div class="instruction">' + esc(job.error_message || "None") + '</div></div>'
+
+              +      mediaHTML(job)
+              +      audioHTML(job)
+
+              + '  <div class="route-row">'
+              + '    <select id="route_' + job.id + '" class="route-select">' + routeOptions() + '</select>'
+              + '    <button class="action-btn route-btn" type="button" onclick="routeJob(' + job.id + ')">Route</button>'
+              + '  </div>'
+
+              + '  <div class="actions">'
+              + '    <button class="action-btn btn-done" type="button" onclick="markJob(' + job.id + ', \\'completed\\')">✅ Done</button>'
+              + '    <button class="action-btn btn-error" type="button" onclick="markJob(' + job.id + ', \\'error\\')">❌ Error</button>'
+              + '    <button class="action-btn btn-pending" type="button" onclick="markJob(' + job.id + ', \\'pending\\')">↩ Pending</button>'
+              + '    <button class="action-btn btn-printing" type="button" onclick="markJob(' + job.id + ', \\'printing\\')">🖨 Printing</button>'
+              + '  </div>'
+              + '</div>';
+          }).join('') + '</div>';
+        } catch (err) {
+          wrap.innerHTML = '<div class="empty">Failed to load jobs.</div>';
+          meta.innerHTML = "Browser request error";
+          setStats([]);
+          console.error(err);
         }
-
-        wrap.innerHTML = '<div class="grid">' + data.jobs.map(job => {
-          return ''
-            + '<div class="card">'
-            + '  <div class="job-top">'
-            + '    <div>'
-            + '      <div class="job-id">Job #' + esc(job.id) + '</div>'
-            + '      <div class="public-id">' + esc(job.public_job_id || "") + '</div>'
-            + '    </div>'
-            + '    <span class="' + statusClass(job.status) + '">' + esc(job.status || "pending") + '</span>'
-            + '  </div>'
-
-            + '  <div class="info-grid">'
-            + '    <div class="info"><div class="label">Service</div><div class="value">' + esc(job.service || "") + '</div></div>'
-            + '    <div class="info"><div class="label">Route</div><div class="value">' + esc(job.printer_id || "") + '</div></div>'
-            + '    <div class="info"><div class="label">Customer</div><div class="value">' + esc(job.customer_phone || "") + '</div></div>'
-            + '    <div class="info"><div class="label">Paper / Color</div><div class="value">' + esc((job.paper_size || "-") + " / " + (job.color_mode || "-")) + '</div></div>'
-            + '    <div class="info"><div class="label">Copies / Pages</div><div class="value">' + esc((job.copies || 1) + " / " + (job.pages || 1)) + '</div></div>'
-            + '    <div class="info"><div class="label">Created</div><div class="value">' + esc(job.created_at || "") + '</div></div>'
-            + '  </div>'
-
-            + '  <div class="panel">'
-            + '    <div class="panel-title">Instructions</div>'
-            + '    <div class="instruction">' + esc(job.instructions || "None") + '</div>'
-            + '  </div>'
-
-            + '  <div class="panel">'
-            + '    <div class="panel-title">Shipping / Notes</div>'
-            + '    <div class="instruction">' + esc(job.shipping_details || job.notes || "None") + '</div>'
-            + '  </div>'
-
-            + '  <div class="panel">'
-            + '    <div class="panel-title">Error Message</div>'
-            + '    <div class="instruction">' + esc(job.error_message || "None") + '</div>'
-            + '  </div>'
-
-            + mediaHTML(job)
-            + audioHTML(job)
-
-            + '  <div class="route-row">'
-            + '    <select id="route_' + job.id + '" class="route-select">' + routeOptions() + '</select>'
-            + '    <button class="action-btn route-btn" onclick="routeJob(' + job.id + ')">Route</button>'
-            + '  </div>'
-
-            + '  <div class="actions">'
-            + '    <button class="action-btn btn-done" onclick="markJob(' + job.id + ', \'completed\')">✅ Done</button>'
-            + '    <button class="action-btn btn-error" onclick="markJob(' + job.id + ', \'error\')">❌ Error</button>'
-            + '    <button class="action-btn btn-pending" onclick="markJob(' + job.id + ', \'pending\')">↩ Pending</button>'
-            + '    <button class="action-btn btn-printing" onclick="markJob(' + job.id + ', \'printing\')">🖨 Printing</button>'
-            + '  </div>'
-            + '</div>';
-        }).join("") + '</div>';
       }
 
+      document.getElementById("refreshBtn").addEventListener("click", loadJobs);
+      renderNav();
       loadJobs();
       setInterval(loadJobs, 5000);
     </script>
@@ -1821,6 +1839,7 @@ function renderDashboardPage(title, initialFilterPrinterId = "") {
   </html>
   `;
 }
+
 
 // =========================
 // DASHBOARD ROUTES
