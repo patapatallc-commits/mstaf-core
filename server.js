@@ -441,22 +441,40 @@ app.post("/webhook", async (req, res) => {
         }
 
         if (service === "IMAGE_EDIT") {
-          session.stage = "awaiting_instructions";
-          await sendMessage(
-            from,
-            "🎨 Image Editing selected.\n\nSend your instructions now.\nExample: Change the sides of the image to blue."
-          );
-          return res.sendStatus(200);
-        }
+  if (!session.pendingFile) {
+    session.stage = "awaiting_file_for_image";
+    await sendMessage(
+      from,
+      "🎨 Image Editing selected.\n\nPlease upload your image file first, then send your instructions.\nExample: Change the sides of the image to blue."
+    );
+    return res.sendStatus(200);
+  }
+
+  session.stage = "awaiting_instructions";
+  await sendMessage(
+    from,
+    "🎨 Image Editing selected.\n\nYour file is already received.\nNow send your instructions.\nExample: Change the sides of the image to blue."
+  );
+  return res.sendStatus(200);
+}
 
         if (service === "VIDEO_EDIT") {
-          session.stage = "awaiting_instructions";
-          await sendMessage(
-            from,
-            "🎥 Video Editing selected.\n\nSend your instructions now.\nExample: Edit the background and change the front colors to red."
-          );
-          return res.sendStatus(200);
-        }
+  if (!session.pendingFile) {
+    session.stage = "awaiting_file_for_video";
+    await sendMessage(
+      from,
+      "🎥 Video Editing selected.\n\nPlease upload your video file first, then send your instructions.\nExample: Edit the background and change the front colors to red."
+    );
+    return res.sendStatus(200);
+  }
+
+  session.stage = "awaiting_instructions";
+  await sendMessage(
+    from,
+    "🎥 Video Editing selected.\n\nYour file is already received.\nNow send your instructions.\nExample: Edit the background and change the front colors to red."
+  );
+  return res.sendStatus(200);
+}
 
         if (service === "ID_PHOTO") {
           session.stage = "awaiting_instructions";
