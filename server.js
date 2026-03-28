@@ -950,7 +950,78 @@ We will reply here on WhatsApp with the cost or next step.`
     return res.sendStatus(500);
   }
 });
+app.get("/dashboard", (req, res) => {
+  res.send(`
+    <html>
+    <head>
+      <title>MSTAF Worker Dashboard</title>
+      <style>
+        body { font-family: Arial; padding: 20px; background: #f5f5f5; }
+        h1 { color: #333; }
+        .job { background: #fff; padding: 15px; margin-bottom: 15px; border-radius: 8px; }
+        .file { margin-top: 10px; }
+        button { padding: 8px 12px; margin-top: 10px; }
+      </style>
+    </head>
+    <body>
+      <h1>🖨 MSTAF Worker / Agent Dashboard</h1>
+      <div id="jobs"></div>
 
+      <script>
+        async function loadJobs() {
+          const res = await fetch('/jobs');
+          const data = await res.json();
+          const container = document.getElementById('jobs');
+
+          container.innerHTML = '';
+
+          data.jobs.forEach(job => {
+            const div = document.createElement('div');
+            div.className = 'job';
+
+            div.innerHTML = \`
+              <b>Job ID:</b> \${job.id}<br/>
+              <b>Service:</b> \${job.service}<br/>
+              <b>Status:</b> \${job.status}<br/>
+
+              <b>Instructions:</b> \${job.instructions || 'None'}<br/>
+
+              \${job.file?.url ? \`
+                <div class="file">
+                  <a href="\${job.file.url}" target="_blank">📎 View File</a>
+                </div>
+              \` : ''}
+
+              \${job.instruction_audio_url ? \`
+                <div class="file">
+                  <audio controls src="\${job.instruction_audio_url}"></audio>
+                </div>
+              \` : ''}
+
+              <button onclick="markDone(\${job.id})">✅ Done</button>
+            \`;
+
+            container.appendChild(div);
+          });
+        }
+
+        async function markDone(id) {
+          await fetch('/api/worker/jobs/' + id + '/status', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ status: 'completed' })
+          });
+
+          loadJobs();
+        }
+
+        loadJobs();
+        setInterval(loadJobs, 5000);
+      </script>
+    </body>
+    </html>
+  `);
+});
 app.listen(PORT, () => {
   console.log(`Server running on ${PORT}`);
 });
