@@ -6,35 +6,50 @@ const axios = require("axios");
 require("dotenv").config();
 
 const app = express();
-app.use(express.json());
+app.use(express.json({ limit: "10mb" }));
+app.use(express.urlencoded({ extended: true }));
 
 const PORT = process.env.PORT || 10000;
 
-// ===== UPLOAD FOLDER =====
+// =========================
+// PATHS / STATIC
+// =========================
 const UPLOAD_DIR = path.resolve(__dirname, "uploads");
 fs.mkdirSync(UPLOAD_DIR, { recursive: true });
 app.use("/uploads", express.static(UPLOAD_DIR));
 
-// ===== MULTER SETUP =====
+// =========================
+// MULTER
+// =========================
 const storage = multer.diskStorage({
   destination: (req, file, cb) => cb(null, UPLOAD_DIR),
   filename: (req, file, cb) => {
-    const safe = (file.originalname || "file")
+    const safe = String(file.originalname || "file")
       .replace(/[^a-zA-Z0-9._-]/g, "_")
       .slice(-90);
 
     cb(null, `${Date.now()}_${Math.random().toString(16).slice(2)}_${safe}`);
   }
 });
-
 const upload = multer({ storage });
 
-// ===== WHATSAPP CONFIG =====
+// =========================
+// ENV / CONFIG
+// =========================
 const TOKEN = process.env.WHATSAPP_ACCESS_TOKEN;
 const PHONE_ID = process.env.WHATSAPP_PHONE_NUMBER_ID;
 const VERIFY_TOKEN = process.env.VERIFY_TOKEN;
 
-// ===== CONTACTS =====
+const DASHBOARD_KEY = process.env.DASHBOARD_KEY || "";
+const WORKER_KEY = process.env.WORKER_KEY || process.env.PRINTER_KEY || "";
+const PRINTER_KEY = process.env.PRINTER_KEY || process.env.WORKER_KEY || "";
+
+const DEFAULT_PRINTER_ID = process.env.DEFAULT_PRINTER_ID || "PP-USA-001";
+const A3_PRINTER_ID = process.env.A3_PRINTER_ID || "PP-USA-A3-001";
+const CARD_PRINTER_ID = process.env.CARD_PRINTER_ID || "PP-USA-CARD-001";
+const DISPATCH_QUEUE_ID = process.env.DISPATCH_QUEUE_ID || "DISPATCH";
+const AGENT_QUEUE_ID = process.env.AGENT_QUEUE_ID || "AGENT";
+
 const CONTACTS = {
   RIDE: process.env.RIDE_TO_WORK_CONTACTS || "+1 862 230 6637",
   MECHANIC: process.env.AUTO_MECHANIC_CONTACTS || "+1 862 230 6637",
@@ -42,20 +57,38 @@ const CONTACTS = {
   SHIPPING: process.env.SHIPPING_CONTACTS || "+1 862 230 6637"
 };
 
-// ===== LINKS =====
 const LINKS = {
-  PRINT_CHECKOUT: process.env.PRINT_CHECKOUT_LINK || "https://www.patapata.us/cart/52221221437739:1",
-  LAMINATE_CHECKOUT: process.env.LAMINATE_CHECKOUT_LINK || "https://www.patapata.us/pages/how-to-upload"
+  PRINT_CHECKOUT:
+    process.env.PRINT_CHECKOUT_LINK || "https://www.patapata.us/cart/52221221437739:1",
+  LAMINATE_CHECKOUT:
+    process.env.LAMINATE_CHECKOUT_LINK || "https://www.patapata.us/pages/how-to-upload",
+  HOW_TO_UPLOAD:
+    process.env.HOW_TO_UPLOAD_LINK || "https://www.patapata.us/pages/how-to-upload"
 };
 
-// ===== SIMPLE SESSION STORE =====
+// =========================
+// MEMORY STORES
+// =========================
 const sessions = new Map();
-
-// ===== SIMPLE IN-MEMORY JOB STORE =====
-let jobCounter = 1;
 const jobs = [];
+let jobCounter = 1;
 
-// ===== HELPERS =====
+// =========================
+// HELPERS
+// =========================
+function nowIso() {
+  return new Date().toISOString();
+}
+
+function normalizeText(text = "") {
+  return String(text || "").trim().toLowerCase();
+}
+
+function isGreeting(text = "") {
+  const lower = normalizeText(text);
+  return ["hi", "hello", "hey", "start", "menu"].includes(lower);
+}
+
 function createEmptySession() {
   return {
     stage: null,
@@ -77,15 +110,6 @@ function resetSession(from) {
   sessions.set(from, createEmptySession());
 }
 
-function normalizeText(text = "") {
-  return String(text || "").trim().toLowerCase();
-}
-
-function isGreeting(text = "") {
-  const lower = normalizeText(text);
-  return ["hi", "hello", "hey", "start", "menu"].includes(lower);
-}
-
 function serviceMenuText(hasFile = false) {
   return `${hasFile ? "✅ File received successfully!\n\n" : ""}What would you like to do${hasFile ? " with your file" : ""}?
 
@@ -104,12 +128,10 @@ Or type:
 
 function detectReferralIntent(text = "") {
   const lower = normalizeText(text);
-
   if (lower.includes("ride")) return "RIDE";
   if (lower.includes("mechanic")) return "MECHANIC";
   if (lower.includes("apartment") || lower.includes("rent")) return "APARTMENT";
   if (lower.includes("shipping")) return "SHIPPING";
-
   return null;
 }
 
@@ -126,26 +148,104 @@ function mapSelectionToService(text = "") {
   return null;
 }
 
+function safeInt(value, fallback = 0) {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : fallback;
+}
+
+function chooseRouteForJob(input = {}) {
+  const service = String(input.service || "");
+  const paperSize = String(input.paper_size || input.paperSize || "").toUpperCase();
+  const explicitPrinter = input.printer_id || input.printerId || "";
+
+  if (explicitPrinter) return explicitPrinter;
+
+  if (service === "IMAGE_EDIT" || service === "VIDEO_EDIT" || service === "ID_PHOTO") {
+    return AGENT_QUEUE_ID;
+  }
+
+  if (service === "SHIPPING") {
+    return DISPATCH_QUEUE_ID;
+  }
+
+  if (paperSize === "A3" || paperSize === "TABLOID" || paperSize === "CARD" || service === "CARD") {
+    return DISPATCH_QUEUE_ID;
+  }
+
+  if (service === "LAMINATE") {
+    return DISPATCH_QUEUE_ID;
+  }
+
+  if (service === "PRINT") {
+    return DEFAULT_PRINTER_ID;
+  }
+
+  return DISPATCH_QUEUE_ID;
+}
+
 function createJob(from, session, extra = {}) {
+  const service = extra.service || session.selectedService || null;
+  const paper_size = extra.paper_size || extra.paperSize || null;
+  const printer_id = chooseRouteForJob({
+    service,
+    paper_size,
+    printer_id: extra.printer_id
+  });
+
   const job = {
     id: jobCounter++,
-    customer_phone: from,
-    service: session.selectedService || null,
-    file: session.pendingFile || null,
-    status: "pending",
+    public_job_id: `MSTAF-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+    customer_phone: from || extra.customer_phone || "",
+    customer_name: extra.customer_name || "",
+    customer_email: extra.customer_email || "",
+    service,
+    printer_id,
+    file: extra.file || session.pendingFile || null,
+    status: extra.status || "pending",
 
     instructions: extra.instructions || "",
     instruction_audio_url: extra.instructionAudioUrl || "",
     instruction_audio: extra.instructionAudio || null,
 
     shipping_details: extra.shippingDetails || "",
-    created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString()
+    paper_size,
+    color_mode: extra.color_mode || extra.colorMode || "",
+    copies: safeInt(extra.copies, 1),
+    pages: safeInt(extra.pages, 1),
+    notes: extra.notes || "",
+    error_message: "",
+    created_at: nowIso(),
+    updated_at: nowIso()
   };
 
   jobs.unshift(job);
   session.lastJobId = job.id;
   return job;
+}
+
+function findJob(id) {
+  return jobs.find((j) => j.id === Number(id));
+}
+
+function updateJob(job, patch = {}) {
+  Object.assign(job, patch, { updated_at: nowIso() });
+  return job;
+}
+
+function authDashboard(req) {
+  if (!DASHBOARD_KEY) return true;
+  const key = req.headers["x-dashboard-key"] || req.query.key || "";
+  return key === DASHBOARD_KEY;
+}
+
+function authWorker(req) {
+  if (!WORKER_KEY && !PRINTER_KEY) return true;
+  const key = req.headers["x-worker-key"] || req.headers["x-printer-key"] || req.query.key || "";
+  return key === WORKER_KEY || key === PRINTER_KEY;
+}
+
+function dashboardKeySuffix() {
+  return DASHBOARD_KEY ? `?key=${encodeURIComponent(DASHBOARD_KEY)}` : "";
 }
 
 async function sendMessage(to, text) {
@@ -175,18 +275,12 @@ async function downloadWhatsAppMedia(mediaId) {
   if (!mediaId || !TOKEN) return null;
 
   try {
-    const metaResp = await axios.get(
-      `https://graph.facebook.com/v18.0/${mediaId}`,
-      {
-        headers: {
-          Authorization: `Bearer ${TOKEN}`
-        }
-      }
-    );
+    const metaResp = await axios.get(`https://graph.facebook.com/v18.0/${mediaId}`, {
+      headers: { Authorization: `Bearer ${TOKEN}` }
+    });
 
     const mediaUrl = metaResp.data?.url;
     const mimeType = metaResp.data?.mime_type || "application/octet-stream";
-
     if (!mediaUrl) return null;
 
     const extMap = {
@@ -207,9 +301,7 @@ async function downloadWhatsAppMedia(mediaId) {
 
     const mediaResp = await axios.get(mediaUrl, {
       responseType: "stream",
-      headers: {
-        Authorization: `Bearer ${TOKEN}`
-      }
+      headers: { Authorization: `Bearer ${TOKEN}` }
     });
 
     await new Promise((resolve, reject) => {
@@ -232,16 +324,38 @@ async function downloadWhatsAppMedia(mediaId) {
   }
 }
 
-// ===== BASIC HEALTH =====
+function renderStatusBadge(status = "") {
+  const s = String(status);
+  if (s === "completed" || s === "done") return "badge done";
+  if (s === "printing") return "badge live";
+  if (s === "error") return "badge error";
+  return "badge";
+}
+
+// =========================
+// HEALTH / ROOT
+// =========================
 app.get("/", (req, res) => {
   res.send("PATAPATA MSTAF server is running.");
 });
 
 app.get("/health", (req, res) => {
-  res.json({ ok: true, service: "mstaf-whatsapp-bot" });
+  res.json({
+    ok: true,
+    service: "mstaf-core",
+    queues: {
+      default_printer_id: DEFAULT_PRINTER_ID,
+      a3_printer_id: A3_PRINTER_ID,
+      card_printer_id: CARD_PRINTER_ID,
+      dispatch_queue_id: DISPATCH_QUEUE_ID,
+      agent_queue_id: AGENT_QUEUE_ID
+    }
+  });
 });
 
-// ===== OPTIONAL MANUAL UPLOAD =====
+// =========================
+// MANUAL UPLOAD
+// =========================
 app.post("/api/upload", upload.single("file"), (req, res) => {
   if (!req.file) {
     return res.status(400).json({ ok: false, error: "No file uploaded" });
@@ -254,60 +368,211 @@ app.post("/api/upload", upload.single("file"), (req, res) => {
   });
 });
 
-// ===== WORKER COMPATIBILITY ROUTES =====
+// =========================
+// JOB LIST / DEBUG
+// =========================
+app.get("/jobs", (req, res) => {
+  res.json({ ok: true, count: jobs.length, jobs });
+});
+
+// =========================
+// DASHBOARD DATA API
+// =========================
+app.get("/api/dashboard/jobs", (req, res) => {
+  if (!authDashboard(req)) {
+    return res.status(401).json({ ok: false, error: "Unauthorized" });
+  }
+
+  const printer_id = String(req.query.printer_id || "").trim();
+  const status = String(req.query.status || "").trim().toLowerCase();
+  const q = normalizeText(req.query.q || "");
+
+  let filtered = [...jobs];
+
+  if (printer_id) {
+    filtered = filtered.filter((j) => String(j.printer_id || "") === printer_id);
+  }
+
+  if (status) {
+    filtered = filtered.filter((j) => normalizeText(j.status) === status);
+  }
+
+  if (q) {
+    filtered = filtered.filter((j) =>
+      [
+        j.public_job_id,
+        j.service,
+        j.printer_id,
+        j.customer_phone,
+        j.instructions,
+        j.shipping_details,
+        j.error_message,
+        j.file?.filename,
+        j.file?.url
+      ]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase()
+        .includes(q)
+    );
+  }
+
+  res.json({ ok: true, count: filtered.length, jobs: filtered });
+});
+
+app.post("/api/dashboard/jobs/:id/route", (req, res) => {
+  if (!authDashboard(req)) {
+    return res.status(401).json({ ok: false, error: "Unauthorized" });
+  }
+
+  const job = findJob(req.params.id);
+  if (!job) {
+    return res.status(404).json({ ok: false, error: "Job not found" });
+  }
+
+  const printer_id = String(req.body.printer_id || "").trim();
+  if (!printer_id) {
+    return res.status(400).json({ ok: false, error: "printer_id is required" });
+  }
+
+  updateJob(job, {
+    printer_id,
+    status: "pending",
+    error_message: ""
+  });
+
+  return res.json({ ok: true, job });
+});
+
+app.post("/api/dashboard/jobs/:id/mark", (req, res) => {
+  if (!authDashboard(req)) {
+    return res.status(401).json({ ok: false, error: "Unauthorized" });
+  }
+
+  const job = findJob(req.params.id);
+  if (!job) {
+    return res.status(404).json({ ok: false, error: "Job not found" });
+  }
+
+  const status = String(req.body.status || "").trim() || job.status;
+  const error_message = String(req.body.error_message || "").trim();
+
+  updateJob(job, { status, error_message });
+  return res.json({ ok: true, job });
+});
+
+// =========================
+// DISPATCH API
+// =========================
+app.get("/api/dispatch/queue", (req, res) => {
+  if (!authDashboard(req)) {
+    return res.status(401).json({ ok: false, error: "Unauthorized" });
+  }
+
+  const queue = jobs.filter((j) => j.printer_id === DISPATCH_QUEUE_ID);
+  res.json({ ok: true, count: queue.length, jobs: queue });
+});
+
+app.post("/api/dispatch/assign", (req, res) => {
+  if (!authDashboard(req)) {
+    return res.status(401).json({ ok: false, error: "Unauthorized" });
+  }
+
+  const { id, printer_id } = req.body || {};
+  const job = findJob(id);
+
+  if (!job) {
+    return res.status(404).json({ ok: false, error: "Job not found" });
+  }
+
+  if (!printer_id) {
+    return res.status(400).json({ ok: false, error: "printer_id is required" });
+  }
+
+  updateJob(job, {
+    printer_id: String(printer_id),
+    status: "pending",
+    error_message: ""
+  });
+
+  return res.json({ ok: true, job });
+});
+
+// =========================
+// WORKER API
+// =========================
 app.get("/api/worker/next", (req, res) => {
-  const nextJob = jobs.find((j) => j.status === "pending");
+  if (!authWorker(req)) {
+    return res.status(401).json({ ok: false, error: "Unauthorized" });
+  }
+
+  const requestedPrinterId =
+    String(req.query.printer_id || req.headers["x-printer-id"] || "").trim();
+
+  let nextJob = null;
+
+  if (requestedPrinterId) {
+    nextJob = jobs.find(
+      (j) => j.status === "pending" && String(j.printer_id || "") === requestedPrinterId
+    );
+  } else {
+    nextJob = jobs.find(
+      (j) =>
+        j.status === "pending" &&
+        j.printer_id !== DISPATCH_QUEUE_ID &&
+        j.printer_id !== AGENT_QUEUE_ID
+    );
+  }
 
   if (!nextJob) {
     return res.status(200).json({ ok: true, job: null, message: "No pending jobs" });
   }
 
-  nextJob.status = "printing";
-  nextJob.updated_at = new Date().toISOString();
+  updateJob(nextJob, { status: "printing" });
 
-  return res.json({
-    ok: true,
-    job: nextJob
-  });
+  return res.json({ ok: true, job: nextJob });
 });
 
 app.post("/api/worker/jobs/:id/status", (req, res) => {
-  const id = Number(req.params.id);
-  const { status, error_message } = req.body || {};
+  const allow = authWorker(req) || authDashboard(req);
+  if (!allow) {
+    return res.status(401).json({ ok: false, error: "Unauthorized" });
+  }
 
-  const job = jobs.find((j) => j.id === id);
+  const job = findJob(req.params.id);
   if (!job) {
     return res.status(404).json({ ok: false, error: "Job not found" });
   }
 
-  job.status = status || job.status;
-  job.error_message = error_message || "";
-  job.updated_at = new Date().toISOString();
+  const status = String(req.body.status || "").trim() || job.status;
+  const error_message = String(req.body.error_message || "").trim();
 
+  updateJob(job, { status, error_message });
   return res.json({ ok: true, job });
 });
 
 app.post("/api/worker/status", (req, res) => {
-  const { jobId, status, error_message } = req.body || {};
-  const id = Number(jobId);
+  const allow = authWorker(req) || authDashboard(req);
+  if (!allow) {
+    return res.status(401).json({ ok: false, error: "Unauthorized" });
+  }
 
-  const job = jobs.find((j) => j.id === id);
+  const job = findJob(req.body.jobId);
   if (!job) {
     return res.status(404).json({ ok: false, error: "Job not found" });
   }
 
-  job.status = status || job.status;
-  job.error_message = error_message || "";
-  job.updated_at = new Date().toISOString();
+  updateJob(job, {
+    status: String(req.body.status || "").trim() || job.status,
+    error_message: String(req.body.error_message || "").trim()
+  });
 
   return res.json({ ok: true, job });
 });
 
-app.get("/jobs", (req, res) => {
-  res.json({ ok: true, count: jobs.length, jobs });
-});
-
-// ===== WEBHOOK VERIFY =====
+// =========================
+// WEBHOOK VERIFY
+// =========================
 app.get("/webhook", (req, res) => {
   const mode = req.query["hub.mode"];
   const token = req.query["hub.verify_token"];
@@ -320,7 +585,9 @@ app.get("/webhook", (req, res) => {
   return res.sendStatus(403);
 });
 
-// ===== WHATSAPP MESSAGE HANDLER =====
+// =========================
+// WHATSAPP WEBHOOK
+// =========================
 app.post("/webhook", async (req, res) => {
   try {
     const message = req.body.entry?.[0]?.changes?.[0]?.value?.messages?.[0];
@@ -337,22 +604,17 @@ app.post("/webhook", async (req, res) => {
 
     const lower = normalizeText(text);
 
-    // ===== HANDLE GREETING =====
+    // GREETING
     if (type === "text" && isGreeting(lower)) {
       resetSession(from);
       const freshSession = getSession(from);
       freshSession.lastMenuShownAt = Date.now();
 
-      await sendMessage(
-        from,
-        `Hello 👋 Welcome to PATAPATA Print-O-Matic
-
-${serviceMenuText(false)}`
-      );
+      await sendMessage(from, `Hello 👋 Welcome to PATAPATA Print-O-Matic\n\n${serviceMenuText(false)}`);
       return res.sendStatus(200);
     }
 
-    // ===== HANDLE RIDE / MECHANIC / APARTMENT / SHIPPING REFERRAL =====
+    // REFERRAL FLOWS
     const referralIntent = type === "text" ? detectReferralIntent(lower) : null;
 
     if (referralIntent === "RIDE") {
@@ -360,10 +622,7 @@ ${serviceMenuText(false)}`
       session.stage = "referral_shared";
       await sendMessage(
         from,
-        `🚗 Ride to Work:
-Call ${CONTACTS.RIDE}
-
-After your call, reply here on WhatsApp and we can continue chatting with you about the cost or next step.`
+        `🚗 Ride to Work:\nCall ${CONTACTS.RIDE}\n\nAfter your call, reply here on WhatsApp and we can continue chatting with you about the cost or next step.`
       );
       return res.sendStatus(200);
     }
@@ -373,10 +632,7 @@ After your call, reply here on WhatsApp and we can continue chatting with you ab
       session.stage = "referral_shared";
       await sendMessage(
         from,
-        `🔧 Auto Mechanic:
-Call ${CONTACTS.MECHANIC}
-
-After your call, reply here on WhatsApp and we can continue chatting with you about the cost or next step.`
+        `🔧 Auto Mechanic:\nCall ${CONTACTS.MECHANIC}\n\nAfter your call, reply here on WhatsApp and we can continue chatting with you about the cost or next step.`
       );
       return res.sendStatus(200);
     }
@@ -386,10 +642,7 @@ After your call, reply here on WhatsApp and we can continue chatting with you ab
       session.stage = "referral_shared";
       await sendMessage(
         from,
-        `🏠 Apartment Rentals:
-Call ${CONTACTS.APARTMENT}
-
-After your call, reply here on WhatsApp and we can continue chatting with you here if needed.`
+        `🏠 Apartment Rentals:\nCall ${CONTACTS.APARTMENT}\n\nAfter your call, reply here on WhatsApp and we can continue chatting with you here if needed.`
       );
       return res.sendStatus(200);
     }
@@ -399,26 +652,17 @@ After your call, reply here on WhatsApp and we can continue chatting with you he
       session.stage = "awaiting_shipping_details";
       await sendMessage(
         from,
-        `📦 Need Shipping selected.
-
-Please send your shipping details:
-- pickup or delivery
-- item type
-- destination city/state
-- quantity/weight if known`
+        `📦 Need Shipping selected.\n\nPlease send your shipping details:\n- pickup or delivery\n- item type\n- destination city/state\n- quantity/weight if known\n\nYou can type the details or send a voice note.`
       );
       return res.sendStatus(200);
     }
 
-    // ===== PAY / CHAT OPTION FOR PRINT & LAMINATE =====
+    // PRINT / LAMINATE PAY OR CHAT
     if (type === "text" && lower === "1") {
       if (session.stage === "print_selected") {
         await sendMessage(
           from,
-          `🛒 Printing payment:
-${LINKS.PRINT_CHECKOUT}
-
-After payment, reply here on WhatsApp if you want us to continue with your order.`
+          `🛒 Printing payment:\n${LINKS.PRINT_CHECKOUT}\n\nAfter payment, reply here on WhatsApp if you want us to continue with your order.`
         );
         session.stage = "checkout_shared";
         return res.sendStatus(200);
@@ -427,10 +671,7 @@ After payment, reply here on WhatsApp if you want us to continue with your order
       if (session.stage === "laminate_selected") {
         await sendMessage(
           from,
-          `🛒 Laminating payment:
-${LINKS.LAMINATE_CHECKOUT}
-
-After payment, reply here on WhatsApp if you want us to continue with your order.`
+          `🛒 Laminating payment:\n${LINKS.LAMINATE_CHECKOUT}\n\nAfter payment, reply here on WhatsApp if you want us to continue with your order.`
         );
         session.stage = "checkout_shared";
         return res.sendStatus(200);
@@ -442,13 +683,7 @@ After payment, reply here on WhatsApp if you want us to continue with your order
         session.stage = "awaiting_followup_details";
         await sendMessage(
           from,
-          `✅ Okay.
-
-Please send your print details here on WhatsApp, such as copies, pages, color mode, paper size, delivery/pickup, or any special instructions.
-
-You can type the instruction or send a voice note.
-
-Our team will reply here with the cost or next step.`
+          `✅ Okay.\n\nPlease send your print details here on WhatsApp, such as copies, pages, color mode, paper size, delivery/pickup, or any special instructions.\n\nYou can type the instruction or send a voice note.\n\nOur team will reply here with the cost or next step.`
         );
         return res.sendStatus(200);
       }
@@ -457,27 +692,17 @@ Our team will reply here with the cost or next step.`
         session.stage = "awaiting_followup_details";
         await sendMessage(
           from,
-          `✅ Okay.
-
-Please send your laminating details here on WhatsApp, such as size, quantity, and any special instructions.
-
-You can type the instruction or send a voice note.
-
-Our team will reply here with the cost or next step.`
+          `✅ Okay.\n\nPlease send your laminating details here on WhatsApp, such as size, quantity, and any special instructions.\n\nYou can type the instruction or send a voice note.\n\nOur team will reply here with the cost or next step.`
         );
         return res.sendStatus(200);
       }
     }
 
-    // ===== AUDIO INSTRUCTION HANDLER =====
-    // This is the key new feature:
-    // if bot is already waiting for instruction/details and user sends a voice note,
-    // save it as instruction_audio_url and create the job.
+    // AUDIO AS INSTRUCTION / DETAILS
     if (type === "audio") {
       const mediaId = message.audio?.id;
       const downloaded = await downloadWhatsAppMedia(mediaId);
 
-      // AUDIO AS EDIT / ID INSTRUCTION
       if (session.stage === "awaiting_instructions") {
         const job = createJob(from, session, {
           instructions: "[Audio instruction received via WhatsApp voice note]",
@@ -494,61 +719,53 @@ Our team will reply here with the cost or next step.`
 
         await sendMessage(
           from,
-          `✅ Your ${label} audio instruction has been received successfully.
-
-Job ID: ${job.id}
-
-Our agent will review it and reply here on WhatsApp with the cost or next step.`
+          `✅ Your ${label} audio instruction has been received successfully.\n\nJob ID: ${job.id}\n\nOur agent will review it and reply here on WhatsApp with the cost or next step.`
         );
         return res.sendStatus(200);
       }
 
-      // AUDIO AS PRINT / LAMINATE / REFERRAL FOLLOW-UP DETAILS
       if (session.stage === "awaiting_followup_details") {
         const job = createJob(from, session, {
           instructions: "[Audio follow-up instruction received via WhatsApp voice note]",
           instructionAudioUrl: downloaded?.url || "",
-          instructionAudio: downloaded || null
+          instructionAudio: downloaded || null,
+          printer_id:
+            session.selectedService === "PRINT"
+              ? DEFAULT_PRINTER_ID
+              : session.selectedService === "LAMINATE"
+              ? DISPATCH_QUEUE_ID
+              : undefined
         });
 
         session.stage = "followup_received";
 
         await sendMessage(
           from,
-          `✅ Your audio details have been received.
-
-Job ID: ${job.id}
-
-We will reply here on WhatsApp with the cost or next step.`
+          `✅ Your audio details have been received.\n\nJob ID: ${job.id}\n\nWe will reply here on WhatsApp with the cost or next step.`
         );
         return res.sendStatus(200);
       }
 
-      // AUDIO AS SHIPPING DETAILS
       if (session.stage === "awaiting_shipping_details") {
         const job = createJob(from, session, {
           shippingDetails: "[Audio shipping details received via WhatsApp voice note]",
           instructionAudioUrl: downloaded?.url || "",
-          instructionAudio: downloaded || null
+          instructionAudio: downloaded || null,
+          service: "SHIPPING",
+          printer_id: DISPATCH_QUEUE_ID
         });
 
         session.stage = "shipping_received";
 
         await sendMessage(
           from,
-          `✅ Your shipping audio details have been received successfully.
-
-Job ID: ${job.id}
-
-We will review the details and reply here on WhatsApp with the cost or next step.`
+          `✅ Your shipping audio details have been received successfully.\n\nJob ID: ${job.id}\n\nWe will review the details and reply here on WhatsApp with the cost or next step.`
         );
         return res.sendStatus(200);
       }
     }
 
-    // ===== GENERAL FILE RECEIVED =====
-    // image/document/video are treated as main files
-    // audio only reaches here when it was NOT meant as an instruction
+    // FILE RECEIVED
     if (["image", "document", "video", "audio"].includes(type)) {
       let mediaId = null;
 
@@ -571,12 +788,7 @@ We will review the details and reply here on WhatsApp with the cost or next step
         session.stage = "awaiting_instructions";
         await sendMessage(
           from,
-          `✅ Your image file has been received.
-
-Now send your instructions.
-You can type the instruction or send a voice note.
-
-After review, our agent will reply here on WhatsApp with the cost or next step.`
+          `✅ Your image file has been received.\n\nNow send your instructions.\nYou can type the instruction or send a voice note.\n\nAfter review, our agent will reply here on WhatsApp with the cost or next step.`
         );
         return res.sendStatus(200);
       }
@@ -585,12 +797,7 @@ After review, our agent will reply here on WhatsApp with the cost or next step.`
         session.stage = "awaiting_instructions";
         await sendMessage(
           from,
-          `✅ Your video file has been received.
-
-Now send your instructions.
-You can type the instruction or send a voice note.
-
-After review, our agent will reply here on WhatsApp with the cost or next step.`
+          `✅ Your video file has been received.\n\nNow send your instructions.\nYou can type the instruction or send a voice note.\n\nAfter review, our agent will reply here on WhatsApp with the cost or next step.`
         );
         return res.sendStatus(200);
       }
@@ -599,51 +806,33 @@ After review, our agent will reply here on WhatsApp with the cost or next step.`
         session.stage = "awaiting_instructions";
         await sendMessage(
           from,
-          `✅ Your photo has been received.
-
-Now send your instructions.
-Example: Passport size, white background, 4 copies.
-
-You can type the instruction or send a voice note.
-
-After review, our agent will reply here on WhatsApp with the cost or next step.`
+          `✅ Your photo has been received.\n\nNow send your instructions.\nYou can type the instruction or send a voice note.\n\nAfter review, our agent will reply here on WhatsApp with the cost or next step.`
         );
         return res.sendStatus(200);
       }
 
       if (session.stage === "awaiting_file_for_print" && session.selectedService === "PRINT") {
-        createJob(from, session, {});
+        createJob(from, session, {
+          service: "PRINT",
+          printer_id: DEFAULT_PRINTER_ID
+        });
         session.stage = "print_selected";
         await sendMessage(
           from,
-          `🖨 Printing selected.
-
-Your file has been received.
-
-Reply with:
-1 - Pay on Shopify now
-2 - Chat here on WhatsApp for assistance, pricing, or special instructions`
+          `🖨 Printing selected.\n\nYour file has been received.\n\nReply with:\n1 - Pay on Shopify now\n2 - Chat here on WhatsApp for assistance, pricing, or special instructions`
         );
         return res.sendStatus(200);
       }
 
       if (session.stage === "awaiting_file_for_laminate" && session.selectedService === "LAMINATE") {
-        createJob(from, session, {});
+        createJob(from, session, {
+          service: "LAMINATE",
+          printer_id: DISPATCH_QUEUE_ID
+        });
         session.stage = "laminate_selected";
         await sendMessage(
           from,
-          `📄 Laminating selected.
-
-Your file has been received.
-
-Prices:
-Letter $1.50
-Legal $2.00
-Tabloid $3.00
-
-Reply with:
-1 - Pay on Shopify now
-2 - Chat here on WhatsApp for assistance or special instructions`
+          `📄 Laminating selected.\n\nYour file has been received.\n\nPrices:\nLetter $1.50\nLegal $2.00\nTabloid $3.00\n\nReply with:\n1 - Pay on Shopify now\n2 - Chat here on WhatsApp for assistance or special instructions`
         );
         return res.sendStatus(200);
       }
@@ -655,15 +844,12 @@ Reply with:
       return res.sendStatus(200);
     }
 
-    // ===== YES CHECKOUT =====
+    // YES CHECKOUT
     if (type === "text" && lower === "yes") {
       if (session.selectedService === "PRINT") {
         await sendMessage(
           from,
-          `🛒 Printing payment:
-${LINKS.PRINT_CHECKOUT}
-
-After payment, reply here on WhatsApp if you want us to continue with your order.`
+          `🛒 Printing payment:\n${LINKS.PRINT_CHECKOUT}\n\nAfter payment, reply here on WhatsApp if you want us to continue with your order.`
         );
         session.stage = "checkout_shared";
         return res.sendStatus(200);
@@ -672,23 +858,17 @@ After payment, reply here on WhatsApp if you want us to continue with your order
       if (session.selectedService === "LAMINATE") {
         await sendMessage(
           from,
-          `🛒 Laminating payment:
-${LINKS.LAMINATE_CHECKOUT}
-
-After payment, reply here on WhatsApp if you want us to continue with your order.`
+          `🛒 Laminating payment:\n${LINKS.LAMINATE_CHECKOUT}\n\nAfter payment, reply here on WhatsApp if you want us to continue with your order.`
         );
         session.stage = "checkout_shared";
         return res.sendStatus(200);
       }
 
-      await sendMessage(
-        from,
-        "✅ Okay. Send your file or details here and I will continue."
-      );
+      await sendMessage(from, "✅ Okay. Send your file or details here and I will continue.");
       return res.sendStatus(200);
     }
 
-    // ===== HANDLE MENU SELECTION =====
+    // MENU SELECTION
     if (type === "text") {
       const service = mapSelectionToService(lower);
 
@@ -700,29 +880,17 @@ After payment, reply here on WhatsApp if you want us to continue with your order
             session.stage = "awaiting_file_for_print";
             await sendMessage(
               from,
-              `🖨 Printing selected.
-
-Please upload your file first.
-
-After upload, you can:
-1 - Pay on Shopify now
-2 - Chat here on WhatsApp for assistance, pricing, or special instructions`
+              `🖨 Printing selected.\n\nPlease upload your file first.\n\nAfter upload, you can:\n1 - Pay on Shopify now\n2 - Chat here on WhatsApp for assistance, pricing, or special instructions`
             );
             return res.sendStatus(200);
           }
 
-          createJob(from, session, {});
+          createJob(from, session, { service: "PRINT", printer_id: DEFAULT_PRINTER_ID });
           session.stage = "print_selected";
 
           await sendMessage(
             from,
-            `🖨 Printing selected.
-
-Your file/details have been received.
-
-Reply with:
-1 - Pay on Shopify now
-2 - Chat here on WhatsApp for assistance, pricing, or special instructions`
+            `🖨 Printing selected.\n\nYour file/details have been received.\n\nReply with:\n1 - Pay on Shopify now\n2 - Chat here on WhatsApp for assistance, pricing, or special instructions`
           );
           return res.sendStatus(200);
         }
@@ -732,34 +900,17 @@ Reply with:
             session.stage = "awaiting_file_for_laminate";
             await sendMessage(
               from,
-              `📄 Laminating selected.
-
-Please upload your file first.
-
-After upload, you can:
-1 - Pay on Shopify now
-2 - Chat here on WhatsApp for assistance or special instructions`
+              `📄 Laminating selected.\n\nPlease upload your file first.\n\nAfter upload, you can:\n1 - Pay on Shopify now\n2 - Chat here on WhatsApp for assistance or special instructions`
             );
             return res.sendStatus(200);
           }
 
-          createJob(from, session, {});
+          createJob(from, session, { service: "LAMINATE", printer_id: DISPATCH_QUEUE_ID });
           session.stage = "laminate_selected";
 
           await sendMessage(
             from,
-            `📄 Laminating selected.
-
-Prices:
-Letter $1.50
-Legal $2.00
-Tabloid $3.00
-
-Reply with:
-1 - Pay on Shopify now
-2 - Chat here on WhatsApp for assistance or special instructions
-
-You can also send your size and quantity by text or voice note.`
+            `📄 Laminating selected.\n\nPrices:\nLetter $1.50\nLegal $2.00\nTabloid $3.00\n\nReply with:\n1 - Pay on Shopify now\n2 - Chat here on WhatsApp for assistance or special instructions\n\nYou can also send your size and quantity by text or voice note.`
           );
           return res.sendStatus(200);
         }
@@ -769,10 +920,7 @@ You can also send your size and quantity by text or voice note.`
             session.stage = "awaiting_file_for_image";
             await sendMessage(
               from,
-              `🎨 Image Editing selected.
-
-Please upload your image file first, then send your instructions.
-You can type the instruction or send a voice note.`
+              `🎨 Image Editing selected.\n\nPlease upload your image file first, then send your instructions.\nYou can type the instruction or send a voice note.`
             );
             return res.sendStatus(200);
           }
@@ -780,14 +928,7 @@ You can type the instruction or send a voice note.`
           session.stage = "awaiting_instructions";
           await sendMessage(
             from,
-            `🎨 Image Editing selected.
-
-Your image file has been received.
-Now send your instructions.
-
-You can type the instruction or send a voice note.
-
-After review, our agent will reply here on WhatsApp with the cost or next step.`
+            `🎨 Image Editing selected.\n\nYour image file has been received.\nNow send your instructions.\n\nYou can type the instruction or send a voice note.\n\nAfter review, our agent will reply here on WhatsApp with the cost or next step.`
           );
           return res.sendStatus(200);
         }
@@ -797,10 +938,7 @@ After review, our agent will reply here on WhatsApp with the cost or next step.`
             session.stage = "awaiting_file_for_video";
             await sendMessage(
               from,
-              `🎥 Video Editing selected.
-
-Please upload your video file first, then send your instructions.
-You can type the instruction or send a voice note.`
+              `🎥 Video Editing selected.\n\nPlease upload your video file first, then send your instructions.\nYou can type the instruction or send a voice note.`
             );
             return res.sendStatus(200);
           }
@@ -808,14 +946,7 @@ You can type the instruction or send a voice note.`
           session.stage = "awaiting_instructions";
           await sendMessage(
             from,
-            `🎥 Video Editing selected.
-
-Your video file has been received.
-Now send your instructions.
-
-You can type the instruction or send a voice note.
-
-After review, our agent will reply here on WhatsApp with the cost or next step.`
+            `🎥 Video Editing selected.\n\nYour video file has been received.\nNow send your instructions.\n\nYou can type the instruction or send a voice note.\n\nAfter review, our agent will reply here on WhatsApp with the cost or next step.`
           );
           return res.sendStatus(200);
         }
@@ -825,11 +956,7 @@ After review, our agent will reply here on WhatsApp with the cost or next step.`
             session.stage = "awaiting_file_for_id";
             await sendMessage(
               from,
-              `🪪 ID Photo selected.
-
-Please upload your photo first, then send your instructions.
-
-You can type the instruction or send a voice note.`
+              `🪪 ID Photo selected.\n\nPlease upload your photo first, then send your instructions.\n\nYou can type the instruction or send a voice note.`
             );
             return res.sendStatus(200);
           }
@@ -837,14 +964,7 @@ You can type the instruction or send a voice note.`
           session.stage = "awaiting_instructions";
           await sendMessage(
             from,
-            `🪪 ID Photo selected.
-
-Your photo has been received.
-Now send your instructions.
-
-You can type the instruction or send a voice note.
-
-After review, our agent will reply here on WhatsApp with the cost or next step.`
+            `🪪 ID Photo selected.\n\nYour photo has been received.\nNow send your instructions.\n\nYou can type the instruction or send a voice note.\n\nAfter review, our agent will reply here on WhatsApp with the cost or next step.`
           );
           return res.sendStatus(200);
         }
@@ -853,26 +973,16 @@ After review, our agent will reply here on WhatsApp with the cost or next step.`
           session.stage = "awaiting_shipping_details";
           await sendMessage(
             from,
-            `📦 Need Shipping selected.
-
-Please send your shipping details:
-- pickup or delivery
-- item type
-- destination city/state
-- quantity/weight if known
-
-You can type the details or send a voice note.`
+            `📦 Need Shipping selected.\n\nPlease send your shipping details:\n- pickup or delivery\n- item type\n- destination city/state\n- quantity/weight if known\n\nYou can type the details or send a voice note.`
           );
           return res.sendStatus(200);
         }
       }
     }
 
-    // ===== TEXT INSTRUCTIONS AFTER IMAGE / VIDEO / ID =====
+    // TEXT INSTRUCTIONS
     if (type === "text" && session.stage === "awaiting_instructions") {
-      const instructions = text.trim();
-
-      const job = createJob(from, session, { instructions });
+      const job = createJob(from, session, { instructions: text.trim() });
       session.stage = "instruction_received";
 
       let label = "service";
@@ -882,237 +992,419 @@ You can type the details or send a voice note.`
 
       await sendMessage(
         from,
-        `✅ Your ${label} file and instructions have been received successfully.
-
-Job ID: ${job.id}
-
-Our agent will review it and reply here on WhatsApp with the cost or next step.`
+        `✅ Your ${label} file and instructions have been received successfully.\n\nJob ID: ${job.id}\n\nOur agent will review it and reply here on WhatsApp with the cost or next step.`
       );
       return res.sendStatus(200);
     }
 
-    // ===== TEXT SHIPPING DETAILS =====
+    // TEXT SHIPPING DETAILS
     if (type === "text" && session.stage === "awaiting_shipping_details") {
-      const shippingDetails = text.trim();
-      const job = createJob(from, session, { shippingDetails });
+      const job = createJob(from, session, {
+        service: "SHIPPING",
+        shippingDetails: text.trim(),
+        printer_id: DISPATCH_QUEUE_ID
+      });
       session.stage = "shipping_received";
 
       await sendMessage(
         from,
-        `✅ Your shipping request has been received successfully.
-
-Job ID: ${job.id}
-
-We will review the details and reply here on WhatsApp with the cost or next step.
-
-You can also call ${CONTACTS.SHIPPING} if urgent.`
+        `✅ Your shipping request has been received successfully.\n\nJob ID: ${job.id}\n\nWe will review the details and reply here on WhatsApp with the cost or next step.`
       );
       return res.sendStatus(200);
     }
 
-    // ===== TEXT FOLLOW-UP DETAILS =====
+    // TEXT FOLLOWUP
     if (type === "text" && session.stage === "referral_shared") {
       await sendMessage(
         from,
-        `✅ Message received.
-
-Please send the details discussed on the call.
-
-You can type the details or send a voice note, and we will continue with the pricing or next step here on WhatsApp.`
+        `✅ Message received.\n\nPlease send the details discussed on the call.\n\nYou can type the details or send a voice note, and we will continue with the pricing or next step here on WhatsApp.`
       );
       session.stage = "awaiting_followup_details";
       return res.sendStatus(200);
     }
 
     if (type === "text" && session.stage === "awaiting_followup_details") {
-      const job = createJob(from, session, { instructions: text.trim() });
+      const targetPrinter =
+        session.selectedService === "PRINT"
+          ? DEFAULT_PRINTER_ID
+          : session.selectedService === "LAMINATE"
+          ? DISPATCH_QUEUE_ID
+          : DISPATCH_QUEUE_ID;
+
+      const job = createJob(from, session, {
+        instructions: text.trim(),
+        printer_id: targetPrinter
+      });
+
       session.stage = "followup_received";
 
       await sendMessage(
         from,
-        `✅ Your details have been received.
-
-Job ID: ${job.id}
-
-We will reply here on WhatsApp with the cost or next step.`
+        `✅ Your details have been received.\n\nJob ID: ${job.id}\n\nWe will reply here on WhatsApp with the cost or next step.`
       );
       return res.sendStatus(200);
     }
 
-    // ===== DEFAULT RESPONSE =====
-    await sendMessage(
-      from,
-      "Hello 👋 Send hello to start, or upload your file."
-    );
+    // DEFAULT
+    await sendMessage(from, "Hello 👋 Send hello to start, or upload your file.");
     return res.sendStatus(200);
   } catch (err) {
     console.error("Webhook error:", err.response?.data || err.message);
     return res.sendStatus(500);
   }
 });
-app.get("/dashboard", (req, res) => {
-  res.send(`
-    <html>
-    <head>
-      <title>MSTAF Dashboard</title>
-      <style>
-        body {
-          font-family: Arial, sans-serif;
-          background: #f4f6f9;
-          padding: 20px;
+
+// =========================
+// DASHBOARD HTML
+// =========================
+function renderDashboardPage(title, initialFilterPrinterId = "") {
+  const key = dashboardKeySuffix();
+
+  return `
+  <html>
+  <head>
+    <title>${title}</title>
+    <style>
+      body {
+        margin: 0;
+        font-family: Arial, sans-serif;
+        background: #f3f4f6;
+        color: #111827;
+      }
+      .topbar {
+        background: #111827;
+        color: white;
+        padding: 16px 22px;
+        font-size: 28px;
+        font-weight: 700;
+      }
+      .subbar {
+        display: flex;
+        gap: 10px;
+        flex-wrap: wrap;
+        align-items: center;
+        background: white;
+        padding: 14px 22px;
+        border-bottom: 1px solid #e5e7eb;
+      }
+      .subbar a {
+        text-decoration: none;
+        color: #111827;
+        padding: 10px 12px;
+        border-radius: 8px;
+        background: #f3f4f6;
+        font-weight: 600;
+      }
+      .subbar input, .subbar select {
+        padding: 10px 12px;
+        border-radius: 8px;
+        border: 1px solid #d1d5db;
+      }
+      .container {
+        padding: 22px;
+      }
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(360px, 1fr));
+        gap: 18px;
+      }
+      .card {
+        background: white;
+        border-radius: 14px;
+        box-shadow: 0 2px 10px rgba(0,0,0,0.06);
+        padding: 18px;
+      }
+      .muted {
+        color: #6b7280;
+      }
+      .badge {
+        display: inline-block;
+        padding: 6px 10px;
+        border-radius: 999px;
+        background: #e5e7eb;
+        font-size: 12px;
+        font-weight: 700;
+      }
+      .badge.done { background: #dcfce7; color: #166534; }
+      .badge.error { background: #fee2e2; color: #991b1b; }
+      .badge.live { background: #dbeafe; color: #1d4ed8; }
+      .row {
+        margin-bottom: 8px;
+        word-break: break-word;
+      }
+      .actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin-top: 14px;
+      }
+      button, .btnlink {
+        padding: 9px 12px;
+        border-radius: 8px;
+        border: none;
+        cursor: pointer;
+        font-weight: 700;
+      }
+      .btn-done { background: #16a34a; color: white; }
+      .btn-error { background: #dc2626; color: white; }
+      .btn-route { background: #2563eb; color: white; }
+      .btn-open {
+        background: #111827;
+        color: white;
+        text-decoration: none;
+        display: inline-block;
+      }
+      .route-row {
+        display: flex;
+        gap: 8px;
+        margin-top: 10px;
+        flex-wrap: wrap;
+      }
+      select.route-select {
+        min-width: 180px;
+      }
+      img.preview {
+        max-width: 220px;
+        max-height: 220px;
+        border-radius: 10px;
+        display: block;
+        object-fit: cover;
+        border: 1px solid #e5e7eb;
+      }
+      video.preview {
+        width: 100%;
+        max-width: 320px;
+        border-radius: 10px;
+        display: block;
+        background: #000;
+      }
+      audio {
+        width: 100%;
+        max-width: 320px;
+      }
+      .empty {
+        background: white;
+        padding: 24px;
+        border-radius: 14px;
+      }
+      .section-title {
+        font-size: 14px;
+        font-weight: 700;
+        margin: 12px 0 6px;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="topbar">🖨 MSTAF Worker / Agent Dashboard</div>
+
+    <div class="subbar">
+      <a href="/dashboard${key}">Main</a>
+      <a href="/dispatch${key}">Dispatch</a>
+      <a href="/agent${key}">Agent</a>
+      <a href="/printer${key}">Printer</a>
+
+      <input id="q" placeholder="Search jobs">
+      <select id="status">
+        <option value="">All status</option>
+        <option value="pending">pending</option>
+        <option value="printing">printing</option>
+        <option value="completed">completed</option>
+        <option value="error">error</option>
+      </select>
+
+      <select id="printerFilter">
+        <option value="">All routes</option>
+        <option value="${DEFAULT_PRINTER_ID}">${DEFAULT_PRINTER_ID}</option>
+        <option value="${A3_PRINTER_ID}">${A3_PRINTER_ID}</option>
+        <option value="${CARD_PRINTER_ID}">${CARD_PRINTER_ID}</option>
+        <option value="${DISPATCH_QUEUE_ID}">${DISPATCH_QUEUE_ID}</option>
+        <option value="${AGENT_QUEUE_ID}">${AGENT_QUEUE_ID}</option>
+      </select>
+
+      <button onclick="loadJobs()">Refresh</button>
+    </div>
+
+    <div class="container">
+      <div id="meta" class="muted" style="margin-bottom:12px;"></div>
+      <div id="jobsWrap"><div class="empty">Loading jobs...</div></div>
+    </div>
+
+    <script>
+      const DASH_KEY = ${JSON.stringify(DASHBOARD_KEY)};
+      const INITIAL_PRINTER_ID = ${JSON.stringify(initialFilterPrinterId)};
+
+      function headers() {
+        return DASH_KEY ? { "x-dashboard-key": DASH_KEY, "Content-Type": "application/json" } : { "Content-Type": "application/json" };
+      }
+
+      function esc(v) {
+        return String(v == null ? "" : v)
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;");
+      }
+
+      function mediaHTML(job) {
+        if (!job.file || !job.file.url) return "";
+        const mime = String(job.file.mime_type || "");
+        const url = job.file.url;
+
+        if (mime.startsWith("image")) {
+          return '<div class="section-title">File Preview</div><img class="preview" src="' + url + '">';
         }
-
-        h1 {
-          margin-bottom: 20px;
+        if (mime.startsWith("video")) {
+          return '<div class="section-title">Video Preview</div><video class="preview" controls preload="metadata" src="' + url + '"></video><div style="margin-top:8px;"><a class="btnlink btn-open" target="_blank" href="' + url + '">Open Video</a></div>';
         }
+        return '<div class="section-title">File</div><a class="btnlink btn-open" target="_blank" href="' + url + '">📎 Open File</a>';
+      }
 
-        .job {
-          background: #fff;
-          border-radius: 12px;
-          padding: 20px;
-          margin-bottom: 20px;
-          box-shadow: 0 2px 10px rgba(0,0,0,0.08);
-        }
+      function audioHTML(job) {
+        if (!job.instruction_audio_url) return "";
+        const url = job.instruction_audio_url;
+        return '<div class="section-title">Audio Instruction</div><audio controls preload="metadata" src="' + url + '"></audio><div style="margin-top:8px;"><a class="btnlink btn-open" target="_blank" href="' + url + '">Open Audio</a></div>';
+      }
 
-        .row {
-          margin-bottom: 6px;
-        }
+      async function routeJob(id) {
+        const select = document.getElementById("route_" + id);
+        const printer_id = select.value;
+        if (!printer_id) return;
 
-        .label {
-          font-weight: bold;
-        }
-
-        .preview {
-          margin-top: 10px;
-        }
-
-        img {
-          max-width: 300px;
-          border-radius: 8px;
-          display: block;
-        }
-
-        video {
-          max-width: 400px;
-          border-radius: 8px;
-          display: block;
-        }
-
-        audio {
-          width: 300px;
-          margin-top: 8px;
-        }
-
-        .btn {
-          margin-top: 12px;
-          padding: 8px 12px;
-          border: none;
-          border-radius: 6px;
-          cursor: pointer;
-        }
-
-        .done {
-          background: #16a34a;
-          color: white;
-        }
-
-        .error {
-          background: #dc2626;
-          color: white;
-          margin-left: 8px;
-        }
-
-        .empty {
-          background: white;
-          padding: 20px;
-          border-radius: 10px;
-        }
-      </style>
-    </head>
-
-    <body>
-      <h1>🖨 MSTAF Worker / Agent Dashboard</h1>
-      <div id="jobs">Loading jobs...</div>
-
-      <script>
-        async function loadJobs() {
-          const container = document.getElementById('jobs');
-
-          try {
-            const res = await fetch('/jobs');
-            const data = await res.json();
-
-            container.innerHTML = '';
-
-            if (!data.jobs || data.jobs.length === 0) {
-              container.innerHTML = '<div class="empty">No jobs available</div>';
-              return;
-            }
-
-            data.jobs.forEach(job => {
-              const div = document.createElement('div');
-              div.className = 'job';
-
-              let preview = '';
-
-              if (job.file && job.file.url) {
-                if (job.file.mime_type && job.file.mime_type.startsWith('image')) {
-                  preview = '<img src="' + job.file.url + '">';
-                } else if (job.file.mime_type && job.file.mime_type.startsWith('video')) {
-                  preview = '<video controls src="' + job.file.url + '"></video>';
-                } else {
-                  preview = '<a href="' + job.file.url + '" target="_blank">📎 View File</a>';
-                }
-              }
-
-              let audio = '';
-              if (job.instruction_audio_url) {
-                audio = '<audio controls src="' + job.instruction_audio_url + '"></audio>';
-              }
-
-              div.innerHTML =
-                '<div class="row"><span class="label">Job ID:</span> ' + job.id + '</div>' +
-                '<div class="row"><span class="label">Service:</span> ' + job.service + '</div>' +
-                '<div class="row"><span class="label">Status:</span> ' + job.status + '</div>' +
-                '<div class="row"><span class="label">Instructions:</span> ' + (job.instructions || 'None') + '</div>' +
-                '<div class="preview">' + preview + '</div>' +
-                '<div>' + audio + '</div>' +
-                '<button class="btn done" onclick="markDone(' + job.id + ')">✅ Done</button>' +
-                '<button class="btn error" onclick="markError(' + job.id + ')">❌ Error</button>';
-
-              container.appendChild(div);
-            });
-
-          } catch (err) {
-            container.innerHTML = '<div class="empty">Failed to load jobs</div>';
-          }
-        }
-
-        async function markDone(id) {
-          await fetch('/api/worker/jobs/' + id + '/status', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ status: 'completed' })
-          });
-          loadJobs();
-        }
-
-        async function markError(id) {
-          await fetch('/api/worker/jobs/' + id + '/status', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ status: 'error' })
-          });
-          loadJobs();
-        }
+        await fetch("/api/dashboard/jobs/" + id + "/route", {
+          method: "POST",
+          headers: headers(),
+          body: JSON.stringify({ printer_id })
+        });
 
         loadJobs();
-        setInterval(loadJobs, 5000);
-      </script>
-    </body>
-    </html>
-  `);
+      }
+
+      async function markJob(id, status) {
+        const error_message = status === "error" ? "Manual error from dashboard" : "";
+        await fetch("/api/dashboard/jobs/" + id + "/mark", {
+          method: "POST",
+          headers: headers(),
+          body: JSON.stringify({ status, error_message })
+        });
+
+        loadJobs();
+      }
+
+      async function loadJobs() {
+        const q = document.getElementById("q").value || "";
+        const status = document.getElementById("status").value || "";
+        let printer_id = document.getElementById("printerFilter").value || "";
+
+        if (INITIAL_PRINTER_ID && !printer_id) {
+          printer_id = INITIAL_PRINTER_ID;
+          document.getElementById("printerFilter").value = INITIAL_PRINTER_ID;
+        }
+
+        const params = new URLSearchParams();
+        if (q) params.set("q", q);
+        if (status) params.set("status", status);
+        if (printer_id) params.set("printer_id", printer_id);
+
+        const res = await fetch("/api/dashboard/jobs?" + params.toString(), {
+          headers: DASH_KEY ? { "x-dashboard-key": DASH_KEY } : {}
+        });
+        const data = await res.json();
+
+        const meta = document.getElementById("meta");
+        const wrap = document.getElementById("jobsWrap");
+
+        meta.innerHTML = "Showing " + (data.count || 0) + " job(s)";
+
+        if (!data.jobs || !data.jobs.length) {
+          wrap.innerHTML = '<div class="empty">No jobs found.</div>';
+          return;
+        }
+
+        wrap.innerHTML = '<div class="grid">' + data.jobs.map(job => {
+          const statusClass =
+            job.status === "completed" || job.status === "done" ? "badge done" :
+            job.status === "printing" ? "badge live" :
+            job.status === "error" ? "badge error" : "badge";
+
+          return \`
+            <div class="card">
+              <div class="row"><strong>Job ID:</strong> \${esc(job.id)} <span class="\${statusClass}">\${esc(job.status)}</span></div>
+              <div class="row"><strong>Public ID:</strong> \${esc(job.public_job_id || "")}</div>
+              <div class="row"><strong>Service:</strong> \${esc(job.service || "")}</div>
+              <div class="row"><strong>Route:</strong> \${esc(job.printer_id || "")}</div>
+              <div class="row"><strong>Customer:</strong> \${esc(job.customer_phone || "")}</div>
+              <div class="row"><strong>Instructions:</strong> \${esc(job.instructions || "None")}</div>
+              <div class="row"><strong>Shipping:</strong> \${esc(job.shipping_details || "None")}</div>
+              <div class="row"><strong>Error:</strong> \${esc(job.error_message || "None")}</div>
+              <div class="row muted"><strong>Created:</strong> \${esc(job.created_at || "")}</div>
+
+              \${mediaHTML(job)}
+              \${audioHTML(job)}
+
+              <div class="route-row">
+                <select id="route_\${job.id}" class="route-select">
+                  <option value="">Route job...</option>
+                  <option value="${DEFAULT_PRINTER_ID}">${DEFAULT_PRINTER_ID}</option>
+                  <option value="${A3_PRINTER_ID}">${A3_PRINTER_ID}</option>
+                  <option value="${CARD_PRINTER_ID}">${CARD_PRINTER_ID}</option>
+                  <option value="${DISPATCH_QUEUE_ID}">${DISPATCH_QUEUE_ID}</option>
+                  <option value="${AGENT_QUEUE_ID}">${AGENT_QUEUE_ID}</option>
+                </select>
+                <button class="btn-route" onclick="routeJob(\${job.id})">Route</button>
+              </div>
+
+              <div class="actions">
+                <button class="btn-done" onclick="markJob(\${job.id}, 'completed')">✅ Done</button>
+                <button class="btn-error" onclick="markJob(\${job.id}, 'error')">❌ Error</button>
+                <button onclick="markJob(\${job.id}, 'pending')">↩ Pending</button>
+                <button onclick="markJob(\${job.id}, 'printing')">🖨 Printing</button>
+              </div>
+            </div>
+          \`;
+        }).join("") + "</div>";
+      }
+
+      loadJobs();
+      setInterval(loadJobs, 5000);
+    </script>
+  </body>
+  </html>
+  `;
+}
+
+// =========================
+// DASHBOARD ROUTES
+// =========================
+app.get("/dashboard", (req, res) => {
+  if (!authDashboard(req)) {
+    return res.status(401).send("Unauthorized");
+  }
+  res.send(renderDashboardPage("MSTAF Dashboard", ""));
 });
+
+app.get("/dispatch", (req, res) => {
+  if (!authDashboard(req)) {
+    return res.status(401).send("Unauthorized");
+  }
+  res.send(renderDashboardPage("MSTAF Dispatch", DISPATCH_QUEUE_ID));
+});
+
+app.get("/agent", (req, res) => {
+  if (!authDashboard(req)) {
+    return res.status(401).send("Unauthorized");
+  }
+  res.send(renderDashboardPage("MSTAF Agent", AGENT_QUEUE_ID));
+});
+
+app.get("/printer", (req, res) => {
+  if (!authDashboard(req)) {
+    return res.status(401).send("Unauthorized");
+  }
+  res.send(renderDashboardPage("MSTAF Printer", DEFAULT_PRINTER_ID));
+});
+
+// =========================
+// START
+// =========================
 app.listen(PORT, () => {
   console.log(`Server running on ${PORT}`);
 });
