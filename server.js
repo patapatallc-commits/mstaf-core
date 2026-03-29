@@ -4,7 +4,7 @@ const fs = require("fs");
 const path = require("path");
 const axios = require("axios");
 require("dotenv").config();
-
+const VOICE_NOTE_HINT = "You can type or send a voice note, and we will continue from there.";
 const app = express();
 app.use(express.json({ limit: "20mb" }));
 app.use(express.urlencoded({ extended: true, limit: "20mb" }));
@@ -1155,7 +1155,7 @@ Our agent will review it and continue here on WhatsApp.`
         return res.sendStatus(200);
       }
 
-      await sendMessage(from, `✅ Voice note received.`);
+      
       return res.sendStatus(200);
     }
 
@@ -1409,8 +1409,11 @@ ${variantId ? `Checkout:\n${checkoutLink}\n\n` : ""}${extraLine}`
 
       if (lower === "2") {
         session.stage = "PRINT_WAITING_INSTRUCTIONS";
-        await sendMessage(from, `Send any special print instructions here.
-You can type or send a voice note.`);
+        await sendMessage(
+  from,
+  `Send any special print instructions here.
+${VOICE_NOTE_HINT}`
+);
         return res.sendStatus(200);
       }
     }
@@ -1519,8 +1522,11 @@ Please continue here on WhatsApp or contact support.`
 
       if (lower === "2") {
         session.stage = "LAMINATE_WAITING_CHAT";
-        await sendMessage(from, `Send your laminating instructions here.
-You can type or send a voice note.`);
+        await sendMessage(
+  from,
+  `Send your laminating instructions here.
+${VOICE_NOTE_HINT}`
+);
         return res.sendStatus(200);
       }
     }
@@ -1539,7 +1545,8 @@ You can type or send a voice note.`);
       await sendMessage(from, `✅ Image received for editing.
 Job ID: ${job.id}
 
-Send your instructions by text or voice note.`);
+${VOICE_NOTE_HINT}`
+);
       return res.sendStatus(200);
     }
 
@@ -1551,10 +1558,13 @@ Send your instructions by text or voice note.`);
         total_cost: 0
       });
 
-      await sendMessage(from, `✅ Video received for editing.
+      await sendMessage(
+  from,
+  `✅ Video received for editing.
 Job ID: ${job.id}
 
-Send your instructions by text or voice note.`);
+${VOICE_NOTE_HINT}`
+);
       return res.sendStatus(200);
     }
 
@@ -1566,10 +1576,13 @@ Send your instructions by text or voice note.`);
         total_cost: 0
       });
 
-      await sendMessage(from, `✅ Photo received for ID service.
+      await sendMessage(
+  from,
+  `✅ Photo received for ID service.
 Job ID: ${job.id}
 
-Send your instructions by text or voice note.`);
+${VOICE_NOTE_HINT}`
+);
       return res.sendStatus(200);
     }
 
