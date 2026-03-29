@@ -455,11 +455,15 @@ function getPrintVariantId({ paper_size = "", color_mode = "" }) {
 }
 
 function getLaminateVariantId(paper_size = "") {
-  const size = String(paper_size || "").toUpperCase();
-  if (size === "LETTER") return SHOPIFY_VARIANTS.LAMINATE_LETTER;
-  if (size === "LEGAL") return SHOPIFY_VARIANTS.LAMINATE_LEGAL;
-  if (size === "TABLOID") return SHOPIFY_VARIANTS.LAMINATE_TABLOID;
-  return "";
+  const size = normalizePaperSize(paper_size);
+
+  const map = {
+    LETTER: SHOPIFY_VARIANTS.LAMINATE_LETTER,
+    LEGAL: SHOPIFY_VARIANTS.LAMINATE_LEGAL,
+    TABLOID: SHOPIFY_VARIANTS.LAMINATE_TABLOID
+  };
+
+  return map[size] || "";
 }
 
 function createOrUpdateJob(from, session, patch = {}) {
@@ -1440,7 +1444,17 @@ You can type or send a voice note.`);
       const unitPrice = LAMINATE_PRICING[session.laminateSpec.paper_size] || 0;
       const total = estimateLaminateCost(session.laminateSpec);
       const variantId = getLaminateVariantId(session.laminateSpec.paper_size);
-      const checkoutLink = buildShopifyCartUrl(variantId, session.laminateSpec.copies);
+
+console.log("LAMINATE DEBUG:", {
+  paper_size: session.laminateSpec.paper_size,
+  variantId,
+  copies: session.laminateSpec.copies
+});
+
+const checkoutLink = buildShopifyCartUrl(
+  variantId,
+  session.laminateSpec.copies
+);
 
       const job = createOrUpdateJob(from, session, {
         service: "LAMINATE",
@@ -1476,11 +1490,32 @@ Reply:
 
     if (type === "text" && session.stage === "LAMINATE_CONFIRM") {
       if (lower === "1") {
-        const variantId = getLaminateVariantId(session.laminateSpec.paper_size);
-        const checkoutLink = buildShopifyCartUrl(variantId, session.laminateSpec.copies);
-        await sendMessage(from, `🛒 Laminate checkout:\n${checkoutLink}`);
-        return res.sendStatus(200);
-      }
+  const variantId = getLaminateVariantId(session.laminateSpec.paper_size);
+
+  console.log("LAMINATE CHECKOUT DEBUG:", {
+    paper_size: session.laminateSpec.paper_size,
+    variantId,
+    copies: session.laminateSpec.copies
+  });
+
+  if (!variantId) {
+    await sendMessage(
+      from,
+      `⚠️ Laminating checkout is not properly linked yet for ${session.laminateSpec.paper_size}.
+
+Please continue here on WhatsApp or contact support.`
+    );
+    return res.sendStatus(200);
+  }
+
+  const checkoutLink = buildShopifyCartUrl(
+    variantId,
+    session.laminateSpec.copies
+  );
+
+  await sendMessage(from, `🛒 Laminate checkout:\n${checkoutLink}`);
+  return res.sendStatus(200);
+}
 
       if (lower === "2") {
         session.stage = "LAMINATE_WAITING_CHAT";
