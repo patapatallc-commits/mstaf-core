@@ -819,7 +819,7 @@ app.post("/api/print-jobs", upload.single("file"), (req, res) => {
       printer_id: chooseRouteForJob({ service, paper_size }),
       file,
       status: "pending",
-       String(req.body.instructions || ""),
+       instructions: String(req.body.instructions || ""),
       instruction_audio_url: "",
       instruction_audio: null,
       shipping_details: "",
