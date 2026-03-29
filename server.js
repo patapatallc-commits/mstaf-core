@@ -652,7 +652,8 @@ function getPrinterOptionsHtml(selected = "") {
     const s = String(p.id) === String(selected) ? "selected" : "";
     return `<option value="${esc(p.id)}" ${s}>${esc(p.id)}</option>`;
   }).join("");
-  }
+}
+
 function renderFilePreview(job) {
   const url = job?.file?.url || job?.file_url || "";
   const mime = String(job?.file?.mime_type || job?.mime_type || "");
@@ -690,8 +691,8 @@ function renderFilePreview(job) {
   if (mime === "application/pdf") {
     return `
       <div class="media-box">
-        <div class="media-title">Document</div>
-        <iframe class="preview" src="${esc(url)}"></iframe>
+        <div class="media-title">File Preview</div>
+        <div class="media-text">Document attached and ready.</div>
         <a class="open-link" target="_blank" rel="noopener" href="${esc(url)}">Open File</a>
       </div>
     `;
@@ -706,24 +707,6 @@ function renderFilePreview(job) {
   `;
 }
 
-  if (mime.startsWith("video")) {
-    return `
-      <div class="media-box">
-        <div class="media-title">File Preview</div>
-        <video class="preview" controls preload="metadata" src="${esc(url)}"></video>
-        <a class="open-link" target="_blank" href="${esc(url)}">Open File</a>
-      </div>
-    `;
-  }
-
-  return `
-    <div class="media-box">
-      <div class="media-title">File Preview</div>
-      <div class="media-text">Document attached and ready.</div>
-      <a class="open-link" target="_blank" href="${esc(url)}">Open File</a>
-    </div>
-`;
-}
 function renderAudioPreview(job) {
   if (!job.instruction_audio_url) return "";
 
@@ -731,10 +714,11 @@ function renderAudioPreview(job) {
     <div class="media-box">
       <div class="media-title">Instruction Audio</div>
       <audio controls preload="metadata" src="${esc(job.instruction_audio_url)}"></audio>
-      <a class="open-link" target="_blank" href="${esc(job.instruction_audio_url)}">Open Audio</a>
+      <a class="open-link" target="_blank" rel="noopener" href="${esc(job.instruction_audio_url)}">Open Audio</a>
     </div>
   `;
 }
+
 
 // =========================
 // ROOT / HEALTH / DEBUG
