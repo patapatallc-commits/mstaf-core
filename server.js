@@ -1166,7 +1166,14 @@ Our agent will review it and continue here on WhatsApp.`
     // -------------------------
     // Main service selection
     // -------------------------
-    if (type === "text") {
+    if (
+  type === "text" &&
+  (
+    !session.stage ||
+    session.stage === "MENU" ||
+    isGreeting(text)
+  )
+) {
       const service = mapSelectionToService(text);
 
       if (service === "PRINT") {
