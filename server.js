@@ -340,13 +340,21 @@ function detectReferralIntent(text = "") {
 function mapSelectionToService(text = "") {
   const lower = normalizeText(text);
 
-  if (lower === "1" || lower === "print") return "PRINT";
-  if (lower === "2" || lower === "laminate") return "LAMINATE";
-  if (lower === "3" || lower.includes("image editing")) return "IMAGE_EDIT";
-  if (lower === "4" || lower.includes("video editing")) return "VIDEO_EDIT";
-  if (lower === "5" || lower.includes("id photo")) return "ID_PHOTO";
-  if (lower === "6" || lower.includes("lesson") || lower.includes("homework") || lower.includes("quiz") || lower.includes("transcript")) return "LEARNING";
-  if (lower === "7" || lower.includes("need shipping") || lower === "shipping") return "SHIPPING";
+  if (lower === "1") return "PRINT";
+  if (lower === "2") return "LAMINATE";
+  if (lower === "3") return "IMAGE_EDIT";
+  if (lower === "4") return "VIDEO_EDIT";
+  if (lower === "5") return "ID_PHOTO";
+  if (lower === "6") return "LEARNING";
+  if (lower === "7") return "SHIPPING";
+
+  if (lower === "print") return "PRINT";
+  if (lower === "laminate") return "LAMINATE";
+  if (lower === "image editing") return "IMAGE_EDIT";
+  if (lower === "video editing") return "VIDEO_EDIT";
+  if (lower === "id photo") return "ID_PHOTO";
+  if (lower === "learning") return "LEARNING";
+  if (lower === "shipping" || lower === "need shipping") return "SHIPPING";
 
   return null;
 }
