@@ -1609,7 +1609,7 @@ ${VOICE_NOTE_HINT}`
     // -------------------------
     // Generic service files
     // -------------------------
-    if (downloadedFile && session.selectedService === "IMAGE_EDIT") {
+    if (downloadedFile && type !== "audio" && session.selectedService === "IMAGE_EDIT") {
       const job = createOrUpdateJob(from, session, {
         service: "IMAGE_EDIT",
         file: session.pendingFile,
@@ -1624,7 +1624,7 @@ ${VOICE_NOTE_HINT}`
 return res.sendStatus(200);
     }
 
-    if (downloadedFile && session.selectedService === "VIDEO_EDIT") {
+    if (downloadedFile && type !== "audio" && session.selectedService === "VIDEO_EDIT") {
       const job = createOrUpdateJob(from, session, {
         service: "VIDEO_EDIT",
         file: session.pendingFile,
