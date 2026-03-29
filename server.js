@@ -652,6 +652,7 @@ function getPrinterOptionsHtml(selected = "") {
     const s = String(p.id) === String(selected) ? "selected" : "";
     return `<option value="${esc(p.id)}" ${s}>${esc(p.id)}</option>`;
   }).join("");
+  }
 function renderFilePreview(job) {
   const url = job?.file?.url || job?.file_url || "";
   const mime = String(job?.file?.mime_type || job?.mime_type || "");
