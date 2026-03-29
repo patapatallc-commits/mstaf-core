@@ -1438,7 +1438,8 @@ console.log("PRINT DEBUG:", {
           service: "PRINT",
           paper_size: session.printSpec.paper_size
         }),
-        instructions: "",
+        }),
+     instructions: "",
 
        
   file_url: session.pendingFile?.type !== "audio" ? (session.pendingFile?.url || "") : "",
