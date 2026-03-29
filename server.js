@@ -652,8 +652,12 @@ function getPrinterOptionsHtml(selected = "") {
     const s = String(p.id) === String(selected) ? "selected" : "";
     return `<option value="${esc(p.id)}" ${s}>${esc(p.id)}</option>`;
   }).join("");
-}function renderFilePreview(job) {
-  if (!job.file || !job.file.url) {
+function renderFilePreview(job) {
+  const url = job?.file?.url || job?.file_url || "";
+  const mime = String(job?.file?.mime_type || job?.mime_type || "");
+  const name = job?.file?.filename || job?.original_name || "file";
+
+  if (!url) {
     return `
       <div class="media-box">
         <div class="media-title">File</div>
@@ -662,18 +666,44 @@ function getPrinterOptionsHtml(selected = "") {
     `;
   }
 
-  const mime = String(job.file.mime_type || "");
-  const url = job.file.url;
-
-  if (mime.startsWith("image")) {
+  if (mime.startsWith("image/")) {
     return `
       <div class="media-box">
         <div class="media-title">File Preview</div>
-        <img class="preview" src="${esc(url)}" alt="preview" />
-        <a class="open-link" target="_blank" href="${esc(url)}">Open File</a>
+        <img class="preview" src="${esc(url)}" alt="${esc(name)}" />
+        <a class="open-link" target="_blank" rel="noopener" href="${esc(url)}">Open File</a>
       </div>
     `;
   }
+
+  if (mime.startsWith("video/")) {
+    return `
+      <div class="media-box">
+        <div class="media-title">Video Preview</div>
+        <video class="preview" controls src="${esc(url)}"></video>
+        <a class="open-link" target="_blank" rel="noopener" href="${esc(url)}">Open File</a>
+      </div>
+    `;
+  }
+
+  if (mime === "application/pdf") {
+    return `
+      <div class="media-box">
+        <div class="media-title">Document</div>
+        <iframe class="preview" src="${esc(url)}"></iframe>
+        <a class="open-link" target="_blank" rel="noopener" href="${esc(url)}">Open File</a>
+      </div>
+    `;
+  }
+
+  return `
+    <div class="media-box">
+      <div class="media-title">File</div>
+      <div class="media-text">${esc(name)}</div>
+      <a class="open-link" target="_blank" rel="noopener" href="${esc(url)}">Open File</a>
+    </div>
+  `;
+}
 
   if (mime.startsWith("video")) {
     return `
@@ -1409,7 +1439,13 @@ console.log("PRINT DEBUG:", {
           paper_size: session.printSpec.paper_size
         }),
         instructions: ""
-      });
+       // 🔥 ADD THIS BLOCK
+  file_url: session.pendingFile?.type !== "audio" ? (session.pendingFile?.url || "") : "",
+  mime_type: session.pendingFile?.type !== "audio" ? (session.pendingFile?.mime_type || "") : "",
+  original_name: session.pendingFile?.type !== "audio" ? (session.pendingFile?.filename || "") : "",
+  instruction_audio_url: session.pendingFile?.type === "audio" ? (session.pendingFile?.url || "") : "",
+  instruction_audio: session.pendingFile?.type === "audio" ? session.pendingFile : null
+});
 
       session.stage = "PRINT_CONFIRM";
 
