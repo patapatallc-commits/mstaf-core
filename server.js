@@ -1438,8 +1438,9 @@ console.log("PRINT DEBUG:", {
           service: "PRINT",
           paper_size: session.printSpec.paper_size
         }),
-        instructions: ""
-       // 🔥 ADD THIS BLOCK
+        instructions: "",
+
+       
   file_url: session.pendingFile?.type !== "audio" ? (session.pendingFile?.url || "") : "",
   mime_type: session.pendingFile?.type !== "audio" ? (session.pendingFile?.mime_type || "") : "",
   original_name: session.pendingFile?.type !== "audio" ? (session.pendingFile?.filename || "") : "",
