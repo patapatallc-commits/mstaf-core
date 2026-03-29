@@ -1147,11 +1147,45 @@ Our agent will review it and continue here on WhatsApp.`
         return res.sendStatus(200);
       }
 
-      if (session.stage === "PRINT_WAITING_INSTRUCTIONS" || session.stage === "LAMINATE_WAITING_CHAT") {
-        await sendMessage(
-          from,
-          `✅ Audio instruction received and attached to Job #${job.id}.`
-        );
+      if (session.stage === "PRINT_WAITING_INSTRUCTIONS") {
+  await sendMessage(
+    from,
+    `✅ Print audio instruction received and attached to Job #${job.id}.`
+  );
+  return res.sendStatus(200);
+}
+
+if (session.stage === "LAMINATE_WAITING_CHAT") {
+  await sendMessage(
+    from,
+    `✅ Laminating audio instruction received and attached to Job #${job.id}.`
+  );
+  return res.sendStatus(200);
+}
+
+if (session.stage === "IMAGE_EDIT_WAITING_FILE") {
+  await sendMessage(
+    from,
+    `✅ Image editing audio instruction received and attached to Job #${job.id}.`
+  );
+  return res.sendStatus(200);
+}
+
+if (session.stage === "VIDEO_EDIT_WAITING_FILE") {
+  await sendMessage(
+    from,
+    `✅ Video editing audio instruction received and attached to Job #${job.id}.`
+  );
+  return res.sendStatus(200);
+}
+
+if (session.stage === "ID_PHOTO_WAITING_FILE") {
+  await sendMessage(
+    from,
+    `✅ ID photo audio instruction received and attached to Job #${job.id}.`
+  );
+  return res.sendStatus(200);
+}
         return res.sendStatus(200);
       }
 
