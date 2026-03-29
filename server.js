@@ -1186,12 +1186,12 @@ Our agent will review it and continue here on WhatsApp.`
   }
 
   if (session.stage === "IMAGE_EDIT_WAITING_FILE") {
-    await sendMessage(
-      from,
-      `✅ Image editing audio instruction received and attached to Job #${job.id}.`
-    );
-    return res.sendStatus(200);
-  }
+  await sendMessage(
+    from,
+    `Image editing instruction received and attached to Job #${job.id}.\n\nOur team will now review your image and instructions.\n\nPricing will be shared shortly.`
+  );
+  return res.sendStatus(200);
+}
       if (session.stage === "VIDEO_EDIT_WAITING_FILE") {
   const job = createOrUpdateJob(from, session, {
     service: "VIDEO_EDIT",
@@ -1203,7 +1203,7 @@ Our agent will review it and continue here on WhatsApp.`
 
   await sendMessage(
     from,
-    `Video received and attached to Job #${job.id}.\n\nOur editing team is now reviewing your video and instructions.\n\nYou will receive a pricing update shortly.`
+   `Video received and attached to Job #${job.id}.\n\nPlease type your instructions or send a voice note, and we will continue from there.`
   );
   return res.sendStatus(200);
 }
@@ -1257,10 +1257,11 @@ Our team will review it and get back to you shortly.`
       if (service === "IMAGE_EDIT") {
         session.selectedService = "IMAGE_EDIT";
         session.stage = "IMAGE_EDIT_WAITING_FILE";
-        await sendMessage(from, `🎨 Image Editing selected.
+        await sendMessage(from, `🖼️ Image Editing selected.
 
-Upload image and send your instructions.
-You can also send a voice note.`);
+Please upload your image and tell us what you would like us to do.
+
+You can type instructions or send a voice note.`);
         return res.sendStatus(200);
       }
 
@@ -1701,7 +1702,7 @@ We will continue here on WhatsApp.`);
       });
 
       await sendMessage(from, `✅ Instruction saved to Job #${job.id}.`);
-      return res.sendStatus(200);
+    return res.sendStatus(200);
     }
 
     if (
@@ -1714,8 +1715,16 @@ We will continue here on WhatsApp.`);
         printer_id: AGENT_QUEUE_ID
       });
 
-      await sendMessage(from, `✅ Instruction saved to Job #${job.id}.`);
-      return res.sendStatus(200);
+      if (session.stage === "VIDEO_EDIT_WAITING_FILE") {
+  await sendMessage(
+    from,
+    `Video editing instruction received and attached to Job #${job.id}.\n\nOur team will now review your video and instructions.\n\nPricing will be shared shortly.`
+  );
+  return res.sendStatus(200);
+}
+
+await sendMessage(from, `Instruction saved to Job #${job.id}.`);
+return res.sendStatus(200);
     }
 
     // fallback
