@@ -481,8 +481,9 @@ function createOrUpdateJob(from, session, patch = {}) {
       }),
     file: patch.file || session.pendingFile || existing?.file || null,
     status: patch.status || existing?.status || "pending",
-    instructions:
-      patch.instructions !== undefined ? patch.instructions : existing?.instructions || "",
+    instructions: patch.instructions !== undefined
+  ? patch.instructions
+  : existing?.instructions || "",
     instruction_audio_url:
       patch.instruction_audio_url !== undefined
         ? patch.instruction_audio_url
