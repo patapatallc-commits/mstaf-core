@@ -1193,6 +1193,14 @@ Our agent will review it and continue here on WhatsApp.`
     return res.sendStatus(200);
   }
       if (session.stage === "VIDEO_EDIT_WAITING_FILE") {
+  const job = createOrUpdateJob(from, session, {
+    service: "VIDEO_EDIT",
+    printer_id: AGENT_QUEUE_ID,
+    file_url: session.pendingFile?.url || "",
+    mime_type: session.pendingFile?.mime_type || "",
+    original_name: session.pendingFile?.filename || ""
+  });
+
   await sendMessage(
     from,
     `Video received and attached to Job #${job.id}.\n\nOur editing team is now reviewing your video and instructions.\n\nYou will receive a pricing update shortly.`
