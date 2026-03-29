@@ -1181,13 +1181,20 @@ Our agent will review it and continue here on WhatsApp.`
 
   if (session.stage === "ID_PHOTO_WAITING_FILE") {
     await sendMessage(
-      from,
-      `✅ ID photo audio instruction received and attached to Job #${job.id}.`
-    );
+  from,
+  `✅ ID photo audio instruction received and attached to Job #${job.id}.
+
+Our team is reviewing your request and will share the pricing shortly.`
+);
     return res.sendStatus(200);
   }
 
-  await sendMessage(from, `✅ Voice note received.`);
+  await sendMessage(
+  from,
+  `✅ Voice note received and attached to your request.
+
+Our team will review it and get back to you shortly.`
+);
   return res.sendStatus(200);
 }
 
