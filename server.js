@@ -1126,24 +1126,31 @@ ${serviceMenuText(false)}`);
       downloadedFile = await downloadWhatsAppMedia(mediaId);
 
       if (downloadedFile) {
-        session.pendingFile = {
-          type,
-          url: downloadedFile.publicUrl || downloadedFile.url,
-          filename: downloadedFile.filename,
-          mime_type: downloadedFile.mimeType
-        };
-      }
-    }
+  const savedMedia = {
+    type,
+    url: downloadedFile.publicUrl || downloadedFile.url,
+    filename: downloadedFile.filename,
+    mime_type: downloadedFile.mimeType
+  };
 
+  if (type === "audio") {
+    session.pendingInstructionAudio = savedMedia;
+  } else {
+    session.pendingFile = savedMedia;
+  }
+}
     // -------------------------
     // Audio as instruction
     // -------------------------
     if (type === "audio") {
   const job = createOrUpdateJob(from, session, {
     service: session.selectedService || "PRINT",
-    instruction_audio_url: session.pendingFile?.url || "",
-    instruction_audio: session.pendingFile || null
+    instruction_audio_url: session.pendingInstructionAudio?.url || "",
+    instruction_audio: session.pendingInstructionAudio || null
   });
+
+  session.pendingInstructionAudio = null;
+}
 
   if (session.stage === "LEARNING_WAITING_INPUT") {
     job.service = "LEARNING";
@@ -1189,7 +1196,13 @@ Our agent will review it and continue here on WhatsApp.`
   if (session.stage === "VIDEO_EDIT_WAITING_FILE") {
     await sendMessage(
       from,
-      `✅ Video editing audio instruction received and attached to Job #${job.id}.`
+      ✅ Video successfully received and attached to Job #${job.id}.
+
+🎬 Our expert editing team is reviewing your video and instructions.
+
+💰 A custom price will be sent to you shortly based on your request.
+
+We’ll get back to you very soon 🚀
     );
     return res.sendStatus(200);
   }
