@@ -1192,20 +1192,13 @@ Our agent will review it and continue here on WhatsApp.`
     );
     return res.sendStatus(200);
   }
-
-  if (session.stage === "VIDEO_EDIT_WAITING_FILE") {
-    await sendMessage(
-      from,
-      ✅ Video successfully received and attached to Job #${job.id}.
-
-🎬 Our expert editing team is reviewing your video and instructions.
-
-💰 A custom price will be sent to you shortly based on your request.
-
-We’ll get back to you very soon 🚀
-    );
-    return res.sendStatus(200);
-  }
+      if (session.stage === "VIDEO_EDIT_WAITING_FILE") {
+  await sendMessage(
+    from,
+    `Video received and attached to Job #${job.id}.\n\nOur editing team is now reviewing your video and instructions.\n\nYou will receive a pricing update shortly.`
+  );
+  return res.sendStatus(200);
+}
 
   if (session.stage === "ID_PHOTO_WAITING_FILE") {
     await sendMessage(
