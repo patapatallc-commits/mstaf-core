@@ -1622,8 +1622,6 @@ ${VOICE_NOTE_HINT}`
   `Image received and attached to Job #${job.id}.\n\nPlease type your instructions or send a voice note, and we will continue from there.`
 );
 return res.sendStatus(200);
-);
-      return res.sendStatus(200);
     }
 
     if (downloadedFile && session.selectedService === "VIDEO_EDIT") {
