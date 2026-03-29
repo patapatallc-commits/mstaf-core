@@ -1185,14 +1185,14 @@ Our agent will review it and continue here on WhatsApp.`
     return res.sendStatus(200);
   }
 
-  if (session.stage === "IMAGE_EDIT_WAITING_FILE") {
+  if (session.stage === "IMAGE_EDIT_WAITING_FILE" && type === "image") {
   await sendMessage(
     from,
     `Instruction received and attached to Job #${job.id}.\n\nOur editing team is now reviewing your image and instructions.\n\nPricing details will be shared with you shortly.`
   );
   return res.sendStatus(200);
 }
-      if (session.stage === "VIDEO_EDIT_WAITING_FILE") {
+      if (session.stage === "VIDEO_EDIT_WAITING_FILE" && type === "video") {
   const job = createOrUpdateJob(from, session, {
     service: "VIDEO_EDIT",
     printer_id: AGENT_QUEUE_ID,
