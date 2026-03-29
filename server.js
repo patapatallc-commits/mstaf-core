@@ -819,7 +819,7 @@ app.post("/api/print-jobs", upload.single("file"), (req, res) => {
       printer_id: chooseRouteForJob({ service, paper_size }),
       file,
       status: "pending",
-      instructions: String(req.body.instructions || ""),
+       String(req.body.instructions || ""),
       instruction_audio_url: "",
       instruction_audio: null,
       shipping_details: "",
@@ -1423,8 +1423,8 @@ console.log("PRINT DEBUG:", {
           service: "PRINT",
           paper_size: session.printSpec.paper_size
         }),
-        }),
-     instructions: "",
+        ,
+instructions: "",
 
        
   file_url: session.pendingFile?.type !== "audio" ? (session.pendingFile?.url || "") : "",
