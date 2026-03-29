@@ -1124,82 +1124,72 @@ ${serviceMenuText(false)}`);
     // Audio as instruction
     // -------------------------
     if (type === "audio") {
-      const job = createOrUpdateJob(from, session, {
-        service: session.selectedService || "PRINT",
-        instruction_audio_url: session.pendingFile?.url || "",
-        instruction_audio: session.pendingFile || null
-      });
+  const job = createOrUpdateJob(from, session, {
+    service: session.selectedService || "PRINT",
+    instruction_audio_url: session.pendingFile?.url || "",
+    instruction_audio: session.pendingFile || null
+  });
 
-      if (session.stage === "LEARNING_WAITING_INPUT") {
-        job.service = "LEARNING";
-        job.learning_type = session.learningType || "";
-        job.printer_id = AGENT_QUEUE_ID;
-        job.updated_at = nowIso();
+  if (session.stage === "LEARNING_WAITING_INPUT") {
+    job.service = "LEARNING";
+    job.learning_type = session.learningType || "";
+    job.printer_id = AGENT_QUEUE_ID;
+    job.updated_at = nowIso();
 
-        await sendMessage(
-          from,
-          `✅ Learning audio received.
+    await sendMessage(
+      from,
+      `✅ Learning audio received.
 
 Type: ${job.learning_type || "LEARNING"}
 
 Our agent will review it and continue here on WhatsApp.`
-        );
-        return res.sendStatus(200);
-      }
+    );
+    return res.sendStatus(200);
+  }
 
-      if (session.stage === "PRINT_WAITING_INSTRUCTIONS") {
-  await sendMessage(
-    from,
-    `✅ Print audio instruction received and attached to Job #${job.id}.`
-  );
+  if (session.stage === "PRINT_WAITING_INSTRUCTIONS") {
+    await sendMessage(
+      from,
+      `✅ Print audio instruction received and attached to Job #${job.id}.`
+    );
+    return res.sendStatus(200);
+  }
+
+  if (session.stage === "LAMINATE_WAITING_CHAT") {
+    await sendMessage(
+      from,
+      `✅ Laminating audio instruction received and attached to Job #${job.id}.`
+    );
+    return res.sendStatus(200);
+  }
+
+  if (session.stage === "IMAGE_EDIT_WAITING_FILE") {
+    await sendMessage(
+      from,
+      `✅ Image editing audio instruction received and attached to Job #${job.id}.`
+    );
+    return res.sendStatus(200);
+  }
+
+  if (session.stage === "VIDEO_EDIT_WAITING_FILE") {
+    await sendMessage(
+      from,
+      `✅ Video editing audio instruction received and attached to Job #${job.id}.`
+    );
+    return res.sendStatus(200);
+  }
+
+  if (session.stage === "ID_PHOTO_WAITING_FILE") {
+    await sendMessage(
+      from,
+      `✅ ID photo audio instruction received and attached to Job #${job.id}.`
+    );
+    return res.sendStatus(200);
+  }
+
+  await sendMessage(from, `✅ Voice note received.`);
   return res.sendStatus(200);
 }
-
-if (session.stage === "LAMINATE_WAITING_CHAT") {
-  await sendMessage(
-    from,
-    `✅ Laminating audio instruction received and attached to Job #${job.id}.`
-  );
-  return res.sendStatus(200);
-}
-
-if (session.stage === "IMAGE_EDIT_WAITING_FILE") {
-  await sendMessage(
-    from,
-    `✅ Image editing audio instruction received and attached to Job #${job.id}.`
-  );
-  return res.sendStatus(200);
-}
-
-if (session.stage === "VIDEO_EDIT_WAITING_FILE") {
-  await sendMessage(
-    from,
-    `✅ Video editing audio instruction received and attached to Job #${job.id}.`
-  );
-  return res.sendStatus(200);
-}
-
-if (session.stage === "ID_PHOTO_WAITING_FILE") {
-  await sendMessage(
-    from,
-    `✅ ID photo audio instruction received and attached to Job #${job.id}.`
-  );
-  return res.sendStatus(200);
-}
-        return res.sendStatus(200);
-      }
-
-      
-      return res.sendStatus(200);
-    }
-
-    // -------------------------
-    // If file came first without service
-    // -------------------------
-    if (downloadedFile && !session.selectedService && type !== "audio") {
-      await sendMessage(from, serviceMenuText(true));
-      return res.sendStatus(200);
-    }
 
     // -------------------------
     // Main service selection
