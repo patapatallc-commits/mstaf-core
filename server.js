@@ -1188,7 +1188,7 @@ Our agent will review it and continue here on WhatsApp.`
   if (session.stage === "IMAGE_EDIT_WAITING_FILE") {
   await sendMessage(
     from,
-    `Image editing instruction received and attached to Job #${job.id}.\n\nOur team will now review your image and instructions.\n\nPricing will be shared shortly.`
+    `Instruction received and attached to Job #${job.id}.\n\nOur editing team is now reviewing your image and instructions.\n\nPricing details will be shared with you shortly.`
   );
   return res.sendStatus(200);
 }
@@ -1617,10 +1617,11 @@ ${VOICE_NOTE_HINT}`
         total_cost: 0
       });
 
-      await sendMessage(from, `✅ Image received for editing.
-Job ID: ${job.id}
-
-${VOICE_NOTE_HINT}`
+      await sendMessage(
+  from,
+  `Image received and attached to Job #${job.id}.\n\nPlease type your instructions or send a voice note, and we will continue from there.`
+);
+return res.sendStatus(200);
 );
       return res.sendStatus(200);
     }
@@ -1714,11 +1715,10 @@ We will continue here on WhatsApp.`);
         instructions: text,
         printer_id: AGENT_QUEUE_ID
       });
-
-      if (session.stage === "VIDEO_EDIT_WAITING_FILE") {
+ if (session.stage === "VIDEO_EDIT_WAITING_FILE") {
   await sendMessage(
     from,
-    `Video editing instruction received and attached to Job #${job.id}.\n\nOur team will now review your video and instructions.\n\nPricing will be shared shortly.`
+    `Instruction received and attached to Job #${job.id}.\n\nOur editing team is now reviewing your video and instructions.\n\nPricing details will be shared with you shortly.`
   );
   return res.sendStatus(200);
 }
