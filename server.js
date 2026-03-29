@@ -84,8 +84,8 @@ const SHOPIFY_VARIANTS = {
   PRINT_A4_BW: process.env.SHOPIFY_VARIANT_PRINT_A4_BW || "52221221273899",
   PRINT_A4_COLOR: process.env.SHOPIFY_VARIANT_PRINT_A4_COLOR || "52221221437739",
 
-  PRINT_A3_BW: process.env.SHOPIFY_VARIANT_PRINT_A3_BW || "",
-  PRINT_A3_COLOR: process.env.SHOPIFY_VARIANT_PRINT_A3_COLOR || "",
+  PRINT_A3_BW: process.env.SHOPIFY_VARIANT_PRINT_A3_BW || "52591931719979",
+  PRINT_A3_COLOR: process.env.SHOPIFY_VARIANT_PRINT_A3_COLOR || "52591931883819",
   PRINT_LETTER_BW: process.env.SHOPIFY_VARIANT_PRINT_LETTER_BW || "",
   PRINT_LETTER_COLOR: process.env.SHOPIFY_VARIANT_PRINT_LETTER_COLOR || "",
   PRINT_LEGAL_BW: process.env.SHOPIFY_VARIANT_PRINT_LEGAL_BW || "",
@@ -1386,9 +1386,9 @@ console.log("PRINT DEBUG:", {
   variantId
 });
       const checkoutLink = buildShopifyCartUrl(
-        variantId,
-        session.printSpec.copies * session.printSpec.pages
-      );
+  variantId,
+  session.printSpec.copies
+);
 
       const job = createOrUpdateJob(from, session, {
         service: "PRINT",
@@ -1431,9 +1431,9 @@ ${variantId ? `Checkout:\n${checkoutLink}\n\n` : ""}${extraLine}`
       if (lower === "1") {
         const variantId = getPrintVariantId(session.printSpec);
         const checkoutLink = buildShopifyCartUrl(
-          variantId,
-          session.printSpec.copies * session.printSpec.pages
-        );
+  variantId,
+  session.printSpec.copies
+);
         await sendMessage(from, `🛒 Print checkout:\n${checkoutLink}`);
         return res.sendStatus(200);
       }
