@@ -117,8 +117,8 @@ const PRINT_PRICING = {
   A4: { bw: 0.1, color: 0.5 },
   LETTER: { bw: 0.1, color: 0.5 },
   LEGAL: { bw: 0.12, color: 0.6 },
-  A3: { bw: 0.2, color: 1.0 },
-  TABLOID: { bw: 0.2, color: 1.0 }
+  A3: { bw: 1.5, color: 3.0 },
+  TABLOID: { bw: 1.5, color: 3.0 }
 };
 
 const LAMINATE_PRICING = {
@@ -1369,12 +1369,18 @@ Our agent will continue here on WhatsApp.`);
       const pages = parseCountFromText(text, 1);
       session.printSpec.pages = pages;
 
-      const unitPrice =
-        PRINT_PRICING[session.printSpec.paper_size]?.[
-          session.printSpec.color_mode === "color" ? "color" : "bw"
-        ] || 0;
+      const normalizedSize = normalizePaperSize(session.printSpec.paper_size);
+const normalizedColor = normalizeColorMode(session.printSpec.color_mode);
 
-      const total = estimatePrintCost(session.printSpec);
+const unitPrice =
+  PRINT_PRICING[normalizedSize]?.[
+    normalizedColor === "COLOR" ? "color" : "bw"
+  ] || 0;
+
+const total =
+  normalizedSize === "A3"
+    ? unitPrice * session.printSpec.copies
+    : estimatePrintCost(session.printSpec);
       const variantId = getPrintVariantId({
   paper_size: session.printSpec.paper_size,
   color_mode: session.printSpec.color_mode
