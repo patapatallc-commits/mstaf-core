@@ -404,9 +404,29 @@ function buildShopifyCartUrl(variantId, qty = 1) {
   return `https://www.patapata.us/cart/${variantId}:${Math.max(1, safeInt(qty, 1))}`;
 }
 
+function normalizePaperSize(value = "") {
+  const raw = String(value || "").trim().toUpperCase();
+
+  if (raw === "A4") return "A4";
+  if (raw === "A3") return "A3";
+  if (raw === "LETTER") return "LETTER";
+  if (raw === "LEGAL") return "LEGAL";
+  if (raw === "TABLOID") return "TABLOID";
+  if (raw === "CARD" || raw === "ID" || raw === "ID_CARD") return "CARD";
+
+  return raw;
+}
+
+function normalizeColorMode(value = "") {
+  const raw = String(value || "").trim().toLowerCase();
+
+  if (raw === "color" || raw === "colour") return "COLOR";
+  return "BW";
+}
+
 function getPrintVariantId({ paper_size = "", color_mode = "" }) {
-  const size = String(paper_size || "").toUpperCase();
-  const color = normalizeText(color_mode) === "color" ? "COLOR" : "BW";
+  const size = normalizePaperSize(paper_size);
+  const color = normalizeColorMode(color_mode);
 
   const map = {
     A4_BW: SHOPIFY_VARIANTS.PRINT_A4_BW,
@@ -418,7 +438,9 @@ function getPrintVariantId({ paper_size = "", color_mode = "" }) {
     LEGAL_BW: SHOPIFY_VARIANTS.PRINT_LEGAL_BW,
     LEGAL_COLOR: SHOPIFY_VARIANTS.PRINT_LEGAL_COLOR,
     TABLOID_BW: SHOPIFY_VARIANTS.PRINT_TABLOID_BW,
-    TABLOID_COLOR: SHOPIFY_VARIANTS.PRINT_TABLOID_COLOR
+    TABLOID_COLOR: SHOPIFY_VARIANTS.PRINT_TABLOID_COLOR,
+    CARD_BW: SHOPIFY_VARIANTS.PRINT_CARD_BW,
+    CARD_COLOR: SHOPIFY_VARIANTS.PRINT_CARD_COLOR
   };
 
   return map[`${size}_${color}`] || "";
@@ -1303,7 +1325,16 @@ Our agent will continue here on WhatsApp.`);
         ] || 0;
 
       const total = estimatePrintCost(session.printSpec);
-      const variantId = getPrintVariantId(session.printSpec);
+      const variantId = getPrintVariantId({
+  paper_size: session.printSpec.paper_size,
+  color_mode: session.printSpec.color_mode
+});
+
+console.log("PRINT DEBUG:", {
+  paper_size: session.printSpec.paper_size,
+  color_mode: session.printSpec.color_mode,
+  variantId
+});
       const checkoutLink = buildShopifyCartUrl(
         variantId,
         session.printSpec.copies * session.printSpec.pages
