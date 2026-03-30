@@ -1538,6 +1538,7 @@ Once uploaded, we will continue with your print order.`
   );
   return res.sendStatus(200);
 }
+      }
 if (
   session.stage === "PRINT_WAITING_INSTRUCTIONS" &&
   ((type === "text" && text && text.trim()) || type === "audio")
