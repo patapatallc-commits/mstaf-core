@@ -1139,6 +1139,33 @@ ${serviceMenuText(false)}`);
     session.pendingFile = savedMedia;
   }
 }
+      // ===============================
+// FILE RECEIVED → ASK WHAT TO DO
+// ===============================
+if (type === "image" || type === "document") {
+
+  // Only trigger if not already in a specific flow
+  if (!session.stage || session.stage === "START") {
+
+    session.stage = "FILE_RECEIVED";
+
+    await sendMessage(
+      from,
+      `✅ File received successfully.
+
+What would you like to do with this file?
+
+Reply:
+1 - Print
+2 - Laminate
+3 - ID Photo
+4 - Image Editing
+5 - Video Editing`
+    );
+
+    return res.sendStatus(200);
+  }
+}
     // -------------------------
     // Audio as instruction
     // -------------------------
