@@ -1502,7 +1502,27 @@ ${VOICE_NOTE_HINT}`
         return res.sendStatus(200);
       }
     }
+if (
+  session.stage === "PRINT_WAITING_INSTRUCTIONS" &&
+  ((type === "text" && text && text.trim()) || type === "audio")
+) {
+  const job = createOrUpdateJob(from, session, {
+    service: "PRINT",
+    printer_id: session.printer_id || DEFAULT_PRINTER_ID,
+    file_url: session.pendingFile?.url || "",
+    mime_type: session.pendingFile?.mime_type || "",
+    original_name: session.pendingFile?.filename || "",
+    total_cost: session.total_cost || 0,
+    customer_phone: from
+  });
 
+  await sendMessage(
+    from,
+    `✅ Print instruction received and attached to Job #${job.id}.\n\nOur team will continue processing your print order shortly.`
+  );
+
+  return res.sendStatus(200);
+}
     // -------------------------
     // Laminate flow
     // -------------------------
