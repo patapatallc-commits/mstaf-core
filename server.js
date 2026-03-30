@@ -1186,10 +1186,20 @@ Our agent will review it and continue here on WhatsApp.`
   }
 
   if (session.stage === "IMAGE_EDIT_WAITING_FILE" && (type === "image" || type === "document")) {
+  const job = createOrUpdateJob(from, session, {
+    service: "IMAGE_EDIT",
+    printer_id: AGENT_QUEUE_ID,
+    file_url: session.pendingFile?.url || "",
+    mime_type: session.pendingFile?.mime_type || "",
+    original_name: session.pendingFile?.filename || "",
+    total_cost: 0
+  });
+
   await sendMessage(
     from,
-    `Instruction received and attached to Job #${job.id}.\n\nOur editing team is now reviewing your image and instructions.\n\nPricing details will be shared with you shortly.`
+    `🖼️ Image received and attached to Job #${job.id}.\n\nPlease type your instructions or send a voice note, and we will continue from there.`
   );
+
   return res.sendStatus(200);
 }
      if (session.stage === "VIDEO_EDIT_WAITING_FILE" && (type === "video" || type === "document")) {
