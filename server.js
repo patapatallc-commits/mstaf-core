@@ -1195,15 +1195,19 @@ Our agent will review it and continue here on WhatsApp.`
     );
     return res.sendStatus(200);
   }
+if (session.stage === "PRINT_WAITING_FILE" && (type === "image" || type === "document")) {
+  session.stage = "PRINT_WAITING_INSTRUCTIONS";
 
-  if (session.stage === "PRINT_WAITING_INSTRUCTIONS") {
-    await sendMessage(
-      from,
-      `✅ Print audio instruction received and attached to Job #${job.id}.`
-    );
-    return res.sendStatus(200);
-  }
+  await sendMessage(
+    from,
+    `✅ File received successfully.
 
+Send any special print instructions (optional).
+You can type or send a voice note.`
+  );
+
+  return res.sendStatus(200);
+}
   if (session.stage === "LAMINATE_WAITING_CHAT") {
     await sendMessage(
       from,
@@ -1469,6 +1473,9 @@ console.log("PRINT DEBUG:", {
         color_mode: session.printSpec.color_mode,
         copies: session.printSpec.copies,
         pages: session.printSpec.pages,
+        file_url: session.pendingFile?.url || "",
+mime_type: session.pendingFile?.mime_type || "",
+original_name: session.pendingFile?.filename || "",
         unit_price: unitPrice,
         total_cost: total,
         printer_id: chooseRouteForJob({
@@ -1520,15 +1527,17 @@ ${variantId ? `Checkout:\n${checkoutLink}\n\n` : ""}${extraLine}`
       }
 
       if (lower === "2") {
-        session.stage = "PRINT_WAITING_INSTRUCTIONS";
-        await sendMessage(
-  from,
-  `Send any special print instructions here.
-${VOICE_NOTE_HINT}`
-);
-        return res.sendStatus(200);
-      }
-    }
+  session.stage = "PRINT_WAITING_FILE";
+  await sendMessage(
+    from,
+    `📎 Please upload your document, PDF, or image for printing.
+
+You can attach it from your phone gallery or files.
+
+Once uploaded, we will continue with your print order.`
+  );
+  return res.sendStatus(200);
+}
 if (
   session.stage === "PRINT_WAITING_INSTRUCTIONS" &&
   ((type === "text" && text && text.trim()) || type === "audio")
