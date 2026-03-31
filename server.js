@@ -2145,8 +2145,8 @@ function renderDashboardPage(title, key) {
   </div>
   <script>
   async function sendJobMessage(jobId) {
-    const el = document.getElementById(`msg-${jobId}`);
-    const message = (el?.value || "").trim();
+    const el = document.getElementById("msg-" + jobId);
+    const message = ((el && el.value) || "").trim();
 
     if (!message) {
       alert("Type a message first.");
@@ -2156,13 +2156,16 @@ function renderDashboardPage(title, key) {
     const key = new URLSearchParams(window.location.search).get("key") || "";
 
     try {
-      const res = await fetch(`/api/dashboard/jobs/${jobId}/message?key=${encodeURIComponent(key)}`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify({ message })
-      });
+      const res = await fetch(
+        "/api/dashboard/jobs/" + jobId + "/message?key=" + encodeURIComponent(key),
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({ message: message })
+        }
+      );
 
       const data = await res.json();
 
