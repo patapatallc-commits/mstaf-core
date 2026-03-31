@@ -1800,7 +1800,40 @@ return res.sendStatus(200);
     return res.sendStatus(200);
   }
 });
+app.post("/api/dashboard/jobs/:id/message", async (req, res) => {
+  try {
+    if (!authDashboard(req)) {
+      return res.status(401).json({ ok: false, error: "Unauthorized" });
+    }
 
+    const job = jobs.find((j) => j.id === Number(req.params.id));
+    if (!job) {
+      return res.status(404).json({ ok: false, error: "Job not found" });
+    }
+
+    const to = job.customer_phone || job.phone || "";
+    const message = String(req.body.message || "").trim();
+
+    if (!to) {
+      return res.status(400).json({ ok: false, error: "No customer phone on this job" });
+    }
+
+    if (!message) {
+      return res.status(400).json({ ok: false, error: "Message is required" });
+    }
+
+    await sendMessage(to, message);
+
+    job.last_worker_message = message;
+    job.last_worker_message_at = nowIso();
+    job.updated_at = nowIso();
+
+    return res.json({ ok: true, sent_to: to });
+  } catch (err) {
+    console.error("dashboard send message error:", err.response?.data || err.message);
+    return res.status(500).json({ ok: false, error: "Failed to send message" });
+  }
+});
 // =========================
 // DASHBOARD PAGES
 // =========================
@@ -1825,7 +1858,22 @@ function renderDashboardPage(title, key) {
             </div>
             <div class="status ${statusClass}">${esc(j.status || "pending")}</div>
           </div>
+<div style="margin-top:12px;padding-top:10px;border-top:1px solid #ddd;">
+  <div style="font-weight:700;margin-bottom:6px;">Send WhatsApp Message</div>
 
+  <textarea
+    id="msg-${j.id}"
+    placeholder="Type message to customer..."
+    style="width:100%;min-height:80px;padding:10px;border-radius:8px;border:1px solid #ccc;box-sizing:border-box;"
+  ></textarea>
+
+  <button
+    onclick="sendJobMessage(${j.id})"
+    style="margin-top:8px;padding:10px 14px;border:none;border-radius:8px;cursor:pointer;background:#111;color:#fff;"
+  >
+    Send WhatsApp Message
+  </button>
+</div>
           <div class="grid">
             <div><span class="label">Customer</span><span class="value">${esc(j.customer_phone || "")}</span></div>
             <div><span class="label">Route</span><span class="value">${esc(j.printer_id || "")}</span></div>
@@ -2095,6 +2143,42 @@ function renderDashboardPage(title, key) {
       ${cards || "<div>No jobs yet.</div>"}
     </div>
   </div>
+  <script>
+  async function sendJobMessage(jobId) {
+    const el = document.getElementById(`msg-${jobId}`);
+    const message = (el?.value || "").trim();
+
+    if (!message) {
+      alert("Type a message first.");
+      return;
+    }
+
+    const key = new URLSearchParams(window.location.search).get("key") || "";
+
+    try {
+      const res = await fetch(`/api/dashboard/jobs/${jobId}/message?key=${encodeURIComponent(key)}`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({ message })
+      });
+
+      const data = await res.json();
+
+      if (!res.ok || !data.ok) {
+        alert(data.error || "Failed to send message");
+        return;
+      }
+
+      alert("✅ WhatsApp message sent!");
+      el.value = "";
+    } catch (err) {
+      alert("Network error. Try again.");
+      console.error(err);
+    }
+  }
+</script>
 </body>
 </html>
 `;
