@@ -698,25 +698,31 @@ function renderFilePreview(job) {
     `;
   }
 
-  if (mime.startsWith("image/")) {
-    return `
-      <div class="media-box">
-        <div class="media-title">File Preview</div>
-        <img class="preview" src="${esc(url)}" alt="${esc(name)}" />
-        <a class="open-link" target="_blank" rel="noopener" href="${esc(url)}">Open File</a>
-      </div>
-    `;
+  return `
+  <div class="media-box">
+    <div class="media-title">Image Preview</div>
+    <img class="preview" src="${esc(url)}" alt="${esc(name)}" style="width:100%;max-width:420px;border-radius:12px;display:block;" />
+    <a class="open-link" target="_blank" rel="noopener" href="${esc(url)}">Open File</a>
+  </div>
+`;
   }
 
-  if (mime.startsWith("video/")) {
-    return `
-      <div class="media-box">
-        <div class="media-title">Video Preview</div>
-        <video class="preview" controls src="${esc(url)}"></video>
-        <a class="open-link" target="_blank" rel="noopener" href="${esc(url)}">Open File</a>
-      </div>
-    `;
-  }
+ if (
+  mime.startsWith("video/") ||
+  /\.(mp4|mov|webm|m4v|ogg|ogv)$/i.test(url || "") ||
+  String(name || "").match(/\.(mp4|mov|webm|m4v|ogg|ogv)$/i)
+) {
+  return `
+    <div class="media-box">
+      <div class="media-title">Video Preview</div>
+      <video class="preview" controls playsinline preload="metadata" style="width:100%;max-width:420px;border-radius:12px;background:#000;">
+        <source src="${esc(url)}" type="${esc(mime || "video/mp4")}">
+        Your browser does not support video playback.
+      </video>
+      <a class="open-link" target="_blank" rel="noopener" href="${esc(url)}">Open File</a>
+    </div>
+  `;
+}
 
   if (mime === "application/pdf") {
     return `
@@ -2061,32 +2067,55 @@ const cards = jobs
       word-break: break-word;
     }
     .panel, .media-box {
-      margin-top: 12px;
-      background: #152238;
-      border: 1px solid #2b3a52;
-      border-radius: 14px;
-      padding: 12px;
-    }
-    .panel-title, .media-title {
-      font-size: 13px;
-      text-transform: uppercase;
-      color: #9db0cf;
-      font-weight: 800;
-      margin-bottom: 8px;
-    }
-    .panel-body, .media-text {
-      white-space: pre-wrap;
-      word-break: break-word;
-      line-height: 1.45;
-    }
-    .preview {
-      width: 100%;
-      max-height: 280px;
-      object-fit: contain;
-      border-radius: 12px;
-      background: #0a0f18;
-      border: 1px solid #2b3a52;
-    }
+  margin-top: 14px;
+  background: linear-gradient(180deg, #12264a 0%, #0a1630 100%);
+  border: 1px solid rgba(255,255,255,0.10);
+  border-radius: 16px;
+  padding: 14px;
+  box-shadow: 0 10px 28px rgba(0,0,0,0.22);
+}
+
+.panel-title, .media-title {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #9db0cf;
+  font-weight: 800;
+  margin-bottom: 10px;
+}
+
+.panel-body, .media-text {
+  white-space: pre-wrap;
+  word-break: break-word;
+  line-height: 1.5;
+  color: #eaf1ff;
+}
+
+.preview {
+  width: 100%;
+  max-width: 420px;
+  max-height: 320px;
+  display: block;
+  border-radius: 12px;
+  background: #000;
+  object-fit: contain;
+  border: 1px solid rgba(255,255,255,0.08);
+}
+
+.open-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 10px;
+  color: #7cc4ff;
+  text-decoration: underline;
+  font-weight: 700;
+}
+
+.open-link:hover {
+  opacity: 0.9;
+}
+    
     audio {
       width: 100%;
       margin-top: 8px;
