@@ -924,8 +924,11 @@ app.get("/api/dashboard/jobs", async (req, res) => {
 
     sql += ` ORDER BY id DESC LIMIT $${idx}`;
     params.push(limit);
-
+console.log("DASHBOARD QUERY:", sql);
+console.log("DASHBOARD PARAMS:", params);
     const result = await pool.query(sql, params);
+    console.log("DASHBOARD ROW COUNT:", result.rows.length);
+console.log("DASHBOARD SAMPLE:", result.rows.slice(0, 3));
 
     return res.json({
       ok: true,
