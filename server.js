@@ -10,7 +10,7 @@ const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
   ssl: process.env.DATABASE_SSL === "false"
     ? false
-    : { rejectUnauthorized: false }
+    : { rejectUnauthorized: false }app.get("/api/dashboard/jobs"
 });
 const VOICE_NOTE_HINT = "You can type or send a voice note, and we will continue from there.";
 const app = express();
@@ -895,11 +895,7 @@ app.get("/api/dashboard/jobs", async (req, res) => {
     const q = normalizeText(req.query.q || "");
     const limit = Math.min(parseInt(req.query.limit || "100", 10), 500);
 
-    let sql = `
-      SELECT *
-      FROM print_jobs
-      WHERE 1=1
-    `;
+    let sql = "SELECT * FROM print_jobs WHERE 1=1";
     const params = [];
     let idx = 1;
 
@@ -938,9 +934,12 @@ app.get("/api/dashboard/jobs", async (req, res) => {
     });
   } catch (err) {
     console.error("dashboard jobs error:", err);
-    return res.status(500).json({ ok: false, error: "Server error" 
+    return res.status(500).json({ ok: false, error: "Server error" });
   }
 });
+      
+      
+    
       
 
   res.json({ ok: true, count: filtered.length, jobs: filtered });
