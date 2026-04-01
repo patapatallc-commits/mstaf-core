@@ -10,7 +10,7 @@ const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
   ssl: process.env.DATABASE_SSL === "false"
     ? false
-    : { rejectUnauthorized: false }app.get("/api/dashboard/jobs"
+    : { rejectUnauthorized: false }
 });
 const VOICE_NOTE_HINT = "You can type or send a voice note, and we will continue from there.";
 const app = express();
