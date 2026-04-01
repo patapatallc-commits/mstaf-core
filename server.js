@@ -884,48 +884,64 @@ app.get("/api/printers", (req, res) => {
 // =========================
 // DASHBOARD / DISPATCH / WORKER APIs
 // =========================
-app.get("/api/dashboard/jobs", (req, res) => {
+app.get("/api/dashboard/jobs", async (req, res) => {
   if (!authDashboard(req)) {
     return res.status(401).json({ ok: false, error: "Unauthorized" });
   }
 
-  const printer_id = String(req.query.printer_id || "").trim();
-  const status = normalizeText(req.query.status || "");
-  const q = normalizeText(req.query.q || "");
+  try {
+    const printer_id = String(req.query.printer_id || "").trim();
+    const status = normalizeText(req.query.status || "");
+    const q = normalizeText(req.query.q || "");
+    const limit = Math.min(parseInt(req.query.limit || "100", 10), 500);
 
-  let filtered = [...jobs];
+    let sql = `
+      SELECT *
+      FROM print_jobs
+      WHERE 1=1
+    `;
+    const params = [];
+    let idx = 1;
 
-  if (printer_id) {
-    filtered = filtered.filter((j) => String(j.printer_id || "") === printer_id);
+    if (printer_id) {
+      sql += ` AND COALESCE(printer_id, '') = $${idx++}`;
+      params.push(printer_id);
+    }
+
+    if (status) {
+      sql += ` AND LOWER(COALESCE(status, '')) = $${idx++}`;
+      params.push(status);
+    }
+
+    if (q) {
+      sql += ` AND (
+        CAST(id AS TEXT) ILIKE $${idx}
+        OR COALESCE(public_job_id, '') ILIKE $${idx}
+        OR COALESCE(original_name, '') ILIKE $${idx}
+        OR COALESCE(instructions, '') ILIKE $${idx}
+        OR COALESCE(customer_phone, '') ILIKE $${idx}
+        OR COALESCE(service, '') ILIKE $${idx}
+      )`;
+      params.push(`%${q}%`);
+      idx++;
+    }
+
+    sql += ` ORDER BY id DESC LIMIT $${idx}`;
+    params.push(limit);
+
+    const result = await pool.query(sql, params);
+
+    return res.json({
+      ok: true,
+      count: result.rows.length,
+      jobs: result.rows
+    });
+  } catch (err) {
+    console.error("dashboard jobs error:", err);
+    return res.status(500).json({ ok: false, error: "Server error" });
   }
-
-  if (status) {
-    filtered = filtered.filter((j) => normalizeText(j.status || "") === status);
-  }
-
-  if (q) {
-    filtered = filtered.filter((j) =>
-      [
-        j.id,
-        j.public_job_id,
-        j.service,
-        j.printer_id,
-        j.customer_phone,
-        j.instructions,
-        j.shipping_details,
-        j.error_message,
-        j.learning_type,
-        j.file?.filename,
-        j.file?.url,
-        j.paper_size,
-        j.color_mode
-      ]
-        .filter(Boolean)
-        .join(" ")
-        .toLowerCase()
-        .includes(q)
-    );
-  }
+});
+      
 
   res.json({ ok: true, count: filtered.length, jobs: filtered });
 });
