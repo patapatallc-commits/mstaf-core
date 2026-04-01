@@ -742,7 +742,6 @@ function renderFilePreview(job) {
     </div>
   `;
 }
-
 function renderAudioPreview(job) {
   if (!job.instruction_audio_url) return "";
 
@@ -1937,14 +1936,17 @@ const cards = jobs
         </div>
 
         ${
-          fileUrl
-            ? `<div style="margin-top:10px;">
-                 <a href="${fileUrl}" target="_blank" style="color:#4da3ff;">
-                   📂 Open File
-                 </a>
-               </div>`
-            : ""
-        }
+  fileUrl
+    ? renderFilePreview({
+        url: fileUrl,
+        name: originalName,
+        mime: j.mime_type || ""
+      })
+    : ""
+}
+
+${renderAudioPreview(j)}
+        
 
         <div style="margin-top:10px;font-size:13px;">
           Size: ${esc(paperSize || "-")} |
