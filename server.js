@@ -4,6 +4,14 @@ const fs = require("fs");
 const path = require("path");
 const axios = require("axios");
 require("dotenv").config();
+const { Pool } = require("pg");
+
+const pool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+  ssl: process.env.DATABASE_SSL === "false"
+    ? false
+    : { rejectUnauthorized: false }
+});
 const VOICE_NOTE_HINT = "You can type or send a voice note, and we will continue from there.";
 const app = express();
 app.use(express.json({ limit: "20mb" }));
@@ -466,7 +474,7 @@ function getLaminateVariantId(paper_size = "") {
   return map[size] || "";
 }
 
-function createOrUpdateJob(from, session, patch = {}) {
+async function createOrUpdateJob(from, session, patch = {}) {
   const existing = session.lastJobId ? jobs.find(j => j.id === session.lastJobId) : null;
 
   const merged = {
@@ -531,6 +539,27 @@ function createOrUpdateJob(from, session, patch = {}) {
   };
 
   jobs.unshift(job);
+  await pool.query(
+  `INSERT INTO print_jobs
+  (public_job_id, printer_id, file_url, original_name, paper_size, color_mode, copies, pages, total_cost, status, instructions, customer_phone, service, created_at)
+  VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)`,
+  [
+    job.public_job_id || "",
+    job.printer_id || "",
+    job.file?.url || job.file_url || "",
+    job.file?.original_name || job.original_name || "",
+    job.paper_size || "",
+    job.color_mode || "",
+    Number(job.copies || 1),
+    Number(job.pages || 1),
+    Number(job.total || job.total_cost || 0),
+    job.status || "pending",
+    job.instructions || "",
+    job.customer_phone || "",
+    job.service || "",
+    job.created_at || new Date().toISOString()
+  ]
+);
   session.lastJobId = job.id;
   return job;
 }
