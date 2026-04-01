@@ -938,7 +938,7 @@ app.get("/api/dashboard/jobs", async (req, res) => {
     });
   } catch (err) {
     console.error("dashboard jobs error:", err);
-    return res.status(500).json({ ok: false, error: "Server error" });
+    return res.status(500).json({ ok: false, error: "Server error" 
   }
 });
       
