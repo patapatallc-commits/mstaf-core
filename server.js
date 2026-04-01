@@ -942,8 +942,6 @@ app.get("/api/dashboard/jobs", async (req, res) => {
     
       
 
-  res.json({ ok: true, count: filtered.length, jobs: filtered });
-});
 
 app.post("/api/dashboard/jobs/:id/route", (req, res) => {
   if (!authDashboard(req)) {
