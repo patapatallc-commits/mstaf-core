@@ -741,7 +741,7 @@ function renderFilePreview(job) {
       <a class="open-link" target="_blank" rel="noopener" href="${esc(url)}">Open File</a>
     </div>
   `;
-}
+
 function renderAudioPreview(job) {
   if (!job.instruction_audio_url) return "";
 
