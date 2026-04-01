@@ -683,20 +683,21 @@ function getPrinterOptionsHtml(selected = "") {
     return `<option value="${esc(p.id)}" ${s}>${esc(p.id)}</option>`;
   }).join("");
 }
-
-function renderFilePreview(job) {
-  const url = job?.file?.url || job?.file_url || "";
-  const mime = String(job?.file?.mime_type || job?.mime_type || "");
-  const name = job?.file?.filename || job?.original_name || "file";
+function renderFilePreview({ url, name, mime }) {
+url = String(url || "");
+name = String(name || "");
+mime = String(mime || "").toLowerCase();
 
   if (!url) {
-    return `
-      <div class="media-box">
-        <div class="media-title">File</div>
-        <div class="media-text">No file attached</div>
-      </div>
-    `;
-  }
+  return `
+    <div class="media-box">
+      <div class="media-title">File</div>
+      <div class="media-text">No file attached</div>
+    </div>
+  `;
+}
+
+return `
 
   return `
   <div class="media-box">
