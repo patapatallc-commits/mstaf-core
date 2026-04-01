@@ -1880,104 +1880,78 @@ app.post("/api/dashboard/jobs/:id/message", async (req, res) => {
 // DASHBOARD PAGES
 // =========================
 function renderDashboardPage(title, key) {
-  const cards = jobs
-    .map((j) => {
-      const statusClass =
-        j.status === "completed" || j.status === "done"
-          ? "done"
-          : j.status === "error"
-          ? "error"
-          : j.status === "printing"
-          ? "printing"
-          : "pending";
+const cards = jobs
+  .map((j) => {
+    const service = j.service || j.service_type || "";
+    const publicJobId = j.public_job_id || j.id || "";
+    const fileUrl = (j.file && j.file.url) || j.file_url || j.customer_file_url || "";
+    const originalName =
+      (j.file && j.file.original_name) ||
+      j.original_name ||
+      j.original_filename ||
+      "";
 
-      return `
-        <div class="card">
-          <div class="top">
-            <div>
-              <div class="job-title">Job #${esc(j.id)} <span class="public-id">${esc(j.public_job_id)}</span></div>
-              <div class="service">${esc(j.service || "")}</div>
+    const customerPhone = j.customer_phone || j.from_phone || "";
+    const paperSize = j.paper_size || "";
+    const colorMode = j.color_mode || j.color_type || "";
+    const copies = Number(j.copies || 1);
+    const pages = Number(j.pages || 1);
+    const total = Number(j.total_cost || j.price || 0);
+
+    const statusClass =
+      j.status === "completed" || j.status === "done"
+        ? "done"
+        : j.status === "error"
+        ? "error"
+        : j.status === "printing"
+        ? "printing"
+        : "pending";
+
+    return `
+      <div class="card">
+        <div class="top">
+          <div>
+            <div class="job-title">
+              Job #${esc(j.id)} 
+              <span class="public-id">${esc(publicJobId)}</span>
             </div>
-            <div class="status ${statusClass}">${esc(j.status || "pending")}</div>
+            <div class="service">${esc(service)}</div>
           </div>
-<div style="margin-top:12px;padding-top:10px;border-top:1px solid #ddd;">
-  <div style="font-weight:700;margin-bottom:6px;">Send WhatsApp Message</div>
-
-  <textarea
-    id="msg-${j.id}"
-    placeholder="Type message to customer..."
-    style="width:100%;min-height:80px;padding:10px;border-radius:8px;border:1px solid #ccc;box-sizing:border-box;"
-  ></textarea>
-
-  <button
-    onclick="sendJobMessage(${j.id})"
-    style="margin-top:8px;padding:10px 14px;border:none;border-radius:8px;cursor:pointer;background:#111;color:#fff;"
-  >
-    Send WhatsApp Message
-  </button>
-</div>
-          <div class="grid">
-            <div><span class="label">Customer</span><span class="value">${esc(j.customer_phone || "")}</span></div>
-            <div><span class="label">Route</span><span class="value">${esc(j.printer_id || "")}</span></div>
-            <div><span class="label">Paper / Type</span><span class="value">${esc(j.paper_size || "-")}</span></div>
-            <div><span class="label">Color</span><span class="value">${esc(j.color_mode || "-")}</span></div>
-            <div><span class="label">Copies</span><span class="value">${esc(j.copies || 1)}</span></div>
-            <div><span class="label">Pages</span><span class="value">${esc(j.pages || 1)}</span></div>
-            <div><span class="label">Unit Price</span><span class="value">$${money(j.unit_price || 0)}</span></div>
-            <div><span class="label">Total</span><span class="value">$${money(j.total_cost || 0)}</span></div>
-            <div><span class="label">Learning</span><span class="value">${esc(j.learning_type || "-")}</span></div>
-            <div><span class="label">Created</span><span class="value">${esc(j.created_at || "")}</span></div>
-          </div>
-
-          <div class="panel">
-            <div class="panel-title">Instructions</div>
-            <div class="panel-body">${esc(j.instructions || "None")}</div>
-          </div>
-
-          <div class="panel">
-            <div class="panel-title">Shipping</div>
-            <div class="panel-body">${esc(j.shipping_details || "None")}</div>
-          </div>
-
-          ${renderFilePreview(j)}
-          ${renderAudioPreview(j)}
-
-          <form class="route-form" method="POST" action="/dashboard/route?key=${encodeURIComponent(key || "")}">
-            <input type="hidden" name="id" value="${esc(j.id)}" />
-            <select name="printer_id">${getPrinterOptionsHtml(j.printer_id)}</select>
-            <button type="submit">Route</button>
-          </form>
-
-          <div class="actions">
-            <form method="POST" action="/dashboard/mark?key=${encodeURIComponent(key || "")}">
-              <input type="hidden" name="id" value="${esc(j.id)}" />
-              <input type="hidden" name="status" value="completed" />
-              <button class="done-btn">Done</button>
-            </form>
-
-            <form method="POST" action="/dashboard/mark?key=${encodeURIComponent(key || "")}">
-              <input type="hidden" name="id" value="${esc(j.id)}" />
-              <input type="hidden" name="status" value="printing" />
-              <button class="print-btn">Printing</button>
-            </form>
-
-            <form method="POST" action="/dashboard/mark?key=${encodeURIComponent(key || "")}">
-              <input type="hidden" name="id" value="${esc(j.id)}" />
-              <input type="hidden" name="status" value="pending" />
-              <button class="pending-btn">Pending</button>
-            </form>
-
-            <form method="POST" action="/dashboard/mark?key=${encodeURIComponent(key || "")}">
-              <input type="hidden" name="id" value="${esc(j.id)}" />
-              <input type="hidden" name="status" value="error" />
-              <button class="error-btn">Error</button>
-            </form>
+          <div class="status ${statusClass}">
+            ${esc(j.status || "pending")}
           </div>
         </div>
-      `;
-    })
-    .join("");
 
+        <div style="margin-top:10px;font-size:13px;color:#bbb;">
+          📞 ${esc(customerPhone || "-")} <br>
+          📄 ${esc(originalName || "-")}
+        </div>
+
+        ${
+          fileUrl
+            ? `<div style="margin-top:10px;">
+                 <a href="${fileUrl}" target="_blank" style="color:#4da3ff;">
+                   📂 Open File
+                 </a>
+               </div>`
+            : ""
+        }
+
+        <div style="margin-top:10px;font-size:13px;">
+          Size: ${esc(paperSize || "-")} |
+          Color: ${esc(colorMode || "-")} |
+          Copies: ${copies} |
+          Pages: ${pages}
+        </div>
+
+        <div style="margin-top:10px;font-weight:bold;">
+          ${money(total)}
+        </div>
+      </div>
+    `;
+  })
+  .join("");
+     
   return `
 <!DOCTYPE html>
 <html>
