@@ -744,6 +744,24 @@ function resetSession(from) {
   const t = String(text).toLowerCase().trim();
   return ["hi", "hello", "hey", "good morning", "good afternoon", "good evening"].includes(t);
 }
+    function serviceMenuText(includeHeader = true) {
+  const menu = [
+    "1 - Print",
+    "2 - Laminate",
+    "3 - ID Photo",
+    "4 - Image Editing",
+    "5 - Video Editing",
+    "6 - Lesson / Homework",
+    "7 - Talk to Agent",
+    "8 - Find Auto Mechanic",
+    "9 - Need Ride to Work",
+    "10 - Shared Apartment / Rent"
+  ].join("\n");
+
+  return includeHeader
+    ? `Reply with a number:\n\n${menu}`
+    : menu;
+}
     const from = message.from;
     const type = message.type;
     const session = getSession(from);
