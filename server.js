@@ -242,7 +242,76 @@ function publicFileUrl(relativeUrl = "") {
   if (BASE_URL) return `${BASE_URL}${relativeUrl.startsWith("/") ? "" : "/"}${relativeUrl}`;
   return relativeUrl;
 }
+function renderFilePreview(job = {}) {
+  try {
+    const url = String(job.file_url || job.customer_file_url || job.url || "");
+    const name = String(job.original_name || job.name || "file");
+    const mime = String(job.mime_type || job.mime || "").toLowerCase();
 
+    if (!url) {
+      return `
+        <div class="media-box">
+          <div class="media-title">File</div>
+          <div class="media-text">No file attached</div>
+        </div>
+      `;
+    }
+
+    const safeName = esc(name);
+    const safeUrl = esc(url);
+
+    if (mime.startsWith("image/")) {
+      return `
+        <div class="media-box">
+          <div class="media-title">Image Preview</div>
+          <img class="preview-img" src="${safeUrl}" alt="${safeName}" style="width:100%;max-width:420px;border-radius:12px;display:block;" />
+          <a class="open-link" target="_blank" rel="noopener" href="${safeUrl}">Open File</a>
+        </div>
+      `;
+    }
+
+    if (mime.startsWith("video/")) {
+      return `
+        <div class="media-box">
+          <div class="media-title">Video Preview</div>
+          <video controls style="width:100%;max-width:420px;border-radius:12px;display:block;">
+            <source src="${safeUrl}" type="${mime || "video/mp4"}">
+            Your browser does not support video.
+          </video>
+          <a class="open-link" target="_blank" rel="noopener" href="${safeUrl}">Open File</a>
+        </div>
+      `;
+    }
+
+    if (mime.startsWith("audio/")) {
+      return `
+        <div class="media-box">
+          <div class="media-title">Audio File</div>
+          <audio controls style="width:100%;">
+            <source src="${safeUrl}" type="${mime || "audio/ogg"}">
+            Your browser does not support audio.
+          </audio>
+          <a class="open-link" target="_blank" rel="noopener" href="${safeUrl}">Open File</a>
+        </div>
+      `;
+    }
+
+    return `
+      <div class="media-box">
+        <div class="media-title">File</div>
+        <div class="media-text">${safeName}</div>
+        <a class="open-link" target="_blank" rel="noopener" href="${safeUrl}">Open File</a>
+      </div>
+    `;
+  } catch (e) {
+    return `
+      <div class="media-box">
+        <div class="media-title">File</div>
+        <div class="media-text">Preview unavailable</div>
+      </div>
+    `;
+  }
+}
 function createEmptySession() {
   return {
     stage: null,
@@ -252,234 +321,14 @@ function createEmptySession() {
     lastJobId: null,
     printSpec: {
       paper_size: "",
-      color_mode: "",
-      copies: 1,
-      pages: 1
-    },
-    laminateSpec: {
-      paper_size: "",
-      copies: 1
-    }
-  };
-}
-
-function getSession(from) {
-  if (!sessions.has(from)) {
-    sessions.set(from, createEmptySession());
+     color_mode: "",
+    copies: 1,
+    pages: 1,
+    instructions: "",
+    instruction_audio_url: ""
   }
-  return sessions.get(from);
+};
 }
-
-function resetSession(from) {
-  sessions.set(from, createEmptySession());
-}
-
-function isGreeting(text = "") {
-  const lower = normalizeText(text);
-  return ["hi", "hello", "hey", "start", "menu"].includes(lower);
-}
-
-function serviceMenuText(hasFile = false) {
-  return `${hasFile ? "✅ File received successfully!\n\n" : ""}What would you like to do${hasFile ? " with your file" : ""}?
-
-1 - Print
-2 - Laminate
-3 - Image Editing
-4 - Video Editing
-5 - ID Photo
-6 - Lesson / Homework / Quiz / Transcript
-7 - Need Shipping
-
-Or type:
-🚗 Ride to work
-🔧 Find mechanic
-🏠 Rent apartment`;
-}
-
-function learningMenuText() {
-  return `📚 Learning Mode
-
-What do you want?
-
-1 - Generate Transcript
-2 - Create Quiz
-3 - Explain Lesson
-4 - Solve Homework`;
-}
-
-function printSizeMenuText() {
-  return `🖨 Printing selected.
-
-Choose paper size:
-
-1 - A4
-2 - A3
-3 - Letter
-4 - Legal
-5 - Tabloid`;
-}
-
-function printColorMenuText() {
-  return `Choose color mode:
-
-1 - Black & White
-2 - Color`;
-}
-
-function laminateSizeMenuText() {
-  return `📄 Laminating selected.
-
-Choose laminate type:
-
-1 - Standard / Letter — $1.50
-2 - Legal — $2.00
-3 - Tabloid — $3.00`;
-}
-
-function detectReferralIntent(text = "") {
-  const lower = normalizeText(text);
-  if (lower.includes("ride")) return "RIDE";
-  if (lower.includes("mechanic")) return "MECHANIC";
-  if (lower.includes("apartment") || lower.includes("rent")) return "APARTMENT";
-  if (lower.includes("shipping")) return "SHIPPING";
-  return null;
-}
-
-function mapSelectionToService(text = "") {
-  const lower = normalizeText(text);
-
-  if (lower === "1") return "PRINT";
-  if (lower === "2") return "LAMINATE";
-  if (lower === "3") return "IMAGE_EDIT";
-  if (lower === "4") return "VIDEO_EDIT";
-  if (lower === "5") return "ID_PHOTO";
-  if (lower === "6") return "LEARNING";
-  if (lower === "7") return "SHIPPING";
-
-  if (lower === "print") return "PRINT";
-  if (lower === "laminate") return "LAMINATE";
-  if (lower === "image editing") return "IMAGE_EDIT";
-  if (lower === "video editing") return "VIDEO_EDIT";
-  if (lower === "id photo") return "ID_PHOTO";
-  if (lower === "learning") return "LEARNING";
-  if (lower === "shipping" || lower === "need shipping") return "SHIPPING";
-
-  return null;
-}
-
-function parseCountFromText(text = "", fallback = 1) {
-  const m = String(text).match(/\d+/);
-  return m ? Math.max(1, safeInt(m[0], fallback)) : fallback;
-}
-
-function chooseRouteForJob(input = {}) {
-  const service = String(input.service || "");
-  const paperSize = String(input.paper_size || "").toUpperCase();
-  const explicitPrinter = input.printer_id || "";
-
-  if (explicitPrinter) return explicitPrinter;
-
-  if (service === "IMAGE_EDIT" || service === "VIDEO_EDIT" || service === "ID_PHOTO" || service === "LEARNING") {
-    return AGENT_QUEUE_ID;
-  }
-
-  if (service === "SHIPPING" || service === "LAMINATE") {
-    return DISPATCH_QUEUE_ID;
-  }
-
-  if (paperSize === "A3" || paperSize === "TABLOID") {
-    return A3_PRINTER_ID;
-  }
-
-  if (paperSize === "CARD") {
-    return CARD_PRINTER_ID;
-  }
-
-  if (service === "PRINT") {
-    return DEFAULT_PRINTER_ID;
-  }
-
-  return DISPATCH_QUEUE_ID;
-}
-function renderFilePreview({ url, name, mime }) {
-  url = String(url || "");
-  name = String(name || "");
-  mime = String(mime || "").toLowerCase();
-
-  if (!url) {
-    return `
-      <div class="media-box">
-        <div class="media-title">File</div>
-        <div class="media-text">No file attached</div>
-      </div>
-    `;
-  }
-
-  if (mime.startsWith("image/")) {
-    return `
-      <div class="media-box">
-        <div class="media-title">Image Preview</div>
-        <img class="preview" src="${esc(url)}" alt="${esc(name)}" style="width:100%;max-width:420px;border-radius:12px;display:block;" />
-        <a class="open-link" target="_blank" rel="noopener" href="${esc(url)}">Open File</a>
-      </div>
-    `;
-  }
-
-  if (
-    mime.startsWith("video/") ||
-    /\.(mp4|mov|webm|m4v|ogg|ogv)$/i.test(url) ||
-    /\.(mp4|mov|webm|m4v|ogg|ogv)$/i.test(name)
-  ) {
-    return `
-      <div class="media-box">
-        <div class="media-title">Video Preview</div>
-        <video class="preview" controls playsinline preload="metadata" style="width:100%;max-width:420px;border-radius:12px;background:#000;">
-          <source src="${esc(url)}" type="${esc(mime || "video/mp4")}">
-          Your browser does not support video playback.
-        </video>
-        <a class="open-link" target="_blank" rel="noopener" href="${esc(url)}">Open File</a>
-      </div>
-    `;
-  }
-
-  if (mime === "application/pdf") {
-    return `
-      <div class="media-box">
-        <div class="media-title">File Preview</div>
-        <div class="media-text">Document attached and ready.</div>
-        <a class="open-link" target="_blank" rel="noopener" href="${esc(url)}">Open File</a>
-      </div>
-    `;
-  }
-
-  return `
-    <div class="media-box">
-      <div class="media-title">File</div>
-      <div class="media-text">${esc(name || "Attached file")}</div>
-      <a class="open-link" target="_blank" rel="noopener" href="${esc(url)}">Open File</a>
-    </div>
-  `;
-}
-
-      
-
-function renderAudioPreview(job) {
-  try {
-    if (!job || !job.audio_url) return "";
-
-    return `
-      <div style="margin-top:8px;">
-        <audio controls style="width:100%;">
-          <source src="${job.audio_url}" type="audio/ogg">
-          Your browser does not support audio.
-        </audio>
-      </div>
-    `;
-  } catch (e) {
-    return "";
-  }
-}
-
 
 // =========================
 // ROOT / HEALTH / DEBUG
