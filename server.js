@@ -704,7 +704,12 @@ app.post("/webhook", async (req, res) => {
     if (!message) return res.sendStatus(200);
 
    const sessions = new Map();
-
+function createEmptySession() {
+  return {
+    step: null,
+    data: {}
+  };
+}
 function getSession(from) {
   if (!sessions.has(from)) {
     sessions.set(from, createEmptySession());
@@ -714,6 +719,11 @@ function getSession(from) {
 
 function resetSession(from) {
   sessions.set(from, createEmptySession());
+}
+    function isGreeting(text) {
+  if (!text) return false;
+  const t = String(text).toLowerCase().trim();
+  return ["hi", "hello", "hey", "good morning", "good afternoon", "good evening"].includes(t);
 }
     const from = message.from;
     const type = message.type;
