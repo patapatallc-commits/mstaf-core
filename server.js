@@ -5,6 +5,11 @@ const path = require("path");
 const axios = require("axios");
 require("dotenv").config();
 const { Pool } = require("pg");
+
+const app = express();
+app.use(express.json({ limit: "20mb" }));
+
+const PORT = process.env.PORT || 10000;
 async function sendMessage(to, text) {
   try {
     await axios.post(
@@ -25,1964 +30,199 @@ async function sendMessage(to, text) {
     console.error("Send message error:", err.response?.data || err.message);
   }
 }
-const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
-  ssl: process.env.DATABASE_SSL === "false"
-    ? false
-    : { rejectUnauthorized: false }
-});
-const VOICE_NOTE_HINT = "You can type or send a voice note, and we will continue from there.";
-const app = express();
-app.use(express.json({ limit: "20mb" }));
-app.use(express.urlencoded({ extended: true, limit: "20mb" }));
-
-const PORT = process.env.PORT || 10000;
-
-// =========================
-// PATHS / STATIC
-// =========================
-const UPLOAD_DIR = path.resolve(__dirname, "uploads");
-fs.mkdirSync(UPLOAD_DIR, { recursive: true });
-app.use("/uploads", express.static(UPLOAD_DIR));
-
-// =========================
-// MULTER
-// =========================
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => cb(null, UPLOAD_DIR),
-  filename: (req, file, cb) => {
-    const safe = String(file.originalname || "file")
-      .replace(/[^a-zA-Z0-9._-]/g, "_")
-      .slice(-120);
-
-    cb(null, `${Date.now()}_${Math.random().toString(16).slice(2)}_${safe}`);
-  }
-});
-const upload = multer({ storage });
-
-// =========================
-// ENV / CONFIG
-// =========================
-const TOKEN = process.env.WHATSAPP_ACCESS_TOKEN || "";
-const PHONE_ID = process.env.WHATSAPP_PHONE_NUMBER_ID || "";
-const VERIFY_TOKEN =
-  process.env.WHATSAPP_VERIFY_TOKEN ||
-  process.env.VERIFY_TOKEN ||
-  "";
-
-const DASHBOARD_KEY = process.env.DASHBOARD_KEY || "";
-const WORKER_KEY = process.env.WORKER_KEY || process.env.PRINTER_KEY || "";
-const PRINTER_KEY = process.env.PRINTER_KEY || process.env.WORKER_KEY || "";
-
-const DEFAULT_PRINTER_ID = process.env.DEFAULT_PRINTER_ID || "PP-USA-001";
-const A3_PRINTER_ID = process.env.A3_PRINTER_ID || "PP-USA-A3-001";
-const CARD_PRINTER_ID = process.env.CARD_PRINTER_ID || "PP-USA-CARD-001";
-const DISPATCH_QUEUE_ID = process.env.DISPATCH_QUEUE_ID || "DISPATCH";
-const AGENT_QUEUE_ID = process.env.AGENT_QUEUE_ID || "AGENT";
-
-const BASE_URL =
-  (process.env.BASE_URL || process.env.SERVER_BASE || "").replace(/\/+$/, "") || "";
-
-// =========================
-// CONTACTS / LINKS
-// =========================
-const CONTACTS = {
-  RIDE: process.env.RIDE_TO_WORK_CONTACTS || "+1 862 230 6637",
-  MECHANIC: process.env.AUTO_MECHANIC_CONTACTS || "+1 862 230 6637",
-  APARTMENT: process.env.APARTMENT_CONTACTS || "+1 862 230 6637",
-  SHIPPING: process.env.SHIPPING_CONTACTS || "+1 862 230 6637"
-};
-
-const LINKS = {
-  HOW_TO_UPLOAD:
-    process.env.HOW_TO_UPLOAD_LINK || "https://www.patapata.us/pages/how-to-upload",
-  AFRICA_PAYMENT:
-    process.env.AFRICA_PAYMENT_LINK || "https://www.patapata.us/pages/africa-payment",
-  WHATSAPP_BOT:
-    process.env.WHATSAPP_BOT_LINK || "https://wa.me/18622306637"
-};
-
-// =========================
-// SHOPIFY VARIANT IDS
-// Known IDs from your setup are hardcoded.
-// Unknown ones are env-driven to avoid wrong checkout.
-// =========================
-const SHOPIFY_VARIANTS = {
-  PRINT_A4_BW: process.env.SHOPIFY_VARIANT_PRINT_A4_BW || "52221221273899",
-  PRINT_A4_COLOR: process.env.SHOPIFY_VARIANT_PRINT_A4_COLOR || "52221221437739",
-
-  PRINT_A3_BW: process.env.SHOPIFY_VARIANT_PRINT_A3_BW || "52591931719979",
-  PRINT_A3_COLOR: process.env.SHOPIFY_VARIANT_PRINT_A3_COLOR || "52591931883819",
-  PRINT_LETTER_BW: process.env.SHOPIFY_VARIANT_PRINT_LETTER_BW || "",
-  PRINT_LETTER_COLOR: process.env.SHOPIFY_VARIANT_PRINT_LETTER_COLOR || "",
-  PRINT_LEGAL_BW: process.env.SHOPIFY_VARIANT_PRINT_LEGAL_BW || "",
-  PRINT_LEGAL_COLOR: process.env.SHOPIFY_VARIANT_PRINT_LEGAL_COLOR || "",
-  PRINT_TABLOID_BW: process.env.SHOPIFY_VARIANT_PRINT_TABLOID_BW || "",
-  PRINT_TABLOID_COLOR: process.env.SHOPIFY_VARIANT_PRINT_TABLOID_COLOR || "",
-
-  LAMINATE_LETTER: process.env.SHOPIFY_VARIANT_LAMINATE_LETTER || "10307335749931",
-  LAMINATE_LEGAL: process.env.SHOPIFY_VARIANT_LAMINATE_LEGAL || "10307335881003",
-  LAMINATE_TABLOID: process.env.SHOPIFY_VARIANT_LAMINATE_TABLOID || "10307335946539",
-
-  ID_PHOTO: process.env.SHOPIFY_VARIANT_ID_PHOTO || "10307335323947",
-
-  IMAGE_EDIT_BASIC: process.env.SHOPIFY_VARIANT_IMAGE_EDIT_BASIC || "52581935939883",
-  IMAGE_EDIT_BG: process.env.SHOPIFY_VARIANT_IMAGE_EDIT_BG || "52581935972651",
-  IMAGE_EDIT_ENHANCE: process.env.SHOPIFY_VARIANT_IMAGE_EDIT_ENHANCE || "52581936005419",
-  IMAGE_EDIT_ADVANCED: process.env.SHOPIFY_VARIANT_IMAGE_EDIT_ADVANCED || "52581936038187",
-
-  VIDEO_EDIT_SHORT: process.env.SHOPIFY_VARIANT_VIDEO_EDIT_SHORT || "52582037061931",
-  VIDEO_EDIT_SOCIAL: process.env.SHOPIFY_VARIANT_VIDEO_EDIT_SOCIAL || "52582037094699",
-  VIDEO_EDIT_STANDARD: process.env.SHOPIFY_VARIANT_VIDEO_EDIT_STANDARD || "52582037127467",
-  VIDEO_EDIT_ADVANCED: process.env.SHOPIFY_VARIANT_VIDEO_EDIT_ADVANCED || "52582037160235"
-};
-
-// =========================
-// PRICING
-// =========================
-const PRINT_PRICING = {
-  A4: { bw: 0.1, color: 0.5 },
-  LETTER: { bw: 0.1, color: 0.5 },
-  LEGAL: { bw: 0.12, color: 0.6 },
-  A3: { bw: 1.5, color: 3.0 },
-  TABLOID: { bw: 1.5, color: 3.0 }
-};
-
-const LAMINATE_PRICING = {
-  LETTER: 1.5,
-  LEGAL: 2.0,
-  TABLOID: 3.0
-};
-
-// =========================
-// PRINTER REGISTRY
-// =========================
-const NIGERIA_STATES = [
-  { name: "ABIA", code: "AB" },
-  { name: "ADAMAWA", code: "AD" },
-  { name: "AKWA IBOM", code: "AK" },
-  { name: "ANAMBRA", code: "AN" },
-  { name: "BAUCHI", code: "BA" },
-  { name: "BAYELSA", code: "BY" },
-  { name: "BENUE", code: "BE" },
-  { name: "BORNO", code: "BO" },
-  { name: "CROSS RIVER", code: "CR" },
-  { name: "DELTA", code: "DE" },
-  { name: "EBONYI", code: "EB" },
-  { name: "EDO", code: "ED" },
-  { name: "EKITI", code: "EK" },
-  { name: "ENUGU", code: "EN" },
-  { name: "GOMBE", code: "GO" },
-  { name: "IMO", code: "IM" },
-  { name: "JIGAWA", code: "JI" },
-  { name: "KADUNA", code: "KD" },
-  { name: "KANO", code: "KN" },
-  { name: "KATSINA", code: "KT" },
-  { name: "KEBBI", code: "KE" },
-  { name: "KOGI", code: "KO" },
-  { name: "KWARA", code: "KW" },
-  { name: "LAGOS", code: "LA" },
-  { name: "NASARAWA", code: "NA" },
-  { name: "NIGER", code: "NI" },
-  { name: "OGUN", code: "OG" },
-  { name: "ONDO", code: "ON" },
-  { name: "OSUN", code: "OS" },
-  { name: "OYO", code: "OY" },
-  { name: "PLATEAU", code: "PL" },
-  { name: "RIVERS", code: "RI" },
-  { name: "SOKOTO", code: "SO" },
-  { name: "TARABA", code: "TA" },
-  { name: "YOBE", code: "YO" },
-  { name: "ZAMFARA", code: "ZA" },
-  { name: "FCT", code: "FC" }
-];
-
-function buildPrinterRegistry() {
-  const registry = [
-    { id: DEFAULT_PRINTER_ID, label: "USA Hub Printer", type: "A4", country: "USA" },
-    { id: A3_PRINTER_ID, label: "USA A3 Printer", type: "A3", country: "USA" },
-    { id: CARD_PRINTER_ID, label: "USA Card Printer", type: "CARD", country: "USA" },
-    { id: DISPATCH_QUEUE_ID, label: "Dispatch Queue", type: "QUEUE", country: "SYSTEM" },
-    { id: AGENT_QUEUE_ID, label: "Agent Queue", type: "QUEUE", country: "SYSTEM" }
-  ];
-
-  for (const state of NIGERIA_STATES) {
-    registry.push({
-      id: `PP-NG-${state.code}-A4-001`,
-      label: `${state.name} A4 Printer`,
-      type: "A4",
-      country: "NIGERIA",
-      state: state.name
-    });
-    registry.push({
-      id: `PP-NG-${state.code}-SP-001`,
-      label: `${state.name} Special Printer`,
-      type: "SPECIAL",
-      country: "NIGERIA",
-      state: state.name
-    });
-  }
-
-  return registry;
-}
-
-const PRINTERS = buildPrinterRegistry();
-
-// =========================
-// MEMORY STORES
-// =========================
 const sessions = new Map();
-const jobs = [];
-let jobCounter = 1;
 
-// =========================
-// HELPERS
-// =========================
-function nowIso() {
-  return new Date().toISOString();
-}
-
-function normalizeText(text = "") {
-  return String(text || "").trim().toLowerCase();
-}
-
-function safeInt(value, fallback = 0) {
-  const n = Number(value);
-  return Number.isFinite(n) ? n : fallback;
-}
-
-function money(value = 0) {
-  return Number(value || 0).toFixed(2);
-}
-
-function publicFileUrl(relativeUrl = "") {
-  if (!relativeUrl) return "";
-  if (/^https?:\/\//i.test(relativeUrl)) return relativeUrl;
-  if (BASE_URL) return `${BASE_URL}${relativeUrl.startsWith("/") ? "" : "/"}${relativeUrl}`;
-  return relativeUrl;
-}
-function esc(value) {
-  return String(value ?? "")
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#39;");
-}
-function renderFilePreview(job = {}) {
-  try {
-    const url = String(job.file_url || job.customer_file_url || job.url || "");
-    const name = String(job.original_name || job.name || "file");
-    const mime = String(job.mime_type || job.mime || "").toLowerCase();
-
-    if (!url) {
-      return `
-        <div class="media-box">
-          <div class="media-title">File</div>
-          <div class="media-text">No file attached</div>
-        </div>
-      `;
-    }
-
-    const safeName = esc(name);
-    const safeUrl = esc(url);
-
-    if (mime.startsWith("image/")) {
-      return `
-        <div class="media-box">
-          <div class="media-title">Image Preview</div>
-          <img class="preview-img" src="${safeUrl}" alt="${safeName}" style="width:100%;max-width:420px;border-radius:12px;display:block;" />
-          <a class="open-link" target="_blank" rel="noopener" href="${safeUrl}">Open File</a>
-        </div>
-      `;
-    }
-
-    if (mime.startsWith("video/")) {
-      return `
-        <div class="media-box">
-          <div class="media-title">Video Preview</div>
-          <video controls style="width:100%;max-width:420px;border-radius:12px;display:block;">
-            <source src="${safeUrl}" type="${mime || "video/mp4"}">
-            Your browser does not support video.
-          </video>
-          <a class="open-link" target="_blank" rel="noopener" href="${safeUrl}">Open File</a>
-        </div>
-      `;
-    }
-
-    if (mime.startsWith("audio/")) {
-      return `
-        <div class="media-box">
-          <div class="media-title">Audio File</div>
-          <audio controls style="width:100%;">
-            <source src="${safeUrl}" type="${mime || "audio/ogg"}">
-            Your browser does not support audio.
-          </audio>
-          <a class="open-link" target="_blank" rel="noopener" href="${safeUrl}">Open File</a>
-        </div>
-      `;
-    }
-
-    return `
-      <div class="media-box">
-        <div class="media-title">File</div>
-        <div class="media-text">${safeName}</div>
-        <a class="open-link" target="_blank" rel="noopener" href="${safeUrl}">Open File</a>
-      </div>
-    `;
-  } catch (e) {
-    return `
-      <div class="media-box">
-        <div class="media-title">File</div>
-        <div class="media-text">Preview unavailable</div>
-      </div>
-    `;
-  }
-}
-function createEmptySession() {
+function createSession() {
   return {
-    stage: null,
+    stage: "MENU",
     selectedService: null,
-    learningType: null,
-    pendingFile: null,
-    lastJobId: null,
-    printSpec: {
-      paper_size: "",
-     color_mode: "",
-    copies: 1,
-    pages: 1,
-    instructions: "",
-    instruction_audio_url: ""
-  }
-};
-}
-
-// =========================
-// ROOT / HEALTH / DEBUG
-// =========================
-app.get("/", (req, res) => {
-  res.send("PATAPATA MSTAF server is running.");
-});
-
-app.get("/health", (req, res) => {
-  res.json({
-    ok: true,
-    service: "mstaf-core",
-    queues: {
-      default_printer_id: DEFAULT_PRINTER_ID,
-      a3_printer_id: A3_PRINTER_ID,
-      card_printer_id: CARD_PRINTER_ID,
-      dispatch_queue_id: DISPATCH_QUEUE_ID,
-      agent_queue_id: AGENT_QUEUE_ID
-    },
-    printers: PRINTERS.length
-  });
-});
-
-app.get("/api/health", (req, res) => {
-  res.json({
-    ok: true,
-    now: nowIso(),
-    base_url: BASE_URL || null,
-    printers_count: PRINTERS.length
-  });
-});
-
-app.get("/debug", (req, res) => {
-  res.json({
-    ok: true,
-    NOW: nowIso(),
-    base_url: BASE_URL || null,
-    uploads_dir: UPLOAD_DIR,
-    jobs_count: jobs.length,
-    printers_count: PRINTERS.length
-  });
-});
-
-// =========================
-// UPLOAD / JOB CREATE
-// =========================
-app.post("/api/upload", upload.single("file"), (req, res) => {
-  if (!req.file) {
-    return res.status(400).json({ ok: false, error: "No file uploaded" });
-  }
-
-  const relativeUrl = `/uploads/${req.file.filename}`;
-
-  return res.json({
-    ok: true,
-    file_url: relativeUrl,
-    public_file_url: publicFileUrl(relativeUrl),
-    original_name: req.file.originalname
-  });
-});
-
-app.post("/api/print-jobs", upload.single("file"), (req, res) => {
-  try {
-    const service = String(req.body.service_type || req.body.serviceType || "PRINT").toUpperCase();
-    const paper_size = String(req.body.paper_size || req.body.paperSize || "").toUpperCase();
-    const color_mode = normalizeText(req.body.color_mode || req.body.colorMode || "bw");
-    const copies = safeInt(req.body.copies, 1);
-    const pages = safeInt(req.body.pages, 1);
-
-    let unit_price = 0;
-    let total_cost = 0;
-
-    if (service === "PRINT") {
-      unit_price = PRINT_PRICING[paper_size]?.[color_mode === "color" ? "color" : "bw"] || 0;
-      total_cost = estimatePrintCost({ paper_size, color_mode, copies, pages });
-    } else if (service === "LAMINATE") {
-      unit_price = LAMINATE_PRICING[paper_size] || 0;
-      total_cost = estimateLaminateCost({ paper_size, copies });
-    }
-
-    const file = req.file
-      ? {
-          type: "document",
-          url: `/uploads/${req.file.filename}`,
-          filename: req.file.filename,
-          mime_type: req.file.mimetype
-        }
-      : null;
-
-    const job = {
-      id: jobCounter++,
-      public_job_id: `MSTAF-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
-      customer_phone: String(req.body.customer_phone || req.body.phone || ""),
-      customer_name: String(req.body.customer_name || ""),
-      customer_email: String(req.body.customer_email || ""),
-      service,
-      printer_id: chooseRouteForJob({ service, paper_size }),
-      file,
-      status: "pending",
-       instructions: String(req.body.instructions || ""),
-      instruction_audio_url: "",
-      instruction_audio: null,
-      shipping_details: "",
-      learning_type: "",
-      paper_size,
-      color_mode,
-      copies,
-      pages,
-      unit_price,
-      total_cost,
-      notes: String(req.body.notes || ""),
-      error_message: "",
-      created_at: nowIso(),
-      updated_at: nowIso()
-    };
-
-    jobs.unshift(job);
-    res.json({ ok: true, job });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ ok: false, error: "Failed to create job" });
-  }
-});
-
-app.get("/jobs", (req, res) => {
-  res.json({ ok: true, count: jobs.length, jobs });
-});
-
-app.get("/api/printers", (req, res) => {
-  res.json({ ok: true, count: PRINTERS.length, printers: PRINTERS });
-});
-
-// =========================
-// DASHBOARD / DISPATCH / WORKER APIs
-// =========================
-app.get("/api/dashboard/jobs", async (req, res) => {
-  if (!authDashboard(req)) {
-    return res.status(401).json({ ok: false, error: "Unauthorized" });
-  }
-
-  try {
-    const printer_id = String(req.query.printer_id || "").trim();
-    const status = normalizeText(req.query.status || "");
-    const q = normalizeText(req.query.q || "");
-    const limit = Math.min(parseInt(req.query.limit || "100", 10), 500);
-
-    let sql = "SELECT * FROM print_jobs WHERE 1=1";
-    const params = [];
-    let idx = 1;
-
-    if (printer_id) {
-      sql += ` AND COALESCE(printer_id, '') = $${idx++}`;
-      params.push(printer_id);
-    }
-
-    if (status) {
-      sql += ` AND LOWER(COALESCE(status, '')) = $${idx++}`;
-      params.push(status);
-    }
-
-    if (q) {
-      sql += ` AND (
-        CAST(id AS TEXT) ILIKE $${idx}
-        OR COALESCE(public_job_id, '') ILIKE $${idx}
-        OR COALESCE(original_name, '') ILIKE $${idx}
-        OR COALESCE(instructions, '') ILIKE $${idx}
-        OR COALESCE(customer_phone, '') ILIKE $${idx}
-        OR COALESCE(service, '') ILIKE $${idx}
-      )`;
-      params.push(`%${q}%`);
-      idx++;
-    }
-
-    sql += ` ORDER BY id DESC LIMIT $${idx}`;
-    params.push(limit);
-console.log("DASHBOARD QUERY:", sql);
-console.log("DASHBOARD PARAMS:", params);
-    const result = await pool.query(sql, params);
-    console.log("DASHBOARD ROW COUNT:", result.rows.length);
-console.log("DASHBOARD SAMPLE:", result.rows.slice(0, 3));
-
-    return res.json({
-      ok: true,
-      count: result.rows.length,
-      jobs: result.rows
-    });
-  } catch (err) {
-    console.error("dashboard jobs error:", err);
-    return res.status(500).json({ ok: false, error: "Server error" });
-  }
-});
-      
-      
-    
-      
-
-
-app.post("/api/dashboard/jobs/:id/route", (req, res) => {
-  if (!authDashboard(req)) {
-    return res.status(401).json({ ok: false, error: "Unauthorized" });
-  }
-
-  const job = jobs.find((j) => j.id === Number(req.params.id));
-  if (!job) {
-    return res.status(404).json({ ok: false, error: "Job not found" });
-  }
-
-  const printer_id = String(req.body.printer_id || "").trim();
-  if (!printer_id) {
-    return res.status(400).json({ ok: false, error: "printer_id is required" });
-  }
-
-  Object.assign(job, {
-    printer_id,
-    status: "pending",
-    error_message: "",
-    updated_at: nowIso()
-  });
-
-  res.json({ ok: true, job });
-});
-
-app.post("/api/dashboard/jobs/:id/mark", (req, res) => {
-  if (!authDashboard(req)) {
-    return res.status(401).json({ ok: false, error: "Unauthorized" });
-  }
-
-  const job = jobs.find((j) => j.id === Number(req.params.id));
-  if (!job) {
-    return res.status(404).json({ ok: false, error: "Job not found" });
-  }
-
-  Object.assign(job, {
-    status: String(req.body.status || job.status),
-    error_message: String(req.body.error_message || ""),
-    updated_at: nowIso()
-  });
-
-  res.json({ ok: true, job });
-});
-
-app.get("/api/dispatch/queue", (req, res) => {
-  if (!authDashboard(req)) {
-    return res.status(401).json({ ok: false, error: "Unauthorized" });
-  }
-
-  const queue = jobs.filter((j) => j.printer_id === DISPATCH_QUEUE_ID);
-  res.json({ ok: true, count: queue.length, jobs: queue });
-});
-
-app.post("/api/dispatch/assign", (req, res) => {
-  if (!authDashboard(req)) {
-    return res.status(401).json({ ok: false, error: "Unauthorized" });
-  }
-
-  const { id, printer_id } = req.body || {};
-  const job = jobs.find((j) => j.id === Number(id));
-
-  if (!job) {
-    return res.status(404).json({ ok: false, error: "Job not found" });
-  }
-
-  if (!printer_id) {
-    return res.status(400).json({ ok: false, error: "printer_id is required" });
-  }
-
-  Object.assign(job, {
-    printer_id: String(printer_id),
-    status: "pending",
-    error_message: "",
-    updated_at: nowIso()
-  });
-
-  res.json({ ok: true, job });
-});
-
-app.get("/api/worker/next", (req, res) => {
-  const workerKey = req.query.key || req.headers["x-worker-key"] || req.headers["x-printer-key"];
-if (workerKey !== WORKER_KEY && workerKey !== PRINTER_KEY) {
-  return res.status(401).json({ ok: false, error: "Unauthorized" });
-}
-
-  const requestedPrinterId =
-    String(req.query.printer_id || req.headers["x-printer-id"] || "").trim();
-
-  let nextJob = null;
-
-  if (requestedPrinterId) {
-    nextJob = jobs.find(
-      (j) => j.status === "pending" && String(j.printer_id || "") === requestedPrinterId
-    );
-  } else {
-    nextJob = jobs.find(
-      (j) =>
-        j.status === "pending" &&
-        j.printer_id !== DISPATCH_QUEUE_ID &&
-        j.printer_id !== AGENT_QUEUE_ID
-    );
-  }
-
-  if (!nextJob) {
-    return res.status(200).json({ ok: true, job: null, message: "No pending jobs" });
-  }
-
-  nextJob.status = "printing";
-  nextJob.updated_at = nowIso();
-  res.json({ ok: true, job: nextJob });
-});
-
-app.post("/api/worker/jobs/:id/status", (req, res) => {
-  const allow = authWorker(req) || authDashboard(req);
-  if (!allow) {
-    return res.status(401).json({ ok: false, error: "Unauthorized" });
-  }
-
-  const job = jobs.find((j) => j.id === Number(req.params.id));
-  if (!job) {
-    return res.status(404).json({ ok: false, error: "Job not found" });
-  }
-
-  job.status = String(req.body.status || job.status);
-  job.error_message = String(req.body.error_message || "");
-  job.updated_at = nowIso();
-
-  res.json({ ok: true, job });
-});
-
-app.post("/api/worker/status", (req, res) => {
-  const allow = authWorker(req) || authDashboard(req);
-  if (!allow) {
-    return res.status(401).json({ ok: false, error: "Unauthorized" });
-  }
-
-  const job = jobs.find((j) => j.id === Number(req.body.jobId));
-  if (!job) {
-    return res.status(404).json({ ok: false, error: "Job not found" });
-  }
-
-  job.status = String(req.body.status || job.status);
-  job.error_message = String(req.body.error_message || "");
-  job.updated_at = nowIso();
-
-  res.json({ ok: true, job });
-});
-
-// =========================
-// WEBHOOK VERIFY
-// =========================
-app.get("/webhook", (req, res) => {
-  const mode = req.query["hub.mode"];
-  const token = req.query["hub.verify_token"];
-  const challenge = req.query["hub.challenge"];
-
-  if (mode && token === VERIFY_TOKEN) {
-    return res.status(200).send(challenge);
-  }
-
-  return res.sendStatus(403);
-});// =========================
-// WHATSAPP WEBHOOK
-// =========================
-app.post("/webhook", async (req, res) => {
-  try {
-    const message = req.body.entry?.[0]?.changes?.[0]?.value?.messages?.[0];
-    if (!message) return res.sendStatus(200);
-
-   const sessions = new Map();
-function createEmptySession() {
-  return {
-    step: null,
-    data: {}
+    printSpec: {},
+    laminateSpec: {}
   };
 }
+
 function getSession(from) {
   if (!sessions.has(from)) {
-    sessions.set(from, createEmptySession());
+    sessions.set(from, createSession());
   }
   return sessions.get(from);
 }
 
 function resetSession(from) {
-  sessions.set(from, createEmptySession());
+  sessions.set(from, createSession());
 }
-    function isGreeting(text) {
-  if (!text) return false;
-  const t = String(text).toLowerCase().trim();
-  return ["hi", "hello", "hey", "good morning", "good afternoon", "good evening"].includes(t);
+function serviceMenu() {
+  return `1 - Print
+2 - Laminate
+3 - ID Photo
+4 - Image Editing
+5 - Video Editing
+6 - Lesson / Homework
+7 - Talk to Agent
+8 - Find Auto Mechanic
+9 - Need Ride to Work
+10 - Shared Apartment / Rent`;
 }
-    function serviceMenuText(includeHeader = true) {
-  const menu = [
-    "1 - Print",
-    "2 - Laminate",
-    "3 - ID Photo",
-    "4 - Image Editing",
-    "5 - Video Editing",
-    "6 - Lesson / Homework",
-    "7 - Talk to Agent",
-    "8 - Find Auto Mechanic",
-    "9 - Need Ride to Work",
-    "10 - Shared Apartment / Rent"
-  ].join("\n");
 
-  return includeHeader
-    ? `Reply with a number:\n\n${menu}`
-    : menu;
+function printSizeMenuText() {
+  return `Print selected.
+
+Choose paper size:
+1 - A4
+2 - A3
+3 - Letter
+4 - Legal
+5 - Tabloid
+6 - Card`;
 }
-    
-    function detectReferralIntent(text) {
-  if (!text) return null;
-  const t = String(text).toLowerCase().trim();
 
-  if (t.includes("ride")) return "RIDE";
-  if (t.includes("mechanic")) return "MECHANIC";
-  if (t.includes("apartment") || t.includes("rent")) return "APARTMENT";
-
-  return null;
+function printColorMenuText() {
+  return `Choose color:
+1 - Black & White
+2 - Color`;
 }
-    function mapSelectionToService(input) {
-  const value = String(input || "").trim();
 
-  const map = {
-    "1": "PRINT",
-    "2": "LAMINATE",
-    "3": "ID_PHOTO",
-    "4": "IMAGE_EDITING",
-    "5": "VIDEO_EDITING",
-    "6": "LESSON_HOMEWORK",
-    "7": "AGENT",
-    "8": "MECHANIC",
-    "9": "RIDE",
-    "10": "APARTMENT"
-  };
+function laminateSizeMenuText() {
+  return `Laminate selected.
 
-  return map[value] || null;
+Choose laminate size:
+1 - Letter
+2 - Legal
+3 - Tabloid`;
 }
+app.post("/webhook", async (req, res) => {
+  try {
+    const message = req.body.entry?.[0]?.changes?.[0]?.value?.messages?.[0];
+    if (!message) return res.sendStatus(200);
+
     const from = message.from;
     const type = message.type;
     const session = getSession(from);
 
     let text = "";
     if (type === "text") {
-      text = message.text?.body || "";
+      text = message.text.body;
     }
-    const lower = normalizeText(text);
 
-    // -------------------------
-    // Greeting
-    // -------------------------
-    if (type === "text" && isGreeting(text)) {
+    const lower = (text || "").toLowerCase().trim();
+
+    // ======================
+    // GREETING
+    // ======================
+    if (["hi", "hello", "hey"].includes(lower)) {
       resetSession(from);
-      await sendMessage(from, `Hello 👋 Welcome to PATAPATA Print-O-Matic
 
-Send your PDF, image, document, video, or audio.
+      await sendMessage(
+        from,
+        `Hello 👋 Welcome to PATAPATA Print-O-Matic
 
-${serviceMenuText(false)}`);
+${serviceMenu()}`
+      );
+
       return res.sendStatus(200);
     }
 
-    // -------------------------
-    // Referral flows
-    // -------------------------
-    const referral = type === "text" ? detectReferralIntent(text) : null;
-
-    if (referral === "RIDE") {
-      await sendMessage(from, `🚗 Ride to Work\nCall ${CONTACTS.RIDE}`);
-      return res.sendStatus(200);
-    }
-    if (referral === "MECHANIC") {
-      await sendMessage(from, `🔧 Auto Mechanic\nCall ${CONTACTS.MECHANIC}`);
-      return res.sendStatus(200);
-    }
-    if (referral === "APARTMENT") {
-      await sendMessage(from, `🏠 Apartment Rental\nCall ${CONTACTS.APARTMENT}`);
-      return res.sendStatus(200);
-    }
-
-    // -------------------------
-    // Incoming media
-    // -------------------------
-    let downloadedFile = null;
-
-    if (["image", "document", "video", "audio"].includes(type)) {
-      const mediaId =
-        message.document?.id ||
-        message.image?.id ||
-        message.video?.id ||
-        message.audio?.id ||
-        "";
-
-      downloadedFile = await downloadWhatsAppMedia(mediaId);
-
-      if (downloadedFile) {
-  const savedMedia = {
-    type,
-    url: downloadedFile.publicUrl || downloadedFile.url,
-    filename: downloadedFile.filename,
-    mime_type: downloadedFile.mimeType
-  };
-
-  if (type === "audio") {
-    session.pendingInstructionAudio = savedMedia;
-  } else {
-    session.pendingFile = savedMedia;
-  }
-}
-      // ===============================
-// FILE RECEIVED → ASK WHAT TO DO
-// ===============================
-if (type === "image" || type === "document") {
-
-  // Only trigger if not already in a specific flow
-  if (!session.stage || session.stage === "START") {
-
-    session.stage = "FILE_RECEIVED";
-
-    await sendMessage(
-      from,
-      `✅ File received successfully.
-
-What would you like to do with this file?
-
-Reply:
-1 - Print
-2 - Laminate
-3 - ID Photo
-4 - Image Editing
-5 - Video Editing`
-    );
-
-    return res.sendStatus(200);
-  }
-}
-    // -------------------------
-    // Audio as instruction
-    // -------------------------
-    if (type === "audio") {
-  const job = createOrUpdateJob(from, session, {
-    service: session.selectedService || "PRINT",
-    instruction_audio_url: session.pendingInstructionAudio?.url || "",
-    instruction_audio: session.pendingInstructionAudio || null
-  });
-
-  session.pendingInstructionAudio = null;
-}
-
-  if (session.stage === "LEARNING_WAITING_INPUT") {
-    job.service = "LEARNING";
-    job.learning_type = session.learningType || "";
-    job.printer_id = AGENT_QUEUE_ID;
-    job.updated_at = nowIso();
-
-    await sendMessage(
-      from,
-      `✅ Learning audio received.
-
-Type: ${job.learning_type || "LEARNING"}
-
-Our agent will review it and continue here on WhatsApp.`
-    );
-    return res.sendStatus(200);
-  }
-if (session.stage === "PRINT_WAITING_FILE" && (type === "image" || type === "document")) {
-  session.stage = "PRINT_WAITING_INSTRUCTIONS";
-
-  await sendMessage(
-    from,
-    `✅ File received successfully.
-
-Send any special print instructions (optional).
-You can type or send a voice note.`
-  );
-
-  return res.sendStatus(200);
-}
-  if (session.stage === "LAMINATE_WAITING_CHAT") {
-    await sendMessage(
-      from,
-      `✅ Laminating audio instruction received and attached to Job #${job.id}.`
-    );
-    return res.sendStatus(200);
-  }
-
-  if (session.stage === "IMAGE_EDIT_WAITING_FILE" && (type === "image" || type === "document")) {
-  const job = createOrUpdateJob(from, session, {
-    service: "IMAGE_EDIT",
-    printer_id: AGENT_QUEUE_ID,
-    file_url: session.pendingFile?.url || "",
-    mime_type: session.pendingFile?.mime_type || "",
-    original_name: session.pendingFile?.filename || "",
-    total_cost: 0
-  });
-
-  await sendMessage(
-    from,
-    `🖼️ Image received and attached to Job #${job.id}.\n\nPlease type your instructions or send a voice note, and we will continue from there.`
-  );
-
-  return res.sendStatus(200);
-}
-     if (session.stage === "VIDEO_EDIT_WAITING_FILE" && (type === "video" || type === "document")) {
-  const job = createOrUpdateJob(from, session, {
-    service: "VIDEO_EDIT",
-    printer_id: AGENT_QUEUE_ID,
-    file_url: session.pendingFile?.url || "",
-    mime_type: session.pendingFile?.mime_type || "",
-    original_name: session.pendingFile?.filename || ""
-  });
-
-  await sendMessage(
-    from,
-   `Video received and attached to Job #${job.id}.\n\nPlease type your instructions or send a voice note, and we will continue from there.`
-  );
-  return res.sendStatus(200);
-}
-
-  if (session.stage === "ID_PHOTO_WAITING_FILE") {
-    await sendMessage(
-  from,
-  `✅ ID photo audio instruction received and attached to Job #${job.id}.
-
-Our team is reviewing your request and will share the pricing shortly.`
-);
-    return res.sendStatus(200);
-  }
-
-  await sendMessage(
-  from,
-  `✅ Voice note received and attached to your request.
-
-Our team will review it and get back to you shortly.`
-);
-  return res.sendStatus(200);
-}
-
-    // -------------------------
-    // Main service selection
-    // -------------------------
-    if (
-  type === "text" &&
-  (
-    !session.stage ||
-    session.stage === "MENU" ||
-    isGreeting(text)
-  )
-) {
-      const service = mapSelectionToService(text);
-
-      if (service === "PRINT") {
-        session.selectedService = "PRINT";
+    // ======================
+    // MENU SELECTION
+    // ======================
+    if (session.stage === "MENU") {
+      if (lower === "1") {
         session.stage = "PRINT_SELECT_SIZE";
         await sendMessage(from, printSizeMenuText());
         return res.sendStatus(200);
       }
 
-      if (service === "LAMINATE") {
-        session.selectedService = "LAMINATE";
+      if (lower === "2") {
         session.stage = "LAMINATE_SELECT_SIZE";
         await sendMessage(from, laminateSizeMenuText());
         return res.sendStatus(200);
       }
 
-      if (service === "IMAGE_EDIT") {
-        session.selectedService = "IMAGE_EDIT";
-        session.stage = "IMAGE_EDIT_WAITING_FILE";
-        await sendMessage(from, `🖼️ Image Editing selected.
+      await sendMessage(from, serviceMenu());
+      return res.sendStatus(200);
+    }
+        // ======================
+    // PRINT SIZE
+    // ======================
+    if (session.stage === "PRINT_SELECT_SIZE") {
+      const map = {
+        "1": "A4",
+        "2": "A3",
+        "3": "LETTER",
+        "4": "LEGAL",
+        "5": "TABLOID",
+        "6": "CARD"
+      };
 
-Please upload your image and tell us what you would like us to do.
+      const size = map[lower];
 
-You can type instructions or send a voice note.`);
+      if (!size) {
+        await sendMessage(from, "Reply 1–6");
         return res.sendStatus(200);
       }
 
-      if (service === "VIDEO_EDIT") {
-        session.selectedService = "VIDEO_EDIT";
-        session.stage = "VIDEO_EDIT_WAITING_FILE";
-        await sendMessage(from, `🎥 Video Editing selected.
+      session.printSpec.paper_size = size;
+      session.stage = "PRINT_SELECT_COLOR";
 
-Upload video and send your instructions.
-You can also send a voice note.`);
-        return res.sendStatus(200);
-      }
-
-      if (service === "ID_PHOTO") {
-        session.selectedService = "ID_PHOTO";
-        session.stage = "ID_PHOTO_WAITING_FILE";
-        await sendMessage(from, `🪪 ID Photo selected.
-
-Upload your photo and send your instructions.`);
-        return res.sendStatus(200);
-      }
-
-      if (service === "LEARNING") {
-        session.selectedService = "LEARNING";
-        session.stage = "LEARNING_MENU";
-        await sendMessage(from, learningMenuText());
-        return res.sendStatus(200);
-      }
-
-      if (service === "SHIPPING") {
-        session.selectedService = "SHIPPING";
-        session.stage = "SHIPPING_WAITING_DETAILS";
-        await sendMessage(from, `📦 Need Shipping selected.
-
-Please send:
-- pickup or delivery
-- item type
-- destination city/state
-- quantity/weight if known
-
-You can type details or send a voice note.`);
-        return res.sendStatus(200);
-      }
+      await sendMessage(from, printColorMenuText());
+      return res.sendStatus(200);
     }
 
-    // -------------------------
-    // Learning submenu
-    // -------------------------
-    if (type === "text" && session.stage === "LEARNING_MENU") {
-      if (lower === "1") session.learningType = "TRANSCRIPT";
-      else if (lower === "2") session.learningType = "QUIZ";
-      else if (lower === "3") session.learningType = "EXPLAIN";
-      else if (lower === "4") session.learningType = "HOMEWORK";
+    // ======================
+    // PRINT COLOR
+    // ======================
+    if (session.stage === "PRINT_SELECT_COLOR") {
+      if (lower === "1") session.printSpec.color = "bw";
+      else if (lower === "2") session.printSpec.color = "color";
       else {
-        await sendMessage(from, "Please reply with 1, 2, 3, or 4.");
+        await sendMessage(from, "Reply 1 or 2");
         return res.sendStatus(200);
       }
 
-      session.stage = "LEARNING_WAITING_INPUT";
-      await sendMessage(from, `📚 ${session.learningType} selected.
-
-Now send:
-- text
-- file
-- or voice note`);
-      return res.sendStatus(200);
-    }
-
-    if (session.stage === "LEARNING_WAITING_INPUT") {
-      const job = createOrUpdateJob(from, session, {
-        service: "LEARNING",
-        learning_type: session.learningType || "",
-        instructions: type === "text" ? text : "[Learning file uploaded]",
-        printer_id: AGENT_QUEUE_ID
-      });
-
-      await sendMessage(from, `✅ Learning request received.
-
-Type: ${job.learning_type}
-Job ID: ${job.id}
-
-Our agent will continue here on WhatsApp.`);
-      return res.sendStatus(200);
-    }
-
-    // -------------------------
-    // Print flow
-    // -------------------------
-    // ------------------------
-// Print flow
-// ------------------------
-if (type === "text" && session.stage === "PRINT_SELECT_SIZE") {
-  const sizeMap = {
-    "1": "A4",
-    "2": "A3",
-    "3": "LETTER",
-    "4": "LEGAL",
-    "5": "TABLOID",
-    "6": "CARD"
-  };
-
-  const size = sizeMap[lower];
-  if (!size) {
-    await sendMessage(from, "Reply with 1, 2, 3, 4, 5, or 6 for paper size.");
-    return res.sendStatus(200);
-  }
-
-  session.printSpec = session.printSpec || {};
-  session.printSpec.paper_size = size;
-  session.stage = "PRINT_SELECT_COLOR";
-
-  await sendMessage(from, printColorMenuText());
-  return res.sendStatus(200);
-}
-
-    if (type === "text" && session.stage === "PRINT_SELECT_COLOR") {
-      let color = "";
-      if (lower === "1") color = "bw";
-      if (lower === "2") color = "color";
-
-      if (!color) {
-        await sendMessage(from, "Reply with 1 for Black & White or 2 for Color.");
-        return res.sendStatus(200);
-      }
-
-      session.printSpec.color_mode = color;
       session.stage = "PRINT_SELECT_COPIES";
       await sendMessage(from, "How many copies?");
       return res.sendStatus(200);
     }
 
-    if (type === "text" && session.stage === "PRINT_SELECT_COPIES") {
-      const copies = parseCountFromText(text, 1);
-      session.printSpec.copies = copies;
-      session.stage = "PRINT_SELECT_PAGES";
-      await sendMessage(from, "How many pages?");
+    // ======================
+    // COPIES
+    // ======================
+    if (session.stage === "PRINT_SELECT_COPIES") {
+      session.printSpec.copies = parseInt(lower) || 1;
+
+      await sendMessage(from, "✅ Order received!");
+      resetSession(from);
       return res.sendStatus(200);
     }
-
-    if (type === "text" && session.stage === "PRINT_SELECT_PAGES") {
-      const pages = parseCountFromText(text, 1);
-      session.printSpec.pages = pages;
-
-      const normalizedSize = normalizePaperSize(session.printSpec.paper_size);
-const normalizedColor = normalizeColorMode(session.printSpec.color_mode);
-
-const unitPrice =
-  PRINT_PRICING[normalizedSize]?.[
-    normalizedColor === "COLOR" ? "color" : "bw"
-  ] || 0;
-
-const total =
-  normalizedSize === "A3"
-    ? unitPrice * session.printSpec.copies
-    : estimatePrintCost(session.printSpec);
-      const variantId = getPrintVariantId({
-  paper_size: session.printSpec.paper_size,
-  color_mode: session.printSpec.color_mode
-});
-
-console.log("PRINT DEBUG:", {
-  paper_size: session.printSpec.paper_size,
-  color_mode: session.printSpec.color_mode,
-  variantId
-});
-      const checkoutLink = buildShopifyCartUrl(
-  variantId,
-  session.printSpec.copies
-);
-
-      const job = createOrUpdateJob(from, session, {
-        service: "PRINT",
-        paper_size: session.printSpec.paper_size,
-        color_mode: session.printSpec.color_mode,
-        copies: session.printSpec.copies,
-        pages: session.printSpec.pages,
-        file_url: session.pendingFile?.url || "",
-mime_type: session.pendingFile?.mime_type || "",
-original_name: session.pendingFile?.filename || "",
-        unit_price: unitPrice,
-        total_cost: total,
-        printer_id: chooseRouteForJob({
-          service: "PRINT",
-          paper_size: session.printSpec.paper_size
-        }),
-        
-instructions: "",
-
-       
-  file_url: session.pendingFile?.type !== "audio" ? (session.pendingFile?.url || "") : "",
-  mime_type: session.pendingFile?.type !== "audio" ? (session.pendingFile?.mime_type || "") : "",
-  original_name: session.pendingFile?.type !== "audio" ? (session.pendingFile?.filename || "") : "",
-  instruction_audio_url: session.pendingFile?.type === "audio" ? (session.pendingFile?.url || "") : "",
-  instruction_audio: session.pendingFile?.type === "audio" ? session.pendingFile : null
-});
-
-      session.stage = "PRINT_CONFIRM";
-
-      let extraLine = variantId
-        ? "Reply:\n1 - Pay on Shopify now\n2 - Continue here on WhatsApp"
-        : "A direct Shopify checkout is not set yet for this print option.\nReply:\n2 - Continue here on WhatsApp";
-
-      await sendMessage(
-        from,
-        `🖨 Your print order
-
-Size: ${job.paper_size}
-Color: ${job.color_mode === "color" ? "Color" : "Black & White"}
-Copies: ${job.copies}
-Pages: ${job.pages}
-Unit Price: $${money(job.unit_price)}
-Total: $${money(job.total_cost)}
-
-${variantId ? `Checkout:\n${checkoutLink}\n\n` : ""}${extraLine}`
-      );
-      return res.sendStatus(200);
-    }
-
-    if (type === "text" && session.stage === "PRINT_CONFIRM") {
-      if (lower === "1") {
-        const variantId = getPrintVariantId(session.printSpec);
-        const checkoutLink = buildShopifyCartUrl(
-  variantId,
-  session.printSpec.copies
-);
-        await sendMessage(from, `🛒 Print checkout:\n${checkoutLink}`);
-        return res.sendStatus(200);
-      }
-
-      if (lower === "2") {
-  session.stage = "PRINT_WAITING_FILE";
-  await sendMessage(
-    from,
-    `📎 Please upload your document, PDF, or image for printing.
-
-You can attach it from your phone gallery or files.
-
-Once uploaded, we will continue with your print order.`
-  );
-  return res.sendStatus(200);
-}
-      }
-if (
-  session.stage === "PRINT_WAITING_INSTRUCTIONS" &&
-  ((type === "text" && text && text.trim()) || type === "audio")
-) {
-  const job = createOrUpdateJob(from, session, {
-    service: "PRINT",
-    printer_id: session.printer_id || DEFAULT_PRINTER_ID,
-    file_url: session.pendingFile?.url || "",
-    mime_type: session.pendingFile?.mime_type || "",
-    original_name: session.pendingFile?.filename || "",
-    total_cost: session.total_cost || 0,
-    customer_phone: from
-  });
-
-  await sendMessage(
-    from,
-    `✅ Print instruction received and attached to Job #${job.id}.\n\nOur team will continue processing your print order shortly.`
-  );
-
-  return res.sendStatus(200);
-}
-    // -------------------------
-    // Laminate flow
-    // -------------------------
-    if (type === "text" && session.stage === "LAMINATE_SELECT_SIZE") {
-      const sizeMap = {
+        if (session.stage === "LAMINATE_SELECT_SIZE") {
+      const map = {
         "1": "LETTER",
         "2": "LEGAL",
         "3": "TABLOID"
       };
 
-      const size = sizeMap[lower];
+      const size = map[lower];
+
       if (!size) {
-        await sendMessage(from, "Reply with 1, 2, or 3 for laminate type.");
+        await sendMessage(from, "Reply 1–3");
         return res.sendStatus(200);
       }
 
       session.laminateSpec.paper_size = size;
-      session.stage = "LAMINATE_SELECT_COPIES";
+
       await sendMessage(from, "How many copies?");
+      resetSession(from);
       return res.sendStatus(200);
     }
-
-    if (type === "text" && session.stage === "LAMINATE_SELECT_COPIES") {
-      const copies = parseCountFromText(text, 1);
-      session.laminateSpec.copies = copies;
-
-      const unitPrice = LAMINATE_PRICING[session.laminateSpec.paper_size] || 0;
-      const total = estimateLaminateCost(session.laminateSpec);
-      const variantId = getLaminateVariantId(session.laminateSpec.paper_size);
-
-console.log("LAMINATE DEBUG:", {
-  paper_size: session.laminateSpec.paper_size,
-  variantId,
-  copies: session.laminateSpec.copies
-});
-
-const checkoutLink = buildShopifyCartUrl(
-  variantId,
-  session.laminateSpec.copies
-);
-
-      const job = createOrUpdateJob(from, session, {
-        service: "LAMINATE",
-        paper_size: session.laminateSpec.paper_size,
-        copies: session.laminateSpec.copies,
-        pages: 1,
-        color_mode: "",
-        unit_price: unitPrice,
-        total_cost: total,
-        printer_id: DISPATCH_QUEUE_ID
-      });
-
-      session.stage = "LAMINATE_CONFIRM";
-
-      await sendMessage(
-        from,
-        `📄 Your laminating order
-
-Type: ${job.paper_size}
-Quantity: ${job.copies}
-Unit Price: $${money(job.unit_price)}
-Total: $${money(job.total_cost)}
-
-Checkout:
-${checkoutLink}
-
-Reply:
-1 - Pay on Shopify now
-2 - Continue here on WhatsApp`
-      );
-      return res.sendStatus(200);
-    }
-
-    if (type === "text" && session.stage === "LAMINATE_CONFIRM") {
-      if (lower === "1") {
-  const variantId = getLaminateVariantId(session.laminateSpec.paper_size);
-
-  console.log("LAMINATE CHECKOUT DEBUG:", {
-    paper_size: session.laminateSpec.paper_size,
-    variantId,
-    copies: session.laminateSpec.copies
-  });
-
-  if (!variantId) {
-    await sendMessage(
-      from,
-      `⚠️ Laminating checkout is not properly linked yet for ${session.laminateSpec.paper_size}.
-
-Please continue here on WhatsApp or contact support.`
-    );
+        await sendMessage(from, serviceMenu());
     return res.sendStatus(200);
-  }
 
-  const checkoutLink = buildShopifyCartUrl(
-    variantId,
-    session.laminateSpec.copies
-  );
-
-  await sendMessage(from, `🛒 Laminate checkout:\n${checkoutLink}`);
-  return res.sendStatus(200);
-}
-
-      if (lower === "2") {
-        session.stage = "LAMINATE_WAITING_CHAT";
-        await sendMessage(
-  from,
-  `Send your laminating instructions here.
-${VOICE_NOTE_HINT}`
-);
-        return res.sendStatus(200);
-      }
-    }
-
-    // -------------------------
-    // Generic service files
-    // -------------------------
-    if (downloadedFile && type !== "audio" && session.selectedService === "IMAGE_EDIT") {
-      const job = createOrUpdateJob(from, session, {
-        service: "IMAGE_EDIT",
-        file: session.pendingFile,
-        printer_id: AGENT_QUEUE_ID,
-        total_cost: 0
-      });
-
-      await sendMessage(
-  from,
-  `Image received and attached to Job #${job.id}.\n\nPlease type your instructions or send a voice note, and we will continue from there.`
-);
-return res.sendStatus(200);
-    }
-
-    if (downloadedFile && type !== "audio" && session.selectedService === "VIDEO_EDIT") {
-      const job = createOrUpdateJob(from, session, {
-        service: "VIDEO_EDIT",
-        file: session.pendingFile,
-        printer_id: AGENT_QUEUE_ID,
-        total_cost: 0
-      });
-
-      await sendMessage(
-  from,
-  `✅ Video received for editing.
-Job ID: ${job.id}
-
-${VOICE_NOTE_HINT}`
-);
-      return res.sendStatus(200);
-    }
-
-    if (downloadedFile && session.selectedService === "ID_PHOTO") {
-      const job = createOrUpdateJob(from, session, {
-        service: "ID_PHOTO",
-        file: session.pendingFile,
-        printer_id: AGENT_QUEUE_ID,
-        total_cost: 0
-      });
-
-      await sendMessage(
-  from,
-  `✅ Photo received for ID service.
-Job ID: ${job.id}
-
-${VOICE_NOTE_HINT}`
-);
-      return res.sendStatus(200);
-    }
-
-    if (downloadedFile && session.selectedService === "PRINT" && !isPrintableFile(session.pendingFile)) {
-      await sendMessage(from, `⚠️ Video or audio cannot be printed.
-Please upload a PDF, document, or image.`);
-      return res.sendStatus(200);
-    }
-
-    if (downloadedFile && session.selectedService === "LAMINATE" && !isPrintableFile(session.pendingFile)) {
-      await sendMessage(from, `⚠️ Video or audio cannot be laminated.
-Please upload a document or image file.`);
-      return res.sendStatus(200);
-    }
-
-    // -------------------------
-    // Shipping
-    // -------------------------
-    if (type === "text" && session.stage === "SHIPPING_WAITING_DETAILS") {
-      const job = createOrUpdateJob(from, session, {
-        service: "SHIPPING",
-        shipping_details: text,
-        printer_id: DISPATCH_QUEUE_ID
-      });
-
-      await sendMessage(from, `✅ Shipping request received.
-Job ID: ${job.id}
-
-We will continue here on WhatsApp.`);
-      return res.sendStatus(200);
-    }
-
-    // -------------------------
-    // Text instructions for existing jobs
-    // -------------------------
-    if (
-      type === "text" &&
-      ["PRINT_WAITING_INSTRUCTIONS", "LAMINATE_WAITING_CHAT"].includes(session.stage)
-    ) {
-      const job = createOrUpdateJob(from, session, {
-        instructions: text
-      });
-
-      await sendMessage(from, `✅ Instruction saved to Job #${job.id}.`);
-    return res.sendStatus(200);
-    }
-
-    if (
-      type === "text" &&
-      ["IMAGE_EDIT_WAITING_FILE", "VIDEO_EDIT_WAITING_FILE", "ID_PHOTO_WAITING_FILE"].includes(session.stage)
-    ) {
-      const job = createOrUpdateJob(from, session, {
-        service: session.selectedService,
-        instructions: text,
-        printer_id: AGENT_QUEUE_ID
-      });
- if (session.stage === "VIDEO_EDIT_WAITING_FILE") {
-  await sendMessage(
-    from,
-    `Instruction received and attached to Job #${job.id}.\n\nOur editing team is now reviewing your video and instructions.\n\nPricing details will be shared with you shortly.`
-  );
-  return res.sendStatus(200);
-}
-
-await sendMessage(from, `Instruction saved to Job #${job.id}.`);
-return res.sendStatus(200);
-    }
-
-    // fallback
-    await sendMessage(from, serviceMenuText(false));
-    return res.sendStatus(200);
   } catch (err) {
-    console.error("Webhook error:", err.response?.data || err.message);
+    console.error(err);
     return res.sendStatus(200);
   }
 });
-app.post("/api/dashboard/jobs/:id/message", async (req, res) => {
-  try {
-    if (!authDashboard(req)) {
-      return res.status(401).json({ ok: false, error: "Unauthorized" });
-    }
 
-    const job = jobs.find((j) => j.id === Number(req.params.id));
-    if (!job) {
-      return res.status(404).json({ ok: false, error: "Job not found" });
-    }
-
-    const to = job.customer_phone || job.phone || "";
-    const message = String(req.body.message || "").trim();
-
-    if (!to) {
-      return res.status(400).json({ ok: false, error: "No customer phone on this job" });
-    }
-
-    if (!message) {
-      return res.status(400).json({ ok: false, error: "Message is required" });
-    }
-
-    await sendMessage(to, message);
-
-    job.last_worker_message = message;
-    job.last_worker_message_at = nowIso();
-    job.updated_at = nowIso();
-
-    return res.json({ ok: true, sent_to: to });
-  } catch (err) {
-    console.error("dashboard send message error:", err.response?.data || err.message);
-    return res.status(500).json({ ok: false, error: "Failed to send message" });
-  }
-});
-// =========================
-// DASHBOARD PAGES
-// =========================
-function renderDashboardPage(title, key) {
-const cards = jobs
-  .map((j) => {
-    const service = j.service || j.service_type || "";
-    const publicJobId = j.public_job_id || j.id || "";
-    const fileUrl = (j.file && j.file.url) || j.file_url || j.customer_file_url || "";
-    const originalName =
-      (j.file && j.file.original_name) ||
-      j.original_name ||
-      j.original_filename ||
-      "";
-
-    const customerPhone = j.customer_phone || j.from_phone || "";
-    const paperSize = j.paper_size || "";
-    const colorMode = j.color_mode || j.color_type || "";
-    const copies = Number(j.copies || 1);
-    const pages = Number(j.pages || 1);
-    const total = Number(j.total_cost || j.price || 0);
-
-    const statusClass =
-      j.status === "completed" || j.status === "done"
-        ? "done"
-        : j.status === "error"
-        ? "error"
-        : j.status === "printing"
-        ? "printing"
-        : "pending";
-
-    return `
-      <div class="card">
-        <div class="top">
-          <div>
-            <div class="job-title">
-              Job #${esc(j.id)} 
-              <span class="public-id">${esc(publicJobId)}</span>
-            </div>
-            <div class="service">${esc(service)}</div>
-          </div>
-          <div class="status ${statusClass}">
-            ${esc(j.status || "pending")}
-          </div>
-        </div>
-
-        <div style="margin-top:10px;font-size:13px;color:#bbb;">
-          📞 ${esc(customerPhone || "-")} <br>
-          📄 ${esc(originalName || "-")}
-        </div>
-
-        ${
-  fileUrl
-    ? renderFilePreview({
-        url: fileUrl,
-        name: originalName,
-        mime: j.mime_type || ""
-      })
-    : ""
-
-}
-${j && j.audio_url ? renderAudioPreview(j) : ""}
-        
-
-        <div style="margin-top:10px;font-size:13px;">
-          Size: ${esc(paperSize || "-")} |
-          Color: ${esc(colorMode || "-")} |
-          Copies: ${copies} |
-          Pages: ${pages}
-        </div>
-
-        <div style="margin-top:10px;font-weight:bold;">
-          ${money(total)}
-        </div>
-      </div>
-    `;
-  })
-  .join("");
-     
-  return `
-<!DOCTYPE html>
-<html>
-<head>
-  <title>${esc(title)}</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <style>
-    body {
-      margin: 0;
-      font-family: Arial, sans-serif;
-      background: #09111f;
-      color: #fff;
-    }
-    .wrap {
-      padding: 20px;
-    }
-    .hero {
-      font-size: 34px;
-      font-weight: 800;
-      margin-bottom: 8px;
-    }
-    .sub {
-      color: #aab6cc;
-      margin-bottom: 18px;
-    }
-    .nav {
-      display: flex;
-      gap: 10px;
-      flex-wrap: wrap;
-      margin-bottom: 20px;
-    }
-    .nav a {
-      color: #fff;
-      text-decoration: none;
-      background: #18263b;
-      border: 1px solid #2b3a52;
-      padding: 10px 14px;
-      border-radius: 10px;
-      font-weight: 700;
-    }
-    .cards {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(360px, 1fr));
-      gap: 18px;
-    }
-    .card {
-      background: linear-gradient(180deg, #111b2e, #0c1424);
-      border: 1px solid #2b3a52;
-      border-radius: 18px;
-      padding: 16px;
-      box-shadow: 0 10px 24px rgba(0,0,0,0.25);
-    }
-    .top {
-      display: flex;
-      align-items: flex-start;
-      justify-content: space-between;
-      gap: 12px;
-      margin-bottom: 12px;
-    }
-    .job-title {
-      font-size: 24px;
-      font-weight: 800;
-    }
-    .public-id {
-      display: block;
-      font-size: 12px;
-      color: #8ea2c1;
-      margin-top: 4px;
-    }
-    .service {
-      font-size: 18px;
-      font-weight: 800;
-      margin-top: 6px;
-      color: #fff;
-    }
-    .status {
-      padding: 8px 12px;
-      border-radius: 999px;
-      font-size: 12px;
-      text-transform: uppercase;
-      font-weight: 800;
-    }
-    .status.pending { background: #5c4514; color: #ffd982; }
-    .status.printing { background: #183d79; color: #badaff; }
-    .status.done { background: #17422c; color: #b8ffce; }
-    .status.error { background: #5a1f28; color: #ffc8cf; }
-
-    .grid {
-      display: grid;
-      grid-template-columns: repeat(2, minmax(0,1fr));
-      gap: 10px 14px;
-      margin-bottom: 14px;
-    }
-    .label {
-      display: block;
-      font-size: 12px;
-      color: #9db0cf;
-      margin-bottom: 4px;
-    }
-    .value {
-      display: block;
-      font-size: 16px;
-      font-weight: 700;
-      word-break: break-word;
-    }
-    .panel, .media-box {
-  margin-top: 14px;
-  background: linear-gradient(180deg, #12264a 0%, #0a1630 100%);
-  border: 1px solid rgba(255,255,255,0.10);
-  border-radius: 16px;
-  padding: 14px;
-  box-shadow: 0 10px 28px rgba(0,0,0,0.22);
-}
-
-.panel-title, .media-title {
-  font-size: 12px;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  color: #9db0cf;
-  font-weight: 800;
-  margin-bottom: 10px;
-}
-
-.panel-body, .media-text {
-  white-space: pre-wrap;
-  word-break: break-word;
-  line-height: 1.5;
-  color: #eaf1ff;
-}
-
-.preview {
-  width: 100%;
-  max-width: 420px;
-  max-height: 320px;
-  display: block;
-  border-radius: 12px;
-  background: #000;
-  object-fit: contain;
-  border: 1px solid rgba(255,255,255,0.08);
-}
-
-.open-link {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  margin-top: 10px;
-  color: #7cc4ff;
-  text-decoration: underline;
-  font-weight: 700;
-}
-
-.open-link:hover {
-  opacity: 0.9;
-}
-    
-    audio {
-      width: 100%;
-      margin-top: 8px;
-    }
-    .open-link {
-      display: inline-block;
-      margin-top: 10px;
-      color: #8cc7ff;
-      font-weight: 700;
-      text-decoration: none;
-    }
-    .route-form {
-      display: grid;
-      grid-template-columns: 1fr auto;
-      gap: 8px;
-      margin-top: 14px;
-    }
-    .route-form select,
-    .route-form button {
-      border-radius: 10px;
-      border: 1px solid #2b3a52;
-      padding: 10px 12px;
-    }
-    .route-form select {
-      background: #0c1424;
-      color: #fff;
-    }
-    .route-form button {
-      background: #2f72ff;
-      color: white;
-      font-weight: 800;
-      cursor: pointer;
-    }
-    .actions {
-      display: grid;
-      grid-template-columns: repeat(4, 1fr);
-      gap: 8px;
-      margin-top: 12px;
-    }
-    .actions form button {
-      width: 100%;
-      border: 0;
-      border-radius: 10px;
-      padding: 12px 10px;
-      font-weight: 800;
-      cursor: pointer;
-    }
-    .done-btn { background: #1fc15b; color: white; }
-    .print-btn { background: #285fd0; color: white; }
-    .pending-btn { background: #7b5d1d; color: #fff2bf; }
-    .error-btn { background: #d9394d; color: white; }
-
-    @media (max-width: 700px) {
-      .grid { grid-template-columns: 1fr; }
-      .actions { grid-template-columns: 1fr 1fr; }
-      .route-form { grid-template-columns: 1fr; }
-    }
-  </style>
-</head>
-<body>
-  <div class="wrap">
-    <div class="hero">${esc(title)}</div>
-    <div class="sub">Structured worker / agent dashboard with pricing, file preview, audio, routing, and status controls.</div>
-
-    <div class="nav">
-      <a href="/dashboard?key=${encodeURIComponent(key || "")}">Main</a>
-      <a href="/dispatch?key=${encodeURIComponent(key || "")}">Dispatch</a>
-      <a href="/agent?key=${encodeURIComponent(key || "")}">Agent</a>
-      <a href="/printer?key=${encodeURIComponent(key || "")}">Printer</a>
-    </div>
-
-    <div class="cards">
-      ${cards || "<div>No jobs yet.</div>"}
-    </div>
-  </div>
-  <script>
-  async function sendJobMessage(jobId) {
-    const el = document.getElementById("msg-" + jobId);
-    const message = ((el && el.value) || "").trim();
-
-    if (!message) {
-      alert("Type a message first.");
-      return;
-    }
-
-    const key = new URLSearchParams(window.location.search).get("key") || "";
-
-    try {
-      const res = await fetch(
-        "/api/dashboard/jobs/" + jobId + "/message?key=" + encodeURIComponent(key),
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json"
-          },
-          body: JSON.stringify({ message: message })
-        }
-      );
-
-      const data = await res.json();
-
-      if (!res.ok || !data.ok) {
-        alert(data.error || "Failed to send message");
-        return;
-      }
-
-      alert("✅ WhatsApp message sent!");
-      el.value = "";
-    } catch (err) {
-      alert("Network error. Try again.");
-      console.error(err);
-    }
-  }
-</script>
-</body>
-</html>
-`;
-}
-
-app.get("/dashboard", (req, res) => {
-  const key = String(req.query.key || "");
-  if (DASHBOARD_KEY && key !== DASHBOARD_KEY) {
-    return res.status(401).send("Unauthorized");
-  }
-  res.send(renderDashboardPage("MSTAF Worker / Agent Dashboard", key));
-});
-
-app.get("/printer", (req, res) => {
-  const key = String(req.query.key || "");
-  if (DASHBOARD_KEY && key !== DASHBOARD_KEY) {
-    return res.status(401).send("Unauthorized");
-  }
-  res.send(renderDashboardPage("MSTAF Printer Dashboard", key));
-});
-
-app.get("/dispatch", (req, res) => {
-  const key = String(req.query.key || "");
-  if (DASHBOARD_KEY && key !== DASHBOARD_KEY) {
-    return res.status(401).send("Unauthorized");
-  }
-  res.send(renderDashboardPage("MSTAF Dispatch Dashboard", key));
-});
-
-app.get("/agent", (req, res) => {
-  const key = String(req.query.key || "");
-  if (DASHBOARD_KEY && key !== DASHBOARD_KEY) {
-    return res.status(401).send("Unauthorized");
-  }
-  res.send(renderDashboardPage("MSTAF Agent Dashboard", key));
-});
-
-app.post("/dashboard/route", express.urlencoded({ extended: true }), (req, res) => {
-  const key = String(req.query.key || "");
-  if (DASHBOARD_KEY && key !== DASHBOARD_KEY) {
-    return res.status(401).send("Unauthorized");
-  }
-
-  const job = jobs.find((j) => j.id === Number(req.body.id));
-  if (job) {
-    job.printer_id = String(req.body.printer_id || job.printer_id);
-    job.status = "pending";
-    job.error_message = "";
-    job.updated_at = nowIso();
-  }
-
-  res.redirect(`/dashboard?key=${encodeURIComponent(key)}`);
-});
-
-app.post("/dashboard/mark", express.urlencoded({ extended: true }), (req, res) => {
-  const key = String(req.query.key || "");
-  if (DASHBOARD_KEY && key !== DASHBOARD_KEY) {
-    return res.status(401).send("Unauthorized");
-  }
-
-  const job = jobs.find((j) => j.id === Number(req.body.id));
-  if (job) {
-    job.status = String(req.body.status || job.status);
-    job.updated_at = nowIso();
-    if (job.status !== "error") job.error_message = "";
-  }
-
-  res.redirect(`/dashboard?key=${encodeURIComponent(key)}`);
-});
-
-// =========================
-// START
-// =========================
 app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
+  console.log("Server running on port " + PORT);
 });
