@@ -1941,8 +1941,8 @@ const cards = jobs
         mime: j.mime_type || ""
       })
     : ""
-}
 
+}
 ${renderAudioPreview(j)}
         
 
