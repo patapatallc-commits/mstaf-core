@@ -401,302 +401,21 @@ function chooseRouteForJob(input = {}) {
 
   return DISPATCH_QUEUE_ID;
 }
-
-function estimatePrintCost({ paper_size = "A4", color_mode = "bw", copies = 1, pages = 1 }) {
-  const size = String(paper_size || "A4").toUpperCase();
-  const color = normalizeText(color_mode) === "color" ? "color" : "bw";
-  const rate = PRINT_PRICING[size]?.[color] || PRINT_PRICING.A4[color];
-  return Number((rate * safeInt(copies, 1) * safeInt(pages, 1)).toFixed(2));
-}
-
-function estimateLaminateCost({ paper_size = "LETTER", copies = 1 }) {
-  const size = String(paper_size || "LETTER").toUpperCase();
-  const rate = LAMINATE_PRICING[size] || LAMINATE_PRICING.LETTER;
-  return Number((rate * safeInt(copies, 1)).toFixed(2));
-}
-
-function buildShopifyCartUrl(variantId, qty = 1) {
-  if (!variantId) return LINKS.HOW_TO_UPLOAD;
-  return `https://www.patapata.us/cart/${variantId}:${Math.max(1, safeInt(qty, 1))}`;
-}
-
-function normalizePaperSize(value = "") {
-  const raw = String(value || "").trim().toUpperCase();
-
-  if (raw === "A4") return "A4";
-  if (raw === "A3") return "A3";
-  if (raw === "LETTER") return "LETTER";
-  if (raw === "LEGAL") return "LEGAL";
-  if (raw === "TABLOID") return "TABLOID";
-  if (raw === "CARD" || raw === "ID" || raw === "ID_CARD") return "CARD";
-
-  return raw;
-}
-
-function normalizeColorMode(value = "") {
-  const raw = String(value || "").trim().toLowerCase();
-
-  if (raw === "color" || raw === "colour") return "COLOR";
-  return "BW";
-}
-
-function getPrintVariantId({ paper_size = "", color_mode = "" }) {
-  const size = normalizePaperSize(paper_size);
-  const color = normalizeColorMode(color_mode);
-
-  const map = {
-    A4_BW: SHOPIFY_VARIANTS.PRINT_A4_BW,
-    A4_COLOR: SHOPIFY_VARIANTS.PRINT_A4_COLOR,
-    A3_BW: SHOPIFY_VARIANTS.PRINT_A3_BW,
-    A3_COLOR: SHOPIFY_VARIANTS.PRINT_A3_COLOR,
-    LETTER_BW: SHOPIFY_VARIANTS.PRINT_LETTER_BW,
-    LETTER_COLOR: SHOPIFY_VARIANTS.PRINT_LETTER_COLOR,
-    LEGAL_BW: SHOPIFY_VARIANTS.PRINT_LEGAL_BW,
-    LEGAL_COLOR: SHOPIFY_VARIANTS.PRINT_LEGAL_COLOR,
-    TABLOID_BW: SHOPIFY_VARIANTS.PRINT_TABLOID_BW,
-    TABLOID_COLOR: SHOPIFY_VARIANTS.PRINT_TABLOID_COLOR,
-    CARD_BW: SHOPIFY_VARIANTS.PRINT_CARD_BW,
-    CARD_COLOR: SHOPIFY_VARIANTS.PRINT_CARD_COLOR
-  };
-
-  return map[`${size}_${color}`] || "";
-}
-
-function getLaminateVariantId(paper_size = "") {
-  const size = normalizePaperSize(paper_size);
-
-  const map = {
-    LETTER: SHOPIFY_VARIANTS.LAMINATE_LETTER,
-    LEGAL: SHOPIFY_VARIANTS.LAMINATE_LEGAL,
-    TABLOID: SHOPIFY_VARIANTS.LAMINATE_TABLOID
-  };
-
-  return map[size] || "";
-}
-
-async function createOrUpdateJob(from, session, patch = {}) {
-  const existing = session.lastJobId ? jobs.find(j => j.id === session.lastJobId) : null;
-
-  const merged = {
-    customer_phone: from,
-    service: patch.service || session.selectedService || existing?.service || "",
-    printer_id:
-      patch.printer_id ||
-      existing?.printer_id ||
-      chooseRouteForJob({
-        service: patch.service || session.selectedService || existing?.service || "",
-        paper_size: patch.paper_size || existing?.paper_size || ""
-      }),
-    file: patch.file || session.pendingFile || existing?.file || null,
-    status: patch.status || existing?.status || "pending",
-    instructions: patch.instructions !== undefined
-  ? patch.instructions
-  : existing?.instructions || "",
-    instruction_audio_url:
-      patch.instruction_audio_url !== undefined
-        ? patch.instruction_audio_url
-        : existing?.instruction_audio_url || "",
-    instruction_audio:
-      patch.instruction_audio !== undefined
-        ? patch.instruction_audio
-        : existing?.instruction_audio || null,
-    shipping_details:
-      patch.shipping_details !== undefined
-        ? patch.shipping_details
-        : existing?.shipping_details || "",
-    learning_type:
-      patch.learning_type !== undefined
-        ? patch.learning_type
-        : existing?.learning_type || session.learningType || "",
-    paper_size:
-      patch.paper_size !== undefined ? patch.paper_size : existing?.paper_size || "",
-    color_mode:
-      patch.color_mode !== undefined ? patch.color_mode : existing?.color_mode || "",
-    copies:
-      patch.copies !== undefined ? safeInt(patch.copies, 1) : safeInt(existing?.copies, 1),
-    pages:
-      patch.pages !== undefined ? safeInt(patch.pages, 1) : safeInt(existing?.pages, 1),
-    unit_price:
-      patch.unit_price !== undefined ? Number(patch.unit_price || 0) : Number(existing?.unit_price || 0),
-    total_cost:
-      patch.total_cost !== undefined ? Number(patch.total_cost || 0) : Number(existing?.total_cost || 0),
-    notes: patch.notes !== undefined ? patch.notes : existing?.notes || "",
-    error_message:
-      patch.error_message !== undefined ? patch.error_message : existing?.error_message || ""
-  };
-
-  if (existing) {
-    Object.assign(existing, merged, { updated_at: nowIso() });
-    return existing;
-  }
-
-  const job = {
-    id: jobCounter++,
-    public_job_id: `MSTAF-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
-    created_at: nowIso(),
-    updated_at: nowIso(),
-    ...merged
-  };
-
-  jobs.unshift(job);
-  await pool.query(
-  `INSERT INTO print_jobs
-  (public_job_id, printer_id, file_url, original_name, paper_size, color_mode, copies, pages, total_cost, status, instructions, customer_phone, service, created_at)
-  VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)`,
-  [
-    job.public_job_id || "",
-    job.printer_id || "",
-    job.file?.url || job.file_url || "",
-    job.file?.original_name || job.original_name || "",
-    job.paper_size || "",
-    job.color_mode || "",
-    Number(job.copies || 1),
-    Number(job.pages || 1),
-    Number(job.total || job.total_cost || 0),
-    job.status || "pending",
-    job.instructions || "",
-    job.customer_phone || "",
-    job.service || "",
-    job.created_at || new Date().toISOString()
-  ]
-);
-  session.lastJobId = job.id;
-  return job;
-}
-
-function authDashboard(req) {
-  if (!DASHBOARD_KEY) return true;
-  const key = req.headers["x-dashboard-key"] || req.query.key || "";
-  return key === DASHBOARD_KEY;
-}
-
-function authWorker(req) {
-  if (!WORKER_KEY && !PRINTER_KEY) return true;
-  const key =
-    req.headers["x-worker-key"] ||
-    req.headers["x-printer-key"] ||
-    req.query.key ||
-    "";
-  return key === WORKER_KEY || key === PRINTER_KEY;
-}
-
-async function sendMessage(to, text) {
-  if (!TOKEN || !PHONE_ID) {
-    console.warn("WhatsApp TOKEN or PHONE_ID missing. Message not sent.");
-    return;
-  }
-
-  await axios.post(
-    `https://graph.facebook.com/v18.0/${PHONE_ID}/messages`,
-    {
-      messaging_product: "whatsapp",
-      to,
-      type: "text",
-      text: { body: text }
-    },
-    {
-      headers: {
-        Authorization: `Bearer ${TOKEN}`,
-        "Content-Type": "application/json"
-      }
-    }
-  );
-}
-
-async function downloadWhatsAppMedia(mediaId) {
-  if (!mediaId || !TOKEN) return null;
-
-  try {
-    const metaResp = await axios.get(`https://graph.facebook.com/v18.0/${mediaId}`, {
-      headers: { Authorization: `Bearer ${TOKEN}` }
-    });
-
-    const mediaUrl = metaResp.data?.url;
-    const mimeType = metaResp.data?.mime_type || "application/octet-stream";
-    if (!mediaUrl) return null;
-
-    const extMap = {
-      "image/jpeg": ".jpg",
-      "image/png": ".png",
-      "image/webp": ".webp",
-      "video/mp4": ".mp4",
-      "video/quicktime": ".mov",
-      "audio/ogg": ".ogg",
-      "audio/mpeg": ".mp3",
-      "audio/mp4": ".m4a",
-      "application/pdf": ".pdf",
-      "application/msword": ".doc",
-      "application/vnd.openxmlformats-officedocument.wordprocessingml.document": ".docx"
-    };
-
-    const ext = extMap[mimeType] || "";
-    const filename = `${Date.now()}_${Math.random().toString(16).slice(2)}${ext}`;
-    const filepath = path.join(UPLOAD_DIR, filename);
-
-    const mediaResp = await axios.get(mediaUrl, {
-      responseType: "stream",
-      headers: { Authorization: `Bearer ${TOKEN}` }
-    });
-
-    await new Promise((resolve, reject) => {
-      const writer = fs.createWriteStream(filepath);
-      mediaResp.data.pipe(writer);
-      writer.on("finish", resolve);
-      writer.on("error", reject);
-    });
-
-    const relative = `/uploads/${filename}`;
-
-    return {
-      mediaId,
-      mimeType,
-      filename,
-      filepath,
-      url: relative,
-      publicUrl: publicFileUrl(relative)
-    };
-  } catch (err) {
-    console.error("Media download failed:", err.response?.data || err.message);
-    return null;
-  }
-}
-
-function isPrintableFile(file) {
-  if (!file) return false;
-  const type = String(file.type || "");
-  const mime = String(file.mime_type || "");
-  if (type === "video" || mime.startsWith("video")) return false;
-  if (type === "audio" || mime.startsWith("audio")) return false;
-  return true;
-}
-
-function esc(v) {
-  return String(v == null ? "" : v)
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;");
-}
-
-function getPrinterOptionsHtml(selected = "") {
-  return PRINTERS.map((p) => {
-    const s = String(p.id) === String(selected) ? "selected" : "";
-    return `<option value="${esc(p.id)}" ${s}>${esc(p.id)}</option>`;
-  }).join("");
-}
 function renderFilePreview({ url, name, mime }) {
-url = String(url || "");
-name = String(name || "");
-mime = String(mime || "").toLowerCase();
+  url = String(url || "");
+  name = String(name || "");
+  mime = String(mime || "").toLowerCase();
 
   if (!url) {
-  return `
-    <div class="media-box">
-      <div class="media-title">File</div>
-      <div class="media-text">No file attached</div>
-    </div>
-  `;
-}
-    if (mime.startsWith("image/")) {
+    return `
+      <div class="media-box">
+        <div class="media-title">File</div>
+        <div class="media-text">No file attached</div>
+      </div>
+    `;
+  }
+
+  if (mime.startsWith("image/")) {
     return `
       <div class="media-box">
         <div class="media-title">Image Preview</div>
@@ -705,22 +424,23 @@ mime = String(mime || "").toLowerCase();
       </div>
     `;
   }
- if (
-  mime.startsWith("video/") ||
-  /\.(mp4|mov|webm|m4v|ogg|ogv)$/i.test(url || "") ||
-  String(name || "").match(/\.(mp4|mov|webm|m4v|ogg|ogv)$/i)
-) {
-  return `
-    <div class="media-box">
-      <div class="media-title">Video Preview</div>
-      <video class="preview" controls playsinline preload="metadata" style="width:100%;max-width:420px;border-radius:12px;background:#000;">
-        <source src="${esc(url)}" type="${esc(mime || "video/mp4")}">
-        Your browser does not support video playback.
-      </video>
-      <a class="open-link" target="_blank" rel="noopener" href="${esc(url)}">Open File</a>
-    </div>
-  `;
-}
+
+  if (
+    mime.startsWith("video/") ||
+    /\.(mp4|mov|webm|m4v|ogg|ogv)$/i.test(url) ||
+    /\.(mp4|mov|webm|m4v|ogg|ogv)$/i.test(name)
+  ) {
+    return `
+      <div class="media-box">
+        <div class="media-title">Video Preview</div>
+        <video class="preview" controls playsinline preload="metadata" style="width:100%;max-width:420px;border-radius:12px;background:#000;">
+          <source src="${esc(url)}" type="${esc(mime || "video/mp4")}">
+          Your browser does not support video playback.
+        </video>
+        <a class="open-link" target="_blank" rel="noopener" href="${esc(url)}">Open File</a>
+      </div>
+    `;
+  }
 
   if (mime === "application/pdf") {
     return `
@@ -735,10 +455,13 @@ mime = String(mime || "").toLowerCase();
   return `
     <div class="media-box">
       <div class="media-title">File</div>
-      <div class="media-text">${esc(name)}</div>
+      <div class="media-text">${esc(name || "Attached file")}</div>
       <a class="open-link" target="_blank" rel="noopener" href="${esc(url)}">Open File</a>
     </div>
   `;
+}
+
+      
 
 function renderAudioPreview(job) {
   if (!job.instruction_audio_url) return "";
