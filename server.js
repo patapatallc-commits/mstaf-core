@@ -703,6 +703,18 @@ app.post("/webhook", async (req, res) => {
     const message = req.body.entry?.[0]?.changes?.[0]?.value?.messages?.[0];
     if (!message) return res.sendStatus(200);
 
+   const sessions = new Map();
+
+function getSession(from) {
+  if (!sessions.has(from)) {
+    sessions.set(from, createEmptySession());
+  }
+  return sessions.get(from);
+}
+
+function resetSession(from) {
+  sessions.set(from, createEmptySession());
+}
     const from = message.from;
     const type = message.type;
     const session = getSession(from);
