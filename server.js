@@ -242,6 +242,14 @@ function publicFileUrl(relativeUrl = "") {
   if (BASE_URL) return `${BASE_URL}${relativeUrl.startsWith("/") ? "" : "/"}${relativeUrl}`;
   return relativeUrl;
 }
+function esc(value) {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
 function renderFilePreview(job = {}) {
   try {
     const url = String(job.file_url || job.customer_file_url || job.url || "");
