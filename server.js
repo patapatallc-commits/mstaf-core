@@ -762,6 +762,16 @@ function resetSession(from) {
     ? `Reply with a number:\n\n${menu}`
     : menu;
 }
+    function detectReferralIntent(text) {
+  if (!text) return null;
+  const t = String(text).toLowerCase().trim();
+
+  if (t.includes("ride")) return "RIDE";
+  if (t.includes("mechanic")) return "MECHANIC";
+  if (t.includes("apartment") || t.includes("rent")) return "APARTMENT";
+
+  return null;
+}
     const from = message.from;
     const type = message.type;
     const session = getSession(from);
