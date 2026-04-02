@@ -1113,26 +1113,32 @@ Our agent will continue here on WhatsApp.`);
     // -------------------------
     // Print flow
     // -------------------------
-    if (type === "text" && session.stage === "PRINT_SELECT_SIZE") {
-      const sizeMap = {
-        "1": "A4",
-        "2": "A3",
-        "3": "LETTER",
-        "4": "LEGAL",
-        "5": "TABLOID"
-      };
+    // ------------------------
+// Print flow
+// ------------------------
+if (type === "text" && session.stage === "PRINT_SELECT_SIZE") {
+  const sizeMap = {
+    "1": "A4",
+    "2": "A3",
+    "3": "LETTER",
+    "4": "LEGAL",
+    "5": "TABLOID",
+    "6": "CARD"
+  };
 
-      const size = sizeMap[lower];
-      if (!size) {
-        await sendMessage(from, "Reply with 1, 2, 3, 4, or 5 for paper size.");
-        return res.sendStatus(200);
-      }
+  const size = sizeMap[lower];
+  if (!size) {
+    await sendMessage(from, "Reply with 1, 2, 3, 4, 5, or 6 for paper size.");
+    return res.sendStatus(200);
+  }
 
-      session.printSpec.paper_size = size;
-      session.stage = "PRINT_SELECT_COLOR";
-      await sendMessage(from, printColorMenuText());
-      return res.sendStatus(200);
-    }
+  session.printSpec = session.printSpec || {};
+  session.printSpec.paper_size = size;
+  session.stage = "PRINT_SELECT_COLOR";
+
+  await sendMessage(from, printColorMenuText());
+  return res.sendStatus(200);
+}
 
     if (type === "text" && session.stage === "PRINT_SELECT_COLOR") {
       let color = "";
