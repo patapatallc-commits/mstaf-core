@@ -464,15 +464,20 @@ function renderFilePreview({ url, name, mime }) {
       
 
 function renderAudioPreview(job) {
-  if (!job.instruction_audio_url) return "";
+  try {
+    if (!job || !job.audio_url) return "";
 
-  return `
-    <div class="media-box">
-      <div class="media-title">Instruction Audio</div>
-      <audio controls preload="metadata" src="${esc(job.instruction_audio_url)}"></audio>
-      <a class="open-link" target="_blank" rel="noopener" href="${esc(job.instruction_audio_url)}">Open Audio</a>
-    </div>
-  `;
+    return `
+      <div style="margin-top:8px;">
+        <audio controls style="width:100%;">
+          <source src="${job.audio_url}" type="audio/ogg">
+          Your browser does not support audio.
+        </audio>
+      </div>
+    `;
+  } catch (e) {
+    return "";
+  }
 }
 
 
@@ -1666,7 +1671,7 @@ const cards = jobs
     : ""
 
 }
-${renderAudioPreview(j)}
+${j && j.audio_url ? renderAudioPreview(j) : ""}
         
 
         <div style="margin-top:10px;font-size:13px;">
