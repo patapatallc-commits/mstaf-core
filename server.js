@@ -606,9 +606,10 @@ app.post("/api/dispatch/assign", (req, res) => {
 });
 
 app.get("/api/worker/next", (req, res) => {
-  if (!authWorker(req)) {
-    return res.status(401).json({ ok: false, error: "Unauthorized" });
-  }
+  const workerKey = req.query.key || req.headers["x-worker-key"] || req.headers["x-printer-key"];
+if (workerKey !== WORKER_KEY && workerKey !== PRINTER_KEY) {
+  return res.status(401).json({ ok: false, error: "Unauthorized" });
+}
 
   const requestedPrinterId =
     String(req.query.printer_id || req.headers["x-printer-id"] || "").trim();
