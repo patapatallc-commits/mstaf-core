@@ -696,17 +696,15 @@ mime = String(mime || "").toLowerCase();
     </div>
   `;
 }
-
-
-  return `
-  <div class="media-box">
-    <div class="media-title">Image Preview</div>
-    <img class="preview" src="${esc(url)}" alt="${esc(name)}" style="width:100%;max-width:420px;border-radius:12px;display:block;" />
-    <a class="open-link" target="_blank" rel="noopener" href="${esc(url)}">Open File</a>
-  </div>
-`;
+    if (mime.startsWith("image/")) {
+    return `
+      <div class="media-box">
+        <div class="media-title">Image Preview</div>
+        <img class="preview" src="${esc(url)}" alt="${esc(name)}" style="width:100%;max-width:420px;border-radius:12px;display:block;" />
+        <a class="open-link" target="_blank" rel="noopener" href="${esc(url)}">Open File</a>
+      </div>
+    `;
   }
-
  if (
   mime.startsWith("video/") ||
   /\.(mp4|mov|webm|m4v|ogg|ogv)$/i.test(url || "") ||
