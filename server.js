@@ -697,7 +697,6 @@ mime = String(mime || "").toLowerCase();
   `;
 }
 
-return `
 
   return `
   <div class="media-box">
