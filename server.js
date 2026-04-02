@@ -762,6 +762,7 @@ function resetSession(from) {
     ? `Reply with a number:\n\n${menu}`
     : menu;
 }
+    
     function detectReferralIntent(text) {
   if (!text) return null;
   const t = String(text).toLowerCase().trim();
@@ -771,6 +772,24 @@ function resetSession(from) {
   if (t.includes("apartment") || t.includes("rent")) return "APARTMENT";
 
   return null;
+}
+    function mapSelectionToService(input) {
+  const value = String(input || "").trim();
+
+  const map = {
+    "1": "PRINT",
+    "2": "LAMINATE",
+    "3": "ID_PHOTO",
+    "4": "IMAGE_EDITING",
+    "5": "VIDEO_EDITING",
+    "6": "LESSON_HOMEWORK",
+    "7": "AGENT",
+    "8": "MECHANIC",
+    "9": "RIDE",
+    "10": "APARTMENT"
+  };
+
+  return map[value] || null;
 }
     const from = message.from;
     const type = message.type;
