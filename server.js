@@ -397,15 +397,9 @@ const africaUrl = "https://www.patapata.us/pages/africa-payment";
 }
 
 
-// 🔻 EXISTING FALLBACK (leave this)
-await sendMessage(from, "Reply with 1 or 2.");
-return res.sendStatus(200);
-  await sendMessage(from, "Reply with 1 or 2.");
-  return res.sendStatus(200);
-}
-    await sendMessage(from, serviceMenu());
+    // ✅ EXISTING FALLBACK (leave this)
+    await sendMessage(from, "Reply with 1 or 2.");
     return res.sendStatus(200);
-
   } catch (err) {
     console.error(err);
     return res.sendStatus(200);
