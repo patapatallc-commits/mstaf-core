@@ -387,15 +387,13 @@ const africaUrl = "https://www.patapata.us/pages/africa-payment";
     return res.sendStatus(200);
   }
 
-  await sendMessage(
-    from,
-    `Reply with:
+      await sendMessage(
+      from,
+      `Reply with:
 1 - Shopify Checkout
 2 - Africa Payment`
-  );
-  return res.sendStatus(200);
-}
-
+    );
+    return res.sendStatus(200);
 
     // ✅ EXISTING FALLBACK (leave this)
     await sendMessage(from, "Reply with 1 or 2.");
