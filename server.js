@@ -282,7 +282,7 @@ After upload, you will choose:
       session.laminateSpec.paper_size = size;
 
       await sendMessage(from, "How many copies?");
-      resetSession(from);
+      
       return res.sendStatus(200);
     }
     if (session.stage === "LAMINATE_SELECT_COPIES") {
