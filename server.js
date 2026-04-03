@@ -160,7 +160,7 @@ ${serviceMenu()}`
       }
 
       if (lower === "2") {
-        session.stage = "LAMINATE_SELECT_SIZE":
+        session.stage = "LAMINATE_SELECT_SIZE";
         await sendMessage(from, laminateSizeMenuText());
         return res.sendStatus(200);
       }
