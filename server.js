@@ -164,7 +164,29 @@ ${serviceMenu()}`
         await sendMessage(from, laminateSizeMenuText());
         return res.sendStatus(200);
       }
+if (session.stage === "PRINT_WAITING_INSTRUCTIONS") {
+  if (type === "text") {
+    await sendMessage(
+      from,
+      "✅ Your print instructions have been received and sent to the Agent."
+    );
+    return res.sendStatus(200);
+  }
 
+  if (type === "audio") {
+    await sendMessage(
+      from,
+      "✅ Your voice instruction has been received and sent to the Agent."
+    );
+    return res.sendStatus(200);
+  }
+
+  await sendMessage(
+    from,
+    "Please send your instruction as text or voice note."
+  );
+  return res.sendStatus(200);
+}
       await sendMessage(from, serviceMenu());
       return res.sendStatus(200);
     }
@@ -271,11 +293,72 @@ if (session.stage === "PRINT_FILE_UPLOADED_ACTION") {
   }
 
   if (lower === "2") {
-    session.stage = "PRINT_WAITING_INSTRUCTIONS";
-    await sendMessage(from, "🛒 Checkout link will appear here.");
+  const isColor = session.printSpec?.color === "color";
+
+  const variantId = isColor
+    ? process.env.SHOPIFY_VARIANT_PRINT_A4_COLOR
+    : process.env.SHOPIFY_VARIANT_PRINT_A4_BW;
+
+  const quantity = session.printSpec?.copies || 1;
+
+  const checkoutUrl = `https://www.patapata.us/cart/${variantId}:${quantity}`;
+
+  session.stage = "PRINT_PAYMENT_CHOICE";
+
+  await sendMessage(
+    from,
+    `Choose payment option:
+
+1 - Shopify Checkout
+2 - Africa Payment
+
+Shopify:
+${checkoutUrl}
+
+Africa Payment:
+https://www.patapata.us/pages/africa-payment`
+  );
+
+  return res.sendStatus(200);
+}
+// =======================
+// PAYMENT CHOICE HANDLER
+// =======================
+if (session.stage === "PRINT_PAYMENT_CHOICE") {
+  const isColor = session.printSpec?.color === "color";
+
+  const variantId = isColor
+    ? process.env.SHOPIFY_VARIANT_PRINT_A4_COLOR
+    : process.env.SHOPIFY_VARIANT_PRINT_A4_BW;
+
+  const quantity = session.printSpec?.copies || 1;
+
+  const checkoutUrl = `https://www.patapata.us/cart/${variantId}:${quantity}`;
+  const africaUrl = "https://www.patapata.us/pages/africa-payment";
+
+  if (lower === "1") {
+    await sendMessage(from, `🛒 Shopify Checkout:\n${checkoutUrl}`);
     return res.sendStatus(200);
   }
 
+  if (lower === "2") {
+    await sendMessage(from, `🌍 Africa Payment:\n${africaUrl}`);
+    return res.sendStatus(200);
+  }
+
+  await sendMessage(
+    from,
+    `Reply with:
+1 - Shopify Checkout
+2 - Africa Payment`
+  );
+  return res.sendStatus(200);
+}
+
+
+// 🔻 EXISTING FALLBACK (leave this)
+await sendMessage(from, "Reply with 1 or 2.");
+return res.sendStatus(200);
   await sendMessage(from, "Reply with 1 or 2.");
   return res.sendStatus(200);
 }
