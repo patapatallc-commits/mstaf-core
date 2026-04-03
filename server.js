@@ -293,15 +293,18 @@ if (session.stage === "PRINT_FILE_UPLOADED_ACTION") {
   }
 
   if (lower === "2") {
-  const isColor = session.printSpec?.color === "color";
+  const selectedColor =
+  session.printSpec?.color || session.printSpec?.color_mode || "bw";
 
-  const variantId = isColor
-    ? process.env.SHOPIFY_VARIANT_PRINT_A4_COLOR
-    : process.env.SHOPIFY_VARIANT_PRINT_A4_BW;
+const isColor = selectedColor === "color";
 
-  const quantity = session.printSpec?.copies || 1;
+const bwVariant = process.env.SHOPIFY_VARIANT_PRINT_A4_BW || "52221221273899";
+const colorVariant = process.env.SHOPIFY_VARIANT_PRINT_A4_COLOR || "52221221437739";
 
-  const checkoutUrl = `https://www.patapata.us/cart/${variantId}:${quantity}`;
+const variantId = isColor ? colorVariant : bwVariant;
+const quantity = session.printSpec?.copies || 1;
+
+const checkoutUrl = `https://www.patapata.us/cart/${variantId}:${quantity}`;
 
   session.stage = "PRINT_PAYMENT_CHOICE";
 
@@ -325,16 +328,19 @@ https://www.patapata.us/pages/africa-payment`
 // PAYMENT CHOICE HANDLER
 // =======================
 if (session.stage === "PRINT_PAYMENT_CHOICE") {
-  const isColor = session.printSpec?.color === "color";
+  const selectedColor =
+  session.printSpec?.color || session.printSpec?.color_mode || "bw";
 
-  const variantId = isColor
-    ? process.env.SHOPIFY_VARIANT_PRINT_A4_COLOR
-    : process.env.SHOPIFY_VARIANT_PRINT_A4_BW;
+const isColor = selectedColor === "color";
 
-  const quantity = session.printSpec?.copies || 1;
+const bwVariant = process.env.SHOPIFY_VARIANT_PRINT_A4_BW || "52221221273899";
+const colorVariant = process.env.SHOPIFY_VARIANT_PRINT_A4_COLOR || "52221221437739";
 
-  const checkoutUrl = `https://www.patapata.us/cart/${variantId}:${quantity}`;
-  const africaUrl = "https://www.patapata.us/pages/africa-payment";
+const variantId = isColor ? colorVariant : bwVariant;
+const quantity = session.printSpec?.copies || 1;
+
+const checkoutUrl = `https://www.patapata.us/cart/${variantId}:${quantity}`;
+const africaUrl = "https://www.patapata.us/pages/africa-payment";
 
   if (lower === "1") {
     await sendMessage(from, `🛒 Shopify Checkout:\n${checkoutUrl}`);
