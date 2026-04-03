@@ -122,13 +122,13 @@ if (session.stage === "LAMINATE_WAITING_INSTRUCTIONS") {
   session.stage = "LAMINATE_FILE_UPLOADED_ACTION";
 
   await sendMessage(
-    from,
-    `📄 Document received successfully.
+  from,
+  `📄 Document received successfully.
 
 Choose payment option:
 1 - Shopify Checkout
-2 - Africa Payment
-  );
+2 - Africa Payment`
+);
 
   return res.sendStatus(200);
 }
@@ -136,13 +136,13 @@ Choose payment option:
     session.stage = "PRINT_FILE_UPLOADED_ACTION";
 
     await sendMessage(
-      from,
-      `✅ File received.
+  from,
+  `✅ File received.
 
 Reply:
 1 - Continue with Agent
-2 - 2 - Checkout
-    
+2 - Checkout`
+);    
 
     return res.sendStatus(200);
   }
