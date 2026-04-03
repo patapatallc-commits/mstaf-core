@@ -118,6 +118,20 @@ if (type === "image" || type === "document") {
     filename: mediaObj?.filename || (type === "image" ? "image" : "document")
   };
 
+if (session.stage === "LAMINATE_WAITING_INSTRUCTIONS") {
+  session.stage = "LAMINATE_FILE_UPLOADED_ACTION";
+
+  await sendMessage(
+    from,
+    `📄 Document received successfully.
+
+Choose payment option:
+1 - Shopify Checkout
+2 - Africa Payment
+  );
+
+  return res.sendStatus(200);
+}
   if (session.stage === "PRINT_WAITING_FILE") {
     session.stage = "PRINT_FILE_UPLOADED_ACTION";
 
@@ -127,8 +141,8 @@ if (type === "image" || type === "document") {
 
 Reply:
 1 - Continue with Agent
-2 - Checkout`
-    );
+2 - 2 - Checkout
+    
 
     return res.sendStatus(200);
   }
@@ -305,10 +319,14 @@ After upload, you will choose:
 if (session.stage === "PRINT_FILE_UPLOADED_ACTION") {
   if (lower === "1") {
     session.stage = "PRINT_WAITING_INSTRUCTIONS";
-    await sendMessage(from, "Send your instructions for the Agent now (text or voice).");
-    return res.sendStatus(200);
-  }
+    await sendMessage(
+  from,
+  `✅ Your request has been forwarded to our Agent team.
 
+Please send any instructions now by text or voice.
+
+Our team will review your request and contact you shortly on WhatsApp.`
+);
   if (lower === "2") {
   const selectedColor =
   session.printSpec?.color || session.printSpec?.color_mode || "bw";
