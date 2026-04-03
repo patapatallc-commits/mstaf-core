@@ -263,7 +263,23 @@ After upload, you will choose:
       resetSession(from);
       return res.sendStatus(200);
     }
-        await sendMessage(from, serviceMenu());
+if (session.stage === "PRINT_FILE_UPLOADED_ACTION") {
+  if (lower === "1") {
+    session.stage = "PRINT_WAITING_INSTRUCTIONS";
+    await sendMessage(from, "Send your instructions for the Agent now (text or voice).");
+    return res.sendStatus(200);
+  }
+
+  if (lower === "2") {
+    session.stage = "PRINT_WAITING_INSTRUCTIONS";
+    await sendMessage(from, "🛒 Checkout link will appear here.");
+    return res.sendStatus(200);
+  }
+
+  await sendMessage(from, "Reply with 1 or 2.");
+  return res.sendStatus(200);
+}
+    await sendMessage(from, serviceMenu());
     return res.sendStatus(200);
 
   } catch (err) {
