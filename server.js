@@ -285,6 +285,23 @@ After upload, you will choose:
       resetSession(from);
       return res.sendStatus(200);
     }
+    if (session.stage === "LAMINATE_SELECT_COPIES") {
+  const copies = parseInt(lower, 10);
+
+  if (!copies || copies < 1) {
+    await sendMessage(from, "Reply with a valid number of copies.");
+    return res.sendStatus(200);
+  }
+
+  session.laminateSpec.copies = copies;
+  session.stage = "LAMINATE_WAITING_INSTRUCTIONS";
+
+  await sendMessage(
+    from,
+    "✅ Laminate details saved.\n\nPlease upload your document now. You can also add extra instructions by text or voice."
+  );
+  return res.sendStatus(200);
+}
 if (session.stage === "PRINT_FILE_UPLOADED_ACTION") {
   if (lower === "1") {
     session.stage = "PRINT_WAITING_INSTRUCTIONS";
