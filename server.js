@@ -105,7 +105,34 @@ app.post("/webhook", async (req, res) => {
     }
 
     const lower = (text || "").toLowerCase().trim();
+// =====================
+// FILE UPLOAD CAPTURE
+// =====================
+if (type === "image" || type === "document") {
+  const mediaObj = type === "image" ? message.image : message.document;
 
+  session.pendingFile = {
+    type,
+    media_id: mediaObj?.id || "",
+    mime_type: mediaObj?.mime_type || "",
+    filename: mediaObj?.filename || (type === "image" ? "image" : "document")
+  };
+
+  if (session.stage === "PRINT_WAITING_FILE") {
+    session.stage = "PRINT_FILE_UPLOADED_ACTION";
+
+    await sendMessage(
+      from,
+      `✅ File received.
+
+Reply:
+1 - Continue with Agent
+2 - Checkout`
+    );
+
+    return res.sendStatus(200);
+  }
+}
     // ======================
     // GREETING
     // ======================
@@ -133,7 +160,7 @@ ${serviceMenu()}`
       }
 
       if (lower === "2") {
-        session.stage = "LAMINATE_SELECT_SIZE";
+        session.stage = "LAMINATE_SELECT_SIZE":
         await sendMessage(from, laminateSizeMenuText());
         return res.sendStatus(200);
       }
@@ -185,15 +212,37 @@ ${serviceMenu()}`
     }
 
     // ======================
-    // COPIES
-    // ======================
-    if (session.stage === "PRINT_SELECT_COPIES") {
-      session.printSpec.copies = parseInt(lower) || 1;
+// COPIES
+// ======================
+if (session.stage === "PRINT_SELECT_COPIES") {
+  session.printSpec.copies = parseInt(lower, 10) || 1;
 
-      await sendMessage(from, "✅ Order received!");
-      resetSession(from);
-      return res.sendStatus(200);
-    }
+  session.stage = "PRINT_SELECT_PAGES";
+  await sendMessage(from, "How many pages?");
+  return res.sendStatus(200);
+}
+
+// ======================
+// PRINT PAGES
+// ======================
+if (session.stage === "PRINT_SELECT_PAGES") {
+  session.printSpec.pages = parseInt(lower, 10) || 1;
+
+  session.stage = "PRINT_WAITING_FILE";
+
+  await sendMessage(
+    from,
+    `✅ Print details saved.
+
+Please upload your document or image now.
+
+After upload, you will choose:
+1 - Continue with Agent
+2 - Checkout`
+  );
+
+  return res.sendStatus(200);
+}
         if (session.stage === "LAMINATE_SELECT_SIZE") {
       const map = {
         "1": "LETTER",
