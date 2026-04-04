@@ -359,15 +359,86 @@ Choose payment option:
       // AGENT SERVICE FILE ARRIVED
       if (session.stage === "SERVICE_WAITING_UPLOAD") {
         await sendMessage(
-          from,
-          `✅ Your file has been received.
+  from,
+  `✅ File received.
 
-Our team is reviewing your request and will contact you shortly on WhatsApp.`
-        );
+Please send your instruction now as:
+• text message
+• voice note
+
+Our team will attach it to your request and contact you shortly.`
+);
         session.stage = "SERVICE_WAITING_EXTRA_NOTES";
         return res.sendStatus(200);
       }
+// ===============================
+// SERVICE EXTRA INSTRUCTION (TEXT + AUDIO)
+// ===============================
+if (session.stage === "SERVICE_WAITING_EXTRA_NOTES") {
+  try {
+    const jobId = session.lastServiceJobId;
 
+    if (!jobId) {
+      await sendMessage(from, "⚠️ No active job found. Please restart your request.");
+      session.stage = "MENU";
+      return res.sendStatus(200);
+    }
+
+    let textInstruction = message?.text?.body || (typeof body === "string" ? body.trim() : "");
+    let audioUrl = null;
+
+    if (message?.audio?.id) {
+      audioUrl = await downloadWhatsAppMediaToUploads(
+        message.audio.id,
+        "voice-note",
+        message.audio.mime_type,
+        req
+      );
+    }
+
+    const finalInstruction =
+      textInstruction || (audioUrl ? "Voice instruction received" : "");
+
+    await pool.query(
+      `
+      UPDATE print_jobs
+      SET
+        instructions = CASE
+          WHEN COALESCE(instructions, '') = '' THEN $1
+          ELSE instructions || E'\\n\\n--- Extra Instruction ---\\n' || $1
+        END,
+        instruction_audio_url = COALESCE($2, instruction_audio_url)
+      WHERE id = $3
+      `,
+      [finalInstruction, audioUrl, jobId]
+    );
+
+    await sendMessage(
+      from,
+      message?.audio?.id
+        ? `✅ Your voice instruction has been attached to your request.
+
+Our team will contact you shortly on WhatsApp.`
+        : `✅ Your instruction has been attached to your request.
+
+Our team will contact you shortly on WhatsApp.`
+    );
+
+    session.stage = "MENU";
+    session.lastServiceJobId = null;
+
+    return res.sendStatus(200);
+  } catch (err) {
+    console.error("SERVICE EXTRA ERROR:", err);
+
+    await sendMessage(
+      from,
+      "⚠️ We received your instruction but could not attach it. Please try again."
+    );
+
+    return res.sendStatus(200);
+  }
+}
       // PRINT INSTRUCTIONS AUDIO
       if (session.stage === "PRINT_WAITING_INSTRUCTIONS" && type === "audio") {
         await sendMessage(
@@ -413,11 +484,15 @@ Our editing team is reviewing your request and will contact you shortly on Whats
 
       if (session.stage === "VIDEO_EDIT_WAITING_UPLOAD") {
         await sendMessage(
-          from,
-          `✅ Video received.
+  from,
+  `✅ Video received.
 
-Our editing team is reviewing your request and will contact you shortly on WhatsApp.`
-        );
+Please send your instruction now as:
+• text message
+• voice note
+
+Our team will attach it to your request and contact you shortly.`
+);
         // SAVE TO DASHBOARD
 try {
   const pending = session.pendingFile || {};
@@ -445,7 +520,7 @@ if (mediaId) {
     session.caption ||
     "Service request";
 
-  await pool.query(
+  const result = await pool.query(
   `
   INSERT INTO print_jobs (
     printer_id,
@@ -464,6 +539,7 @@ if (mediaId) {
     queue_type
   )
   VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
+  RETURNING id
   `,
   [
     process.env.AGENT_QUEUE_ID || "AGENT",
@@ -478,11 +554,12 @@ if (mediaId) {
     "pending",
     instructions || null,
     `agent_queue|type=${type}|media_id=${mediaId}`,
-    "SERVICE",
+    "VIDEO_EDIT",
     "AGENT"
   ]
 );
 
+  session.lastServiceJobId = result.rows?.[0]?.id || null;
 } catch (err) {
   console.error("Save error:", err);
 }
