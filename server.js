@@ -862,31 +862,46 @@ You can also add extra instructions by text or voice.`
     // =========================
     // LAMINATE FILE ACTION
     // =========================
-    if (session.stage === "LAMINATE_FILE_UPLOADED_ACTION") {
-      const paperSize = session.laminateSpec?.paper_size || "LETTER";
-      const quantity = session.laminateSpec?.copies || 1;
-      const variantId = getLaminateVariantId(paperSize);
-      const checkoutUrl = buildShopifyCartUrl(variantId, quantity);
-      const africaUrl = "https://www.patapata.us/pages/africa-payment";
+    // =========================
+// LAMINATE FILE ACTION (FIXED FLOW)
+// =========================
+if (session.stage === "LAMINATE_FILE_UPLOADED_ACTION") {
+  if (lower === "1") {
+    session.stage = "LAMINATE_WAITING_INSTRUCTIONS";
 
-      if (lower === "1") {
-        await sendMessage(from, `🛒 Shopify Checkout:\n${checkoutUrl || "Not configured yet"}`);
-        return res.sendStatus(200);
-      }
+    await sendMessage(
+      from,
+      `✅ Your ${session.laminateSpec?.paper_size || "laminate"} laminate request has been forwarded to our Agent team.
 
-      if (lower === "2") {
-        await sendMessage(from, `🌍 Africa Payment:\n${africaUrl}`);
-        return res.sendStatus(200);
-      }
+Please send any instructions now by text or voice.
 
-      await sendMessage(
-        from,
-        `Reply with:
+Our team will contact you shortly on WhatsApp.`
+    );
+    return res.sendStatus(200);
+  }
+
+  if (lower === "2") {
+    session.stage = "LAMINATE_PAYMENT_CHOICE";
+
+    await sendMessage(
+      from,
+      `Choose payment option:
+
 1 - Shopify Checkout
 2 - Africa Payment`
-      );
-      return res.sendStatus(200);
-    }
+    );
+    return res.sendStatus(200);
+  }
+
+  await sendMessage(
+    from,
+    `Reply:
+1 - Continue with Agent
+2 - Checkout`
+  );
+  return res.sendStatus(200);
+}
+    
 
     // =========================
     // GENERIC EXTRA NOTES
