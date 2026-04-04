@@ -589,35 +589,39 @@ After upload, you will choose:
     // =========================
     // PRINT FILE ACTION
     // =========================
-    if (session.stage === "PRINT_FILE_UPLOADED_ACTION") {
-      if (lower === "1") {
-        session.stage = "PRINT_WAITING_INSTRUCTIONS";
+   // =========================
+// PRINT FILE ACTION
+// =========================
+if (session.stage === "PRINT_FILE_UPLOADED_ACTION") {
+  if (lower === "1") {
+    session.stage = "PRINT_WAITING_INSTRUCTIONS";
 
-        await sendMessage(
-          from,
-          `✅ Your request has been forwarded to our Agent team.
+    await sendMessage(
+      from,
+      `✅ Your ${session.printSpec?.paper_size || "print"} request has been forwarded to our Agent team.
 
 Please send any instructions now by text or voice.
 
 Our team will review your request and contact you shortly on WhatsApp.`
-        );
-        return res.sendStatus(200);
-      }
+    );
 
-      if (lower === "2") {
-        session.stage = "PRINT_PAYMENT_CHOICE";
+    return res.sendStatus(200);
+  }
 
-        const paperSize = session.printSpec?.paper_size || "A4";
-        const color = session.printSpec?.color || "bw";
-        const quantity = session.printSpec?.copies || 1;
+  if (lower === "2") {
+    session.stage = "PRINT_PAYMENT_CHOICE";
 
-        const variantId = getPrintVariantId(paperSize, color);
-        const checkoutUrl = buildShopifyCartUrl(variantId, quantity);
-        const africaUrl = "https://www.patapata.us/pages/africa-payment";
+    const paperSize = session.printSpec?.paper_size || "A4";
+    const color = session.printSpec?.color || "bw";
+    const quantity = session.printSpec?.copies || 1;
 
-        await sendMessage(
-          from,
-          `Choose payment option:
+    const variantId = getPrintVariantId(paperSize, color);
+    const checkoutUrl = buildShopifyCartUrl(variantId, quantity);
+    const africaUrl = "https://www.patapata.us/pages/africa-payment";
+
+    await sendMessage(
+      from,
+      `Choose payment option:
 
 1 - Shopify Checkout
 2 - Africa Payment
@@ -627,40 +631,57 @@ ${checkoutUrl || "Not configured yet"}
 
 Africa Payment:
 ${africaUrl}`
-        );
-        return res.sendStatus(200);
-      }
+    );
 
-      await sendMessage(
-        from,
-        `Reply:
+    return res.sendStatus(200);
+  }
+
+  await sendMessage(
+    from,
+    `Reply:
 1 - Continue with Agent
 2 - Checkout`
-      );
-      return res.sendStatus(200);
-    }
+  );
 
-    // =========================
-    // PRINT AGENT INSTRUCTIONS
-    // =========================
-    if (session.stage === "PRINT_WAITING_INSTRUCTIONS") {
-      if (type === "text" && lower) {
-        await sendMessage(
-          from,
-          `✅ Your print instructions have been received and sent to our Agent team.
+  return res.sendStatus(200);
+}
+
+// =========================
+// PRINT AGENT INSTRUCTIONS
+// =========================
+if (session.stage === "PRINT_WAITING_INSTRUCTIONS") {
+  if (type === "text" && text.trim()) {
+    await sendMessage(
+      from,
+      `✅ Your ${session.printSpec?.paper_size || "print"} instructions have been received and sent to our Agent team.
 
 Our team will contact you shortly on WhatsApp.`
-        );
-        return res.sendStatus(200);
-      }
+    );
+    return res.sendStatus(200);
+  }
 
-      await sendMessage(
-        from,
-        "Please send your instruction as text or voice note."
-      );
-      return res.sendStatus(200);
-    }
+  if (type === "audio") {
+    await sendMessage(
+      from,
+      `✅ Your voice instruction for your ${session.printSpec?.paper_size || "print"} request has been received and sent to our Agent team.
 
+Our team will contact you shortly on WhatsApp.`
+    );
+    return res.sendStatus(200);
+  }
+
+  await sendMessage(
+    from,
+    "Please send your instruction as text or voice note."
+  );
+  return res.sendStatus(200);
+}
+
+
+
+ 
+  
+  
     // =========================
     // PRINT PAYMENT CHOICE
     // =========================
