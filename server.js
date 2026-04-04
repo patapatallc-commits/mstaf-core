@@ -376,12 +376,11 @@ const quantity = session.printSpec?.copies || 1;
 
 const checkoutUrl = `https://www.patapata.us/cart/${variantId}:${quantity}`;
 const africaUrl = "https://www.patapata.us/pages/africa-payment";
-
+try {
   if (lower === "1") {
     await sendMessage(from, `🛒 Shopify Checkout:\n${checkoutUrl}`);
     return res.sendStatus(200);
   }
-
   if (lower === "2") {
     await sendMessage(from, `🌍 Africa Payment:\n${africaUrl}`);
     return res.sendStatus(200);
