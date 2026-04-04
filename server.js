@@ -1,3 +1,6 @@
+const multer = require("multer");
+const path = require("path");
+const fs = require("fs");
 const { Pool } = require("pg");
 
 const pool = new Pool({
@@ -6,13 +9,31 @@ const pool = new Pool({
     rejectUnauthorized: false,
   },
 });
+// Ensure uploads folder exists
+const uploadsDir = path.join(__dirname, "uploads");
+if (!fs.existsSync(uploadsDir)) {
+  fs.mkdirSync(uploadsDir, { recursive: true });
+}
+
+// Multer storage
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    cb(null, uploadsDir);
+  },
+  filename: (req, file, cb) => {
+    const safeName = Date.now() + "-" + (file.originalname || "upload").replace(/[^\w.\-]+/g, "_");
+    cb(null, safeName);
+  }
+});
+
+const upload = multer({ storage });
 const express = require("express");
 const axios = require("axios");
 require("dotenv").config();
 
 const app = express();
 app.use(express.json({ limit: "20mb" }));
-
+app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 const PORT = process.env.PORT || 10000;
 
 // =========================
@@ -354,33 +375,44 @@ try {
 
   await pool.query(
     `
-    INSERT INTO print_jobs (
-      customer_phone,
-      file_url,
-      original_name,
-      mime_type,
-      paper_size,
-      color_mode,
-      copies,
-      status,
-      instructions,
-      notes
-    )
-    VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
-    `,
-    [
-      from,
-      fileUrl,
-      fileName,
-      mimeType,
-      "SERVICE",
-      "AGENT",
-      1,
-      "pending",
-      instructions,
-      `agent_queue|type=${type}|media_id=${mediaId}`
-    ]
-  );
+  await pool.query(
+  `
+  INSERT INTO print_jobs (
+    printer_id,
+    customer_phone,
+    file_url,
+    original_name,
+    mime_type,
+    paper_size,
+    color_mode,
+    copies,
+    pages,
+    status,
+    instructions,
+    notes,
+    service_type,
+    queue_type
+  )
+  VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
+  `,
+  [
+    process.env.AGENT_QUEUE_ID || "AGENT",  // ✅ FIXED
+    from || null,
+    fileUrl || null,
+    fileName || "upload",
+    mimeType || null,
+    null,
+    "BW",
+    1,
+    1,
+    "pending",
+    instructions || null,
+    `agent_queue|type=${type}|media_id=${mediaId}`,
+    "SERVICE",
+    "AGENT"
+  ]
+);
+
 
 } catch (err) {
   console.error("Save error:", err);
