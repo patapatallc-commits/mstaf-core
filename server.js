@@ -868,7 +868,125 @@ app.get("/health", (_req, res) => {
 app.get("/api/health", (_req, res) => {
   res.json({ ok: true });
 });
+// =============================
+// DASHBOARD (WORKER VIEW)
+// =============================
+app.get("/dashboard", async (req, res) => {
+  const key = req.query.key;
 
+  if (key !== process.env.DASHBOARD_KEY) {
+    return res.status(403).send("Unauthorized");
+  }
+
+  try {
+    const result = await pool.query(`
+      SELECT * FROM print_jobs
+      ORDER BY created_at DESC
+      LIMIT 50
+    `);
+
+    const jobs = result.rows;
+const sentFlag = req.query.sent;
+
+const notice =
+  sentFlag === "1"
+    ? `<div style="background:#d1fae5;padding:12px;border-radius:8px;margin-bottom:16px;">
+        ✅ WhatsApp reply sent successfully.
+       </div>`
+    : sentFlag === "0"
+    ? `<div style="background:#fee2e2;padding:12px;border-radius:8px;margin-bottom:16px;">
+        ❌ Failed to send WhatsApp reply.
+       </div>`
+    : "";
+    const html = `
+      <html>
+      <head>
+        <title>MSTAF Worker Dashboard</title>
+        <style>
+          body { font-family: Arial; padding: 20px; background:#f5f5f5; }
+          .job { background:white; padding:15px; margin-bottom:15px; border-radius:8px; }
+          .title { font-weight:bold; }
+          .link { color:blue; }
+        </style>
+      </head>
+      <body>
+        <h2>🖨️ MSTAF Worker Dashboard</h2>
+        ${notice}
+${jobs.map(j => `
+  <div class="job">
+    <div class="title">Job #${j.id}</div>
+    <div>Status: ${j.status || ""}</div>
+    <div>Paper: ${j.paper_size || ""}</div>
+    <div>Color: ${j.color_mode || ""}</div>
+    <div>Copies: ${j.copies || ""}</div>
+    <div>Instructions: ${j.instructions || "None"}</div>
+
+    <div><strong>Customer Phone:</strong>
+      ${j.customer_phone || j.phone_number || j.whatsapp_number || "Not saved"}
+    </div>
+
+    <div>
+      File:
+      ${
+        j.file_url
+          ? `<a class="link" href="${j.file_url}" target="_blank">Open</a>`
+          : "No file"
+      }
+    </div>
+
+    <div style="margin-top:12px;font-weight:bold;">Send WhatsApp Reply</div>
+
+    <form method="POST" action="/dashboard/send-reply" style="margin-top:8px;">
+      <input type="hidden" name="key" value="${String(key).replace(/"/g, "&quot;")}">
+      <input type="hidden" name="to" value="${(j.customer_phone || j.phone_number || j.whatsapp_number || "").replace(/"/g, "&quot;")}">
+
+      <textarea
+        name="message"
+        style="width:100%;min-height:90px;padding:10px;margin-top:8px;border-radius:8px;border:1px solid #ccc;"
+      >Hello, your job #${j.id} is being reviewed.</textarea>
+
+      <br>
+
+      <button
+        type="submit"
+        style="margin-top:10px;padding:10px 16px;border:none;border-radius:8px;background:black;color:white;cursor:pointer;"
+      >
+        Send WhatsApp Reply
+      </button>
+    </form>
+  </div>
+`).join("")}
+      </body>
+      </html>
+    `;
+
+    res.send(html);
+  } catch (err) {
+    console.error(err);
+    res.status(500).send("Server error");
+  }
+});
+app.use(express.urlencoded({ extended: true }));
+
+app.post("/dashboard/send-reply", async (req, res) => {
+  const { key, to, message } = req.body;
+
+  if (key !== process.env.DASHBOARD_KEY) {
+    return res.status(403).send("Unauthorized");
+  }
+
+  if (!to || !message || !message.trim()) {
+    return res.status(400).send("Missing phone number or message.");
+  }
+
+  try {
+    await sendMessage(to, message.trim());
+    return res.redirect(`/dashboard?key=${encodeURIComponent(key)}&sent=1`);
+  } catch (err) {
+    console.error("Dashboard reply send error:", err.response?.data || err.message || err);
+    return res.redirect(`/dashboard?key=${encodeURIComponent(key)}&sent=0`);
+  }
+});
 // =========================
 // START SERVER
 // =========================
