@@ -319,11 +319,11 @@ ${africaUrl}`
 // =========================
 // LAMINATE AGENT INSTRUCTIONS
 // =========================
-// =========================
-// LAMINATE AGENT INSTRUCTIONS (FINAL FIX)
-// =========================
+
 if (session.stage === "LAMINATE_WAITING_INSTRUCTIONS") {
-  if (type === "text") {
+  const instructionText = (text || "").trim();
+
+  if (type === "text" && instructionText) {
     await sendMessage(
       from,
       `✅ Your ${session.laminateSpec?.paper_size || "laminate"} laminate instruction has been received and sent to our Agent team.
@@ -331,28 +331,21 @@ if (session.stage === "LAMINATE_WAITING_INSTRUCTIONS") {
 Our team will contact you shortly on WhatsApp.`
     );
 
-    session.stage = "DONE"; // prevents fallback to menu
+    resetSession(from);
     return res.sendStatus(200);
   }
 
   if (type === "audio") {
     await sendMessage(
       from,
-      `✅ Your voice instruction for your ${session.laminateSpec?.paper_size || "laminate"} request has been received and sent to our Agent team.
+      `✅ Your voice instruction for your ${session.laminateSpec?.paper_size || "laminate"} laminate request has been received and sent to our Agent team.
 
 Our team will contact you shortly on WhatsApp.`
     );
 
-    session.stage = "DONE"; // prevents fallback to menu
+    resetSession(from);
     return res.sendStatus(200);
   }
-
-  await sendMessage(
-    from,
-    "Please send your laminate instruction as text or voice note."
-  );
-  return res.sendStatus(200);
-}
 
   await sendMessage(
     from,
