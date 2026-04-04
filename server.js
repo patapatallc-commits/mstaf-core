@@ -334,6 +334,57 @@ Our editing team is reviewing your request and will contact you shortly on Whats
 
 Our editing team is reviewing your request and will contact you shortly on WhatsApp.`
         );
+        // SAVE TO DASHBOARD
+try {
+  const pending = session.pendingFile || {};
+
+  const fileName =
+    pending.filename ||
+    pending.media_id ||
+    "uploaded-file";
+
+  const mimeType = pending.mime_type || "";
+  const mediaId = pending.media_id || "";
+  const fileUrl = mediaId ? `whatsapp-media:${mediaId}` : "";
+
+  const instructions =
+    session.instructions ||
+    session.caption ||
+    "Service request";
+
+  await pool.query(
+    `
+    INSERT INTO print_jobs (
+      customer_phone,
+      file_url,
+      original_name,
+      mime_type,
+      paper_size,
+      color_mode,
+      copies,
+      status,
+      instructions,
+      notes
+    )
+    VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+    `,
+    [
+      from,
+      fileUrl,
+      fileName,
+      mimeType,
+      "SERVICE",
+      "AGENT",
+      1,
+      "pending",
+      instructions,
+      `agent_queue|type=${type}|media_id=${mediaId}`
+    ]
+  );
+
+} catch (err) {
+  console.error("Save error:", err);
+}
         session.stage = "SERVICE_WAITING_EXTRA_NOTES";
         return res.sendStatus(200);
       }
