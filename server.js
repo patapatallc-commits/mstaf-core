@@ -375,8 +375,9 @@ const variantId = isColor ? colorVariant : bwVariant;
 const quantity = session.printSpec?.copies || 1;
 
 const checkoutUrl = `https://www.patapata.us/cart/${variantId}:${quantity}`;
+  try {
 const africaUrl = "https://www.patapata.us/pages/africa-payment";
-try {
+
   if (lower === "1") {
     await sendMessage(from, `🛒 Shopify Checkout:\n${checkoutUrl}`);
     return res.sendStatus(200);
@@ -386,17 +387,14 @@ try {
     return res.sendStatus(200);
   }
 
-      await sendMessage(
-      from,
-      `Reply with:
+        await sendMessage(
+    from,
+    `Reply with:
 1 - Shopify Checkout
 2 - Africa Payment`
-    );
-    return res.sendStatus(200);
+  );
+  return res.sendStatus(200);
 
-    // ✅ EXISTING FALLBACK (leave this)
-    await sendMessage(from, "Reply with 1 or 2.");
-    return res.sendStatus(200);
   } catch (err) {
     console.error(err);
     return res.sendStatus(200);
