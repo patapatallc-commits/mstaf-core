@@ -374,8 +374,6 @@ try {
     "Service request";
 
   await pool.query(
-    `
-  await pool.query(
   `
   INSERT INTO print_jobs (
     printer_id,
@@ -396,7 +394,7 @@ try {
   VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
   `,
   [
-    process.env.AGENT_QUEUE_ID || "AGENT",  // ✅ FIXED
+    process.env.AGENT_QUEUE_ID || "AGENT",
     from || null,
     fileUrl || null,
     fileName || "upload",
@@ -412,7 +410,6 @@ try {
     "AGENT"
   ]
 );
-
 
 } catch (err) {
   console.error("Save error:", err);
