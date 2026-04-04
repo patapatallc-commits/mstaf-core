@@ -562,34 +562,49 @@ Our team will contact you shortly on WhatsApp.`
     // =========================
     // PRINT PAGES
     // =========================
-    if (session.stage === "PRINT_SELECT_PAGES") {
-      const pages = parseInt(lower, 10);
+  // =========================
+// PRINT PAGES
+// =========================
+if (session.stage === "PRINT_SELECT_PAGES") {
+  const pages = parseInt(lower, 10);
 
-      if (!pages || pages < 1) {
-        await sendMessage(from, "Reply with a valid number of pages.");
-        return res.sendStatus(200);
-      }
+  if (!pages || pages < 1) {
+    await sendMessage(from, "Reply with a valid number of pages.");
+    return res.sendStatus(200);
+  }
 
-      session.printSpec.pages = pages;
-      session.stage = "PRINT_WAITING_FILE";
+  session.printSpec.pages = pages;
+  session.stage = "PRINT_WAITING_FILE";
 
-      await sendMessage(
-        from,
-        `✅ Print details saved.
+  await sendMessage(
+    from,
+    `✅ Print details saved.
 
 Please upload your document or image now.
 
 After upload, you will choose:
 1 - Continue with Agent
 2 - Checkout`
-      );
-      return res.sendStatus(200);
-    }
+  );
+  return res.sendStatus(200);
+}
 
-    // =========================
-    // PRINT FILE ACTION
-    // =========================
-   // =========================
+// =========================
+// PRINT WAITING FOR FILE
+// =========================
+if (session.stage === "PRINT_WAITING_FILE") {
+  await sendMessage(
+    from,
+    `Please upload your document or image first.
+
+After upload, you will choose:
+1 - Continue with Agent
+2 - Checkout`
+  );
+  return res.sendStatus(200);
+}
+
+// =========================
 // PRINT FILE ACTION
 // =========================
 if (session.stage === "PRINT_FILE_UPLOADED_ACTION") {
@@ -604,7 +619,6 @@ Please send any instructions now by text or voice.
 
 Our team will review your request and contact you shortly on WhatsApp.`
     );
-
     return res.sendStatus(200);
   }
 
@@ -632,7 +646,6 @@ ${checkoutUrl || "Not configured yet"}
 Africa Payment:
 ${africaUrl}`
     );
-
     return res.sendStatus(200);
   }
 
@@ -642,7 +655,6 @@ ${africaUrl}`
 1 - Continue with Agent
 2 - Checkout`
   );
-
   return res.sendStatus(200);
 }
 
@@ -676,6 +688,10 @@ Our team will contact you shortly on WhatsApp.`
   );
   return res.sendStatus(200);
 }
+
+
+
+    
 
 
 
