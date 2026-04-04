@@ -933,572 +933,993 @@ app.get("/api/health", (_req, res) => {
 // =========================
 // DASHBOARD (WORKER + AGENT VIEW)
 // =========================
-app.get("/dashboard", async (req, res) => {
-  const key = req.query.key;
+/******************************************************************
+ * WORKER + AGENT DASHBOARD START
+ ******************************************************************/
 
-  if (key !== process.env.DASHBOARD_KEY) {
-    return res.status(403).send("Unauthorized");
+const DASHBOARD_KEY = process.env.DASHBOARD_KEY || process.env.SYSTEM_KEY || "MSTAF123";
+const DEFAULT_PRINTER_ID = process.env.DEFAULT_PRINTER_ID || "PP-USA-001";
+const A3_PRINTER_ID = process.env.A3_PRINTER_ID || "PP-USA-A3-001";
+const CARD_PRINTER_ID = process.env.CARD_PRINTER_ID || "PP-USA-CARD-001";
+const DISPATCH_QUEUE_ID = process.env.DISPATCH_QUEUE_ID || "DISPATCH";
+const AGENT_QUEUE_ID = process.env.AGENT_QUEUE_ID || "AGENT";
+
+function requireDashboardKey(req, res, next) {
+  const key = req.query.key || req.headers["x-dashboard-key"] || req.body?.dashboard_key;
+  if (key !== DASHBOARD_KEY) {
+    return res.status(401).send("Unauthorized dashboard key");
+  }
+  next();
+}
+
+function escapeHtml(v = "") {
+  return String(v)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+function isPdf(job) {
+  const name = (job.original_name || "").toLowerCase();
+  const mime = (job.mime_type || "").toLowerCase();
+  const url = (job.file_url || "").toLowerCase();
+  return mime.includes("pdf") || name.endsWith(".pdf") || url.endsWith(".pdf");
+}
+
+function isVideo(job) {
+  const mime = (job.mime_type || "").toLowerCase();
+  const name = (job.original_name || "").toLowerCase();
+  return mime.startsWith("video/") ||
+    [".mp4", ".mov", ".avi", ".mkv", ".webm", ".m4v"].some(ext => name.endsWith(ext));
+}
+
+function isAudio(job) {
+  const mime = (job.mime_type || "").toLowerCase();
+  const name = (job.original_name || "").toLowerCase();
+  return mime.startsWith("audio/") ||
+    [".mp3", ".wav", ".ogg", ".opus", ".m4a", ".aac"].some(ext => name.endsWith(ext));
+}
+
+function getNigeriaStates() {
+  return [
+    ["Abia", "AB"], ["Adamawa", "AD"], ["Akwa Ibom", "AK"], ["Anambra", "AN"],
+    ["Bauchi", "BA"], ["Bayelsa", "BY"], ["Benue", "BE"], ["Borno", "BO"],
+    ["Cross River", "CR"], ["Delta", "DE"], ["Ebonyi", "EB"], ["Edo", "ED"],
+    ["Ekiti", "EK"], ["Enugu", "EN"], ["FCT Abuja", "FC"], ["Gombe", "GO"],
+    ["Imo", "IM"], ["Jigawa", "JI"], ["Kaduna", "KD"], ["Kano", "KN"],
+    ["Katsina", "KT"], ["Kebbi", "KE"], ["Kogi", "KG"], ["Kwara", "KW"],
+    ["Lagos", "LA"], ["Nasarawa", "NA"], ["Niger", "NI"], ["Ogun", "OG"],
+    ["Ondo", "ON"], ["Osun", "OS"], ["Oyo", "OY"], ["Plateau", "PL"],
+    ["Rivers", "RI"], ["Sokoto", "SO"], ["Taraba", "TA"], ["Yobe", "YO"],
+    ["Zamfara", "ZA"]
+  ];
+}
+
+function getPrinterRegistry() {
+  const printers = [
+    {
+      country: "USA",
+      state: "United States Hub",
+      code: "USA",
+      printers: [
+        { id: DEFAULT_PRINTER_ID, label: "USA A4 / Letter Hub Printer" },
+        { id: A3_PRINTER_ID || CARD_PRINTER_ID, label: "USA A3 / Card Special Printer" }
+      ]
+    }
+  ];
+
+  for (const [state, code] of getNigeriaStates()) {
+    printers.push({
+      country: "Nigeria",
+      state,
+      code,
+      printers: [
+        { id: `PP-NG-${code}-A4-001`, label: `${state} A4 Hub Printer` },
+        { id: `PP-NG-${code}-SP-001`, label: `${state} A3 / Card Special Printer` }
+      ]
+    });
   }
 
+  return printers;
+}
+
+async function sendWhatsAppText(to, body) {
   try {
-    const result = await pool.query(`
-      SELECT * FROM print_jobs
-      ORDER BY created_at DESC NULLS LAST, id DESC
-      LIMIT 100
-    `);
-
-    const jobs = result.rows || [];
-    const sentFlag = req.query.sent;
-
-    const escapeHtml = (value) =>
-      String(value ?? "")
-        .replace(/&/g, "&amp;")
-        .replace(/</g, "&lt;")
-        .replace(/>/g, "&gt;")
-        .replace(/"/g, "&quot;")
-        .replace(/'/g, "&#39;");
-
-    const notice =
-      sentFlag === "1"
-        ? `
-          <div class="notice success">
-            ✅ WhatsApp reply sent successfully.
-          </div>
-        `
-        : sentFlag === "0"
-        ? `
-          <div class="notice error">
-            ❌ Failed to send WhatsApp reply.
-          </div>
-        `
-        : "";
-
-    const isAgentJob = (j) => {
-      const paper = String(j.paper_size || "").toUpperCase();
-      const color = String(j.color_mode || "").toUpperCase();
-      const notes = String(j.notes || "").toLowerCase();
-      return (
-        paper === "SERVICE" ||
-        color === "AGENT" ||
-        notes.includes("agent_queue") ||
-        notes.includes("type=image") ||
-        notes.includes("type=video") ||
-        notes.includes("type=audio") ||
-        notes.includes("type=document")
-      );
-    };
-
-    const printJobs = jobs.filter((j) => !isAgentJob(j));
-    const agentJobs = jobs.filter((j) => isAgentJob(j));
-    const pendingJobs = jobs.filter((j) => String(j.status || "").toLowerCase() === "pending");
-    const completedJobs = jobs.filter((j) => String(j.status || "").toLowerCase() === "completed");
-
-    const getStatusClass = (status) => {
-      const s = String(status || "").toLowerCase();
-      if (s === "completed") return "status-completed";
-      if (s === "printing") return "status-printing";
-      if (s === "failed") return "status-failed";
-      return "status-pending";
-    };
-
-    const buildFileDisplay = (job) => {
-      const raw = String(job.file_url || "").trim();
-      if (!raw) {
-        return `<span class="muted">No file</span>`;
-      }
-
-      if (raw.startsWith("http://") || raw.startsWith("https://") || raw.startsWith("/")) {
-        return `<a class="file-link" href="${escapeHtml(raw)}" target="_blank">Open file</a>`;
-      }
-
-      if (raw.startsWith("whatsapp-media:")) {
-        const mediaId = raw.replace("whatsapp-media:", "");
-        return `
-          <div class="media-pill">WhatsApp media saved</div>
-          <div class="meta-line"><strong>Media ID:</strong> ${escapeHtml(mediaId)}</div>
-        `;
-      }
-
-      return `<span class="muted">${escapeHtml(raw)}</span>`;
-    };
-
-    const buildJobCard = (j, queueLabel) => {
-      const phone = String(j.customer_phone || j.phone_number || j.whatsapp_number || "").trim();
-      const safePhone = escapeHtml(phone);
-      const instructions = escapeHtml(j.instructions || "None");
-      const originalName = escapeHtml(j.original_name || "");
-      const mimeType = escapeHtml(j.mime_type || "");
-      const notes = escapeHtml(j.notes || "");
-      const paperSize = escapeHtml(j.paper_size || "");
-      const colorMode = escapeHtml(j.color_mode || "");
-      const copies = escapeHtml(j.copies || "");
-      const createdAt = j.created_at ? escapeHtml(new Date(j.created_at).toLocaleString()) : "";
-      const title = queueLabel === "AGENT" ? "Agent Job" : "Print Job";
-
-      return `
-        <div class="job-card">
-          <div class="job-top">
-            <div>
-              <div class="job-id">${title} #${escapeHtml(j.id)}</div>
-              <div class="job-sub">
-                <span class="queue-tag ${queueLabel === "AGENT" ? "queue-agent" : "queue-print"}">
-                  ${queueLabel}
-                </span>
-                <span class="status-tag ${getStatusClass(j.status)}">
-                  ${escapeHtml(j.status || "pending")}
-                </span>
-              </div>
-            </div>
-          </div>
-
-          <div class="job-grid">
-            <div class="info-block">
-              <div class="label">Customer Phone</div>
-              <div class="value">${safePhone || '<span class="muted">Not saved</span>'}</div>
-            </div>
-
-            <div class="info-block">
-              <div class="label">Paper / Service</div>
-              <div class="value">${paperSize || '<span class="muted">—</span>'}</div>
-            </div>
-
-            <div class="info-block">
-              <div class="label">Color / Queue</div>
-              <div class="value">${colorMode || '<span class="muted">—</span>'}</div>
-            </div>
-
-            <div class="info-block">
-              <div class="label">Copies</div>
-              <div class="value">${copies || '<span class="muted">—</span>'}</div>
-            </div>
-
-            <div class="info-block">
-              <div class="label">Filename</div>
-              <div class="value">${originalName || '<span class="muted">Not available</span>'}</div>
-            </div>
-
-            <div class="info-block">
-              <div class="label">Mime Type</div>
-              <div class="value">${mimeType || '<span class="muted">Not available</span>'}</div>
-            </div>
-          </div>
-
-          <div class="full-block">
-            <div class="label">Instructions</div>
-            <div class="value">${instructions}</div>
-          </div>
-
-          <div class="full-block">
-            <div class="label">File</div>
-            <div class="value">${buildFileDisplay(j)}</div>
-          </div>
-
-          ${
-            createdAt
-              ? `
-            <div class="full-block">
-              <div class="label">Created</div>
-              <div class="value">${createdAt}</div>
-            </div>
-          `
-              : ""
-          }
-
-          ${
-            notes
-              ? `
-            <div class="full-block">
-              <div class="label">Notes</div>
-              <div class="value notes-box">${notes}</div>
-            </div>
-          `
-              : ""
-          }
-
-          <div class="reply-box">
-            <div class="reply-title">Send WhatsApp Reply</div>
-            <form method="POST" action="/dashboard/send-reply">
-              <input type="hidden" name="key" value="${escapeHtml(String(key))}">
-              <input type="hidden" name="to" value="${safePhone}">
-
-              <textarea
-                name="message"
-                placeholder="Type your message to the customer here..."
-              >Hello, your job #${escapeHtml(j.id)} is being reviewed.</textarea>
-
-              <button type="submit" ${phone ? "" : "disabled"}>
-                ${phone ? "Send WhatsApp Reply" : "Phone Not Saved"}
-              </button>
-            </form>
-          </div>
-        </div>
-      `;
-    };
-
-    const printCards = printJobs.length
-      ? printJobs.map((j) => buildJobCard(j, "PRINT")).join("")
-      : `<div class="empty-box">No print jobs found.</div>`;
-
-    const agentCards = agentJobs.length
-      ? agentJobs.map((j) => buildJobCard(j, "AGENT")).join("")
-      : `<div class="empty-box">No agent/editing jobs found.</div>`;
-
-    const html = `
-      <!DOCTYPE html>
-      <html>
-      <head>
-        <meta charset="utf-8" />
-        <meta name="viewport" content="width=device-width, initial-scale=1" />
-        <title>MSTAF Worker Dashboard</title>
-        <style>
-          * { box-sizing: border-box; }
-          body {
-            margin: 0;
-            font-family: Arial, sans-serif;
-            background:
-              radial-gradient(circle at top left, #edf4ff 0%, #f8fafc 35%, #eef2ff 100%);
-            color: #111827;
-          }
-
-          .wrap {
-            max-width: 1400px;
-            margin: 0 auto;
-            padding: 24px;
-          }
-
-          .hero {
-            background: linear-gradient(135deg, #111827, #1d4ed8, #0f766e);
-            color: #fff;
-            border-radius: 22px;
-            padding: 28px;
-            box-shadow: 0 20px 50px rgba(0,0,0,0.16);
-            margin-bottom: 22px;
-          }
-
-          .hero h1 {
-            margin: 0 0 8px;
-            font-size: 34px;
-            line-height: 1.1;
-          }
-
-          .hero p {
-            margin: 0;
-            opacity: 0.95;
-            font-size: 15px;
-          }
-
-          .stats {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-            gap: 16px;
-            margin: 22px 0;
-          }
-
-          .stat-card {
-            background: rgba(255,255,255,0.95);
-            border: 1px solid rgba(255,255,255,0.7);
-            border-radius: 18px;
-            padding: 18px;
-            box-shadow: 0 10px 30px rgba(15, 23, 42, 0.08);
-          }
-
-          .stat-label {
-            font-size: 13px;
-            color: #475569;
-            margin-bottom: 8px;
-          }
-
-          .stat-value {
-            font-size: 30px;
-            font-weight: 700;
-          }
-
-          .notice {
-            padding: 16px 18px;
-            border-radius: 14px;
-            margin-bottom: 20px;
-            font-weight: 600;
-          }
-
-          .notice.success {
-            background: #dcfce7;
-            color: #166534;
-            border: 1px solid #bbf7d0;
-          }
-
-          .notice.error {
-            background: #fee2e2;
-            color: #991b1b;
-            border: 1px solid #fecaca;
-          }
-
-          .section {
-            margin-top: 26px;
-          }
-
-          .section-head {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            gap: 12px;
-            margin-bottom: 14px;
-          }
-
-          .section-head h2 {
-            margin: 0;
-            font-size: 24px;
-          }
-
-          .section-badge {
-            background: #e0e7ff;
-            color: #3730a3;
-            border-radius: 999px;
-            padding: 8px 12px;
-            font-size: 12px;
-            font-weight: 700;
-          }
-
-          .cards {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(390px, 1fr));
-            gap: 18px;
-          }
-
-          .job-card {
-            background: rgba(255,255,255,0.96);
-            border: 1px solid #e2e8f0;
-            border-radius: 22px;
-            padding: 20px;
-            box-shadow: 0 14px 40px rgba(15, 23, 42, 0.08);
-          }
-
-          .job-top {
-            display: flex;
-            align-items: start;
-            justify-content: space-between;
-            margin-bottom: 16px;
-          }
-
-          .job-id {
-            font-size: 24px;
-            font-weight: 800;
-            margin-bottom: 8px;
-          }
-
-          .job-sub {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 8px;
-          }
-
-          .queue-tag,
-          .status-tag,
-          .media-pill {
-            display: inline-block;
-            border-radius: 999px;
-            padding: 7px 11px;
-            font-size: 12px;
-            font-weight: 700;
-          }
-
-          .queue-print { background: #dbeafe; color: #1d4ed8; }
-          .queue-agent { background: #f3e8ff; color: #7c3aed; }
-
-          .status-pending { background: #fef3c7; color: #92400e; }
-          .status-printing { background: #dbeafe; color: #1d4ed8; }
-          .status-completed { background: #dcfce7; color: #166534; }
-          .status-failed { background: #fee2e2; color: #991b1b; }
-
-          .media-pill {
-            background: #ede9fe;
-            color: #6d28d9;
-            margin-bottom: 8px;
-          }
-
-          .job-grid {
-            display: grid;
-            grid-template-columns: repeat(2, minmax(0, 1fr));
-            gap: 12px;
-            margin-bottom: 14px;
-          }
-
-          .info-block,
-          .full-block,
-          .reply-box {
-            background: #f8fafc;
-            border: 1px solid #e2e8f0;
-            border-radius: 16px;
-            padding: 14px;
-          }
-
-          .full-block { margin-bottom: 12px; }
-          .reply-box { margin-top: 14px; }
-
-          .label {
-            font-size: 12px;
-            font-weight: 700;
-            color: #475569;
-            text-transform: uppercase;
-            letter-spacing: 0.04em;
-            margin-bottom: 7px;
-          }
-
-          .value {
-            font-size: 15px;
-            line-height: 1.5;
-            word-break: break-word;
-          }
-
-          .muted {
-            color: #64748b;
-          }
-
-          .notes-box {
-            white-space: pre-wrap;
-          }
-
-          .file-link {
-            color: #2563eb;
-            text-decoration: none;
-            font-weight: 700;
-          }
-
-          .file-link:hover {
-            text-decoration: underline;
-          }
-
-          .meta-line {
-            font-size: 13px;
-            color: #475569;
-          }
-
-          .reply-title {
-            font-size: 18px;
-            font-weight: 800;
-            margin-bottom: 10px;
-          }
-
-          textarea {
-            width: 100%;
-            min-height: 110px;
-            border: 1px solid #cbd5e1;
-            border-radius: 14px;
-            padding: 14px;
-            resize: vertical;
-            font-size: 14px;
-            font-family: Arial, sans-serif;
-            background: #fff;
-          }
-
-          button {
-            margin-top: 12px;
-            border: none;
-            border-radius: 14px;
-            padding: 12px 18px;
-            font-size: 14px;
-            font-weight: 700;
-            cursor: pointer;
-            background: linear-gradient(135deg, #111827, #1d4ed8);
-            color: #fff;
-            box-shadow: 0 10px 24px rgba(29, 78, 216, 0.22);
-          }
-
-          button:disabled {
-            cursor: not-allowed;
-            opacity: 0.6;
-            background: #94a3b8;
-            box-shadow: none;
-          }
-
-          .empty-box {
-            background: rgba(255,255,255,0.96);
-            border: 1px dashed #cbd5e1;
-            border-radius: 18px;
-            padding: 20px;
-            color: #64748b;
-          }
-
-          @media (max-width: 860px) {
-            .job-grid {
-              grid-template-columns: 1fr;
-            }
-
-            .hero h1 {
-              font-size: 28px;
-            }
-
-            .cards {
-              grid-template-columns: 1fr;
-            }
-          }
-        </style>
-      </head>
-      <body>
-        <div class="wrap">
-          <div class="hero">
-            <h1>🖨️ MSTAF Worker Dashboard</h1>
-            <p>Monitor print jobs, review editing requests, and reply to customers on WhatsApp from one place.</p>
-          </div>
-
-          ${notice}
-
-          <div class="stats">
-            <div class="stat-card">
-              <div class="stat-label">Total Jobs</div>
-              <div class="stat-value">${jobs.length}</div>
-            </div>
-            <div class="stat-card">
-              <div class="stat-label">Pending Jobs</div>
-              <div class="stat-value">${pendingJobs.length}</div>
-            </div>
-            <div class="stat-card">
-              <div class="stat-label">Print Queue</div>
-              <div class="stat-value">${printJobs.length}</div>
-            </div>
-            <div class="stat-card">
-              <div class="stat-label">Agent Queue</div>
-              <div class="stat-value">${agentJobs.length}</div>
-            </div>
-          </div>
-
-          <div class="section">
-            <div class="section-head">
-              <h2>🖨️ Print Queue</h2>
-              <div class="section-badge">${printJobs.length} jobs</div>
-            </div>
-            <div class="cards">
-              ${printCards}
-            </div>
-          </div>
-
-          <div class="section">
-            <div class="section-head">
-              <h2>🎨 Agent / Editing Queue</h2>
-              <div class="section-badge">${agentJobs.length} jobs</div>
-            </div>
-            <div class="cards">
-              ${agentCards}
-            </div>
-          </div>
-
-          <div class="section">
-            <div class="section-head">
-              <h2>✅ Completed Snapshot</h2>
-              <div class="section-badge">${completedJobs.length} completed</div>
-            </div>
-          </div>
-        </div>
-      </body>
-      </html>
+    const token = process.env.WHATSAPP_ACCESS_TOKEN;
+    const phoneNumberId = process.env.WHATSAPP_PHONE_NUMBER_ID;
+    if (!token || !phoneNumberId || !to || !body) {
+      return { ok: false, error: "Missing WhatsApp credentials or parameters" };
+    }
+
+    const url = `https://graph.facebook.com/v23.0/${phoneNumberId}/messages`;
+
+    const r = await fetch(url, {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${token}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        messaging_product: "whatsapp",
+        to,
+        type: "text",
+        text: { body }
+      })
+    });
+
+    const data = await r.json().catch(() => ({}));
+    if (!r.ok) {
+      return { ok: false, error: data };
+    }
+    return { ok: true, data };
+  } catch (err) {
+    return { ok: false, error: err.message };
+  }
+}
+
+/**
+ * Optional safe column helper
+ */
+async function getPrintJobsColumns() {
+  const q = await pool.query(`
+    SELECT column_name
+    FROM information_schema.columns
+    WHERE table_schema = 'public' AND table_name = 'print_jobs'
+  `);
+  return new Set(q.rows.map(r => r.column_name));
+}
+
+/**
+ * Main jobs API
+ */
+app.get("/api/dashboard/jobs", requireDashboardKey, async (req, res) => {
+  try {
+    const {
+      status = "",
+      q = "",
+      queue = "",
+      printer_id = "",
+      limit = "100"
+    } = req.query;
+
+    const params = [];
+    const where = [];
+
+    if (status) {
+      params.push(status);
+      where.push(`status = $${params.length}`);
+    }
+
+    if (queue === "agent") {
+      params.push(AGENT_QUEUE_ID);
+      where.push(`(printer_id = $${params.length} OR queue_type = 'AGENT')`);
+    } else if (queue === "dispatch") {
+      params.push(DISPATCH_QUEUE_ID);
+      where.push(`(printer_id = $${params.length} OR queue_type = 'DISPATCH')`);
+    } else if (queue === "worker") {
+      where.push(`(
+        COALESCE(queue_type, '') <> 'AGENT'
+        AND COALESCE(queue_type, '') <> 'DISPATCH'
+      )`);
+    }
+
+    if (printer_id) {
+      params.push(printer_id);
+      where.push(`printer_id = $${params.length}`);
+    }
+
+    if (q) {
+      params.push(`%${q}%`);
+      where.push(`(
+        COALESCE(original_name, '') ILIKE $${params.length}
+        OR COALESCE(file_url, '') ILIKE $${params.length}
+        OR COALESCE(instructions, '') ILIKE $${params.length}
+        OR COALESCE(customer_phone, '') ILIKE $${params.length}
+        OR COALESCE(printer_id, '') ILIKE $${params.length}
+        OR COALESCE(service_type, '') ILIKE $${params.length}
+      )`);
+    }
+
+    params.push(Math.min(parseInt(limit, 10) || 100, 300));
+
+    const sql = `
+      SELECT *
+      FROM print_jobs
+      ${where.length ? `WHERE ${where.join(" AND ")}` : ""}
+      ORDER BY id DESC
+      LIMIT $${params.length}
     `;
 
-    res.send(html);
+    const result = await pool.query(sql, params);
+    res.json({ ok: true, jobs: result.rows, printers: getPrinterRegistry() });
   } catch (err) {
-    console.error("Dashboard error:", err);
-    res.status(500).send("Server error");
+    console.error("Dashboard jobs error:", err);
+    res.status(500).json({ ok: false, error: err.message });
   }
 });
 
+/**
+ * Route job to printer/queue
+ */
+app.post("/api/dashboard/jobs/:id/route", requireDashboardKey, express.json(), async (req, res) => {
+  try {
+    const id = req.params.id;
+    const target_printer_id = req.body?.printer_id || DISPATCH_QUEUE_ID;
+    const queue_type =
+      target_printer_id === AGENT_QUEUE_ID
+        ? "AGENT"
+        : target_printer_id === DISPATCH_QUEUE_ID
+          ? "DISPATCH"
+          : "WORKER";
+
+    const result = await pool.query(
+      `
+      UPDATE print_jobs
+      SET printer_id = $1,
+          queue_type = $2,
+          status = CASE WHEN status = 'completed' THEN status ELSE 'pending' END
+      WHERE id = $3
+      RETURNING *
+      `,
+      [target_printer_id, queue_type, id]
+    );
+
+    res.json({ ok: true, job: result.rows[0] || null });
+  } catch (err) {
+    console.error("Dashboard route error:", err);
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+/**
+ * Mark job
+ */
+app.post("/api/dashboard/jobs/:id/mark", requireDashboardKey, express.json(), async (req, res) => {
+  try {
+    const id = req.params.id;
+    const status = req.body?.status || "pending";
+
+    const allowed = new Set(["pending", "claimed", "printing", "completed", "failed"]);
+    if (!allowed.has(status)) {
+      return res.status(400).json({ ok: false, error: "Invalid status" });
+    }
+
+    const result = await pool.query(
+      `
+      UPDATE print_jobs
+      SET status = $1
+      WHERE id = $2
+      RETURNING *
+      `,
+      [status, id]
+    );
+
+    res.json({ ok: true, job: result.rows[0] || null });
+  } catch (err) {
+    console.error("Dashboard mark error:", err);
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+/**
+ * WhatsApp reply from dashboard
+ */
+app.post("/api/dashboard/jobs/:id/reply", requireDashboardKey, express.json(), async (req, res) => {
+  try {
+    const id = req.params.id;
+    const message = String(req.body?.message || "").trim();
+
+    if (!message) {
+      return res.status(400).json({ ok: false, error: "Message required" });
+    }
+
+    const jobResult = await pool.query(`SELECT * FROM print_jobs WHERE id = $1 LIMIT 1`, [id]);
+    const job = jobResult.rows[0];
+
+    if (!job) {
+      return res.status(404).json({ ok: false, error: "Job not found" });
+    }
+
+    const phone =
+      job.customer_phone ||
+      job.whatsapp_number ||
+      job.phone ||
+      null;
+
+    if (!phone) {
+      return res.status(400).json({ ok: false, error: "No WhatsApp number found on this job" });
+    }
+
+    const sendResult = await sendWhatsAppText(phone, message);
+    if (!sendResult.ok) {
+      return res.status(500).json({ ok: false, error: sendResult.error });
+    }
+
+    res.json({ ok: true, sent: true });
+  } catch (err) {
+    console.error("Dashboard reply error:", err);
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+/**
+ * Manual dashboard upload to queue
+ */
+app.post("/api/dashboard/manual-upload", requireDashboardKey, upload.single("file"), async (req, res) => {
+  try {
+    const file = req.file;
+    const {
+      service_type = "SERVICE",
+      instructions = "",
+      customer_phone = "",
+      queue_type = "AGENT",
+      paper_size = "",
+      color_mode = "BW",
+      copies = "1",
+      pages = "1"
+    } = req.body;
+
+    if (!file) {
+      return res.status(400).json({ ok: false, error: "File required" });
+    }
+
+    const base =
+      process.env.PUBLIC_BASE_URL ||
+      process.env.RENDER_EXTERNAL_URL ||
+      `${req.protocol}://${req.get("host")}`;
+
+    const fileUrl = `${base}/uploads/${encodeURIComponent(file.filename)}`;
+    const mimeType = file.mimetype || "";
+    const ext = (file.originalname || "").split(".").pop() || "";
+
+    const targetPrinterId =
+      queue_type === "AGENT"
+        ? AGENT_QUEUE_ID
+        : queue_type === "DISPATCH"
+          ? DISPATCH_QUEUE_ID
+          : DEFAULT_PRINTER_ID;
+
+    const columns = await getPrintJobsColumns();
+
+    const insertCols = [];
+    const insertVals = [];
+    const params = [];
+
+    function addCol(name, value) {
+      if (columns.has(name)) {
+        insertCols.push(name);
+        params.push(value);
+        insertVals.push(`$${params.length}`);
+      }
+    }
+
+    addCol("printer_id", targetPrinterId);
+    addCol("file_url", fileUrl);
+    addCol("original_name", file.originalname || "upload");
+    addCol("mime_type", mimeType);
+    addCol("file_ext", ext);
+    addCol("status", "pending");
+    addCol("service_type", service_type);
+    addCol("queue_type", queue_type);
+    addCol("instructions", instructions || null);
+    addCol("customer_phone", customer_phone || null);
+    addCol("paper_size", paper_size || null);
+    addCol("color_mode", color_mode || "BW");
+    addCol("copies", parseInt(copies, 10) || 1);
+    addCol("pages", parseInt(pages, 10) || 1);
+
+    const sql = `
+      INSERT INTO print_jobs (${insertCols.join(", ")})
+      VALUES (${insertVals.join(", ")})
+      RETURNING *
+    `;
+
+    const result = await pool.query(sql, params);
+    res.json({ ok: true, job: result.rows[0] || null });
+  } catch (err) {
+    console.error("Manual dashboard upload error:", err);
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+/**
+ * Dashboard page
+ */
+app.get("/dashboard", requireDashboardKey, async (req, res) => {
+  const key = encodeURIComponent(req.query.key || "");
+  const printers = getPrinterRegistry();
+
+  res.send(`<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>MSTAF Worker & Agent Dashboard</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    :root{
+      --bg:#08111f;
+      --panel:#0e1a2f;
+      --panel2:#13233f;
+      --line:rgba(255,255,255,.08);
+      --text:#eef5ff;
+      --muted:#a8b7d1;
+      --gold:#ffcc4d;
+      --blue:#42a5ff;
+      --green:#2dd36f;
+      --red:#ff6b6b;
+      --purple:#a56dff;
+      --cyan:#18d2d9;
+    }
+    *{box-sizing:border-box}
+    body{
+      margin:0;
+      background:
+        radial-gradient(circle at top right, rgba(66,165,255,.22), transparent 26%),
+        radial-gradient(circle at top left, rgba(255,204,77,.14), transparent 24%),
+        linear-gradient(180deg, #07101d 0%, #091425 100%);
+      color:var(--text);
+      font-family:Inter, Arial, sans-serif;
+    }
+    .wrap{max-width:1600px;margin:0 auto;padding:20px}
+    .hero{
+      display:grid;
+      grid-template-columns: 1.3fr .7fr;
+      gap:18px;
+      margin-bottom:18px;
+    }
+    .heroCard,.stats,.panel,.sidePanel,.uploadPanel{
+      background:linear-gradient(180deg, rgba(19,35,63,.95), rgba(10,19,35,.97));
+      border:1px solid var(--line);
+      border-radius:22px;
+      box-shadow:0 20px 60px rgba(0,0,0,.32);
+    }
+    .heroCard{padding:24px}
+    .heroTitle{
+      font-size:30px;font-weight:800;letter-spacing:.2px;margin-bottom:8px;
+    }
+    .heroSub{color:var(--muted);line-height:1.6}
+    .badgeRow{display:flex;flex-wrap:wrap;gap:10px;margin-top:16px}
+    .badge{
+      padding:10px 14px;border-radius:999px;
+      background:rgba(255,255,255,.05);
+      border:1px solid rgba(255,255,255,.08);
+      color:#fff;font-size:13px;font-weight:700;
+    }
+    .stats{
+      padding:18px;
+      display:grid;
+      grid-template-columns:1fr 1fr;
+      gap:12px;
+      align-content:start;
+    }
+    .stat{
+      padding:16px;border-radius:18px;background:rgba(255,255,255,.04);
+      border:1px solid rgba(255,255,255,.06);
+    }
+    .stat .k{font-size:28px;font-weight:800;margin-top:6px}
+    .toolbar{
+      display:grid;
+      grid-template-columns:1fr auto auto auto auto;
+      gap:12px;
+      margin-bottom:18px;
+    }
+    .toolbar input,.toolbar select,.toolbar button,.uploadPanel input,.uploadPanel select,.uploadPanel textarea{
+      width:100%;
+      background:#0c1730;
+      color:#fff;
+      border:1px solid rgba(255,255,255,.1);
+      border-radius:14px;
+      padding:12px 14px;
+      outline:none;
+    }
+    .toolbar button,.btn{
+      cursor:pointer;
+      font-weight:800;
+      border:none;
+      background:linear-gradient(90deg, var(--blue), #74b9ff);
+      color:#04111f;
+    }
+    .btn.secondary{background:linear-gradient(90deg, var(--gold), #ffd76e)}
+    .btn.green{background:linear-gradient(90deg, #2dd36f, #68e89b)}
+    .btn.red{background:linear-gradient(90deg, #ff6b6b, #ff8d8d)}
+    .btn.purple{background:linear-gradient(90deg, var(--purple), #c19aff); color:white;}
+    .main{
+      display:grid;
+      grid-template-columns:1.25fr .75fr;
+      gap:18px;
+      align-items:start;
+    }
+    .panel{padding:16px}
+    .sidePanel,.uploadPanel{padding:16px}
+    .tabs{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:16px}
+    .tab{
+      padding:10px 14px;border-radius:12px;border:1px solid rgba(255,255,255,.08);
+      background:rgba(255,255,255,.04);cursor:pointer;font-weight:800;
+    }
+    .tab.active{background:linear-gradient(90deg, var(--gold), #ffd76e); color:#07111d}
+    .jobGrid{display:grid;gap:16px}
+    .jobCard{
+      border:1px solid rgba(255,255,255,.08);
+      border-radius:22px;
+      overflow:hidden;
+      background:linear-gradient(180deg, rgba(255,255,255,.04), rgba(255,255,255,.02));
+    }
+    .jobHead{
+      padding:16px;
+      display:flex;justify-content:space-between;gap:12px;align-items:flex-start;
+      border-bottom:1px solid rgba(255,255,255,.08);
+      background:linear-gradient(90deg, rgba(255,204,77,.12), rgba(66,165,255,.09));
+    }
+    .jobTitle{font-size:18px;font-weight:800}
+    .meta{color:var(--muted);font-size:13px;line-height:1.5}
+    .pill{
+      display:inline-block;padding:7px 10px;border-radius:999px;font-size:12px;font-weight:800;
+      margin-left:6px;
+    }
+    .pill.pending{background:#ffe7a0;color:#4c3900}
+    .pill.claimed{background:#b8e3ff;color:#003459}
+    .pill.printing{background:#d1c0ff;color:#321a73}
+    .pill.completed{background:#bdf4cf;color:#0e4c23}
+    .pill.failed{background:#ffc2c2;color:#5e1010}
+    .jobBody{
+      padding:16px;
+      display:grid;
+      grid-template-columns:1.15fr .85fr;
+      gap:16px;
+    }
+    .previewBox,.detailBox{
+      background:rgba(0,0,0,.18);
+      border:1px solid rgba(255,255,255,.06);
+      border-radius:18px;
+      padding:14px;
+    }
+    iframe,video,audio{
+      width:100%;
+      border-radius:14px;
+      background:#000;
+    }
+    iframe{height:420px;border:none}
+    video{max-height:420px}
+    .noPreview{
+      min-height:200px;display:flex;align-items:center;justify-content:center;
+      color:var(--muted);text-align:center;border:1px dashed rgba(255,255,255,.12);border-radius:14px;
+      padding:20px;
+    }
+    .detailRow{display:grid;grid-template-columns:130px 1fr;gap:10px;margin-bottom:10px}
+    .detailRow b{color:#ffd76e}
+    .insBox,.replyBox{
+      margin-top:14px;
+      padding:12px;
+      border-radius:14px;
+      background:rgba(255,255,255,.04);
+      border:1px solid rgba(255,255,255,.06);
+    }
+    textarea.reply{
+      width:100%;min-height:90px;resize:vertical;
+      margin-top:10px;background:#08111f;color:#fff;border:1px solid rgba(255,255,255,.1);
+      border-radius:12px;padding:12px;
+    }
+    .actionRow{
+      display:flex;flex-wrap:wrap;gap:8px;margin-top:14px
+    }
+    .routeRow{
+      display:grid;grid-template-columns:1fr auto;gap:8px;margin-top:14px
+    }
+    .sidePanel h3,.uploadPanel h3,.panel h3{margin:4px 0 14px 0}
+    .printerList{display:grid;gap:10px;max-height:520px;overflow:auto;padding-right:4px}
+    .printerGroup{
+      border:1px solid rgba(255,255,255,.07);
+      border-radius:16px;padding:12px;background:rgba(255,255,255,.03)
+    }
+    .printerState{font-weight:800;margin-bottom:6px}
+    .printerItem{
+      color:var(--muted);font-size:13px;line-height:1.5;padding-left:8px
+    }
+    .uploadPanel form{display:grid;gap:10px}
+    .muted{color:var(--muted)}
+    .topLinks{display:flex;gap:10px;flex-wrap:wrap;margin-top:14px}
+    .topLinks a{
+      color:#07111d;text-decoration:none;background:linear-gradient(90deg,#ffd76e,#ffcc4d);
+      padding:10px 14px;border-radius:12px;font-weight:800
+    }
+    .small{font-size:12px;color:var(--muted)}
+    @media (max-width: 1100px){
+      .hero,.main,.jobBody,.toolbar{grid-template-columns:1fr}
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="hero">
+      <div class="heroCard">
+        <div class="heroTitle">PATAPATA MSTAF — Worker & Agent Command Dashboard</div>
+        <div class="heroSub">
+          Manage print jobs, agent service jobs, PDF files, video edits, audio instructions, WhatsApp replies,
+          USA hub routing, and Nigeria 36-state routing from one powerful dashboard.
+        </div>
+        <div class="badgeRow">
+          <div class="badge">PDF Preview</div>
+          <div class="badge">Video Window</div>
+          <div class="badge">Audio Playback</div>
+          <div class="badge">WhatsApp Reply</div>
+          <div class="badge">USA + Nigeria Routing</div>
+          <div class="badge">Agent Queue</div>
+          <div class="badge">Dispatch Queue</div>
+        </div>
+        <div class="topLinks">
+          <a href="/dashboard?key=${key}">Open Main Dashboard</a>
+          <a href="/api/dashboard/jobs?key=${key}" target="_blank">Open Jobs API</a>
+        </div>
+      </div>
+
+      <div class="stats" id="statsBox">
+        <div class="stat"><div>All Jobs</div><div class="k" id="s_all">0</div></div>
+        <div class="stat"><div>Pending</div><div class="k" id="s_pending">0</div></div>
+        <div class="stat"><div>Printing / Claimed</div><div class="k" id="s_working">0</div></div>
+        <div class="stat"><div>Completed</div><div class="k" id="s_completed">0</div></div>
+      </div>
+    </div>
+
+    <div class="toolbar">
+      <input id="q" placeholder="Search name, phone, instructions, service, queue..." />
+      <select id="status">
+        <option value="">All Status</option>
+        <option value="pending">Pending</option>
+        <option value="claimed">Claimed</option>
+        <option value="printing">Printing</option>
+        <option value="completed">Completed</option>
+        <option value="failed">Failed</option>
+      </select>
+      <select id="queue">
+        <option value="">All Queues</option>
+        <option value="worker">Worker Queue</option>
+        <option value="agent">Agent Queue</option>
+        <option value="dispatch">Dispatch Queue</option>
+      </select>
+      <button class="btn secondary" onclick="loadJobs()">Refresh</button>
+      <button class="btn" onclick="toggleUpload()">Manual Upload</button>
+    </div>
+
+    <div id="uploadPanel" class="uploadPanel" style="display:none; margin-bottom:18px;">
+      <h3>Manual Dashboard Upload</h3>
+      <form id="manualUploadForm">
+        <input type="file" name="file" required />
+        <select name="queue_type">
+          <option value="AGENT">Send to Agent Queue</option>
+          <option value="DISPATCH">Send to Dispatch Queue</option>
+          <option value="WORKER">Send to Worker Queue</option>
+        </select>
+        <input name="service_type" placeholder="Service type e.g. PRINT, VIDEO_EDIT, IMAGE_EDIT, SERVICE" value="SERVICE" />
+        <input name="customer_phone" placeholder="Customer WhatsApp number e.g. 15551234567" />
+        <input name="paper_size" placeholder="Paper size e.g. A4, Letter, A3" />
+        <input name="color_mode" placeholder="Color mode e.g. BW or COLOR" value="BW" />
+        <input name="copies" type="number" min="1" value="1" />
+        <input name="pages" type="number" min="1" value="1" />
+        <textarea name="instructions" placeholder="Type text instruction here"></textarea>
+        <button class="btn green" type="submit">Upload Job to Dashboard</button>
+        <div class="small">This supports PDF, images, video, audio, and documents.</div>
+      </form>
+    </div>
+
+    <div class="main">
+      <div class="panel">
+        <div class="tabs">
+          <div class="tab active" onclick="setQueueTab('')" id="tab_all">All Jobs</div>
+          <div class="tab" onclick="setQueueTab('worker')" id="tab_worker">Workers</div>
+          <div class="tab" onclick="setQueueTab('agent')" id="tab_agent">Agents</div>
+          <div class="tab" onclick="setQueueTab('dispatch')" id="tab_dispatch">Dispatch</div>
+        </div>
+        <div id="jobGrid" class="jobGrid"></div>
+      </div>
+
+      <div style="display:grid; gap:18px;">
+        <div class="sidePanel">
+          <h3>USA + Nigeria Printer Registry</h3>
+          <div class="printerList">
+            ${printers.map(group => `
+              <div class="printerGroup">
+                <div class="printerState">${escapeHtml(group.country)} — ${escapeHtml(group.state)}</div>
+                ${group.printers.map(p => `
+                  <div class="printerItem">• ${escapeHtml(p.label)}<br><span class="small">${escapeHtml(p.id)}</span></div>
+                `).join("")}
+              </div>
+            `).join("")}
+          </div>
+        </div>
+
+        <div class="sidePanel">
+          <h3>Quick Notes</h3>
+          <div class="muted">
+            • Use <b>Claimed</b> when a worker picks a job.<br><br>
+            • Use <b>Printing</b> when a print is actively being produced.<br><br>
+            • Use <b>Completed</b> after delivery / finished edit / finished print.<br><br>
+            • Agent jobs route to <b>${escapeHtml(AGENT_QUEUE_ID)}</b>.<br><br>
+            • Dispatch jobs route to <b>${escapeHtml(DISPATCH_QUEUE_ID)}</b>.<br><br>
+            • Worker print jobs can route to USA or any Nigeria state printer.
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+<script>
+  const DASHBOARD_KEY = ${JSON.stringify(req.query.key || "")};
+  let currentQueue = "";
+
+  function toggleUpload() {
+    const el = document.getElementById("uploadPanel");
+    el.style.display = el.style.display === "none" ? "block" : "none";
+  }
+
+  function setQueueTab(queue) {
+    currentQueue = queue;
+    document.querySelectorAll(".tab").forEach(t => t.classList.remove("active"));
+    document.getElementById("tab_" + (queue || "all")).classList.add("active");
+    document.getElementById("queue").value = queue;
+    loadJobs();
+  }
+
+  async function api(path, options = {}) {
+    const finalUrl = path + (path.includes("?") ? "&" : "?") + "key=" + encodeURIComponent(DASHBOARD_KEY);
+    const res = await fetch(finalUrl, options);
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || ("HTTP " + res.status));
+    return data;
+  }
+
+  function summarize(jobs) {
+    const all = jobs.length;
+    const pending = jobs.filter(j => j.status === "pending").length;
+    const completed = jobs.filter(j => j.status === "completed").length;
+    const working = jobs.filter(j => j.status === "printing" || j.status === "claimed").length;
+    document.getElementById("s_all").textContent = all;
+    document.getElementById("s_pending").textContent = pending;
+    document.getElementById("s_completed").textContent = completed;
+    document.getElementById("s_working").textContent = working;
+  }
+
+  function statusPill(status = "") {
+    const s = String(status || "pending").toLowerCase();
+    return '<span class="pill ' + s + '">' + s.toUpperCase() + '</span>';
+  }
+
+  function h(v) {
+    return String(v == null ? "" : v)
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;");
+  }
+
+  function isPdf(job) {
+    const name = (job.original_name || "").toLowerCase();
+    const mime = (job.mime_type || "").toLowerCase();
+    const url = (job.file_url || "").toLowerCase();
+    return mime.includes("pdf") || name.endsWith(".pdf") || url.endsWith(".pdf");
+  }
+
+  function isVideo(job) {
+    const mime = (job.mime_type || "").toLowerCase();
+    const name = (job.original_name || "").toLowerCase();
+    return mime.startsWith("video/") || [".mp4",".mov",".avi",".mkv",".webm",".m4v"].some(ext => name.endsWith(ext));
+  }
+
+  function isAudio(job) {
+    const mime = (job.mime_type || "").toLowerCase();
+    const name = (job.original_name || "").toLowerCase();
+    return mime.startsWith("audio/") || [".mp3",".wav",".ogg",".opus",".m4a",".aac"].some(ext => name.endsWith(ext));
+  }
+
+  function renderPreview(job) {
+    if (!job.file_url) {
+      return '<div class="noPreview">No file uploaded yet.</div>';
+    }
+    if (isPdf(job)) {
+      return '<iframe src="' + h(job.file_url) + '"></iframe>';
+    }
+    if (isVideo(job)) {
+      return '<video controls src="' + h(job.file_url) + '"></video>';
+    }
+    if (isAudio(job)) {
+      return '<audio controls src="' + h(job.file_url) + '"></audio>';
+    }
+    return '<div class="noPreview"><a href="' + h(job.file_url) + '" target="_blank" style="color:#ffd76e;font-weight:800">Open uploaded file</a></div>';
+  }
+
+  function routeOptions() {
+    const ng = [
+      ["Abia","AB"],["Adamawa","AD"],["Akwa Ibom","AK"],["Anambra","AN"],["Bauchi","BA"],["Bayelsa","BY"],
+      ["Benue","BE"],["Borno","BO"],["Cross River","CR"],["Delta","DE"],["Ebonyi","EB"],["Edo","ED"],
+      ["Ekiti","EK"],["Enugu","EN"],["FCT Abuja","FC"],["Gombe","GO"],["Imo","IM"],["Jigawa","JI"],
+      ["Kaduna","KD"],["Kano","KN"],["Katsina","KT"],["Kebbi","KE"],["Kogi","KG"],["Kwara","KW"],
+      ["Lagos","LA"],["Nasarawa","NA"],["Niger","NI"],["Ogun","OG"],["Ondo","ON"],["Osun","OS"],
+      ["Oyo","OY"],["Plateau","PL"],["Rivers","RI"],["Sokoto","SO"],["Taraba","TA"],["Yobe","YO"],["Zamfara","ZA"]
+    ];
+
+    let html = '';
+    html += '<option value="${escapeHtml(DEFAULT_PRINTER_ID)}">USA A4 / Letter Hub - ${escapeHtml(DEFAULT_PRINTER_ID)}</option>';
+    html += '<option value="${escapeHtml(A3_PRINTER_ID)}">USA A3 / Card Special - ${escapeHtml(A3_PRINTER_ID)}</option>';
+    html += '<option value="${escapeHtml(AGENT_QUEUE_ID)}">Agent Queue - ${escapeHtml(AGENT_QUEUE_ID)}</option>';
+    html += '<option value="${escapeHtml(DISPATCH_QUEUE_ID)}">Dispatch Queue - ${escapeHtml(DISPATCH_QUEUE_ID)}</option>';
+
+    for (const [name, code] of ng) {
+      html += '<option value="PP-NG-' + code + '-A4-001">Nigeria ' + name + ' A4 - PP-NG-' + code + '-A4-001</option>';
+      html += '<option value="PP-NG-' + code + '-SP-001">Nigeria ' + name + ' Special - PP-NG-' + code + '-SP-001</option>';
+    }
+    return html;
+  }
+
+  function renderJobs(jobs) {
+    const grid = document.getElementById("jobGrid");
+    if (!jobs.length) {
+      grid.innerHTML = '<div class="noPreview">No jobs found.</div>';
+      return;
+    }
+
+    grid.innerHTML = jobs.map(job => {
+      const audioUrl = job.audio_url || job.instruction_audio_url || "";
+      return \`
+        <div class="jobCard">
+          <div class="jobHead">
+            <div>
+              <div class="jobTitle">Job #\${h(job.id)} — \${h(job.original_name || "Untitled Upload")}</div>
+              <div class="meta">
+                Queue: \${h(job.queue_type || "WORKER")} |
+                Printer: \${h(job.printer_id || "")} |
+                Service: \${h(job.service_type || "")}
+                \${statusPill(job.status)}
+              </div>
+            </div>
+            <div class="meta">
+              Phone: \${h(job.customer_phone || job.whatsapp_number || "N/A")}<br>
+              Paper: \${h(job.paper_size || "N/A")}<br>
+              Color: \${h(job.color_mode || "N/A")}<br>
+              Copies: \${h(job.copies || 1)}
+            </div>
+          </div>
+
+          <div class="jobBody">
+            <div class="previewBox">
+              \${renderPreview(job)}
+              \${audioUrl ? \`<div class="insBox"><b>Voice Note</b><br><audio controls src="\${h(audioUrl)}"></audio></div>\` : ""}
+            </div>
+
+            <div class="detailBox">
+              <div class="detailRow"><b>File URL</b><div>\${job.file_url ? \`<a href="\${h(job.file_url)}" target="_blank" style="color:#ffd76e">Open file</a>\` : "N/A"}</div></div>
+              <div class="detailRow"><b>MIME Type</b><div>\${h(job.mime_type || "N/A")}</div></div>
+              <div class="detailRow"><b>Pages</b><div>\${h(job.pages || 1)}</div></div>
+              <div class="detailRow"><b>Created</b><div>\${h(job.created_at || "")}</div></div>
+
+              <div class="insBox">
+                <b>Text Instruction</b>
+                <div style="margin-top:8px;color:#dbe8ff;white-space:pre-wrap;">\${h(job.instructions || "No text instruction")}</div>
+              </div>
+
+              <div class="routeRow">
+                <select id="route_\${job.id}">
+                  \${routeOptions()}
+                </select>
+                <button class="btn purple" onclick="routeJob(\${job.id})">Route</button>
+              </div>
+
+              <div class="actionRow">
+                <button class="btn secondary" onclick="markJob(\${job.id}, 'claimed')">Claim</button>
+                <button class="btn" onclick="markJob(\${job.id}, 'printing')">Printing</button>
+                <button class="btn green" onclick="markJob(\${job.id}, 'completed')">Complete</button>
+                <button class="btn red" onclick="markJob(\${job.id}, 'failed')">Fail</button>
+              </div>
+
+              <div class="replyBox">
+                <b>Reply to User on WhatsApp</b>
+                <textarea id="reply_\${job.id}" class="reply" placeholder="Type message to customer..."></textarea>
+                <div class="actionRow">
+                  <button class="btn green" onclick="replyJob(\${job.id})">Send WhatsApp Reply</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      \`;
+    }).join("");
+  }
+
+  async function loadJobs() {
+    try {
+      const q = document.getElementById("q").value.trim();
+      const status = document.getElementById("status").value;
+      const queue = document.getElementById("queue").value || currentQueue;
+      const params = new URLSearchParams({ q, status, queue, limit: "150" });
+
+      const data = await api("/api/dashboard/jobs?" + params.toString());
+      const jobs = data.jobs || [];
+      summarize(jobs);
+      renderJobs(jobs);
+    } catch (err) {
+      document.getElementById("jobGrid").innerHTML =
+        '<div class="noPreview">Failed to load jobs: ' + h(err.message) + '</div>';
+    }
+  }
+
+  async function markJob(id, status) {
+    try {
+      await api("/api/dashboard/jobs/" + id + "/mark", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status })
+      });
+      loadJobs();
+    } catch (err) {
+      alert("Mark failed: " + err.message);
+    }
+  }
+
+  async function routeJob(id) {
+    try {
+      const printer_id = document.getElementById("route_" + id).value;
+      await api("/api/dashboard/jobs/" + id + "/route", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ printer_id })
+      });
+      loadJobs();
+    } catch (err) {
+      alert("Route failed: " + err.message);
+    }
+  }
+
+  async function replyJob(id) {
+    try {
+      const message = document.getElementById("reply_" + id).value.trim();
+      if (!message) return alert("Type a message first.");
+      await api("/api/dashboard/jobs/" + id + "/reply", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message })
+      });
+      alert("WhatsApp reply sent.");
+      document.getElementById("reply_" + id).value = "";
+    } catch (err) {
+      alert("Reply failed: " + err.message);
+    }
+  }
+
+  document.getElementById("q").addEventListener("input", () => loadJobs());
+  document.getElementById("status").addEventListener("change", () => loadJobs());
+  document.getElementById("queue").addEventListener("change", () => loadJobs());
+
+  document.getElementById("manualUploadForm").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    try {
+      const fd = new FormData(e.target);
+      const res = await fetch("/api/dashboard/manual-upload?key=" + encodeURIComponent(DASHBOARD_KEY), {
+        method: "POST",
+        body: fd
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || "Upload failed");
+      alert("Dashboard upload created successfully.");
+      e.target.reset();
+      loadJobs();
+    } catch (err) {
+      alert("Manual upload failed: " + err.message);
+    }
+  });
+
+  loadJobs();
+</script>
+</body>
+</html>`);
+});
+
+/******************************************************************
+ * WORKER + AGENT DASHBOARD END
+ ******************************************************************/
+
+
+
+   
+          
 app.use(express.urlencoded({ extended: true }));
 
 app.post("/dashboard/send-reply", async (req, res) => {
