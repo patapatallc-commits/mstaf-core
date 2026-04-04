@@ -251,19 +251,101 @@ Reply:
         session.stage === "LAMINATE_WAITING_FILE" &&
         (type === "image" || type === "document")
       ) {
-        session.stage = "LAMINATE_FILE_UPLOADED_ACTION";
+   session.stage = "LAMINATE_FILE_UPLOADED_ACTION";
 
-        await sendMessage(
-          from,
-          `📄 Document received successfully.
+await sendMessage(
+  from,
+  `📄 Document received successfully.
 
-Choose payment option:
-1 - Shopify Checkout
-2 - Africa Payment`
-        );
-        return res.sendStatus(200);
+After upload, choose:
+1 - Continue with Agent
+2 - Checkout`
+);
+return res.sendStatus(200);  
+       
       }
+// =========================
+// LAMINATE FILE ACTION
+// =========================
+if (session.stage === "LAMINATE_FILE_UPLOADED_ACTION") {
+  if (lower === "1") {
+    session.stage = "LAMINATE_WAITING_INSTRUCTIONS";
 
+    await sendMessage(
+      from,
+      `✅ Your ${session.laminateSpec?.paper_size || "laminate"} laminate request has been forwarded to our Agent team.
+
+Please send any instructions now by text or voice.
+
+Our team will contact you shortly on WhatsApp.`
+    );
+    return res.sendStatus(200);
+  }
+
+  if (lower === "2") {
+    session.stage = "LAMINATE_PAYMENT_CHOICE";
+
+    const paperSize = session.laminateSpec?.paper_size || "LETTER";
+    const quantity = session.laminateSpec?.copies || 1;
+    const variantId = getLaminateVariantId(paperSize);
+    const checkoutUrl = buildShopifyCartUrl(variantId, quantity);
+    const africaUrl = "https://www.patapata.us/pages/africa-payment";
+
+    await sendMessage(
+      from,
+      `Choose payment option:
+
+1 - Shopify Checkout
+2 - Africa Payment
+
+Shopify:
+${checkoutUrl || `Not configured yet for ${paperSize} Laminate`}
+
+Africa Payment:
+${africaUrl}`
+    );
+    return res.sendStatus(200);
+  }
+
+  await sendMessage(
+    from,
+    `Reply:
+1 - Continue with Agent
+2 - Checkout`
+  );
+  return res.sendStatus(200);
+}
+
+// =========================
+// LAMINATE AGENT INSTRUCTIONS
+// =========================
+if (session.stage === "LAMINATE_WAITING_INSTRUCTIONS") {
+  if (type === "text") {
+    await sendMessage(
+      from,
+      `✅ Your ${session.laminateSpec?.paper_size || "laminate"} laminate instruction has been received and sent to our Agent team.
+
+Our team will contact you shortly on WhatsApp.`
+    );
+    return res.sendStatus(200);
+  }
+
+  if (type === "audio") {
+    await sendMessage(
+      from,
+      `✅ Your voice instruction for your ${session.laminateSpec?.paper_size || "laminate"} laminate request has been received and sent to our Agent team.
+
+Our team will contact you shortly on WhatsApp.`
+    );
+    return res.sendStatus(200);
+  }
+
+  await sendMessage(
+    from,
+    "Please send your laminate instruction as text or voice note."
+  );
+  return res.sendStatus(200);
+}
       // AGENT SERVICE FILE ARRIVED
       if (session.stage === "SERVICE_WAITING_UPLOAD") {
         await sendMessage(
