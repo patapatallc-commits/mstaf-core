@@ -930,6 +930,9 @@ app.get("/api/health", (_req, res) => {
 // =============================
 // DASHBOARD (WORKER VIEW)
 // =============================
+// =========================
+// DASHBOARD (WORKER + AGENT VIEW)
+// =========================
 app.get("/dashboard", async (req, res) => {
   const key = req.query.key;
 
@@ -940,91 +943,562 @@ app.get("/dashboard", async (req, res) => {
   try {
     const result = await pool.query(`
       SELECT * FROM print_jobs
-      ORDER BY created_at DESC
-      LIMIT 50
+      ORDER BY created_at DESC NULLS LAST, id DESC
+      LIMIT 100
     `);
 
-    const jobs = result.rows;
-const sentFlag = req.query.sent;
+    const jobs = result.rows || [];
+    const sentFlag = req.query.sent;
 
-const notice =
-  sentFlag === "1"
-    ? `<div style="background:#d1fae5;padding:12px;border-radius:8px;margin-bottom:16px;">
-        ✅ WhatsApp reply sent successfully.
-       </div>`
-    : sentFlag === "0"
-    ? `<div style="background:#fee2e2;padding:12px;border-radius:8px;margin-bottom:16px;">
-        ❌ Failed to send WhatsApp reply.
-       </div>`
-    : "";
+    const escapeHtml = (value) =>
+      String(value ?? "")
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#39;");
+
+    const notice =
+      sentFlag === "1"
+        ? `
+          <div class="notice success">
+            ✅ WhatsApp reply sent successfully.
+          </div>
+        `
+        : sentFlag === "0"
+        ? `
+          <div class="notice error">
+            ❌ Failed to send WhatsApp reply.
+          </div>
+        `
+        : "";
+
+    const isAgentJob = (j) => {
+      const paper = String(j.paper_size || "").toUpperCase();
+      const color = String(j.color_mode || "").toUpperCase();
+      const notes = String(j.notes || "").toLowerCase();
+      return (
+        paper === "SERVICE" ||
+        color === "AGENT" ||
+        notes.includes("agent_queue") ||
+        notes.includes("type=image") ||
+        notes.includes("type=video") ||
+        notes.includes("type=audio") ||
+        notes.includes("type=document")
+      );
+    };
+
+    const printJobs = jobs.filter((j) => !isAgentJob(j));
+    const agentJobs = jobs.filter((j) => isAgentJob(j));
+    const pendingJobs = jobs.filter((j) => String(j.status || "").toLowerCase() === "pending");
+    const completedJobs = jobs.filter((j) => String(j.status || "").toLowerCase() === "completed");
+
+    const getStatusClass = (status) => {
+      const s = String(status || "").toLowerCase();
+      if (s === "completed") return "status-completed";
+      if (s === "printing") return "status-printing";
+      if (s === "failed") return "status-failed";
+      return "status-pending";
+    };
+
+    const buildFileDisplay = (job) => {
+      const raw = String(job.file_url || "").trim();
+      if (!raw) {
+        return `<span class="muted">No file</span>`;
+      }
+
+      if (raw.startsWith("http://") || raw.startsWith("https://") || raw.startsWith("/")) {
+        return `<a class="file-link" href="${escapeHtml(raw)}" target="_blank">Open file</a>`;
+      }
+
+      if (raw.startsWith("whatsapp-media:")) {
+        const mediaId = raw.replace("whatsapp-media:", "");
+        return `
+          <div class="media-pill">WhatsApp media saved</div>
+          <div class="meta-line"><strong>Media ID:</strong> ${escapeHtml(mediaId)}</div>
+        `;
+      }
+
+      return `<span class="muted">${escapeHtml(raw)}</span>`;
+    };
+
+    const buildJobCard = (j, queueLabel) => {
+      const phone = String(j.customer_phone || j.phone_number || j.whatsapp_number || "").trim();
+      const safePhone = escapeHtml(phone);
+      const instructions = escapeHtml(j.instructions || "None");
+      const originalName = escapeHtml(j.original_name || "");
+      const mimeType = escapeHtml(j.mime_type || "");
+      const notes = escapeHtml(j.notes || "");
+      const paperSize = escapeHtml(j.paper_size || "");
+      const colorMode = escapeHtml(j.color_mode || "");
+      const copies = escapeHtml(j.copies || "");
+      const createdAt = j.created_at ? escapeHtml(new Date(j.created_at).toLocaleString()) : "";
+      const title = queueLabel === "AGENT" ? "Agent Job" : "Print Job";
+
+      return `
+        <div class="job-card">
+          <div class="job-top">
+            <div>
+              <div class="job-id">${title} #${escapeHtml(j.id)}</div>
+              <div class="job-sub">
+                <span class="queue-tag ${queueLabel === "AGENT" ? "queue-agent" : "queue-print"}">
+                  ${queueLabel}
+                </span>
+                <span class="status-tag ${getStatusClass(j.status)}">
+                  ${escapeHtml(j.status || "pending")}
+                </span>
+              </div>
+            </div>
+          </div>
+
+          <div class="job-grid">
+            <div class="info-block">
+              <div class="label">Customer Phone</div>
+              <div class="value">${safePhone || '<span class="muted">Not saved</span>'}</div>
+            </div>
+
+            <div class="info-block">
+              <div class="label">Paper / Service</div>
+              <div class="value">${paperSize || '<span class="muted">—</span>'}</div>
+            </div>
+
+            <div class="info-block">
+              <div class="label">Color / Queue</div>
+              <div class="value">${colorMode || '<span class="muted">—</span>'}</div>
+            </div>
+
+            <div class="info-block">
+              <div class="label">Copies</div>
+              <div class="value">${copies || '<span class="muted">—</span>'}</div>
+            </div>
+
+            <div class="info-block">
+              <div class="label">Filename</div>
+              <div class="value">${originalName || '<span class="muted">Not available</span>'}</div>
+            </div>
+
+            <div class="info-block">
+              <div class="label">Mime Type</div>
+              <div class="value">${mimeType || '<span class="muted">Not available</span>'}</div>
+            </div>
+          </div>
+
+          <div class="full-block">
+            <div class="label">Instructions</div>
+            <div class="value">${instructions}</div>
+          </div>
+
+          <div class="full-block">
+            <div class="label">File</div>
+            <div class="value">${buildFileDisplay(j)}</div>
+          </div>
+
+          ${
+            createdAt
+              ? `
+            <div class="full-block">
+              <div class="label">Created</div>
+              <div class="value">${createdAt}</div>
+            </div>
+          `
+              : ""
+          }
+
+          ${
+            notes
+              ? `
+            <div class="full-block">
+              <div class="label">Notes</div>
+              <div class="value notes-box">${notes}</div>
+            </div>
+          `
+              : ""
+          }
+
+          <div class="reply-box">
+            <div class="reply-title">Send WhatsApp Reply</div>
+            <form method="POST" action="/dashboard/send-reply">
+              <input type="hidden" name="key" value="${escapeHtml(String(key))}">
+              <input type="hidden" name="to" value="${safePhone}">
+
+              <textarea
+                name="message"
+                placeholder="Type your message to the customer here..."
+              >Hello, your job #${escapeHtml(j.id)} is being reviewed.</textarea>
+
+              <button type="submit" ${phone ? "" : "disabled"}>
+                ${phone ? "Send WhatsApp Reply" : "Phone Not Saved"}
+              </button>
+            </form>
+          </div>
+        </div>
+      `;
+    };
+
+    const printCards = printJobs.length
+      ? printJobs.map((j) => buildJobCard(j, "PRINT")).join("")
+      : `<div class="empty-box">No print jobs found.</div>`;
+
+    const agentCards = agentJobs.length
+      ? agentJobs.map((j) => buildJobCard(j, "AGENT")).join("")
+      : `<div class="empty-box">No agent/editing jobs found.</div>`;
+
     const html = `
+      <!DOCTYPE html>
       <html>
       <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
         <title>MSTAF Worker Dashboard</title>
         <style>
-          body { font-family: Arial; padding: 20px; background:#f5f5f5; }
-          .job { background:white; padding:15px; margin-bottom:15px; border-radius:8px; }
-          .title { font-weight:bold; }
-          .link { color:blue; }
+          * { box-sizing: border-box; }
+          body {
+            margin: 0;
+            font-family: Arial, sans-serif;
+            background:
+              radial-gradient(circle at top left, #edf4ff 0%, #f8fafc 35%, #eef2ff 100%);
+            color: #111827;
+          }
+
+          .wrap {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 24px;
+          }
+
+          .hero {
+            background: linear-gradient(135deg, #111827, #1d4ed8, #0f766e);
+            color: #fff;
+            border-radius: 22px;
+            padding: 28px;
+            box-shadow: 0 20px 50px rgba(0,0,0,0.16);
+            margin-bottom: 22px;
+          }
+
+          .hero h1 {
+            margin: 0 0 8px;
+            font-size: 34px;
+            line-height: 1.1;
+          }
+
+          .hero p {
+            margin: 0;
+            opacity: 0.95;
+            font-size: 15px;
+          }
+
+          .stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+            gap: 16px;
+            margin: 22px 0;
+          }
+
+          .stat-card {
+            background: rgba(255,255,255,0.95);
+            border: 1px solid rgba(255,255,255,0.7);
+            border-radius: 18px;
+            padding: 18px;
+            box-shadow: 0 10px 30px rgba(15, 23, 42, 0.08);
+          }
+
+          .stat-label {
+            font-size: 13px;
+            color: #475569;
+            margin-bottom: 8px;
+          }
+
+          .stat-value {
+            font-size: 30px;
+            font-weight: 700;
+          }
+
+          .notice {
+            padding: 16px 18px;
+            border-radius: 14px;
+            margin-bottom: 20px;
+            font-weight: 600;
+          }
+
+          .notice.success {
+            background: #dcfce7;
+            color: #166534;
+            border: 1px solid #bbf7d0;
+          }
+
+          .notice.error {
+            background: #fee2e2;
+            color: #991b1b;
+            border: 1px solid #fecaca;
+          }
+
+          .section {
+            margin-top: 26px;
+          }
+
+          .section-head {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            margin-bottom: 14px;
+          }
+
+          .section-head h2 {
+            margin: 0;
+            font-size: 24px;
+          }
+
+          .section-badge {
+            background: #e0e7ff;
+            color: #3730a3;
+            border-radius: 999px;
+            padding: 8px 12px;
+            font-size: 12px;
+            font-weight: 700;
+          }
+
+          .cards {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(390px, 1fr));
+            gap: 18px;
+          }
+
+          .job-card {
+            background: rgba(255,255,255,0.96);
+            border: 1px solid #e2e8f0;
+            border-radius: 22px;
+            padding: 20px;
+            box-shadow: 0 14px 40px rgba(15, 23, 42, 0.08);
+          }
+
+          .job-top {
+            display: flex;
+            align-items: start;
+            justify-content: space-between;
+            margin-bottom: 16px;
+          }
+
+          .job-id {
+            font-size: 24px;
+            font-weight: 800;
+            margin-bottom: 8px;
+          }
+
+          .job-sub {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+          }
+
+          .queue-tag,
+          .status-tag,
+          .media-pill {
+            display: inline-block;
+            border-radius: 999px;
+            padding: 7px 11px;
+            font-size: 12px;
+            font-weight: 700;
+          }
+
+          .queue-print { background: #dbeafe; color: #1d4ed8; }
+          .queue-agent { background: #f3e8ff; color: #7c3aed; }
+
+          .status-pending { background: #fef3c7; color: #92400e; }
+          .status-printing { background: #dbeafe; color: #1d4ed8; }
+          .status-completed { background: #dcfce7; color: #166534; }
+          .status-failed { background: #fee2e2; color: #991b1b; }
+
+          .media-pill {
+            background: #ede9fe;
+            color: #6d28d9;
+            margin-bottom: 8px;
+          }
+
+          .job-grid {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 12px;
+            margin-bottom: 14px;
+          }
+
+          .info-block,
+          .full-block,
+          .reply-box {
+            background: #f8fafc;
+            border: 1px solid #e2e8f0;
+            border-radius: 16px;
+            padding: 14px;
+          }
+
+          .full-block { margin-bottom: 12px; }
+          .reply-box { margin-top: 14px; }
+
+          .label {
+            font-size: 12px;
+            font-weight: 700;
+            color: #475569;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+            margin-bottom: 7px;
+          }
+
+          .value {
+            font-size: 15px;
+            line-height: 1.5;
+            word-break: break-word;
+          }
+
+          .muted {
+            color: #64748b;
+          }
+
+          .notes-box {
+            white-space: pre-wrap;
+          }
+
+          .file-link {
+            color: #2563eb;
+            text-decoration: none;
+            font-weight: 700;
+          }
+
+          .file-link:hover {
+            text-decoration: underline;
+          }
+
+          .meta-line {
+            font-size: 13px;
+            color: #475569;
+          }
+
+          .reply-title {
+            font-size: 18px;
+            font-weight: 800;
+            margin-bottom: 10px;
+          }
+
+          textarea {
+            width: 100%;
+            min-height: 110px;
+            border: 1px solid #cbd5e1;
+            border-radius: 14px;
+            padding: 14px;
+            resize: vertical;
+            font-size: 14px;
+            font-family: Arial, sans-serif;
+            background: #fff;
+          }
+
+          button {
+            margin-top: 12px;
+            border: none;
+            border-radius: 14px;
+            padding: 12px 18px;
+            font-size: 14px;
+            font-weight: 700;
+            cursor: pointer;
+            background: linear-gradient(135deg, #111827, #1d4ed8);
+            color: #fff;
+            box-shadow: 0 10px 24px rgba(29, 78, 216, 0.22);
+          }
+
+          button:disabled {
+            cursor: not-allowed;
+            opacity: 0.6;
+            background: #94a3b8;
+            box-shadow: none;
+          }
+
+          .empty-box {
+            background: rgba(255,255,255,0.96);
+            border: 1px dashed #cbd5e1;
+            border-radius: 18px;
+            padding: 20px;
+            color: #64748b;
+          }
+
+          @media (max-width: 860px) {
+            .job-grid {
+              grid-template-columns: 1fr;
+            }
+
+            .hero h1 {
+              font-size: 28px;
+            }
+
+            .cards {
+              grid-template-columns: 1fr;
+            }
+          }
         </style>
       </head>
       <body>
-        <h2>🖨️ MSTAF Worker Dashboard</h2>
-        ${notice}
-${jobs.map(j => `
-  <div class="job">
-    <div class="title">Job #${j.id}</div>
-    <div>Status: ${j.status || ""}</div>
-    <div>Paper: ${j.paper_size || ""}</div>
-    <div>Color: ${j.color_mode || ""}</div>
-    <div>Copies: ${j.copies || ""}</div>
-    <div>Instructions: ${j.instructions || "None"}</div>
+        <div class="wrap">
+          <div class="hero">
+            <h1>🖨️ MSTAF Worker Dashboard</h1>
+            <p>Monitor print jobs, review editing requests, and reply to customers on WhatsApp from one place.</p>
+          </div>
 
-    <div><strong>Customer Phone:</strong>
-      ${j.customer_phone || j.phone_number || j.whatsapp_number || "Not saved"}
-    </div>
+          ${notice}
 
-    <div>
-      File:
-      ${
-        j.file_url
-          ? `<a class="link" href="${j.file_url}" target="_blank">Open</a>`
-          : "No file"
-      }
-    </div>
+          <div class="stats">
+            <div class="stat-card">
+              <div class="stat-label">Total Jobs</div>
+              <div class="stat-value">${jobs.length}</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-label">Pending Jobs</div>
+              <div class="stat-value">${pendingJobs.length}</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-label">Print Queue</div>
+              <div class="stat-value">${printJobs.length}</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-label">Agent Queue</div>
+              <div class="stat-value">${agentJobs.length}</div>
+            </div>
+          </div>
 
-    <div style="margin-top:12px;font-weight:bold;">Send WhatsApp Reply</div>
+          <div class="section">
+            <div class="section-head">
+              <h2>🖨️ Print Queue</h2>
+              <div class="section-badge">${printJobs.length} jobs</div>
+            </div>
+            <div class="cards">
+              ${printCards}
+            </div>
+          </div>
 
-    <form method="POST" action="/dashboard/send-reply" style="margin-top:8px;">
-      <input type="hidden" name="key" value="${String(key).replace(/"/g, "&quot;")}">
-      <input type="hidden" name="to" value="${(j.customer_phone || j.phone_number || j.whatsapp_number || "").replace(/"/g, "&quot;")}">
+          <div class="section">
+            <div class="section-head">
+              <h2>🎨 Agent / Editing Queue</h2>
+              <div class="section-badge">${agentJobs.length} jobs</div>
+            </div>
+            <div class="cards">
+              ${agentCards}
+            </div>
+          </div>
 
-      <textarea
-        name="message"
-        style="width:100%;min-height:90px;padding:10px;margin-top:8px;border-radius:8px;border:1px solid #ccc;"
-      >Hello, your job #${j.id} is being reviewed.</textarea>
-
-      <br>
-
-      <button
-        type="submit"
-        style="margin-top:10px;padding:10px 16px;border:none;border-radius:8px;background:black;color:white;cursor:pointer;"
-      >
-        Send WhatsApp Reply
-      </button>
-    </form>
-  </div>
-`).join("")}
+          <div class="section">
+            <div class="section-head">
+              <h2>✅ Completed Snapshot</h2>
+              <div class="section-badge">${completedJobs.length} completed</div>
+            </div>
+          </div>
+        </div>
       </body>
       </html>
     `;
 
     res.send(html);
   } catch (err) {
-    console.error(err);
+    console.error("Dashboard error:", err);
     res.status(500).send("Server error");
   }
 });
+
 app.use(express.urlencoded({ extended: true }));
 
 app.post("/dashboard/send-reply", async (req, res) => {
@@ -1046,9 +1520,9 @@ app.post("/dashboard/send-reply", async (req, res) => {
     return res.redirect(`/dashboard?key=${encodeURIComponent(key)}&sent=0`);
   }
 });
-// =========================
-// START SERVER
-// =========================
+   
+
+ 
 app.listen(PORT, () => {
   console.log("Server running on port " + PORT);
 });
