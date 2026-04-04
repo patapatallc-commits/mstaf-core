@@ -1,3 +1,66 @@
+function getExtFromMime(mimeType = "") {
+  const map = {
+    "image/jpeg": ".jpg",
+    "image/jpg": ".jpg",
+    "image/png": ".png",
+    "image/webp": ".webp",
+    "video/mp4": ".mp4",
+    "video/quicktime": ".mov",
+    "audio/mpeg": ".mp3",
+    "audio/mp3": ".mp3",
+    "audio/ogg": ".ogg",
+    "audio/opus": ".opus",
+    "audio/aac": ".aac",
+    "application/pdf": ".pdf"
+  };
+  return map[mimeType] || "";
+}
+
+function safeBaseName(name = "upload") {
+  return String(name).replace(/[^\w.\-]+/g, "_");
+}
+
+async function downloadWhatsAppMediaToUploads(mediaId, fallbackName, mimeType, req) {
+  const token = process.env.WHATSAPP_ACCESS_TOKEN;
+  if (!token || !mediaId) return "";
+
+  const metaUrl = `https://graph.facebook.com/v23.0/${mediaId}`;
+  const metaResp = await axios.get(metaUrl, {
+    headers: {
+      Authorization: `Bearer ${token}`
+    }
+  });
+
+  const downloadUrl = metaResp?.data?.url;
+  const finalMimeType = metaResp?.data?.mime_type || mimeType || "";
+  if (!downloadUrl) return "";
+
+  const ext =
+    getExtFromMime(finalMimeType) ||
+    getExtFromMime(mimeType) ||
+    "";
+
+  const baseName = safeBaseName(fallbackName || mediaId || "upload");
+  const finalName = `${Date.now()}_${baseName}${ext && !baseName.endsWith(ext) ? ext : ""}`;
+  const fullPath = path.join(uploadsDir, finalName);
+
+  const fileResp = await axios.get(downloadUrl, {
+    responseType: "arraybuffer",
+    headers: {
+      Authorization: `Bearer ${token}`
+    }
+  });
+
+  fs.writeFileSync(fullPath, Buffer.from(fileResp.data));
+
+  const base =
+    process.env.PUBLIC_BASE_URL ||
+    process.env.RENDER_EXTERNAL_URL ||
+    `${req.protocol}://${req.get("host")}`;
+
+  return `${base}/uploads/${encodeURIComponent(finalName)}`;
+}
+
 const multer = require("multer");
 const path = require("path");
 const fs = require("fs");
@@ -366,8 +429,17 @@ try {
 
   const mimeType = pending.mime_type || "";
   const mediaId = pending.media_id || "";
-  const fileUrl = mediaId ? `whatsapp-media:${mediaId}` : "";
 
+let fileUrl = "";
+
+if (mediaId) {
+  fileUrl = await downloadWhatsAppMediaToUploads(
+    mediaId,
+    fileName,
+    mimeType,
+    req
+  );
+}
   const instructions =
     session.instructions ||
     session.caption ||
