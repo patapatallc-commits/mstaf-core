@@ -185,7 +185,6 @@ app.get("/webhook", (req, res) => {
 // WEBHOOK RECEIVE
 // =========================
 app.post("/webhook", async (req, res) => {
-  try {
     const message = req.body.entry?.[0]?.changes?.[0]?.value?.messages?.[0];
     if (!message) return res.sendStatus(200);
 
@@ -951,11 +950,7 @@ Our team will contact you shortly on WhatsApp.`
 ${serviceMenu()}`
     );
     return res.sendStatus(200);
-    } catch (err) {
-    console.error("Webhook error:", err.response?.data || err.message || err);
-    return res.sendStatus(200);
-  }
-});
+    });
 
 // =========================
 // HEALTH
