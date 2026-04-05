@@ -1095,11 +1095,10 @@ You can also add extra instructions by text or voice.`
       );
       return res.sendStatus(200);
     }
-// =========================
-// GENERIC EXTRA NOTES
-// =========================
-if (session.stage === "SERVICE_WAITING_EXTRA_NOTES") {
-  try {
+  // =========================
+  // GENERIC EXTRA NOTES
+  // =========================
+  if (session.stage === "SERVICE_WAITING_EXTRA_NOTES") {
     if (type === "text" && lower) {
       await sendMessage(
         from,
@@ -1125,17 +1124,9 @@ Our team will contact you shortly on WhatsApp.`
       "Please send your message as text or voice note."
     );
     return res.sendStatus(200);
-  } catch (err) {
-    console.error(
-      "SERVICE_WAITING_EXTRA_NOTES error:",
-      err?.response?.data || err?.message || err
-    );
-    return res.sendStatus(200);
   }
-}
 
-// DEFAULT FALLBACK
-try {
+  // DEFAULT FALLBACK
   await sendMessage(
     from,
     `Please reply with one of the options below:
@@ -1144,7 +1135,7 @@ ${serviceMenu()}`
   );
   return res.sendStatus(200);
 } catch (err) {
-  console.error("Webhook error:", err.response?.data || err.message || err);
+  console.error("Webhook error:", err?.response?.data || err?.message || err);
   return res.sendStatus(200);
 }
 });
