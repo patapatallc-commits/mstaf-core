@@ -1125,7 +1125,8 @@ Our team will contact you shortly on WhatsApp.`
         "Please send your message as text or voice note."
       );
       return res.sendStatus(200);
-    }
+}
+}
 
 // DEFAULT FALLBACK
 try {
