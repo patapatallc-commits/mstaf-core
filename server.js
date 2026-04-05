@@ -1095,52 +1095,52 @@ You can also add extra instructions by text or voice.`
       );
       return res.sendStatus(200);
     }
-  try {
-    // =========================
-    // GENERIC EXTRA NOTES
-    // =========================
-    if (session.stage === "SERVICE_WAITING_EXTRA_NOTES") {
-      if (type === "text" && lower) {
-        await sendMessage(
-          from,
-          `✅ Your message has been received.
+        try {
+        // =========================
+        // GENERIC EXTRA NOTES
+        // =========================
+        if (session.stage === "SERVICE_WAITING_EXTRA_NOTES") {
+          if (type === "text" && lower) {
+            await sendMessage(
+              from,
+              `✅ Your message has been received.
 
 Our team will contact you shortly on WhatsApp.`
-        );
-        return res.sendStatus(200);
-      }
+            );
+            return res.sendStatus(200);
+          }
 
-      if (type === "audio") {
-        await sendMessage(
-          from,
-          `✅ Your voice note has been received.
+          if (type === "audio") {
+            await sendMessage(
+              from,
+              `✅ Your voice note has been received.
 
 Our team will contact you shortly on WhatsApp.`
-        );
-        return res.sendStatus(200);
-      }
+            );
+            return res.sendStatus(200);
+          }
 
-      await sendMessage(
-        from,
-        "Please send your message as text or voice note."
-      );
-      return res.sendStatus(200);
-    }
-     
-    // DEFAULT FALLBACK
-    await sendMessage(
-      from,
-      `Please reply with one of the options below:
+          await sendMessage(
+            from,
+            "Please send your message as text or voice note."
+          );
+          return res.sendStatus(200);
+        }
+
+        // DEFAULT FALLBACK
+        await sendMessage(
+          from,
+          `Please reply with one of the options below:
 
 ${serviceMenu()}`
-    );
-    return res.sendStatus(200);
-  } catch (err) {
-    console.error("Webhook error:", err?.response?.data || err?.message || err);
-    return res.sendStatus(200);
-  }
-});
-  
+        );
+        return res.sendStatus(200);
+      } catch (err) {
+        console.error("Webhook error:", err?.response?.data || err?.message || err);
+        return res.sendStatus(200);
+      }
+    });
+      
 // ========================
 // HEALTH
 // ========================
