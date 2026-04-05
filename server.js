@@ -17,7 +17,7 @@ function getExtFromMime(mimeType = "") {
 }
 
 function safeBaseName(name = "upload") {
-  return String(name).replace(/[^\w.\-]+/g, "_");
+  return String(name).replace(/[^\w.\-]+/g, "_");F
 }
 
 async function downloadWhatsAppMediaToUploads(mediaId, fallbackName, mimeType, req) {
@@ -1141,7 +1141,7 @@ ${serviceMenu()}`
   console.error("Webhook error:", err.response?.data || err.message || err);
   return res.sendStatus(200);
 }
-}
+});
 
 
 
