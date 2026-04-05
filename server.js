@@ -461,92 +461,7 @@ Our team will review your request and contact you shortly on WhatsApp.`
       }
 
       // ID PHOTO / IMAGE / VIDEO / LESSON AUDIO OR FILE
-      if (session.stage === "IDPHOTO_WAITING_UPLOAD") {
-  await sendMessage(
-    from,
-    `✅ ID photo received.
-
-Please send your instruction now as:
-• text message
-• voice note
-
-Our team will attach it to your request and contact you shortly.`
-  );
-
-  try {
-    const pending = session.pendingFile || {};
-
-    const fileName =
-      pending.filename ||
-      pending.media_id ||
-      "uploaded-file";
-
-    const mimeType = pending.mime_type || "";
-    const mediaId = pending.media_id || "";
-
-    let fileUrl = "";
-
-    if (mediaId) {
-      fileUrl = await downloadWhatsAppMediaToUploads(
-        mediaId,
-        fileName,
-        mimeType,
-        req
-      );
-    }
-
-    const instructions =
-      session.instructions ||
-      session.caption ||
-      "Service request";
-
-   const result = await pool.query(
-  `
-  INSERT INTO print_jobs (
-    printer_id,
-    customer_phone,
-    file_url,
-    original_name,
-    mime_type,
-    paper_size,
-    color_mode,
-    copies,
-    pages,
-    status,
-    instructions,
-    notes,
-    service_type,
-    queue_type
-  )
-  VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
-  RETURNING id
-  `,
-  [
-    process.env.AGENT_QUEUE_ID || "AGENT",
-    from || null,
-    fileUrl || null,
-    fileName || "upload",
-    mimeType || null,
-    null,
-    "BW",
-    1,
-    1,
-    "pending",
-    instructions || null,
-    `agent_queue|type=${pending.type || "id_photo"}|media_id=${mediaId}`,
-    "ID_PHOTO",
-    "AGENT"
-  ]
-);
-
-    session.lastServiceJobId = result.rows?.[0]?.id || null;
-  } catch (err) {
-    console.error("Save error:", err);
-  }
-
-  session.stage = "SERVICE_WAITING_EXTRA_NOTES";
-  return res.sendStatus(200);
-}
+ 
 
  if (session.stage === "IMAGE_EDIT_WAITING_UPLOAD") {
   await sendMessage(
@@ -667,19 +582,7 @@ ${serviceMenu()}`
         return res.sendStatus(200);
       }
 
-      if (lower === "3") {
-  session.selectedService = "ID_PHOTO";
-  session.stage = "IDPHOTO_WAITING_UPLOAD";
-
-  await sendMessage(
-    from,
-    `📸 ID Photo selected.
-
-Please upload your photo now.`
-  );
-
-  return res.sendStatus(200);
-}
+    
 
       if (lower === "4") {
         session.selectedService = "IMAGE_EDIT";
