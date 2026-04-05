@@ -95,13 +95,7 @@ const axios = require("axios");
 require("dotenv").config();
 
 
-const fs = require("fs");
 const app = express();
-const uploadsDir = path.join(__dirname, "uploads");
-
-if (!fs.existsSync(uploadsDir)) {
-  fs.mkdirSync(uploadsDir);
-}
 app.use(express.json({ limit: "20mb" }));
 app.use("/uploads", express.static(uploadsDir));
 const PORT = process.env.PORT || 10000;
