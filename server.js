@@ -1095,37 +1095,43 @@ You can also add extra instructions by text or voice.`
       );
       return res.sendStatus(200);
     }
-
-    // =========================
-    // GENERIC EXTRA NOTES
-    // =========================
-    if (session.stage === "SERVICE_WAITING_EXTRA_NOTES") {
-      if (type === "text" && lower) {
-        await sendMessage(
-          from,
-          `✅ Your message has been received.
-
-Our team will contact you shortly on WhatsApp.`
-        );
-        return res.sendStatus(200);
-      }
-
-      if (type === "audio") {
-        await sendMessage(
-          from,
-          `✅ Your voice note has been received.
-
-Our team will contact you shortly on WhatsApp.`
-        );
-        return res.sendStatus(200);
-      }
-
+// =========================
+// GENERIC EXTRA NOTES
+// =========================
+if (session.stage === "SERVICE_WAITING_EXTRA_NOTES") {
+  try {
+    if (type === "text" && lower) {
       await sendMessage(
         from,
-        "Please send your message as text or voice note."
+        `✅ Your message has been received.
+
+Our team will contact you shortly on WhatsApp.`
       );
       return res.sendStatus(200);
-}
+    }
+
+    if (type === "audio") {
+      await sendMessage(
+        from,
+        `✅ Your voice note has been received.
+
+Our team will contact you shortly on WhatsApp.`
+      );
+      return res.sendStatus(200);
+    }
+
+    await sendMessage(
+      from,
+      "Please send your message as text or voice note."
+    );
+    return res.sendStatus(200);
+  } catch (err) {
+    console.error(
+      "SERVICE_WAITING_EXTRA_NOTES error:",
+      err?.response?.data || err?.message || err
+    );
+    return res.sendStatus(200);
+  }
 }
 
 // DEFAULT FALLBACK
