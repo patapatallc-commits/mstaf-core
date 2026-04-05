@@ -94,7 +94,7 @@ const express = require("express");
 const axios = require("axios");
 require("dotenv").config();
 
-const path = require("path");
+
 const fs = require("fs");
 const app = express();
 const uploadsDir = path.join(__dirname, "uploads");
