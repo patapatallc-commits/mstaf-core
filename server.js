@@ -1126,20 +1126,20 @@ Our team will contact you shortly on WhatsApp.`
       );
       return res.sendStatus(200);
     }
-    try {
-    // DEFAULT FALLBACK
-    await sendMessage(
-      from,
-      `Please reply with one of the options below:
+      // DEFAULT FALLBACK
+  await sendMessage(
+    from,
+    `Please reply with one of the options below:
 
 ${serviceMenu()}`
-    );
-    return res.sendStatus(200);
-  } catch (err) {
-    console.error("Webhook error:", err?.response?.data || err?.message || err);
-    return res.sendStatus(200);
-  }
+  );
+  return res.sendStatus(200);
+} catch (err) {
+  console.error("Webhook error:", err?.response?.data || err?.message || err);
+  return res.sendStatus(200);
+}
 });
+  
 // ========================
 // HEALTH
 // ========================
