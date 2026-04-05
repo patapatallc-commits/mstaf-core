@@ -342,99 +342,93 @@ Reply:
 
       // LAMINATE FILE ARRIVED
       if (
-        session.stage === "LAMINATE_WAITING_FILE" &&
-        (type === "image" || type === "document")
-      ) {
-        session.stage = "LAMINATE_FILE_UPLOADED_ACTION";
+  session.stage === "LAMINATE_WAITING_FILE" &&
+  (type === "image" || type === "document")
+) {
+  session.stage = "LAMINATE_FILE_UPLOADED_ACTION";
 
-        await sendMessage(
-          from,
-          `📄 Document received successfully.
+  await sendMessage(
+    from,
+    `📄 Document received successfully.
 
 Choose payment option:
 1 - Shopify Checkout
 2 - Africa Payment`
-        );
-        return res.sendStatus(200);
-      }
+  );
 
-      // AGENT SERVICE FILE ARRIVED
-      if (session.stage === "SERVICE_WAITING_UPLOAD") {
-        await sendMessage(
-          from,
-          `✅ Your file has been received.
+  return res.sendStatus(200);
+}
 
-Our team is reviewing your request and will contact you shortly on WhatsApp.`
-        );
-        session.stage = "SERVICE_WAITING_EXTRA_NOTES";
-        return res.sendStatus(200);
-      }
+// =============================
+// VIDEO FILE ARRIVED
+// =============================
+if (
+  session.stage === "VIDEO_EDIT_WAITING_FILE" &&
+  type === "video"
+) {
+  session.stage = "VIDEO_EDIT_WAITING_INSTRUCTION";
 
-      // PRINT INSTRUCTIONS AUDIO
-      if (session.stage === "PRINT_WAITING_INSTRUCTIONS" && type === "audio") {
-        await sendMessage(
-          from,
-          `✅ Your voice instruction has been received and sent to our Agent team.
+  await sendMessage(
+    from,
+    `✅ Video received.
 
-Our team will review your request and contact you shortly on WhatsApp.`
-        );
-        return res.sendStatus(200);
-      }
+Now send your extra instruction as text or voice note.
 
-      // LAMINATE EXTRA AUDIO
-      if (session.stage === "LAMINATE_WAITING_FILE" && type === "audio") {
-        await sendMessage(
-          from,
-          "✅ Your laminate voice instruction has been received. Please now upload the document to laminate."
-        );
-        return res.sendStatus(200);
-      }
+Example:
+- cut and join clips
+- add subtitles
+- add music
+- resize for TikTok`
+  );
 
-      // ID PHOTO / IMAGE / VIDEO / LESSON AUDIO OR FILE
-      if (session.stage === "IDPHOTO_WAITING_UPLOAD") {
-        await sendMessage(
-          from,
-          `✅ ID photo file received.
+  return res.sendStatus(200);
+}
 
-Our team is reviewing your request and will provide pricing shortly.`
-        );
-        session.stage = "SERVICE_WAITING_EXTRA_NOTES";
-        return res.sendStatus(200);
-      }
+// =============================
+// IMAGE EDIT FILE ARRIVED
+// =============================
+if (
+  session.stage === "IMAGE_EDIT_WAITING_FILE" &&
+  (type === "image" || type === "document")
+) {
+  session.stage = "IMAGE_EDIT_WAITING_INSTRUCTION";
 
-      if (session.stage === "IMAGE_EDIT_WAITING_UPLOAD") {
-        await sendMessage(
-          from,
-          `✅ Image received.
+  await sendMessage(
+    from,
+    `✅ Image received.
 
-Our editing team is reviewing your request and will contact you shortly on WhatsApp.`
-        );
-        session.stage = "SERVICE_WAITING_EXTRA_NOTES";
-        return res.sendStatus(200);
-      }
+Now send your extra instruction as text or voice note.`
+  );
 
-      if (session.stage === "VIDEO_EDIT_WAITING_UPLOAD") {
-        await sendMessage(
-          from,
-          `✅ Video received.
+  return res.sendStatus(200);
+}
 
-Our editing team is reviewing your request and will contact you shortly on WhatsApp.`
-        );
-        session.stage = "SERVICE_WAITING_EXTRA_NOTES";
-        return res.sendStatus(200);
-      }
+// =============================
+// ID PHOTO FILE ARRIVED
+// =============================
+if (
+  session.stage === "ID_PHOTO_WAITING_FILE" &&
+  (type === "image" || type === "document")
+) {
+  session.stage = "ID_PHOTO_WAITING_INSTRUCTION";
 
-      if (session.stage === "LESSON_WAITING_UPLOAD") {
-        await sendMessage(
-          from,
-          `✅ Your lesson or homework file has been received.
+  await sendMessage(
+    from,
+    `✅ Photo received.
 
-Our team will review it and contact you shortly on WhatsApp.`
-        );
-        session.stage = "SERVICE_WAITING_EXTRA_NOTES";
-        return res.sendStatus(200);
-      }
-    }
+Now send your extra instruction as text or voice note.
+
+Example:
+- white background
+- passport size
+- blue suit
+- crop and brighten`
+  );
+
+  return res.sendStatus(200);
+}
+    
+ 
 
     // =========================
     // GREETING / RESET
