@@ -499,44 +499,44 @@ Our team will attach it to your request and contact you shortly.`
       session.caption ||
       "Service request";
 
-    const result = await pool.query(
-      `
-      INSERT INTO print_jobs (
-        printer_id,
-        customer_phone,
-        file_url,
-        original_name,
-        mime_type,
-        paper_size,
-        color_mode,
-        copies,
-        pages,
-        status,
-        instructions,
-        notes,
-        service_type,
-        queue_type
-      )
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
-      RETURNING id
-      `,
-      [
-        process.env.AGENT_QUEUE_ID || "AGENT",
-        from || null,
-        fileUrl || null,
-        fileName || "upload",
-        mimeType || null,
-        null,
-        "BW",
-        1,
-        1,
-        "pending",
-        instructions || null,
-        `agent_queue|type=${pending.type || "id_photo"}|media_id=${mediaId}`,
-        "ID_PHOTO",
-        "AGENT"
-      ]
-    );
+   const result = await pool.query(
+  `
+  INSERT INTO print_jobs (
+    printer_id,
+    customer_phone,
+    file_url,
+    original_name,
+    mime_type,
+    paper_size,
+    color_mode,
+    copies,
+    pages,
+    status,
+    instructions,
+    notes,
+    service_type,
+    queue_type
+  )
+  VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
+  RETURNING id
+  `,
+  [
+    process.env.AGENT_QUEUE_ID || "AGENT",
+    from || null,
+    fileUrl || null,
+    fileName || "upload",
+    mimeType || null,
+    null,
+    "BW",
+    1,
+    1,
+    "pending",
+    instructions || null,
+    `agent_queue|type=${pending.type || "id_photo"}|media_id=${mediaId}`,
+    "ID_PHOTO",
+    "AGENT"
+  ]
+);
 
     session.lastServiceJobId = result.rows?.[0]?.id || null;
   } catch (err) {
