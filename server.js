@@ -1126,9 +1126,7 @@ Our team will contact you shortly on WhatsApp.`
       return res.sendStatus(200);
     }
 
-  // ========================
 // DEFAULT FALLBACK
-// ========================
 try {
   await sendMessage(
     from,
@@ -1142,15 +1140,10 @@ ${serviceMenu()}`
   return res.sendStatus(200);
 }
 });
-
-
-
- 
- 
-
-// =========================
+// ========================
 // HEALTH
-// =========================
+// ========================
+
 app.get("/health", (_req, res) => {
   res.json({ ok: true });
 });
