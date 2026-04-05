@@ -134,7 +134,8 @@ function createSession() {
     selectedService: null,
     printSpec: {},
     laminateSpec: {},
-    pendingFile: null
+    pendingFile: null,
+    lastServiceJobId: null
   };
 }
 
