@@ -310,6 +310,7 @@ Our Agent team will contact you soon on WhatsApp.`
 
   return res.sendStatus(200);
 }
+
     // =========================
     // MEDIA CAPTURE
     // =========================
@@ -432,7 +433,7 @@ Our editing team is reviewing your request and will contact you shortly on Whats
         return res.sendStatus(200);
       }
 
-      if (session.stage === "VIDEO_EDIT_WAITING_UPLOAD") {
+      if (session.stage === "VIDEO_EDIT_WAITING_UPLOAD" && type === "video") {
         await sendMessage(
           from,
           `✅ Video received.
@@ -443,7 +444,10 @@ Our editing team is reviewing your request and will contact you shortly on Whats
         return res.sendStatus(200);
       }
 
-      if (session.stage === "LESSON_WAITING_UPLOAD") {
+      if (
+  session.stage === "LESSON_WAITING_UPLOAD" &&
+  (type === "document" || type === "image" || type === "audio" || type === "video")
+) {
         await sendMessage(
           from,
           `✅ Your lesson or homework file has been received.
@@ -454,24 +458,7 @@ Our team will review it and contact you shortly on WhatsApp.`
         return res.sendStatus(200);
       }
     }
-// ==============================
-// EXTRA NOTES RECEIVED (VIDEO / LESSON / SERVICE)
-// ==============================
-if (
-  session.stage === "SERVICE_WAITING_EXTRA_NOTES" &&
-  (type === "text" || type === "audio")
-) {
-  session.stage = "MENU";
 
-  await sendMessage(
-    from,
-    `✅ Instruction received.
-
-Our team is reviewing your request and will contact you shortly on WhatsApp.`
-  );
-
-  return res.sendStatus(200);
-}
     // =========================
     // GREETING / RESET
     // =========================
