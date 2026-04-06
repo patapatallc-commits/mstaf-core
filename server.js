@@ -935,7 +935,8 @@ Our team will contact you shortly on WhatsApp.`
 ${serviceMenu()}`
     );
     return res.sendStatus(200);
-  } catch (err) {
+}
+} catch (err) {
     console.error("Webhook error:", err.response?.data || err.message || err);
     return res.sendStatus(200);
   }
