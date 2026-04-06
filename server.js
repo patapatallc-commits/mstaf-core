@@ -434,7 +434,24 @@ Our team will review it and contact you shortly on WhatsApp.`
         return res.sendStatus(200);
       }
     }
+// ==============================
+// EXTRA NOTES RECEIVED (VIDEO / LESSON / SERVICE)
+// ==============================
+if (
+  session.stage === "SERVICE_WAITING_EXTRA_NOTES" &&
+  (type === "text" || type === "audio")
+) {
+  session.stage = "MENU";
 
+  await sendMessage(
+    from,
+    `✅ Instruction received.
+
+Our team is reviewing your request and will contact you shortly on WhatsApp.`
+  );
+
+  return res.sendStatus(200);
+}
     // =========================
     // GREETING / RESET
     // =========================
