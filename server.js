@@ -935,12 +935,6 @@ Our team will contact you shortly on WhatsApp.`
       }
 
       await sendMessage(
-        from,
-        "Please send your message as text or voice note."
-      );
-      return res.sendStatus(200);
-    
-await sendMessage(
   from,
   `Please reply with one of the options below:
 
