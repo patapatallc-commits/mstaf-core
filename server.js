@@ -475,7 +475,10 @@ Our team is reviewing your request and will contact you shortly on WhatsApp.`
     // =========================
     // GREETING / RESET
     // =========================
-    if (["hi", "hello", "hey", "menu", "start"].includes(lower)) {
+    if (
+  type === "text" &&
+  ["hi", "hello", "hey", "menu", "start"].includes(lower)
+) {
       resetSession(from);
 
       await sendMessage(
