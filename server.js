@@ -438,7 +438,15 @@ Our editing team is reviewing your request and will contact you shortly on Whats
           from,
           `✅ Video received.
 
-Our editing team is reviewing your request and will contact you shortly on WhatsApp.`
+`✅ Video received.
+
+Please send your instruction now as text or voice note.
+
+Example:
+- cut and join clips
+- add subtitles
+- add music
+- resize for TikTok`
         );
         session.stage = "SERVICE_WAITING_EXTRA_NOTES";
         return res.sendStatus(200);
