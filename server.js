@@ -283,6 +283,9 @@ app.get("/webhook", (req, res) => {
 // WEBHOOK RECEIVE
 // =========================
 app.post("/webhook", async (req, res) => {
+  console.log("WEBHOOK HIT");
+  console.log("BODY:", JSON.stringify(req.body));
+
   try {
     const message = req.body.entry?.[0]?.changes?.[0]?.value?.messages?.[0];
     if (!message) return res.sendStatus(200);
