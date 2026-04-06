@@ -427,7 +427,22 @@ Example:
   session.stage = "SERVICE_WAITING_EXTRA_NOTES";
   return res.sendStatus(200);
 }
+if (session.stage === "IMAGE_EDIT_WAITING_UPLOAD" && type === "image") {
+  await sendMessage(
+    from,
+    `✅ Image received.
 
+Please send your instruction now as text or voice note.
+
+Example:
+- remove background
+- enhance quality
+- add text
+- resize for social media`
+  );
+  session.stage = "SERVICE_WAITING_EXTRA_NOTES";
+  return res.sendStatus(200);
+}
     // =========================
     // GREETING / RESET
     // =========================
