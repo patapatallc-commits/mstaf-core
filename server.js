@@ -17,7 +17,7 @@ function getExtFromMime(mimeType = "") {
 }
 
 function safeBaseName(name = "upload") {
-  return String(name).replace(/[^\w.\-]+/g, "_");F
+  return String(name).replace(/[^\w.\-]+/g, "_");
 }
 
 async function downloadWhatsAppMediaToUploads(mediaId, fallbackName, mimeType, req) {
