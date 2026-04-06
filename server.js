@@ -411,43 +411,19 @@ Our team will review your request and contact you shortly on WhatsApp.`
       }
 
       // ID PHOTO / IMAGE / VIDEO / LESSON AUDIO OR FILE
-      if (session.stage === "IDPHOTO_WAITING_UPLOAD") {
-        await sendMessage(
-          from,
-          `✅ ID photo file received.
-
-Our team is reviewing your request and will provide pricing shortly.`
-        );
-        session.stage = "SERVICE_WAITING_EXTRA_NOTES";
-        return res.sendStatus(200);
-      }
-
-      if (session.stage === "IMAGE_EDIT_WAITING_UPLOAD") {
-        await sendMessage(
-          from,
-          `✅ Image received.
-
-Our editing team is reviewing your request and will contact you shortly on WhatsApp.`
-        );
-        session.stage = "SERVICE_WAITING_EXTRA_NOTES";
-        return res.sendStatus(200);
-      }
-if (session.stage === "VIDEO_EDIT_WAITING_UPLOAD" && type === "video") {
+   if (session.stage === "IDPHOTO_WAITING_UPLOAD" && type === "image") {
   await sendMessage(
     from,
-    `✅ Video received.
+    `✅ ID photo received.
 
 Please send your instruction now as text or voice note.
 
 Example:
-- cut and join clips
-- add subtitles
-- add music
-- resize for TikTok`
+- passport size
+- white background
+- 2 copies
+- standard US size`
   );
-  session.stage = "SERVICE_WAITING_EXTRA_NOTES";
-  return res.sendStatus(200);
-}
   session.stage = "SERVICE_WAITING_EXTRA_NOTES";
   return res.sendStatus(200);
 }
