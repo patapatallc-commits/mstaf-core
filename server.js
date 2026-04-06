@@ -109,7 +109,9 @@ async function sendMessage(to, text) {
       `https://graph.facebook.com/v18.0/${process.env.WHATSAPP_PHONE_NUMBER_ID}/messages`,
       {
         messaging_product: "whatsapp",
+        recipient_type: "individual",
         to,
+        type: "text",
         text: { body: text }
       },
       {
@@ -120,10 +122,12 @@ async function sendMessage(to, text) {
       }
     );
   } catch (err) {
-    console.error("Send message error:", err.response?.data || err.message);
+    console.error(
+      "Send message error:",
+      err.response?.data || err.message || err
+    );
   }
 }
-
 // =========================
 // IN-MEMORY SESSIONS
 // =========================
@@ -435,6 +439,7 @@ Example:
     // =========================
     if (["hi", "hello", "hey", "menu", "start"].includes(lower)) {
       resetSession(from);
+       session.stage = "MENU";
 
       await sendMessage(
         from,
