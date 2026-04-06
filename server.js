@@ -292,11 +292,31 @@ app.post("/webhook", async (req, res) => {
     }
 
     const lower = text.toLowerCase().trim();
+// ==============================
+// EXTRA NOTES RECEIVED (VIDEO / LESSON / SERVICE)
+// ==============================
+if (
+  session.stage === "SERVICE_WAITING_EXTRA_NOTES" &&
+  (type === "text" || type === "audio")
+) {
+  session.stage = "MENU";
 
+  await sendMessage(
+    from,
+    `✅ Instruction received.
+
+Our Agent team will contact you soon on WhatsApp.`
+  );
+
+  return res.sendStatus(200);
+}
     // =========================
     // MEDIA CAPTURE
     // =========================
-    if (type === "image" || type === "document" || type === "audio" || type === "video") {
+    if (
+  (type === "image" || type === "document" || type === "video") ||
+  (type === "audio" && session.stage !== "SERVICE_WAITING_EXTRA_NOTES")
+) {
       const mediaObj =
         type === "image"
           ? message.image
