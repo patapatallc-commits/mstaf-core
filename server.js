@@ -432,8 +432,7 @@ Our editing team is reviewing your request and will contact you shortly on Whats
         session.stage = "SERVICE_WAITING_EXTRA_NOTES";
         return res.sendStatus(200);
       }
-
-  if (session.stage === "VIDEO_EDIT_WAITING_UPLOAD" && type === "video") {
+if (session.stage === "VIDEO_EDIT_WAITING_UPLOAD" && type === "video") {
   await sendMessage(
     from,
     `✅ Video received.
@@ -446,6 +445,9 @@ Example:
 - add music
 - resize for TikTok`
   );
+  session.stage = "SERVICE_WAITING_EXTRA_NOTES";
+  return res.sendStatus(200);
+}
   session.stage = "SERVICE_WAITING_EXTRA_NOTES";
   return res.sendStatus(200);
 }
@@ -947,18 +949,15 @@ Our team will contact you shortly on WhatsApp.`
       );
       return res.sendStatus(200);
     }
-
-    // =========================
-    // DEFAULT FALLBACK
-    // =========================
-    await sendMessage(
-      from,
-      `Please reply with one of the options below:
+await sendMessage(
+  from,
+  `Please reply with one of the options below:
 
 ${serviceMenu()}`
-    );
-    return res.sendStatus(200);
-  } catch (err) {
+);
+return res.sendStatus(200);
+
+ } catch (err) {
     console.error("Webhook error:", err.response?.data || err.message || err);
     return res.sendStatus(200);
   }
