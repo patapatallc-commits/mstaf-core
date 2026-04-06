@@ -94,10 +94,9 @@ const express = require("express");
 const axios = require("axios");
 require("dotenv").config();
 
-
 const app = express();
 app.use(express.json({ limit: "20mb" }));
-app.use("/uploads", express.static(uploadsDir));
+app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 const PORT = process.env.PORT || 10000;
 
 // =========================
@@ -109,9 +108,7 @@ async function sendMessage(to, text) {
       `https://graph.facebook.com/v18.0/${process.env.WHATSAPP_PHONE_NUMBER_ID}/messages`,
       {
         messaging_product: "whatsapp",
-        recipient_type: "individual",
         to,
-        type: "text",
         text: { body: text }
       },
       {
@@ -122,12 +119,10 @@ async function sendMessage(to, text) {
       }
     );
   } catch (err) {
-    console.error(
-      "Send message error:",
-      err.response?.data || err.message || err
-    );
+    console.error("Send message error:", err.response?.data || err.message);
   }
 }
+
 // =========================
 // IN-MEMORY SESSIONS
 // =========================
@@ -283,9 +278,6 @@ app.get("/webhook", (req, res) => {
 // WEBHOOK RECEIVE
 // =========================
 app.post("/webhook", async (req, res) => {
-  console.log("WEBHOOK HIT");
-  console.log("BODY:", JSON.stringify(req.body));
-
   try {
     const message = req.body.entry?.[0]?.changes?.[0]?.value?.messages?.[0];
     if (!message) return res.sendStatus(200);
@@ -349,100 +341,105 @@ Reply:
 
       // LAMINATE FILE ARRIVED
       if (
-  session.stage === "LAMINATE_WAITING_FILE" &&
-  (type === "image" || type === "document")
-) {
-  session.stage = "LAMINATE_FILE_UPLOADED_ACTION";
+        session.stage === "LAMINATE_WAITING_FILE" &&
+        (type === "image" || type === "document")
+      ) {
+        session.stage = "LAMINATE_FILE_UPLOADED_ACTION";
 
-  await sendMessage(
-    from,
-    `📄 Document received successfully.
+        await sendMessage(
+          from,
+          `📄 Document received successfully.
 
 Choose payment option:
 1 - Shopify Checkout
 2 - Africa Payment`
-  );
+        );
+        return res.sendStatus(200);
+      }
 
-  return res.sendStatus(200);
-}
+      // AGENT SERVICE FILE ARRIVED
+      if (session.stage === "SERVICE_WAITING_UPLOAD") {
+        await sendMessage(
+          from,
+          `✅ Your file has been received.
 
-// =============================
-// VIDEO FILE ARRIVED
-// =============================
-if (
-  session.stage === "VIDEO_EDIT_WAITING_FILE" &&
-  type === "video"
-) {
-  session.stage = "VIDEO_EDIT_WAITING_INSTRUCTION";
+Our team is reviewing your request and will contact you shortly on WhatsApp.`
+        );
+        session.stage = "SERVICE_WAITING_EXTRA_NOTES";
+        return res.sendStatus(200);
+      }
 
-  await sendMessage(
-    from,
-    `✅ Video received.
+      // PRINT INSTRUCTIONS AUDIO
+      if (session.stage === "PRINT_WAITING_INSTRUCTIONS" && type === "audio") {
+        await sendMessage(
+          from,
+          `✅ Your voice instruction has been received and sent to our Agent team.
 
-Now send your extra instruction as text or voice note.
+Our team will review your request and contact you shortly on WhatsApp.`
+        );
+        return res.sendStatus(200);
+      }
 
-Example:
-- cut and join clips
-- add subtitles
-- add music
-- resize for TikTok`
-  );
+      // LAMINATE EXTRA AUDIO
+      if (session.stage === "LAMINATE_WAITING_FILE" && type === "audio") {
+        await sendMessage(
+          from,
+          "✅ Your laminate voice instruction has been received. Please now upload the document to laminate."
+        );
+        return res.sendStatus(200);
+      }
 
-  return res.sendStatus(200);
-}
+      // ID PHOTO / IMAGE / VIDEO / LESSON AUDIO OR FILE
+      if (session.stage === "IDPHOTO_WAITING_UPLOAD") {
+        await sendMessage(
+          from,
+          `✅ ID photo file received.
 
-// =============================
-// IMAGE EDIT FILE ARRIVED
-// =============================
-if (
-  session.stage === "IMAGE_EDIT_WAITING_FILE" &&
-  (type === "image" || type === "document")
-) {
-  session.stage = "IMAGE_EDIT_WAITING_INSTRUCTION";
+Our team is reviewing your request and will provide pricing shortly.`
+        );
+        session.stage = "SERVICE_WAITING_EXTRA_NOTES";
+        return res.sendStatus(200);
+      }
 
-  await sendMessage(
-    from,
-    `✅ Image received.
+      if (session.stage === "IMAGE_EDIT_WAITING_UPLOAD") {
+        await sendMessage(
+          from,
+          `✅ Image received.
 
-Now send your extra instruction as text or voice note.`
-  );
+Our editing team is reviewing your request and will contact you shortly on WhatsApp.`
+        );
+        session.stage = "SERVICE_WAITING_EXTRA_NOTES";
+        return res.sendStatus(200);
+      }
 
-  return res.sendStatus(200);
-}
+      if (session.stage === "VIDEO_EDIT_WAITING_UPLOAD") {
+        await sendMessage(
+          from,
+          `✅ Video received.
 
-// =============================
-// ID PHOTO FILE ARRIVED
-// =============================
-if (
-  session.stage === "ID_PHOTO_WAITING_FILE" &&
-  (type === "image" || type === "document")
-) {
-  session.stage = "ID_PHOTO_WAITING_INSTRUCTION";
+Our editing team is reviewing your request and will contact you shortly on WhatsApp.`
+        );
+        session.stage = "SERVICE_WAITING_EXTRA_NOTES";
+        return res.sendStatus(200);
+      }
 
-  await sendMessage(
-    from,
-    `✅ Photo received.
+      if (session.stage === "LESSON_WAITING_UPLOAD") {
+        await sendMessage(
+          from,
+          `✅ Your lesson or homework file has been received.
 
-Now send your extra instruction as text or voice note.
-
-Example:
-- white background
-- passport size
-- blue suit
-- crop and brighten`
-  );
-
-  return res.sendStatus(200);
-}
-    
- 
+Our team will review it and contact you shortly on WhatsApp.`
+        );
+        session.stage = "SERVICE_WAITING_EXTRA_NOTES";
+        return res.sendStatus(200);
+      }
+    }
 
     // =========================
     // GREETING / RESET
     // =========================
     if (["hi", "hello", "hey", "menu", "start"].includes(lower)) {
       resetSession(from);
-       session.stage = "MENU";
 
       await sendMessage(
         from,
@@ -943,8 +940,7 @@ Our team will contact you shortly on WhatsApp.`
 ${serviceMenu()}`
     );
     return res.sendStatus(200);
-}
-} catch (err) {
+  } catch (err) {
     console.error("Webhook error:", err.response?.data || err.message || err);
     return res.sendStatus(200);
   }
