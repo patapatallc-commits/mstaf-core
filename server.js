@@ -273,7 +273,6 @@ app.get("/webhook", (req, res) => {
 
   return res.sendStatus(403);
 });
-
 // =========================
 // WEBHOOK RECEIVE
 // =========================
@@ -292,32 +291,33 @@ app.post("/webhook", async (req, res) => {
     }
 
     const lower = text.toLowerCase().trim();
-// ==============================
-// EXTRA NOTES RECEIVED (VIDEO / LESSON / SERVICE)
-// ==============================
-if (
-  session.stage === "SERVICE_WAITING_EXTRA_NOTES" &&
-  (type === "text" || type === "audio")
-) {
-  session.stage = "MENU";
 
-  await sendMessage(
-    from,
-    `✅ Instruction received.
+    // ==============================
+    // EXTRA NOTES RECEIVED (VIDEO / LESSON / SERVICE)
+    // ==============================
+    if (
+      session.stage === "SERVICE_WAITING_EXTRA_NOTES" &&
+      (type === "text" || type === "audio")
+    ) {
+      session.stage = "MENU";
+
+      await sendMessage(
+        from,
+        `✅ Instruction received.
 
 Our Agent team will contact you soon on WhatsApp.`
-  );
+      );
 
-  return res.sendStatus(200);
-}
+      return res.sendStatus(200);
+    }
 
     // =========================
     // MEDIA CAPTURE
     // =========================
     if (
-  (type === "image" || type === "document" || type === "video") ||
-  (type === "audio" && session.stage !== "SERVICE_WAITING_EXTRA_NOTES")
-) {
+      (type === "image" || type === "document" || type === "video") ||
+      (type === "audio" && session.stage !== "SERVICE_WAITING_EXTRA_NOTES")
+    ) {
       const mediaObj =
         type === "image"
           ? message.image
@@ -410,11 +410,11 @@ Our team will review your request and contact you shortly on WhatsApp.`
         return res.sendStatus(200);
       }
 
-      // ID PHOTO / IMAGE / VIDEO / LESSON AUDIO OR FILE
-   if (session.stage === "IDPHOTO_WAITING_UPLOAD" && type === "image") {
-  await sendMessage(
-    from,
-    `✅ ID photo received.
+      // ID PHOTO FILE ARRIVED
+      if (session.stage === "IDPHOTO_WAITING_UPLOAD" && type === "image") {
+        await sendMessage(
+          from,
+          `✅ ID photo received.
 
 Please send your instruction now as text or voice note.
 
@@ -423,14 +423,16 @@ Example:
 - white background
 - 2 copies
 - standard US size`
-  );
-  session.stage = "SERVICE_WAITING_EXTRA_NOTES";
-  return res.sendStatus(200);
-}
-if (session.stage === "IMAGE_EDIT_WAITING_UPLOAD" && type === "image") {
-  await sendMessage(
-    from,
-    `✅ Image received.
+        );
+        session.stage = "SERVICE_WAITING_EXTRA_NOTES";
+        return res.sendStatus(200);
+      }
+
+      // IMAGE EDIT FILE ARRIVED
+      if (session.stage === "IMAGE_EDIT_WAITING_UPLOAD" && type === "image") {
+        await sendMessage(
+          from,
+          `✅ Image received.
 
 Please send your instruction now as text or voice note.
 
@@ -439,17 +441,54 @@ Example:
 - enhance quality
 - add text
 - resize for social media`
-  );
-  session.stage = "SERVICE_WAITING_EXTRA_NOTES";
-  return res.sendStatus(200);
-}
+        );
+        session.stage = "SERVICE_WAITING_EXTRA_NOTES";
+        return res.sendStatus(200);
+      }
+
+      // VIDEO EDIT FILE ARRIVED
+      if (session.stage === "VIDEO_EDIT_WAITING_UPLOAD" && type === "video") {
+        await sendMessage(
+          from,
+          `✅ Video received.
+
+Please send your instruction now as text or voice note.
+
+Example:
+- trim video
+- add text
+- merge clips
+- improve sound`
+        );
+        session.stage = "SERVICE_WAITING_EXTRA_NOTES";
+        return res.sendStatus(200);
+      }
+
+      // LESSON / HOMEWORK FILE ARRIVED
+      if (
+        session.stage === "LESSON_WAITING_UPLOAD" &&
+        (type === "document" || type === "image" || type === "audio")
+      ) {
+        await sendMessage(
+          from,
+          `✅ Lesson / Homework file received.
+
+Please send any extra instruction now as text or voice note.
+
+Our team will contact you shortly on WhatsApp.`
+        );
+        session.stage = "SERVICE_WAITING_EXTRA_NOTES";
+        return res.sendStatus(200);
+      }
+    }
+
     // =========================
     // GREETING / RESET
     // =========================
     if (
-  type === "text" &&
-  ["hi", "hello", "hey", "menu", "start"].includes(lower)
-) {
+      type === "text" &&
+      ["hi", "hello", "hey", "menu", "start"].includes(lower)
+    ) {
       resetSession(from);
 
       await sendMessage(
@@ -666,80 +705,77 @@ Our team will contact you shortly on WhatsApp.`
     // =========================
     // PRINT PAGES
     // =========================
-  // =========================
-// PRINT PAGES
-// =========================
-if (session.stage === "PRINT_SELECT_PAGES") {
-  const pages = parseInt(lower, 10);
+    if (session.stage === "PRINT_SELECT_PAGES") {
+      const pages = parseInt(lower, 10);
 
-  if (!pages || pages < 1) {
-    await sendMessage(from, "Reply with a valid number of pages.");
-    return res.sendStatus(200);
-  }
+      if (!pages || pages < 1) {
+        await sendMessage(from, "Reply with a valid number of pages.");
+        return res.sendStatus(200);
+      }
 
-  session.printSpec.pages = pages;
-  session.stage = "PRINT_WAITING_FILE";
+      session.printSpec.pages = pages;
+      session.stage = "PRINT_WAITING_FILE";
 
-  await sendMessage(
-    from,
-    `✅ Print details saved.
+      await sendMessage(
+        from,
+        `✅ Print details saved.
 
 Please upload your document or image now.
 
 After upload, you will choose:
 1 - Continue with Agent
 2 - Checkout`
-  );
-  return res.sendStatus(200);
-}
+      );
+      return res.sendStatus(200);
+    }
 
-// =========================
-// PRINT WAITING FOR FILE
-// =========================
-if (session.stage === "PRINT_WAITING_FILE") {
-  await sendMessage(
-    from,
-    `Please upload your document or image first.
+    // =========================
+    // PRINT WAITING FOR FILE
+    // =========================
+    if (session.stage === "PRINT_WAITING_FILE") {
+      await sendMessage(
+        from,
+        `Please upload your document or image first.
 
 After upload, you will choose:
 1 - Continue with Agent
 2 - Checkout`
-  );
-  return res.sendStatus(200);
-}
+      );
+      return res.sendStatus(200);
+    }
 
-// =========================
-// PRINT FILE ACTION
-// =========================
-if (session.stage === "PRINT_FILE_UPLOADED_ACTION") {
-  if (lower === "1") {
-    session.stage = "PRINT_WAITING_INSTRUCTIONS";
+    // =========================
+    // PRINT FILE ACTION
+    // =========================
+    if (session.stage === "PRINT_FILE_UPLOADED_ACTION") {
+      if (lower === "1") {
+        session.stage = "PRINT_WAITING_INSTRUCTIONS";
 
-    await sendMessage(
-      from,
-      `✅ Your ${session.printSpec?.paper_size || "print"} request has been forwarded to our Agent team.
+        await sendMessage(
+          from,
+          `✅ Your ${session.printSpec?.paper_size || "print"} request has been forwarded to our Agent team.
 
 Please send any instructions now by text or voice.
 
 Our team will review your request and contact you shortly on WhatsApp.`
-    );
-    return res.sendStatus(200);
-  }
+        );
+        return res.sendStatus(200);
+      }
 
-  if (lower === "2") {
-    session.stage = "PRINT_PAYMENT_CHOICE";
+      if (lower === "2") {
+        session.stage = "PRINT_PAYMENT_CHOICE";
 
-    const paperSize = session.printSpec?.paper_size || "A4";
-    const color = session.printSpec?.color || "bw";
-    const quantity = session.printSpec?.copies || 1;
+        const paperSize = session.printSpec?.paper_size || "A4";
+        const color = session.printSpec?.color || "bw";
+        const quantity = session.printSpec?.copies || 1;
 
-    const variantId = getPrintVariantId(paperSize, color);
-    const checkoutUrl = buildShopifyCartUrl(variantId, quantity);
-    const africaUrl = "https://www.patapata.us/pages/africa-payment";
+        const variantId = getPrintVariantId(paperSize, color);
+        const checkoutUrl = buildShopifyCartUrl(variantId, quantity);
+        const africaUrl = "https://www.patapata.us/pages/africa-payment";
 
-    await sendMessage(
-      from,
-      `Choose payment option:
+        await sendMessage(
+          from,
+          `Choose payment option:
 
 1 - Shopify Checkout
 2 - Africa Payment
@@ -749,59 +785,50 @@ ${checkoutUrl || "Not configured yet"}
 
 Africa Payment:
 ${africaUrl}`
-    );
-    return res.sendStatus(200);
-  }
+        );
+        return res.sendStatus(200);
+      }
 
-  await sendMessage(
-    from,
-    `Reply:
+      await sendMessage(
+        from,
+        `Reply:
 1 - Continue with Agent
 2 - Checkout`
-  );
-  return res.sendStatus(200);
-}
+      );
+      return res.sendStatus(200);
+    }
 
-// =========================
-// PRINT AGENT INSTRUCTIONS
-// =========================
-if (session.stage === "PRINT_WAITING_INSTRUCTIONS") {
-  if (type === "text" && text.trim()) {
-    await sendMessage(
-      from,
-      `✅ Your ${session.printSpec?.paper_size || "print"} instructions have been received and sent to our Agent team.
-
-Our team will contact you shortly on WhatsApp.`
-    );
-    return res.sendStatus(200);
-  }
-
-  if (type === "audio") {
-    await sendMessage(
-      from,
-      `✅ Your voice instruction for your ${session.printSpec?.paper_size || "print"} request has been received and sent to our Agent team.
+    // =========================
+    // PRINT AGENT INSTRUCTIONS
+    // =========================
+    if (session.stage === "PRINT_WAITING_INSTRUCTIONS") {
+      if (type === "text" && text.trim()) {
+        await sendMessage(
+          from,
+          `✅ Your ${session.printSpec?.paper_size || "print"} instructions have been received and sent to our Agent team.
 
 Our team will contact you shortly on WhatsApp.`
-    );
-    return res.sendStatus(200);
-  }
+        );
+        return res.sendStatus(200);
+      }
 
-  await sendMessage(
-    from,
-    "Please send your instruction as text or voice note."
-  );
-  return res.sendStatus(200);
-}
+      if (type === "audio") {
+        await sendMessage(
+          from,
+          `✅ Your voice instruction for your ${session.printSpec?.paper_size || "print"} request has been received and sent to our Agent team.
 
+Our team will contact you shortly on WhatsApp.`
+        );
+        return res.sendStatus(200);
+      }
 
+      await sendMessage(
+        from,
+        "Please send your instruction as text or voice note."
+      );
+      return res.sendStatus(200);
+    }
 
-    
-
-
-
- 
-  
-  
     // =========================
     // PRINT PAYMENT CHOICE
     // =========================
@@ -909,54 +936,57 @@ You can also add extra instructions by text or voice.`
       );
       return res.sendStatus(200);
     }
-// =========================
-// GENERIC EXTRA NOTES
-// =========================
-if (session.stage === "SERVICE_WAITING_EXTRA_NOTES") {
-  if (type === "text" && lower) {
-    await sendMessage(
-      from,
-      `✅ Your message has been received.
+
+    // =========================
+    // GENERIC EXTRA NOTES
+    // =========================
+    if (session.stage === "SERVICE_WAITING_EXTRA_NOTES") {
+      if (type === "text" && lower) {
+        await sendMessage(
+          from,
+          `✅ Your message has been received.
 
 Our team will contact you shortly on WhatsApp.`
-    );
-    session.stage = "MENU";
-    return res.sendStatus(200);
-  }
+        );
+        session.stage = "MENU";
+        return res.sendStatus(200);
+      }
 
-  if (type === "audio") {
-    await sendMessage(
-      from,
-      `✅ Your voice note has been received.
+      if (type === "audio") {
+        await sendMessage(
+          from,
+          `✅ Your voice note has been received.
 
 Our team will contact you shortly on WhatsApp.`
+        );
+        session.stage = "MENU";
+        return res.sendStatus(200);
+      }
+
+      await sendMessage(
+        from,
+        `Please reply with one of the options below:
+
+${serviceMenu()}`
+      );
+      return res.sendStatus(200);
+    }
+
+    await sendMessage(
+      from,
+      `Please reply with one of the options below:
+
+${serviceMenu()}`
     );
-    session.stage = "MENU";
     return res.sendStatus(200);
-  }
-
-  await sendMessage(
-    from,
-    `Please reply with one of the options below:
-
-${serviceMenu()}`
-  );
-  return res.sendStatus(200);
-}
-
-await sendMessage(
-  from,
-  `Please reply with one of the options below:
-
-${serviceMenu()}`
-);
-return res.sendStatus(200);
 
   } catch (err) {
     console.error("Webhook error:", err.response?.data || err.message || err);
     return res.sendStatus(200);
   }
-});  
+});
+
+  
 // ========================
 // HEALTH
 // ========================
