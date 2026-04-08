@@ -378,17 +378,65 @@ Choose payment option:
         return res.sendStatus(200);
       }
 
-      // AGENT SERVICE FILE ARRIVED
-      if (session.stage === "SERVICE_WAITING_UPLOAD") {
-        await sendMessage(
-          from,
-          `✅ Your file has been received.
+    // AGENT SERVICE FILE ARRIVED (SAVE TO DB)
+if (session.stage === "SERVICE_WAITING_UPLOAD") {
+
+  const mediaObj =
+    type === "image"
+      ? message.image
+      : type === "document"
+      ? message.document
+      : type === "audio"
+      ? message.audio
+      : message.video;
+
+  const mediaId = mediaObj?.id;
+  const mimeType = mediaObj?.mime_type || "";
+  const fileName = mediaObj?.filename || "file";
+
+  let fileUrl = "";
+  try {
+    fileUrl = await downloadWhatsAppMedia(mediaId);
+  } catch (e) {
+    console.error("Media download failed:", e.message);
+  }
+
+  // SAVE JOB TO DATABASE
+  await pool.query(
+    `INSERT INTO print_jobs (
+      status,
+      printer_id,
+      file_url,
+      original_name,
+      mime_type,
+      service_type,
+      customer_phone,
+      notes,
+      queue_type
+    ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+    [
+      "pending",
+      AGENT_QUEUE_ID,
+      fileUrl,
+      fileName,
+      mimeType,
+      session.selectedService || "agent",
+      from,
+      "Agent request",
+      "AGENT"
+    ]
+  );
+
+  await sendMessage(
+    from,
+    `✅ File received.
 
 Our team is reviewing your request and will contact you shortly on WhatsApp.`
-        );
-        session.stage = "SERVICE_WAITING_EXTRA_NOTES";
-        return res.sendStatus(200);
-      }
+  );
+
+  session.stage = "SERVICE_WAITING_EXTRA_NOTES";
+  return res.sendStatus(200);
+}
 
       // PRINT INSTRUCTIONS AUDIO
       if (session.stage === "PRINT_WAITING_INSTRUCTIONS" && type === "audio") {
