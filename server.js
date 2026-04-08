@@ -410,20 +410,11 @@ Our team will review your request and contact you shortly on WhatsApp.`
         return res.sendStatus(200);
       }
 
-   // ID PHOTO FILE ARRIVED
-if (session.stage === "IDPHOTO_WAITING_UPLOAD" && type === "image") {
-  session.pendingFile = {
-    type,
-    media_id: mediaObj?.id || "",
-    mime_type: mediaObj?.mime_type || "",
-    filename: mediaObj?.filename || "id_photo"
-  };
-
-  session.stage = "IDPHOTO_WAITING_NOTES";
-
-  await sendMessage(
-    from,
-    `✅ ID photo received.
+      // ID PHOTO FILE ARRIVED
+      if (session.stage === "IDPHOTO_WAITING_UPLOAD" && type === "image") {
+        await sendMessage(
+          from,
+          `✅ ID photo received.
 
 Please send your instruction now as text or voice note.
 
@@ -432,24 +423,16 @@ Example:
 - white background
 - 2 copies
 - standard US size`
-  );
-  return res.sendStatus(200);
-}
+        );
+        session.stage = "SERVICE_WAITING_EXTRA_NOTES";
+        return res.sendStatus(200);
+      }
 
-// IMAGE EDIT FILE ARRIVED
-if (session.stage === "IMAGE_EDIT_WAITING_UPLOAD" && type === "image") {
-  session.pendingFile = {
-    type,
-    media_id: mediaObj?.id || "",
-    mime_type: mediaObj?.mime_type || "",
-    filename: mediaObj?.filename || "image_edit"
-  };
-
-  session.stage = "IMAGE_EDIT_WAITING_NOTES";
-
-  await sendMessage(
-    from,
-    `✅ Image received.
+      // IMAGE EDIT FILE ARRIVED
+      if (session.stage === "IMAGE_EDIT_WAITING_UPLOAD" && type === "image") {
+        await sendMessage(
+          from,
+          `✅ Image received.
 
 Please send your instruction now as text or voice note.
 
@@ -458,24 +441,16 @@ Example:
 - enhance quality
 - add text
 - resize for social media`
-  );
-  return res.sendStatus(200);
-}
+        );
+        session.stage = "SERVICE_WAITING_EXTRA_NOTES";
+        return res.sendStatus(200);
+      }
 
-// VIDEO EDIT FILE ARRIVED
-if (session.stage === "VIDEO_EDIT_WAITING_UPLOAD" && type === "video") {
-  session.pendingFile = {
-    type,
-    media_id: mediaObj?.id || "",
-    mime_type: mediaObj?.mime_type || "",
-    filename: mediaObj?.filename || "video_edit"
-  };
-
-  session.stage = "VIDEO_EDIT_WAITING_NOTES";
-
-  await sendMessage(
-    from,
-    `✅ Video received.
+      // VIDEO EDIT FILE ARRIVED
+      if (session.stage === "VIDEO_EDIT_WAITING_UPLOAD" && type === "video") {
+        await sendMessage(
+          from,
+          `✅ Video received.
 
 Please send your instruction now as text or voice note.
 
@@ -484,34 +459,29 @@ Example:
 - add text
 - merge clips
 - improve sound`
-  );
-  return res.sendStatus(200);
-}
+        );
+        session.stage = "SERVICE_WAITING_EXTRA_NOTES";
+        return res.sendStatus(200);
+      }
 
-// LESSON / HOMEWORK FILE ARRIVED
-if (
-  session.stage === "LESSON_WAITING_UPLOAD" &&
-  (type === "document" || type === "image" || type === "audio")
-) {
-  session.pendingFile = {
-    type,
-    media_id: mediaObj?.id || "",
-    mime_type: mediaObj?.mime_type || "",
-    filename: mediaObj?.filename || "lesson_homework"
-  };
-
-  session.stage = "LESSON_WAITING_NOTES";
-
-  await sendMessage(
-    from,
-    `✅ Lesson / Homework file received.
+      // LESSON / HOMEWORK FILE ARRIVED
+      if (
+        session.stage === "LESSON_WAITING_UPLOAD" &&
+        (type === "document" || type === "image" || type === "audio")
+      ) {
+        await sendMessage(
+          from,
+          `✅ Lesson / Homework file received.
 
 Please send any extra instruction now as text or voice note.
 
 Our team will contact you shortly on WhatsApp.`
-  );
-  return res.sendStatus(200);
-}
+        );
+        session.stage = "SERVICE_WAITING_EXTRA_NOTES";
+        return res.sendStatus(200);
+      }
+    }
+
     // =========================
     // GREETING / RESET
     // =========================
@@ -1015,7 +985,6 @@ ${serviceMenu()}`
     return res.sendStatus(200);
   }
 });
-
   
 // ========================
 // HEALTH
