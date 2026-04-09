@@ -1410,7 +1410,7 @@ app.get("/dashboard", requireDashboardKey, async (req, res) => {
   <style>
     :root{
       --bg:#08111f;
-      --panel:#0e1a2f;
+      --panel:#0e1a2b;
       --panel2:#13233f;
       --line:rgba(255,255,255,.08);
       --text:#eef5ff;
@@ -1418,631 +1418,872 @@ app.get("/dashboard", requireDashboardKey, async (req, res) => {
       --gold:#ffcc4d;
       --blue:#42a5ff;
       --green:#2dd36f;
-      --red:#ff6b6b;
-      --purple:#a56dff;
-      --cyan:#18d2d9;
+      --red:#ff5d73;
+      --orange:#ff9f43;
+      --shadow:0 10px 30px rgba(0,0,0,.25);
+      --radius:18px;
     }
+
     *{box-sizing:border-box}
     body{
       margin:0;
+      font-family:Arial,Helvetica,sans-serif;
       background:
-        radial-gradient(circle at top right, rgba(66,165,255,.22), transparent 26%),
-        radial-gradient(circle at top left, rgba(255,204,77,.14), transparent 24%),
-        linear-gradient(180deg, #07101d 0%, #091425 100%);
+        radial-gradient(circle at top right, rgba(66,165,255,.16), transparent 30%),
+        radial-gradient(circle at top left, rgba(255,204,77,.14), transparent 25%),
+        linear-gradient(180deg, #08111f 0%, #0b1730 100%);
       color:var(--text);
-      font-family:Inter, Arial, sans-serif;
     }
-    .wrap{max-width:1600px;margin:0 auto;padding:20px}
+
+    .wrap{
+      max-width:1400px;
+      margin:0 auto;
+      padding:20px;
+    }
+
     .hero{
-      display:grid;
-      grid-template-columns: 1.3fr .7fr;
+      display:flex;
+      justify-content:space-between;
       gap:18px;
+      align-items:center;
+      flex-wrap:wrap;
+      background:linear-gradient(135deg, rgba(255,204,77,.12), rgba(66,165,255,.10));
+      border:1px solid var(--line);
+      border-radius:24px;
+      padding:22px;
+      box-shadow:var(--shadow);
       margin-bottom:18px;
     }
-    .heroCard,.stats,.panel,.sidePanel,.uploadPanel{
-      background:linear-gradient(180deg, rgba(19,35,63,.95), rgba(10,19,35,.97));
+
+    .hero h1{
+      margin:0 0 8px;
+      font-size:28px;
+    }
+
+    .hero p{
+      margin:0;
+      color:var(--muted);
+      line-height:1.45;
+    }
+
+    .hero .badge{
+      display:inline-flex;
+      align-items:center;
+      gap:8px;
+      padding:10px 14px;
+      border-radius:999px;
+      background:rgba(255,255,255,.06);
       border:1px solid var(--line);
-      border-radius:22px;
-      box-shadow:0 20px 60px rgba(0,0,0,.32);
+      color:var(--gold);
+      font-weight:bold;
     }
-    .heroCard{padding:24px}
-    .heroTitle{
-      font-size:30px;font-weight:800;letter-spacing:.2px;margin-bottom:8px;
+
+    .panel{
+      background:rgba(14,26,43,.96);
+      border:1px solid var(--line);
+      border-radius:var(--radius);
+      box-shadow:var(--shadow);
     }
-    .heroSub{color:var(--muted);line-height:1.6}
-    .badgeRow{display:flex;flex-wrap:wrap;gap:10px;margin-top:16px}
-    .badge{
-      padding:10px 14px;border-radius:999px;
-      background:rgba(255,255,255,.05);
-      border:1px solid rgba(255,255,255,.08);
-      color:#fff;font-size:13px;font-weight:700;
-    }
-    .stats{
-      padding:18px;
-      display:grid;
-      grid-template-columns:1fr 1fr;
-      gap:12px;
-      align-content:start;
-    }
-    .stat{
-      padding:16px;border-radius:18px;background:rgba(255,255,255,.04);
-      border:1px solid rgba(255,255,255,.06);
-    }
-    .stat .k{font-size:28px;font-weight:800;margin-top:6px}
+
     .toolbar{
       display:grid;
-      grid-template-columns:1fr auto auto auto auto;
+      grid-template-columns:1.2fr .9fr .9fr .9fr .9fr auto;
       gap:12px;
-      margin-bottom:18px;
+      padding:16px;
+      margin-bottom:16px;
     }
-    .toolbar input,.toolbar select,.toolbar button,.uploadPanel input,.uploadPanel select,.uploadPanel textarea{
+
+    .toolbar input,
+    .toolbar select,
+    .toolbar button,
+    textarea{
       width:100%;
-      background:#0c1730;
-      color:#fff;
-      border:1px solid rgba(255,255,255,.1);
-      border-radius:14px;
+      border-radius:12px;
+      border:1px solid rgba(255,255,255,.12);
+      background:#0b1730;
+      color:var(--text);
       padding:12px 14px;
       outline:none;
     }
-    .toolbar button,.btn{
+
+    .toolbar button,
+    .btn{
       cursor:pointer;
-      font-weight:800;
-      border:none;
-      background:linear-gradient(90deg, var(--blue), #74b9ff);
-      color:#04111f;
+      font-weight:bold;
+      transition:.18s ease;
     }
-    .btn.secondary{background:linear-gradient(90deg, var(--gold), #ffd76e)}
-    .btn.green{background:linear-gradient(90deg, #2dd36f, #68e89b)}
-    .btn.red{background:linear-gradient(90deg, #ff6b6b, #ff8d8d)}
-    .btn.purple{background:linear-gradient(90deg, var(--purple), #c19aff); color:white;}
-    .btn.dark{background:linear-gradient(90deg, #2f3f5f, #4b618c); color:#fff;}
-    .main{
-      display:grid;
-      grid-template-columns:1.25fr .75fr;
-      gap:18px;
-      align-items:start;
+
+    .toolbar button:hover,
+    .btn:hover{
+      transform:translateY(-1px);
+      opacity:.95;
     }
-    .panel{padding:16px}
-    .sidePanel,.uploadPanel{padding:16px}
-    .tabs{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:16px}
+
+    .tabs{
+      display:flex;
+      gap:10px;
+      padding:0 16px 16px;
+      flex-wrap:wrap;
+    }
+
     .tab{
-      padding:10px 14px;border-radius:12px;border:1px solid rgba(255,255,255,.08);
-      background:rgba(255,255,255,.04);cursor:pointer;font-weight:800;
-    }
-    .tab.active{background:linear-gradient(90deg, var(--gold), #ffd76e); color:#07111d}
-    .jobGrid{display:grid;gap:16px}
-    .jobCard{
+      border:none;
+      background:#10203d;
+      color:var(--text);
+      padding:10px 16px;
+      border-radius:999px;
+      cursor:pointer;
       border:1px solid rgba(255,255,255,.08);
-      border-radius:22px;
-      overflow:hidden;
-      background:linear-gradient(180deg, rgba(255,255,255,.04), rgba(255,255,255,.02));
+      font-weight:bold;
     }
-    .jobHead{
-      padding:16px;
-      display:flex;justify-content:space-between;gap:12px;align-items:flex-start;
-      border-bottom:1px solid rgba(255,255,255,.08);
-      background:linear-gradient(90deg, rgba(255,204,77,.12), rgba(66,165,255,.09));
+
+    .tab.active{
+      background:linear-gradient(135deg, var(--gold), #ffb347);
+      color:#111;
     }
-    .jobTitle{font-size:18px;font-weight:800}
-    .meta{color:var(--muted);font-size:13px;line-height:1.5}
-    .pill{
-      display:inline-block;padding:7px 10px;border-radius:999px;font-size:12px;font-weight:800;
-      margin-left:6px;
-    }
-    .pill.pending{background:#ffe7a0;color:#4c3900}
-    .pill.claimed{background:#b8e3ff;color:#003459}
-    .pill.printing{background:#d1c0ff;color:#321a73}
-    .pill.completed{background:#bdf4cf;color:#0e4c23}
-    .pill.failed{background:#ffc2c2;color:#5e1010}
-    .jobBody{
-      padding:16px;
+
+    .stats{
       display:grid;
-      grid-template-columns:1.1fr .9fr;
+      grid-template-columns:repeat(5,1fr);
+      gap:14px;
+      margin-bottom:16px;
+    }
+
+    .cardStat{
+      padding:16px;
+      border-radius:18px;
+      background:rgba(14,26,43,.96);
+      border:1px solid var(--line);
+      box-shadow:var(--shadow);
+    }
+
+    .cardStat .label{
+      color:var(--muted);
+      font-size:13px;
+      margin-bottom:8px;
+    }
+
+    .cardStat .value{
+      font-size:24px;
+      font-weight:bold;
+    }
+
+    .manualBox{
+      padding:16px;
+      margin-bottom:18px;
+    }
+
+    .manualGrid{
+      display:grid;
+      grid-template-columns:1fr 1fr 1fr 1fr auto;
+      gap:12px;
+      align-items:end;
+    }
+
+    .jobs{
+      display:grid;
       gap:16px;
     }
-    .previewBox,.detailBox{
-      background:rgba(0,0,0,.18);
-      border:1px solid rgba(255,255,255,.06);
-      border-radius:18px;
-      padding:14px;
+
+    .job{
+      display:grid;
+      grid-template-columns:320px 1fr;
+      gap:16px;
+      padding:16px;
+      border:1px solid var(--line);
+      border-radius:20px;
+      background:linear-gradient(180deg, rgba(255,255,255,.02), rgba(255,255,255,.01));
     }
-    iframe,video,audio,img{
+
+    .preview{
+      background:#07111f;
+      border:1px solid rgba(255,255,255,.08);
+      border-radius:16px;
+      min-height:240px;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      overflow:hidden;
+      position:relative;
+      padding:10px;
+    }
+
+    .preview img,
+    .preview video,
+    .preview iframe{
       width:100%;
-      border-radius:14px;
+      max-height:420px;
+      border-radius:12px;
+      object-fit:contain;
       background:#000;
     }
-    iframe{height:420px;border:none}
-    video{max-height:420px}
-    img{max-height:420px;object-fit:contain;background:#0a101a}
-    .noPreview{
-      min-height:220px;display:flex;align-items:center;justify-content:center;
-      color:var(--muted);text-align:center;border:1px dashed rgba(255,255,255,.12);border-radius:14px;
-      padding:20px;
+
+    .preview .missing{
+      text-align:center;
+      color:#ffd1d8;
+      line-height:1.5;
+      padding:18px;
     }
-    .detailRow{display:grid;grid-template-columns:130px 1fr;gap:10px;margin-bottom:10px}
-    .detailRow b{color:#ffd76e}
-    .insBox,.replyBox,.noteBox{
-      margin-top:14px;
-      padding:12px;
+
+    .details{
+      display:grid;
+      gap:12px;
+    }
+
+    .topRow{
+      display:flex;
+      justify-content:space-between;
+      gap:12px;
+      flex-wrap:wrap;
+      align-items:flex-start;
+    }
+
+    .title{
+      font-size:20px;
+      font-weight:bold;
+      margin-bottom:6px;
+      word-break:break-word;
+    }
+
+    .sub{
+      color:var(--muted);
+      font-size:13px;
+      line-height:1.5;
+      word-break:break-word;
+    }
+
+    .pillRow{
+      display:flex;
+      flex-wrap:wrap;
+      gap:8px;
+      margin-top:8px;
+    }
+
+    .pill{
+      padding:7px 10px;
+      border-radius:999px;
+      font-size:12px;
+      font-weight:bold;
+      border:1px solid rgba(255,255,255,.08);
+      background:#10203d;
+    }
+
+    .pending{ color:#111; background:var(--gold); }
+    .printing{ color:#fff; background:var(--blue); }
+    .done{ color:#fff; background:var(--green); }
+    .error{ color:#fff; background:var(--red); }
+    .dispatch{ color:#111; background:var(--orange); }
+
+    .metaGrid{
+      display:grid;
+      grid-template-columns:repeat(3,1fr);
+      gap:10px;
+    }
+
+    .meta{
+      background:#0b1730;
+      border:1px solid rgba(255,255,255,.08);
       border-radius:14px;
-      background:rgba(255,255,255,.04);
-      border:1px solid rgba(255,255,255,.06);
+      padding:12px;
     }
-    textarea.reply{
-      width:100%;min-height:100px;resize:vertical;
-      margin-top:10px;background:#08111f;color:#fff;border:1px solid rgba(255,255,255,.1);
-      border-radius:12px;padding:12px;
+
+    .meta .k{
+      color:var(--muted);
+      font-size:12px;
+      margin-bottom:6px;
     }
-    .actionRow{
-      display:flex;flex-wrap:wrap;gap:8px;margin-top:14px
+
+    .meta .v{
+      font-weight:bold;
+      word-break:break-word;
     }
-    .routeRow{
-      display:grid;grid-template-columns:1fr auto;gap:8px;margin-top:14px
+
+    .section{
+      background:#0b1730;
+      border:1px solid rgba(255,255,255,.08);
+      border-radius:14px;
+      padding:12px;
     }
-    .sidePanel h3,.uploadPanel h3,.panel h3{margin:4px 0 14px 0}
-    .printerList{display:grid;gap:10px;max-height:520px;overflow:auto;padding-right:4px}
-    .printerGroup{
-      border:1px solid rgba(255,255,255,.07);
-      border-radius:16px;padding:12px;background:rgba(255,255,255,.03)
+
+    .section h4{
+      margin:0 0 8px;
+      font-size:14px;
+      color:var(--gold);
     }
-    .printerState{font-weight:800;margin-bottom:6px}
-    .printerItem{
-      color:var(--muted);font-size:13px;line-height:1.5;padding-left:8px
+
+    .section .txt{
+      color:#e7eefc;
+      line-height:1.55;
+      white-space:pre-wrap;
+      word-break:break-word;
     }
-    .uploadPanel form{display:grid;gap:10px}
-    .muted{color:var(--muted)}
-    .topLinks{display:flex;gap:10px;flex-wrap:wrap;margin-top:14px}
-    .topLinks a{
-      color:#07111d;text-decoration:none;background:linear-gradient(90deg,#ffd76e,#ffcc4d);
-      padding:10px 14px;border-radius:12px;font-weight:800
+
+    .actions{
+      display:flex;
+      flex-wrap:wrap;
+      gap:10px;
     }
-    .small{font-size:12px;color:var(--muted)}
-    .emptyState{
-      padding:30px;
+
+    .btn{
+      border:none;
+      padding:11px 14px;
+      border-radius:12px;
+      font-size:13px;
+    }
+
+    .btn-blue{ background:var(--blue); color:#fff; }
+    .btn-green{ background:var(--green); color:#fff; }
+    .btn-red{ background:var(--red); color:#fff; }
+    .btn-gold{ background:var(--gold); color:#111; }
+    .btn-orange{ background:var(--orange); color:#111; }
+    .btn-dark{ background:#13233f; color:#fff; border:1px solid rgba(255,255,255,.08); }
+
+    .replyBox{
+      display:grid;
+      gap:10px;
+    }
+
+    .replyRow{
+      display:grid;
+      grid-template-columns:1fr auto;
+      gap:10px;
+    }
+
+    .small{
+      font-size:12px;
+      color:var(--muted);
+    }
+
+    .empty{
+      padding:40px 20px;
       text-align:center;
       color:var(--muted);
-      border:1px dashed rgba(255,255,255,.1);
+      background:rgba(14,26,43,.96);
+      border:1px solid var(--line);
       border-radius:18px;
-      background:rgba(255,255,255,.02);
     }
-    a.fileLink{color:#8fd1ff;text-decoration:none;font-weight:700}
-    a.fileLink:hover{text-decoration:underline}
-    @media (max-width: 1100px){
-      .hero,.main,.jobBody,.toolbar{grid-template-columns:1fr}
+
+    .footerGap{ height:20px; }
+
+    @media (max-width:1100px){
+      .toolbar{ grid-template-columns:1fr 1fr 1fr; }
+      .manualGrid{ grid-template-columns:1fr 1fr; }
+      .stats{ grid-template-columns:repeat(2,1fr); }
+      .job{ grid-template-columns:1fr; }
+      .metaGrid{ grid-template-columns:1fr 1fr; }
+    }
+
+    @media (max-width:700px){
+      .toolbar{ grid-template-columns:1fr; }
+      .manualGrid{ grid-template-columns:1fr; }
+      .stats{ grid-template-columns:1fr; }
+      .metaGrid{ grid-template-columns:1fr; }
+      .replyRow{ grid-template-columns:1fr; }
     }
   </style>
 </head>
 <body>
   <div class="wrap">
     <div class="hero">
-      <div class="heroCard">
-        <div class="heroTitle">PATAPATA MSTAF — Worker & Agent Command Dashboard</div>
-        <div class="heroSub">
-          Manage worker print jobs, agent service jobs, videos, images, PDFs, audio instructions, customer notes, WhatsApp replies, and routing from one clean control center.
-        </div>
-        <div class="badgeRow">
-          <div class="badge">PDF Preview</div>
-          <div class="badge">Image Preview</div>
-          <div class="badge">Video Window</div>
-          <div class="badge">Audio Playback</div>
-          <div class="badge">Text Instructions</div>
-          <div class="badge">WhatsApp Reply</div>
-          <div class="badge">USA + Nigeria Routing</div>
-        </div>
-        <div class="topLinks">
-          <a href="/dashboard?key=${key}">Open Main Dashboard</a>
-          <a href="/api/dashboard/jobs?key=${key}" target="_blank">Open Jobs API</a>
-        </div>
+      <div>
+        <h1>MSTAF Worker & Agent Dashboard</h1>
+        <p>View jobs, preview uploads, send customer replies, route work, start printing, complete jobs, flag errors, and keep dashboard visibility even when a file is missing on the server.</p>
       </div>
-
-      <div class="stats" id="statsBox">
-        <div class="stat"><div>All Jobs</div><div class="k" id="s_all">0</div></div>
-        <div class="stat"><div>Pending</div><div class="k" id="s_pending">0</div></div>
-        <div class="stat"><div>Printing / Claimed</div><div class="k" id="s_working">0</div></div>
-        <div class="stat"><div>Completed</div><div class="k" id="s_completed">0</div></div>
-      </div>
+      <div class="badge">Secure Dashboard</div>
     </div>
 
-    <div class="toolbar">
-      <input id="q" placeholder="Search name, phone, instructions, service, queue..." />
-      <select id="status">
-        <option value="">All Status</option>
-        <option value="pending">Pending</option>
-        <option value="claimed">Claimed</option>
-        <option value="printing">Printing</option>
-        <option value="completed">Completed</option>
-        <option value="failed">Failed</option>
-      </select>
-      <select id="queue">
-        <option value="">All Queues</option>
-        <option value="worker">Worker Queue</option>
-        <option value="agent">Agent Queue</option>
-        <option value="dispatch">Dispatch Queue</option>
-      </select>
-      <button class="btn secondary" onclick="loadJobs()">Refresh</button>
-      <button class="btn" onclick="toggleUpload()">Manual Upload</button>
-    </div>
+    <div class="stats" id="stats"></div>
 
-    <div id="uploadPanel" class="uploadPanel" style="display:none; margin-bottom:18px;">
-      <h3>Manual Dashboard Upload</h3>
-      <form id="manualUploadForm">
-        <input type="file" name="file" required />
-        <select name="queue_type">
-          <option value="AGENT">Send to Agent Queue</option>
-          <option value="DISPATCH">Send to Dispatch Queue</option>
-          <option value="WORKER">Send to Worker Queue</option>
+    <div class="panel">
+      <div class="toolbar">
+        <input id="q" placeholder="Search by file, customer, email, notes, service..." />
+        <select id="status">
+          <option value="">All Statuses</option>
+          <option value="pending">Pending</option>
+          <option value="printing">Printing</option>
+          <option value="done">Done</option>
+          <option value="error">Error</option>
         </select>
-        <input name="service_type" placeholder="Service type e.g. PRINT, VIDEO_EDIT, IMAGE_EDIT, SERVICE" value="SERVICE" />
-        <input name="customer_phone" placeholder="Customer WhatsApp number e.g. 15551234567" />
-        <input name="paper_size" placeholder="Paper size e.g. A4, Letter, A3" />
-        <input name="color_mode" placeholder="Color mode e.g. BW or COLOR" value="BW" />
-        <input name="copies" type="number" min="1" value="1" />
-        <input name="pages" type="number" min="1" value="1" />
-        <textarea name="instructions" placeholder="Type text instruction here"></textarea>
-        <button class="btn green" type="submit">Upload Job to Dashboard</button>
-        <div class="small">Supports PDF, images, video, audio, and documents.</div>
-      </form>
-    </div>
-
-    <div class="main">
-      <div class="panel">
-        <div class="tabs">
-          <div class="tab active" onclick="setQueueTab('')" id="tab_all">All Jobs</div>
-          <div class="tab" onclick="setQueueTab('worker')" id="tab_worker">Workers</div>
-          <div class="tab" onclick="setQueueTab('agent')" id="tab_agent">Agents</div>
-          <div class="tab" onclick="setQueueTab('dispatch')" id="tab_dispatch">Dispatch</div>
-        </div>
-        <div id="jobGrid" class="jobGrid"></div>
+        <select id="queue">
+          <option value="">All Queues / Printers</option>
+          <option value="AGENT">AGENT</option>
+          <option value="DISPATCH">DISPATCH</option>
+          ${printers.map(p => `<option value="${String(p.id).replace(/"/g, "&quot;")}">${String(p.id)}</option>`).join("")}
+        </select>
+        <select id="sort">
+          <option value="newest">Newest First</option>
+          <option value="oldest">Oldest First</option>
+          <option value="status">Status</option>
+          <option value="service">Service</option>
+        </select>
+        <select id="limit">
+          <option value="20">20 Jobs</option>
+          <option value="50" selected>50 Jobs</option>
+          <option value="100">100 Jobs</option>
+          <option value="200">200 Jobs</option>
+        </select>
+        <button id="reloadBtn">Reload</button>
       </div>
 
-      <div style="display:grid; gap:18px;">
-        <div class="sidePanel">
-          <h3>USA + Nigeria Printer Registry</h3>
-          <div class="printerList">
-            ${printers.map(group => `
-              <div class="printerGroup">
-                <div class="printerState">${escapeHtml(group.country)} — ${escapeHtml(group.state)}</div>
-                ${group.printers.map(p => `
-                  <div class="printerItem">• ${escapeHtml(p.label)}<br><span class="small">${escapeHtml(p.id)}</span></div>
-                `).join("")}
-              </div>
-            `).join("")}
-          </div>
-        </div>
-
-        <div class="sidePanel">
-          <h3>Worker Notes</h3>
-          <div class="muted">
-            • Use <b>Claimed</b> when a worker picks a job.<br><br>
-            • Use <b>Printing</b> when the print or edit is in progress.<br><br>
-            • Use <b>Completed</b> after delivery / finished edit / finished print.<br><br>
-            • Agent jobs route to <b>${escapeHtml(AGENT_QUEUE_ID)}</b>.<br><br>
-            • Dispatch jobs route to <b>${escapeHtml(DISPATCH_QUEUE_ID)}</b>.<br><br>
-            • File preview depends on valid <b>file_url</b> and <b>mime_type</b>.
-          </div>
-        </div>
+      <div class="tabs">
+        <button class="tab active" data-tab="all">All Jobs</button>
+        <button class="tab" data-tab="worker">Workers</button>
+        <button class="tab" data-tab="agent">Agents</button>
+        <button class="tab" data-tab="dispatch">Dispatch</button>
       </div>
     </div>
+
+    <div class="panel manualBox">
+      <h3 style="margin-top:0">Manual Dashboard Upload</h3>
+      <div class="manualGrid">
+        <div>
+          <div class="small">Customer Name</div>
+          <input id="mu_name" placeholder="Customer name" />
+        </div>
+        <div>
+          <div class="small">Customer Email</div>
+          <input id="mu_email" placeholder="Customer email" />
+        </div>
+        <div>
+          <div class="small">Service Type</div>
+          <select id="mu_service">
+            <option value="print">print</option>
+            <option value="image_editing">image_editing</option>
+            <option value="video_editing">video_editing</option>
+            <option value="laminating">laminating</option>
+            <option value="id_photo">id_photo</option>
+          </select>
+        </div>
+        <div>
+          <div class="small">Queue / Printer</div>
+          <select id="mu_printer">
+            <option value="PP-USA-001">PP-USA-001</option>
+            <option value="AGENT">AGENT</option>
+            <option value="DISPATCH">DISPATCH</option>
+            ${printers.map(p => `<option value="${String(p.id).replace(/"/g, "&quot;")}">${String(p.id)}</option>`).join("")}
+          </select>
+        </div>
+        <div>
+          <input id="mu_file" type="file" />
+        </div>
+      </div>
+      <div style="margin-top:12px; display:grid; grid-template-columns:1fr auto; gap:12px;">
+        <textarea id="mu_notes" rows="3" placeholder="Notes / instructions"></textarea>
+        <button class="btn btn-gold" id="manualUploadBtn">Upload</button>
+      </div>
+    </div>
+
+    <div id="jobs" class="jobs"></div>
+    <div class="footerGap"></div>
   </div>
 
 <script>
-  const DASHBOARD_KEY = ${JSON.stringify(req.query.key || "")};
-  let currentQueue = "";
+const DASHBOARD_KEY = "${key}";
+const API_HEADERS = { "x-dashboard-key": decodeURIComponent(DASHBOARD_KEY) };
 
-  function toggleUpload() {
-    const el = document.getElementById("uploadPanel");
-    el.style.display = el.style.display === "none" ? "block" : "none";
+let currentTab = "all";
+let allJobs = [];
+
+function esc(v){
+  return String(v ?? "")
+    .replace(/&/g,"&amp;")
+    .replace(/</g,"&lt;")
+    .replace(/>/g,"&gt;")
+    .replace(/"/g,"&quot;")
+    .replace(/'/g,"&#39;");
+}
+
+function formatDate(v){
+  if(!v) return "—";
+  try { return new Date(v).toLocaleString(); }
+  catch { return String(v); }
+}
+
+function money(v){
+  const n = Number(v || 0);
+  if (Number.isNaN(n)) return String(v ?? "—");
+  return "$" + n.toFixed(2);
+}
+
+function isImage(url, mime){
+  const s = String(url || "").toLowerCase();
+  const m = String(mime || "").toLowerCase();
+  return m.startsWith("image/") || /\\.(jpg|jpeg|png|gif|webp|bmp|svg)(\\?|$)/.test(s);
+}
+
+function isVideo(url, mime){
+  const s = String(url || "").toLowerCase();
+  const m = String(mime || "").toLowerCase();
+  return m.startsWith("video/") || /\\.(mp4|webm|ogg|mov|m4v)(\\?|$)/.test(s);
+}
+
+function isAudio(url, mime){
+  const s = String(url || "").toLowerCase();
+  const m = String(mime || "").toLowerCase();
+  return m.startsWith("audio/") || /\\.(mp3|wav|ogg|m4a|aac|opus)(\\?|$)/.test(s);
+}
+
+function isPdf(url, mime){
+  const s = String(url || "").toLowerCase();
+  const m = String(mime || "").toLowerCase();
+  return m.includes("pdf") || /\\.pdf(\\?|$)/.test(s);
+}
+
+function statusClass(v){
+  if (v === "pending") return "pending";
+  if (v === "printing") return "printing";
+  if (v === "done") return "done";
+  if (v === "error") return "error";
+  return "dispatch";
+}
+
+function tabMatch(job){
+  const pid = String(job.printer_id || "").toUpperCase();
+  if(currentTab === "all") return true;
+  if(currentTab === "agent") return pid === "AGENT";
+  if(currentTab === "dispatch") return pid === "DISPATCH";
+  if(currentTab === "worker") return pid !== "AGENT" && pid !== "DISPATCH";
+  return true;
+}
+
+function buildPreview(job){
+  const fileUrl = job.file_url || "";
+  const mime = job.mime_type || "";
+
+  if (!fileUrl) {
+    return '<div class="missing"><strong>No file URL saved</strong><br>This job exists in the dashboard, but no file URL was stored for preview.</div>';
   }
 
-  function setQueueTab(queue) {
-    currentQueue = queue;
-    document.querySelectorAll(".tab").forEach(t => t.classList.remove("active"));
-    document.getElementById("tab_" + (queue || "all")).classList.add("active");
-    document.getElementById("queue").value = queue;
-    loadJobs();
+  const safeUrl = esc(fileUrl);
+
+  if (isImage(fileUrl, mime)) {
+    return \`
+      <div style="width:100%">
+        <img src="\${safeUrl}" alt="preview" onerror="this.parentNode.innerHTML='<div class=&quot;missing&quot;><strong>File missing on server</strong><br>The job still exists in the dashboard, but the upload file is no longer available at this URL.</div>'" />
+      </div>\`;
   }
 
-  async function api(path, options = {}) {
-    const finalUrl = path + (path.includes("?") ? "&" : "?") + "key=" + encodeURIComponent(DASHBOARD_KEY);
-    const res = await fetch(finalUrl, options);
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(data.error || ("HTTP " + res.status));
-    return data;
+  if (isVideo(fileUrl, mime)) {
+    return \`
+      <div style="width:100%">
+        <video controls preload="metadata" onerror="this.parentNode.innerHTML='<div class=&quot;missing&quot;><strong>Video file missing on server</strong><br>The dashboard still has the job record, but the actual file cannot be loaded.</div>'">
+          <source src="\${safeUrl}" type="\${esc(mime || "video/mp4")}">
+        </video>
+      </div>\`;
   }
 
-  function summarize(jobs) {
-    const all = jobs.length;
-    const pending = jobs.filter(j => j.status === "pending").length;
-    const completed = jobs.filter(j => j.status === "completed").length;
-    const working = jobs.filter(j => j.status === "printing" || j.status === "claimed").length;
-    document.getElementById("s_all").textContent = all;
-    document.getElementById("s_pending").textContent = pending;
-    document.getElementById("s_completed").textContent = completed;
-    document.getElementById("s_working").textContent = working;
+  if (isAudio(fileUrl, mime)) {
+    return \`
+      <div style="width:100%; text-align:center">
+        <audio controls style="width:100%" onerror="this.parentNode.innerHTML='<div class=&quot;missing&quot;><strong>Audio file missing on server</strong><br>This job is saved, but the audio file cannot be loaded.</div>'">
+          <source src="\${safeUrl}" type="\${esc(mime || "audio/mpeg")}">
+        </audio>
+      </div>\`;
   }
 
-  function statusPill(status = "") {
-    const s = String(status || "pending").toLowerCase();
-    return '<span class="pill ' + s + '">' + s.toUpperCase() + '</span>';
+  if (isPdf(fileUrl, mime)) {
+    return \`
+      <div style="width:100%">
+        <iframe src="\${safeUrl}" onerror="this.parentNode.innerHTML='<div class=&quot;missing&quot;><strong>PDF preview unavailable</strong><br>Use Open File below. If that also fails, the file is missing on the server.</div>'"></iframe>
+      </div>\`;
   }
 
-  function h(v) {
-    return String(v == null ? "" : v)
-      .replace(/&/g, "&amp;")
-      .replace(/</g, "&lt;")
-      .replace(/>/g, "&gt;")
-      .replace(/"/g, "&quot;");
-  }
+  return \`
+    <div class="missing">
+      <strong>No inline preview for this file type</strong><br>
+      Use the Open File button below to view or download it.
+    </div>\`;
+}
 
-  function isPdf(job) {
-    const name = (job.original_name || "").toLowerCase();
-    const mime = (job.mime_type || "").toLowerCase();
-    const url = (job.file_url || "").toLowerCase();
-    return mime.includes("pdf") || name.endsWith(".pdf") || url.endsWith(".pdf");
-  }
+function renderStats(jobs){
+  const total = jobs.length;
+  const pending = jobs.filter(j => j.status === "pending").length;
+  const printing = jobs.filter(j => j.status === "printing").length;
+  const done = jobs.filter(j => j.status === "done").length;
+  const error = jobs.filter(j => j.status === "error").length;
 
-  function isVideo(job) {
-    const mime = (job.mime_type || "").toLowerCase();
-    const name = (job.original_name || "").toLowerCase();
-    const url = (job.file_url || "").toLowerCase();
-    return mime.startsWith("video/") || [".mp4",".mov",".avi",".mkv",".webm",".m4v"].some(ext => name.endsWith(ext) || url.endsWith(ext));
-  }
+  document.getElementById("stats").innerHTML = \`
+    <div class="cardStat"><div class="label">Total Jobs</div><div class="value">\${total}</div></div>
+    <div class="cardStat"><div class="label">Pending</div><div class="value">\${pending}</div></div>
+    <div class="cardStat"><div class="label">Printing</div><div class="value">\${printing}</div></div>
+    <div class="cardStat"><div class="label">Done</div><div class="value">\${done}</div></div>
+    <div class="cardStat"><div class="label">Error</div><div class="value">\${error}</div></div>
+  \`;
+}
 
-  function isAudio(job) {
-    const mime = (job.mime_type || "").toLowerCase();
-    const name = (job.original_name || "").toLowerCase();
-    const url = (job.file_url || "").toLowerCase();
-    return mime.startsWith("audio/") || [".mp3",".wav",".ogg",".opus",".m4a",".aac"].some(ext => name.endsWith(ext) || url.endsWith(ext));
-  }
+function renderJobs(){
+  const q = document.getElementById("q").value.trim().toLowerCase();
+  const status = document.getElementById("status").value;
+  const queue = document.getElementById("queue").value;
+  const sort = document.getElementById("sort").value;
 
-  function isImage(job) {
-    const mime = (job.mime_type || "").toLowerCase();
-    const name = (job.original_name || "").toLowerCase();
-    const url = (job.file_url || "").toLowerCase();
-    return mime.startsWith("image/") || [".jpg",".jpeg",".png",".webp",".gif"].some(ext => name.endsWith(ext) || url.endsWith(ext));
-  }
-
-  function normalizeUrl(url) {
-    if (!url) return "";
-    if (String(url).startsWith("http://") || String(url).startsWith("https://")) return url;
-    return url;
-  }
-
-  function renderPreview(job) {
-    const fileUrl = normalizeUrl(job.file_url || "");
-    if (!fileUrl) {
-      return '<div class="noPreview">No uploaded file found for this job.</div>';
-    }
-
-    if (isPdf(job)) {
-      return '<iframe src="' + h(fileUrl) + '"></iframe>';
-    }
-
-    if (isVideo(job)) {
-      return '<video controls preload="metadata" playsinline>' +
-        '<source src="' + h(fileUrl) + '" type="' + h(job.mime_type || "video/mp4") + '">' +
-        'Your browser cannot play this video.' +
-      '</video>';
-    }
-
-    if (isAudio(job)) {
-      return '<div class="noteBox"><b>Audio File</b><br><span class="small">' + h(job.original_name || "audio") + '</span></div>' +
-        '<audio controls preload="metadata">' +
-        '<source src="' + h(fileUrl) + '" type="' + h(job.mime_type || "audio/mpeg") + '">' +
-        'Your browser cannot play this audio.' +
-      '</audio>';
-    }
-
-    if (isImage(job)) {
-      return '<img src="' + h(fileUrl) + '" alt="Uploaded image" />';
-    }
-
-    return '<div class="noPreview">Preview not available for this file type.<br><br><a class="fileLink" href="' + h(fileUrl) + '" target="_blank">Open file</a></div>';
-  }
-
-  function renderInstructions(job) {
-    const parts = [];
-
-    if (job.instructions) {
-      parts.push('<div class="insBox"><b>Text Instruction</b><br>' + h(job.instructions).replace(/\\n/g, "<br>") + '</div>');
-    }
-
-    if (job.notes) {
-      parts.push('<div class="insBox"><b>Notes</b><br>' + h(job.notes).replace(/\\n/g, "<br>") + '</div>');
-    }
-
-    if (job.error_message) {
-      parts.push('<div class="insBox"><b>Error / Status Note</b><br>' + h(job.error_message).replace(/\\n/g, "<br>") + '</div>');
-    }
-
-    if (!parts.length) {
-      parts.push('<div class="insBox"><b>Text Instruction</b><br><span class="small">No saved text instruction on this job yet.</span></div>');
-    }
-
-    return parts.join("");
-  }
-
-  function routeOptions(job, printers) {
-    const current = job.printer_id || "";
-    let html = "";
-
-    html += '<option value="PP-USA-001"' + (current === "PP-USA-001" ? " selected" : "") + '>USA A4 / Letter Hub</option>';
-    html += '<option value="PP-USA-A3-001"' + (current === "PP-USA-A3-001" ? " selected" : "") + '>USA A3 / Card Special</option>';
-    html += '<option value="AGENT"' + (current === "AGENT" ? " selected" : "") + '>Agent Queue</option>';
-    html += '<option value="DISPATCH"' + (current === "DISPATCH" ? " selected" : "") + '>Dispatch Queue</option>';
-
-    (printers || []).forEach(group => {
-      (group.printers || []).forEach(p => {
-        if (["PP-USA-001", "PP-USA-A3-001", "AGENT", "DISPATCH"].includes(p.id)) return;
-        html += '<option value="' + h(p.id) + '"' + (current === p.id ? " selected" : "") + '>' + h(p.label) + '</option>';
-      });
+  let jobs = [...allJobs]
+    .filter(tabMatch)
+    .filter(job => !status || String(job.status || "") === status)
+    .filter(job => !queue || String(job.printer_id || "") === queue)
+    .filter(job => {
+      if (!q) return true;
+      const hay = [
+        job.id, job.original_name, job.customer_name, job.customer_email,
+        job.notes, job.instructions, job.service_type, job.file_url,
+        job.printer_id, job.paper_size, job.color_mode
+      ].join(" ").toLowerCase();
+      return hay.includes(q);
     });
 
-    return html;
+  if (sort === "oldest") {
+    jobs.sort((a,b) => new Date(a.created_at || 0) - new Date(b.created_at || 0));
+  } else if (sort === "status") {
+    jobs.sort((a,b) => String(a.status || "").localeCompare(String(b.status || "")));
+  } else if (sort === "service") {
+    jobs.sort((a,b) => String(a.service_type || "").localeCompare(String(b.service_type || "")));
+  } else {
+    jobs.sort((a,b) => new Date(b.created_at || 0) - new Date(a.created_at || 0));
   }
 
-  function renderJob(job, printers) {
+  const box = document.getElementById("jobs");
+
+  if (!jobs.length) {
+    box.innerHTML = '<div class="empty">No jobs found for this filter.</div>';
+    return;
+  }
+
+  box.innerHTML = jobs.map(job => {
     const fileUrl = job.file_url || "";
-    const title = job.original_name || job.service_type || ("Job #" + job.id);
+    const audioUrl = job.instruction_audio_url || "";
+    const routeOptions = [
+      "PP-USA-001",
+      "AGENT",
+      "DISPATCH",
+      ...Array.from(new Set(${JSON.stringify(printers.map(p => String(p.id)))}))
+    ].filter(Boolean).map(v => \`<option value="\${esc(v)}">\${esc(v)}</option>\`).join("");
+
     return \`
-      <div class="jobCard">
-        <div class="jobHead">
-          <div>
-            <div class="jobTitle">Job #\${h(job.id)} — \${h(title)}</div>
-            <div class="meta">
-              Queue: \${h(job.queue_type || "WORKER")} |
-              Printer: \${h(job.printer_id || "-")} |
-              Service: \${h(job.service_type || "-")}
-              \${statusPill(job.status)}
-            </div>
-          </div>
-          <div class="meta" style="text-align:right">
-            Phone: \${h(job.customer_phone || "-")}<br>
-            Paper: \${h(job.paper_size || "N/A")}<br>
-            Color: \${h(job.color_mode || "BW")}<br>
-            Copies: \${h(job.copies || 1)}
-          </div>
+      <div class="job">
+        <div class="preview">
+          \${buildPreview(job)}
         </div>
 
-        <div class="jobBody">
-          <div class="previewBox">
-            \${renderPreview(job)}
+        <div class="details">
+          <div class="topRow">
+            <div>
+              <div class="title">\${esc(job.original_name || job.service_type || "Untitled job")}</div>
+              <div class="sub">
+                Job ID: <strong>\${esc(job.id)}</strong><br>
+                Created: \${esc(formatDate(job.created_at))}<br>
+                File URL: \${fileUrl ? \`<a style="color:#8fc7ff" href="\${esc(fileUrl)}" target="_blank" rel="noopener">Open in new tab</a>\` : "—"}
+              </div>
+              <div class="pillRow">
+                <span class="pill \${statusClass(job.status)}">\${esc(job.status || "unknown")}</span>
+                <span class="pill">\${esc(job.service_type || "—")}</span>
+                <span class="pill">\${esc(job.printer_id || "—")}</span>
+                <span class="pill">\${esc(job.paper_size || "—")}</span>
+                <span class="pill">\${esc(job.color_mode || "—")}</span>
+              </div>
+            </div>
+
+            <div class="actions">
+              <button class="btn btn-dark" onclick="copyText('\${esc(fileUrl)}')">Copy File URL</button>
+              \${fileUrl ? \`<a class="btn btn-dark" style="text-decoration:none; display:inline-flex; align-items:center" href="\${esc(fileUrl)}" target="_blank" rel="noopener">Open File</a>\` : ""}
+            </div>
           </div>
 
-          <div class="detailBox">
-            <div class="detailRow"><b>File URL</b><div>\${fileUrl ? '<a class="fileLink" href="' + h(fileUrl) + '" target="_blank">Open file</a>' : '<span class="small">No file</span>'}</div></div>
-            <div class="detailRow"><b>Original Name</b><div>\${h(job.original_name || "-")}</div></div>
-            <div class="detailRow"><b>MIME Type</b><div>\${h(job.mime_type || "-")}</div></div>
-            <div class="detailRow"><b>Pages</b><div>\${h(job.pages || 1)}</div></div>
-            <div class="detailRow"><b>Created</b><div>\${h(job.created_at || "-")}</div></div>
-            <div class="detailRow"><b>Customer</b><div>\${h(job.customer_phone || "-")}</div></div>
+          <div class="metaGrid">
+            <div class="meta"><div class="k">Customer Name</div><div class="v">\${esc(job.customer_name || "—")}</div></div>
+            <div class="meta"><div class="k">Customer Email</div><div class="v">\${esc(job.customer_email || "—")}</div></div>
+            <div class="meta"><div class="k">Country / City</div><div class="v">\${esc([job.country, job.city].filter(Boolean).join(" / ") || "—")}</div></div>
+            <div class="meta"><div class="k">Copies</div><div class="v">\${esc(job.copies || "—")}</div></div>
+            <div class="meta"><div class="k">Pages</div><div class="v">\${esc(job.pages || "—")}</div></div>
+            <div class="meta"><div class="k">Total Cost</div><div class="v">\${esc(money(job.total_cost))}</div></div>
+          </div>
 
-            \${renderInstructions(job)}
+          <div class="section">
+            <h4>Notes / Instructions</h4>
+            <div class="txt">\${esc(job.notes || job.instructions || "No notes provided.")}</div>
+          </div>
 
-            <div class="routeRow">
-              <select id="route_\${h(job.id)}">
-                \${routeOptions(job, printers)}
-              </select>
-              <button class="btn dark" onclick="routeJob('\${h(job.id)}')">Route</button>
+          \${audioUrl ? \`
+            <div class="section">
+              <h4>Instruction Audio</h4>
+              <audio controls style="width:100%">
+                <source src="\${esc(audioUrl)}">
+              </audio>
+            </div>\` : ""}
+
+          <div class="section">
+            <h4>Route Job</h4>
+            <div style="display:grid; grid-template-columns:1fr auto; gap:10px;">
+              <select id="route_\${esc(job.id)}">\${routeOptions}</select>
+              <button class="btn btn-orange" onclick="routeJob('\${esc(job.id)}')">Route</button>
             </div>
+          </div>
 
-            <div class="actionRow">
-              <button class="btn secondary" onclick="markJob('\${h(job.id)}','claimed')">Claim</button>
-              <button class="btn purple" onclick="markJob('\${h(job.id)}','printing')">Start</button>
-              <button class="btn green" onclick="markJob('\${h(job.id)}','completed')">Complete</button>
-              <button class="btn red" onclick="markJob('\${h(job.id)}','failed')">Fail</button>
-            </div>
+          <div class="actions">
+            <button class="btn btn-blue" onclick="markJob('\${esc(job.id)}','printing')">Claim / Start</button>
+            <button class="btn btn-green" onclick="markJob('\${esc(job.id)}','done')">Complete</button>
+            <button class="btn btn-red" onclick="failJobPrompt('\${esc(job.id)}')">Fail</button>
+          </div>
 
+          <div class="section">
+            <h4>Reply to Customer on WhatsApp</h4>
             <div class="replyBox">
-              <b>Reply on WhatsApp</b>
-              <textarea id="reply_\${h(job.id)}" class="reply" placeholder="Type your update to the customer here..."></textarea>
-              <div class="actionRow">
-                <button class="btn" onclick="replyJob('\${h(job.id)}')">Send Reply</button>
+              <div class="replyRow">
+                <textarea id="reply_\${esc(job.id)}" rows="3" placeholder="Type customer reply here..."></textarea>
+                <button class="btn btn-gold" onclick="sendReply('\${esc(job.id)}')">Send Reply</button>
               </div>
             </div>
           </div>
         </div>
       </div>
     \`;
+  }).join("");
+}
+
+async function loadJobs(){
+  try{
+    const limit = document.getElementById("limit").value || "50";
+    const q = encodeURIComponent(document.getElementById("q").value || "");
+    const status = encodeURIComponent(document.getElementById("status").value || "");
+    const queue = encodeURIComponent(document.getElementById("queue").value || "");
+    const url = \`/api/dashboard/jobs?limit=\${limit}&q=\${q}&status=\${status}&printer_id=\${queue}\`;
+
+    const res = await fetch(url, { headers: API_HEADERS });
+    const data = await res.json();
+
+    allJobs = Array.isArray(data.jobs) ? data.jobs : (Array.isArray(data) ? data : []);
+    renderStats(allJobs);
+    renderJobs();
+  }catch(err){
+    console.error(err);
+    document.getElementById("jobs").innerHTML = '<div class="empty">Failed to load jobs.</div>';
   }
+}
 
-  async function loadJobs() {
-    try {
-      const q = document.getElementById("q").value.trim();
-      const status = document.getElementById("status").value;
-      const queue = document.getElementById("queue").value || currentQueue;
-
-      const params = new URLSearchParams();
-      if (q) params.set("q", q);
-      if (status) params.set("status", status);
-      if (queue) params.set("queue", queue);
-
-      const data = await api("/api/dashboard/jobs?" + params.toString());
-      const jobs = data.jobs || [];
-      const printers = data.printers || [];
-
-      summarize(jobs);
-
-      const grid = document.getElementById("jobGrid");
-      if (!jobs.length) {
-        grid.innerHTML = '<div class="emptyState">No jobs found for the selected filter.</div>';
-        return;
-      }
-
-      grid.innerHTML = jobs.map(job => renderJob(job, printers)).join("");
-    } catch (err) {
-      document.getElementById("jobGrid").innerHTML =
-        '<div class="emptyState">Dashboard load failed: ' + h(err.message) + '</div>';
-    }
+async function routeJob(id){
+  const printerId = document.getElementById("route_" + id).value;
+  try{
+    const res = await fetch("/api/dashboard/jobs/" + encodeURIComponent(id) + "/route", {
+      method: "POST",
+      headers: { ...API_HEADERS, "Content-Type": "application/json" },
+      body: JSON.stringify({ printer_id: printerId })
+    });
+    const data = await res.json().catch(() => ({}));
+    if(!res.ok) throw new Error(data.error || "Route failed");
+    await loadJobs();
+    alert("Job routed successfully.");
+  }catch(err){
+    alert(err.message || "Route failed.");
   }
+}
 
-  async function markJob(id, status) {
-    try {
-      await api("/api/dashboard/jobs/" + id + "/mark", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ status })
-      });
-      loadJobs();
-    } catch (err) {
-      alert("Mark failed: " + err.message);
-    }
+async function markJob(id, status){
+  try{
+    const res = await fetch("/api/dashboard/jobs/" + encodeURIComponent(id) + "/mark", {
+      method: "POST",
+      headers: { ...API_HEADERS, "Content-Type": "application/json" },
+      body: JSON.stringify({ status })
+    });
+    const data = await res.json().catch(() => ({}));
+    if(!res.ok) throw new Error(data.error || "Status update failed");
+    await loadJobs();
+    alert("Job updated.");
+  }catch(err){
+    alert(err.message || "Status update failed.");
   }
+}
 
-  async function routeJob(id) {
-    try {
-      const printer_id = document.getElementById("route_" + id).value;
-      await api("/api/dashboard/jobs/" + id + "/route", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ printer_id })
-      });
-      loadJobs();
-    } catch (err) {
-      alert("Route failed: " + err.message);
-    }
+async function failJobPrompt(id){
+  const msg = prompt("Enter failure reason:");
+  if (msg === null) return;
+  try{
+    const res = await fetch("/api/dashboard/jobs/" + encodeURIComponent(id) + "/mark", {
+      method: "POST",
+      headers: { ...API_HEADERS, "Content-Type": "application/json" },
+      body: JSON.stringify({ status: "error", error_message: msg })
+    });
+    const data = await res.json().catch(() => ({}));
+    if(!res.ok) throw new Error(data.error || "Fail update failed");
+    await loadJobs();
+    alert("Job marked as error.");
+  }catch(err){
+    alert(err.message || "Fail update failed.");
   }
+}
 
-  async function replyJob(id) {
-    try {
-      const message = document.getElementById("reply_" + id).value.trim();
-      if (!message) return alert("Type a message first.");
-      await api("/api/dashboard/jobs/" + id + "/reply", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message })
-      });
-      alert("WhatsApp reply sent.");
-      document.getElementById("reply_" + id).value = "";
-    } catch (err) {
-      alert("Reply failed: " + err.message);
-    }
+async function sendReply(id){
+  const text = document.getElementById("reply_" + id).value.trim();
+  if(!text) return alert("Please type a reply first.");
+
+  try{
+    const res = await fetch("/api/dashboard/jobs/" + encodeURIComponent(id) + "/reply", {
+      method: "POST",
+      headers: { ...API_HEADERS, "Content-Type": "application/json" },
+      body: JSON.stringify({ message: text })
+    });
+    const data = await res.json().catch(() => ({}));
+    if(!res.ok) throw new Error(data.error || "Reply failed");
+    document.getElementById("reply_" + id).value = "";
+    alert("Reply sent.");
+  }catch(err){
+    alert(err.message || "Reply failed.");
   }
+}
 
-  document.getElementById("q").addEventListener("input", () => loadJobs());
-  document.getElementById("status").addEventListener("change", () => loadJobs());
-  document.getElementById("queue").addEventListener("change", () => loadJobs());
+async function manualUpload(){
+  const fileInput = document.getElementById("mu_file");
+  if(!fileInput.files || !fileInput.files[0]) return alert("Choose a file first.");
 
-  document.getElementById("manualUploadForm").addEventListener("submit", async (e) => {
-    e.preventDefault();
-    try {
-      const fd = new FormData(e.target);
-      const res = await fetch("/api/dashboard/manual-upload?key=" + encodeURIComponent(DASHBOARD_KEY), {
-        method: "POST",
-        body: fd
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.error || "Upload failed");
-      alert("Dashboard upload created successfully.");
-      e.target.reset();
-      loadJobs();
-    } catch (err) {
-      alert("Manual upload failed: " + err.message);
-    }
+  const fd = new FormData();
+  fd.append("file", fileInput.files[0]);
+  fd.append("customer_name", document.getElementById("mu_name").value || "");
+  fd.append("customer_email", document.getElementById("mu_email").value || "");
+  fd.append("service_type", document.getElementById("mu_service").value || "print");
+  fd.append("printer_id", document.getElementById("mu_printer").value || "PP-USA-001");
+  fd.append("notes", document.getElementById("mu_notes").value || "");
+
+  try{
+    const res = await fetch("/api/dashboard/manual-upload", {
+      method: "POST",
+      headers: API_HEADERS,
+      body: fd
+    });
+    const data = await res.json().catch(() => ({}));
+    if(!res.ok) throw new Error(data.error || "Manual upload failed");
+    fileInput.value = "";
+    document.getElementById("mu_notes").value = "";
+    await loadJobs();
+    alert("Manual upload successful.");
+  }catch(err){
+    alert(err.message || "Manual upload failed.");
+  }
+}
+
+function copyText(v){
+  navigator.clipboard.writeText(v || "").then(() => {
+    alert("Copied.");
+  }).catch(() => {
+    alert("Copy failed.");
   });
+}
 
-  loadJobs();
-  setInterval(loadJobs, 15000);
+document.getElementById("reloadBtn").addEventListener("click", loadJobs);
+document.getElementById("manualUploadBtn").addEventListener("click", manualUpload);
+document.getElementById("q").addEventListener("input", renderJobs);
+document.getElementById("status").addEventListener("change", loadJobs);
+document.getElementById("queue").addEventListener("change", loadJobs);
+document.getElementById("sort").addEventListener("change", renderJobs);
+document.getElementById("limit").addEventListener("change", loadJobs);
+
+document.querySelectorAll(".tab").forEach(btn => {
+  btn.addEventListener("click", () => {
+    document.querySelectorAll(".tab").forEach(b => b.classList.remove("active"));
+    btn.classList.add("active");
+    currentTab = btn.dataset.tab;
+    renderJobs();
+  });
+});
+
+loadJobs();
 </script>
 </body>
 </html>`);
