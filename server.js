@@ -314,159 +314,107 @@ Our Agent team will contact you soon on WhatsApp.`
     // =========================
     // MEDIA CAPTURE
     // =========================
-// =========================
-// MEDIA CAPTURE
-// =========================
-if (
-  type === "image" ||
-  type === "document" ||
-  type === "video" ||
-  type === "audio"
-) {
-  const mediaObj =
-    type === "image"
-      ? message.image
-      : type === "document"
-      ? message.document
-      : type === "audio"
-      ? message.audio
-      : message.video;
+    if (
+      (type === "image" || type === "document" || type === "video") ||
+      (type === "audio" && session.stage !== "SERVICE_WAITING_EXTRA_NOTES")
+    ) {
+      const mediaObj =
+        type === "image"
+          ? message.image
+          : type === "document"
+          ? message.document
+          : type === "audio"
+          ? message.audio
+          : message.video;
 
-  session.pendingFile = {
-    type,
-    media_id: mediaObj?.id || "",
-    mime_type: mediaObj?.mime_type || "",
-    filename:
-      mediaObj?.filename ||
-      (type === "image"
-        ? "image"
-        : type === "document"
-        ? "document"
-        : type === "audio"
-        ? "audio"
-        : "video")
-  };
+      session.pendingFile = {
+        type,
+        media_id: mediaObj?.id || "",
+        mime_type: mediaObj?.mime_type || "",
+        filename:
+          mediaObj?.filename ||
+          (type === "image"
+            ? "image"
+            : type === "document"
+            ? "document"
+            : type === "audio"
+            ? "audio"
+            : "video")
+      };
 
-  // Attach voice note to existing bot job
-  if (
-    type === "audio" &&
-    session.lastServiceJobId &&
-    (
-      session.stage === "SERVICE_WAITING_EXTRA_NOTES" ||
-      session.stage === "PRINT_WAITING_INSTRUCTIONS" ||
-      session.stage === "LAMINATE_WAITING_FILE"
-    )
-  ) {
-    await attachInstructionAudioToJob({
-      req,
-      jobId: session.lastServiceJobId,
-      mediaId: mediaObj?.id,
-      mimeType: mediaObj?.mime_type || "audio/ogg"
-    });
+      // PRINT FILE ARRIVED
+      if (
+        session.stage === "PRINT_WAITING_FILE" &&
+        (type === "image" || type === "document")
+      ) {
+        session.stage = "PRINT_FILE_UPLOADED_ACTION";
 
-    session.stage = "MENU";
-
-    await sendMessage(
-      from,
-      `✅ Your voice instruction has been received and attached to your job.
-
-Our team will contact you shortly on WhatsApp.`
-    );
-    return res.sendStatus(200);
-  }
-
-  // PRINT FILE ARRIVED
-  if (
-    session.stage === "PRINT_WAITING_FILE" &&
-    (type === "image" || type === "document")
-  ) {
-    const job = await insertBotJob({
-      req,
-      printerId: DEFAULT_PRINTER_ID,
-      queueType: "WORKER",
-      serviceType: "PRINT",
-      mediaId: mediaObj?.id,
-      fallbackName: mediaObj?.filename || "print_file",
-      mimeType: mediaObj?.mime_type || "",
-      instructions: "",
-      customerPhone: from,
-      paperSize: session.printSpec?.paper_size || "",
-      colorMode: (session.printSpec?.color || "bw").toUpperCase(),
-      copies: session.printSpec?.copies || 1,
-      pages: session.printSpec?.pages || 1
-    });
-
-    session.lastServiceJobId = job?.id || null;
-    session.stage = "PRINT_FILE_UPLOADED_ACTION";
-
-    await sendMessage(
-      from,
-      `✅ File received.
+        await sendMessage(
+          from,
+          `✅ File received.
 
 Reply:
 1 - Continue with Agent
 2 - Checkout`
-    );
-    return res.sendStatus(200);
-  }
+        );
+        return res.sendStatus(200);
+      }
 
-  // LAMINATE FILE ARRIVED
-  if (
-    session.stage === "LAMINATE_WAITING_FILE" &&
-    (type === "image" || type === "document")
-  ) {
-    const job = await insertBotJob({
-      req,
-      printerId: DISPATCH_QUEUE_ID,
-      queueType: "DISPATCH",
-      serviceType: "LAMINATE",
-      mediaId: mediaObj?.id,
-      fallbackName: mediaObj?.filename || "laminate_file",
-      mimeType: mediaObj?.mime_type || "",
-      instructions: "",
-      customerPhone: from,
-      paperSize: session.laminateSpec?.paper_size || "",
-      colorMode: "BW",
-      copies: session.laminateSpec?.copies || 1,
-      pages: 1
-    });
+      // LAMINATE FILE ARRIVED
+      if (
+        session.stage === "LAMINATE_WAITING_FILE" &&
+        (type === "image" || type === "document")
+      ) {
+        session.stage = "LAMINATE_FILE_UPLOADED_ACTION";
 
-    session.lastServiceJobId = job?.id || null;
-    session.stage = "LAMINATE_FILE_UPLOADED_ACTION";
-
-    await sendMessage(
-      from,
-      `📄 Document received successfully.
+        await sendMessage(
+          from,
+          `📄 Document received successfully.
 
 Choose payment option:
 1 - Shopify Checkout
 2 - Africa Payment`
-    );
-    return res.sendStatus(200);
-  }
+        );
+        return res.sendStatus(200);
+      }
 
-  // ID PHOTO FILE ARRIVED
-  if (session.stage === "IDPHOTO_WAITING_UPLOAD" && type === "image") {
-    const job = await insertBotJob({
-      req,
-      printerId: AGENT_QUEUE_ID,
-      queueType: "AGENT",
-      serviceType: "ID_PHOTO",
-      mediaId: mediaObj?.id,
-      fallbackName: mediaObj?.filename || "id_photo",
-      mimeType: mediaObj?.mime_type || "image/jpeg",
-      instructions: "",
-      customerPhone: from,
-      copies: 1,
-      pages: 1
-    });
+      // AGENT SERVICE FILE ARRIVED
+      if (session.stage === "SERVICE_WAITING_UPLOAD") {
+        await sendMessage(
+          from,
+          `✅ Your file has been received.
 
-    session.lastServiceJobId = job?.id || null;
-    session.stage = "SERVICE_WAITING_EXTRA_NOTES";
+Our team is reviewing your request and will contact you shortly on WhatsApp.`
+        );
+        session.stage = "SERVICE_WAITING_EXTRA_NOTES";
+        return res.sendStatus(200);
+      }
 
-    await sendMessage(
-      from,
-      `✅ ID photo received.
+      // PRINT INSTRUCTIONS AUDIO
+      if (session.stage === "PRINT_WAITING_INSTRUCTIONS" && type === "audio") {
+        await sendMessage(
+          from,
+          `✅ Your voice instruction has been received and sent to our Agent team.
+
+Our team will review your request and contact you shortly on WhatsApp.`
+        );
+        return res.sendStatus(200);
+      }
+
+      // LAMINATE EXTRA AUDIO
+      if (session.stage === "LAMINATE_WAITING_FILE" && type === "audio") {
+        await sendMessage(
+          from,
+          "✅ Your laminate voice instruction has been received. Please now upload the document to laminate."
+        );
+        return res.sendStatus(200);
+      }
+
+      // ID PHOTO FILE ARRIVED
+      if (session.stage === "IDPHOTO_WAITING_UPLOAD" && type === "image") {
+        await sendMessage(
+          from,
+          `✅ ID photo received.
 
 Please send your instruction now as text or voice note.
 
@@ -475,32 +423,16 @@ Example:
 - white background
 - 2 copies
 - standard US size`
-    );
-    return res.sendStatus(200);
-  }
+        );
+        session.stage = "SERVICE_WAITING_EXTRA_NOTES";
+        return res.sendStatus(200);
+      }
 
-  // IMAGE EDIT FILE ARRIVED
-  if (session.stage === "IMAGE_EDIT_WAITING_UPLOAD" && type === "image") {
-    const job = await insertBotJob({
-      req,
-      printerId: AGENT_QUEUE_ID,
-      queueType: "AGENT",
-      serviceType: "IMAGE_EDIT",
-      mediaId: mediaObj?.id,
-      fallbackName: mediaObj?.filename || "image_edit",
-      mimeType: mediaObj?.mime_type || "image/jpeg",
-      instructions: "",
-      customerPhone: from,
-      copies: 1,
-      pages: 1
-    });
-
-    session.lastServiceJobId = job?.id || null;
-    session.stage = "SERVICE_WAITING_EXTRA_NOTES";
-
-    await sendMessage(
-      from,
-      `✅ Image received.
+      // IMAGE EDIT FILE ARRIVED
+      if (session.stage === "IMAGE_EDIT_WAITING_UPLOAD" && type === "image") {
+        await sendMessage(
+          from,
+          `✅ Image received.
 
 Please send your instruction now as text or voice note.
 
@@ -509,32 +441,16 @@ Example:
 - enhance quality
 - add text
 - resize for social media`
-    );
-    return res.sendStatus(200);
-  }
+        );
+        session.stage = "SERVICE_WAITING_EXTRA_NOTES";
+        return res.sendStatus(200);
+      }
 
-  // VIDEO EDIT FILE ARRIVED
-  if (session.stage === "VIDEO_EDIT_WAITING_UPLOAD" && type === "video") {
-    const job = await insertBotJob({
-      req,
-      printerId: AGENT_QUEUE_ID,
-      queueType: "AGENT",
-      serviceType: "VIDEO_EDIT",
-      mediaId: mediaObj?.id,
-      fallbackName: mediaObj?.filename || "video_edit",
-      mimeType: mediaObj?.mime_type || "video/mp4",
-      instructions: "",
-      customerPhone: from,
-      copies: 1,
-      pages: 1
-    });
-
-    session.lastServiceJobId = job?.id || null;
-    session.stage = "SERVICE_WAITING_EXTRA_NOTES";
-
-    await sendMessage(
-      from,
-      `✅ Video received.
+      // VIDEO EDIT FILE ARRIVED
+      if (session.stage === "VIDEO_EDIT_WAITING_UPLOAD" && type === "video") {
+        await sendMessage(
+          from,
+          `✅ Video received.
 
 Please send your instruction now as text or voice note.
 
@@ -543,43 +459,28 @@ Example:
 - add text
 - merge clips
 - improve sound`
-    );
-    return res.sendStatus(200);
-  }
+        );
+        session.stage = "SERVICE_WAITING_EXTRA_NOTES";
+        return res.sendStatus(200);
+      }
 
-  // LESSON / HOMEWORK FILE ARRIVED
-  if (
-    session.stage === "LESSON_WAITING_UPLOAD" &&
-    (type === "document" || type === "image" || type === "audio")
-  ) {
-    const job = await insertBotJob({
-      req,
-      printerId: AGENT_QUEUE_ID,
-      queueType: "AGENT",
-      serviceType: "LESSON_HOMEWORK",
-      mediaId: mediaObj?.id,
-      fallbackName: mediaObj?.filename || "lesson_homework",
-      mimeType: mediaObj?.mime_type || "",
-      instructions: "",
-      customerPhone: from,
-      copies: 1,
-      pages: 1
-    });
-
-    session.lastServiceJobId = job?.id || null;
-    session.stage = "SERVICE_WAITING_EXTRA_NOTES";
-
-    await sendMessage(
-      from,
-      `✅ Lesson / Homework file received.
+      // LESSON / HOMEWORK FILE ARRIVED
+      if (
+        session.stage === "LESSON_WAITING_UPLOAD" &&
+        (type === "document" || type === "image" || type === "audio")
+      ) {
+        await sendMessage(
+          from,
+          `✅ Lesson / Homework file received.
 
 Please send any extra instruction now as text or voice note.
 
 Our team will contact you shortly on WhatsApp.`
-    );
-    return res.sendStatus(200);
-  }
-}
+        );
+        session.stage = "SERVICE_WAITING_EXTRA_NOTES";
+        return res.sendStatus(200);
+      }
+    }
 
     // =========================
     // GREETING / RESET
@@ -1039,43 +940,39 @@ You can also add extra instructions by text or voice.`
     // =========================
     // GENERIC EXTRA NOTES
     // =========================
- if (session.stage === "SERVICE_WAITING_EXTRA_NOTES") {
-  if (type === "text" && lower) {
-    if (session.lastServiceJobId) {
-      await attachTextInstructionToJob(session.lastServiceJobId, text.trim());
-    }
-
-    await sendMessage(
-      from,
-      `✅ Your message has been received.
+    if (session.stage === "SERVICE_WAITING_EXTRA_NOTES") {
+      if (type === "text" && lower) {
+        await sendMessage(
+          from,
+          `✅ Your message has been received.
 
 Our team will contact you shortly on WhatsApp.`
-    );
-    session.stage = "MENU";
-    return res.sendStatus(200);
-  }
+        );
+        session.stage = "MENU";
+        return res.sendStatus(200);
+      }
 
-  if (type === "audio") {
-    if (session.lastServiceJobId && message.audio?.id) {
-      await attachInstructionAudioToJob({
-        req,
-        jobId: session.lastServiceJobId,
-        mediaId: message.audio.id,
-        mimeType: message.audio?.mime_type || "audio/ogg"
-      });
-    }
-
-    await sendMessage(
-      from,
-      `✅ Your voice note has been received.
+      if (type === "audio") {
+        await sendMessage(
+          from,
+          `✅ Your voice note has been received.
 
 Our team will contact you shortly on WhatsApp.`
-    );
-    session.stage = "MENU";
-    return res.sendStatus(200);
-  }
+        );
+        session.stage = "MENU";
+        return res.sendStatus(200);
+      }
 
       await sendMessage(
+        from,
+        `Please reply with one of the options below:
+
+${serviceMenu()}`
+      );
+      return res.sendStatus(200);
+    }
+
+    await sendMessage(
       from,
       `Please reply with one of the options below:
 
@@ -1088,6 +985,7 @@ ${serviceMenu()}`
     return res.sendStatus(200);
   }
 });
+
   
 // ========================
 // HEALTH
@@ -1242,128 +1140,7 @@ async function getPrintJobsColumns() {
   `);
   return new Set(q.rows.map(r => r.column_name));
 }
-async function insertBotJob({
-  req,
-  printerId,
-  queueType,
-  serviceType,
-  mediaId,
-  fallbackName,
-  mimeType,
-  instructions = "",
-  customerPhone = "",
-  paperSize = "",
-  colorMode = "",
-  copies = 1,
-  pages = 1
-}) {
-  const fileUrl = await downloadWhatsAppMediaToUploads(
-    mediaId,
-    fallbackName,
-    mimeType,
-    req
-  );
 
-  if (!fileUrl) {
-    throw new Error("Failed to download WhatsApp media");
-  }
-
-  const columns = await getPrintJobsColumns();
-  const insertCols = [];
-  const insertVals = [];
-  const params = [];
-
-  function addCol(name, value) {
-    if (columns.has(name)) {
-      insertCols.push(name);
-      params.push(value);
-      insertVals.push(`$${params.length}`);
-    }
-  }
-
-  addCol("printer_id", printerId);
-  addCol("queue_type", queueType);
-  addCol("status", "pending");
-  addCol("file_url", fileUrl);
-  addCol("original_name", fallbackName || "upload");
-  addCol("mime_type", mimeType || "");
-  addCol("service_type", serviceType || "SERVICE");
-  addCol("instructions", instructions || null);
-  addCol("customer_phone", customerPhone || null);
-  addCol("paper_size", paperSize || null);
-  addCol("color_mode", colorMode || null);
-  addCol("copies", parseInt(copies, 10) || 1);
-  addCol("pages", parseInt(pages, 10) || 1);
-
-  const sql = `
-    INSERT INTO print_jobs (${insertCols.join(", ")})
-    VALUES (${insertVals.join(", ")})
-    RETURNING *
-  `;
-
-  const result = await pool.query(sql, params);
-  return result.rows[0];
-}
-
-async function attachInstructionAudioToJob({ req, jobId, mediaId, mimeType = "audio/ogg" }) {
-  const audioUrl = await downloadWhatsAppMediaToUploads(
-    mediaId,
-    `instruction_${jobId}`,
-    mimeType,
-    req
-  );
-
-  if (!audioUrl) {
-    throw new Error("Failed to save instruction audio");
-  }
-
-  const columns = await getPrintJobsColumns();
-  const sets = [];
-  const params = [];
-
-  function addSet(name, value) {
-    if (columns.has(name)) {
-      params.push(value);
-      sets.push(`${name} = $${params.length}`);
-    }
-  }
-
-  addSet("instruction_audio_url", audioUrl);
-
-  if (!sets.length) return null;
-
-  params.push(jobId);
-
-  const sql = `
-    UPDATE print_jobs
-    SET ${sets.join(", ")}
-    WHERE id = $${params.length}
-    RETURNING *
-  `;
-
-  const result = await pool.query(sql, params);
-  return result.rows[0] || null;
-}
-
-async function attachTextInstructionToJob(jobId, text) {
-  const columns = await getPrintJobsColumns();
-  if (!columns.has("instructions")) return null;
-
-  const result = await pool.query(
-    `
-    UPDATE print_jobs
-    SET instructions = CASE
-      WHEN instructions IS NULL OR instructions = '' THEN $1
-      ELSE instructions || E'\\n\\n' || $1
-    END
-    WHERE id = $2
-    RETURNING *
-    `,
-    [text, jobId]
-  );
-
-  return result.rows[0] || null;
-}
 /**
  * Main jobs API
  */
