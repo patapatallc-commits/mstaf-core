@@ -96,6 +96,11 @@ require("dotenv").config();
 
 const app = express();
 app.use(express.json({ limit: "20mb" }));
+const uploadsDir = path.join(__dirname, "uploads");
+
+if (!fs.existsSync(uploadsDir)) {
+  fs.mkdirSync(uploadsDir, { recursive: true });
+}
 app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 const PORT = process.env.PORT || 10000;
 
@@ -289,7 +294,139 @@ app.post("/webhook", async (req, res) => {
     if (type === "text") {
       text = message.text?.body || "";
     }
+// ===============================
+// UNIVERSAL MEDIA HANDLER (FIX)
+// ===============================
+if (["image", "video", "document", "audio"].includes(type)) {
+  try {
+    const mediaObj =
+      message.image ||
+      message.video ||
+      message.document ||
+      message.audio;
 
+    if (!mediaObj?.id) {
+      return res.sendStatus(200);
+    }
+
+    const mimeType = mediaObj.mime_type || "";
+    const ext =
+      mimeType.includes("jpeg") ? "jpg" :
+      mimeType.includes("png") ? "png" :
+      mimeType.includes("mp4") ? "mp4" :
+      mimeType.includes("pdf") ? "pdf" :
+      mimeType.includes("ogg") ? "ogg" :
+      mimeType.includes("mp3") ? "mp3" :
+      "bin";
+
+    // Get media URL
+    const meta = await axios.get(
+      `https://graph.facebook.com/v23.0/${mediaObj.id}`,
+      {
+        headers: {
+          Authorization: `Bearer ${process.env.WHATSAPP_ACCESS_TOKEN}`
+        }
+      }
+    );
+
+    const mediaUrl = meta.data.url;
+
+    // Download file
+    const fileRes = await axios.get(mediaUrl, {
+      responseType: "arraybuffer",
+      headers: {
+        Authorization: `Bearer ${process.env.WHATSAPP_ACCESS_TOKEN}`
+      }
+    });
+
+    const filename = `${Date.now()}_${type}.${ext}`;
+    const filePath = path.join(uploadsDir, filename);
+
+    await fs.promises.writeFile(filePath, fileRes.data);
+
+    const fileUrl = `${BASE_URL}/uploads/${filename}`;
+
+    // ===============================
+    // IF JOB EXISTS → ATTACH TO IT
+    // ===============================
+    if (session.lastServiceJobId) {
+      if (type === "audio") {
+        await pool.query(
+          `UPDATE print_jobs
+           SET instruction_audio_url = $1
+           WHERE id = $2`,
+          [fileUrl, session.lastServiceJobId]
+        );
+
+        await sendMessage(
+          from,
+          "Voice instruction received. Our team will contact you soon."
+        );
+
+      } else {
+        await pool.query(
+          `UPDATE print_jobs
+           SET file_url = $1
+           WHERE id = $2`,
+          [fileUrl, session.lastServiceJobId]
+        );
+
+        await sendMessage(
+          from,
+          "File updated successfully."
+        );
+      }
+
+      return res.sendStatus(200);
+    }
+
+    // ===============================
+    // OTHERWISE → CREATE NEW JOB
+    // ===============================
+    const result = await pool.query(
+      `INSERT INTO print_jobs (
+        status,
+        printer_id,
+        file_url,
+        original_name,
+        mime_type,
+        service_type,
+        copies,
+        pages,
+        total_cost
+      ) VALUES (
+        'pending',
+        'AGENT',
+        $1,
+        $2,
+        $3,
+        'general_upload',
+        1,
+        1,
+        0
+      )
+      RETURNING id`,
+      [
+        fileUrl,
+        filename,
+        mimeType
+      ]
+    );
+
+    session.lastServiceJobId = result.rows[0].id;
+
+    await sendMessage(
+      from,
+      "Upload received successfully. Please send instructions (text or voice note)."
+    );
+
+    return res.sendStatus(200);
+
+  } catch (err) {
+    console.error("MEDIA HANDLER ERROR:", err);
+    return res.sendStatus(200);
+  }
+}
     const lower = text.toLowerCase().trim();
 
     // ==============================
