@@ -291,32 +291,125 @@ app.post("/webhook", async (req, res) => {
     }
 
     const lower = text.toLowerCase().trim();
-
     // ==============================
-    // EXTRA NOTES RECEIVED (VIDEO / LESSON / SERVICE)
+    // WHATSAPP MEDIA / EXTRA NOTES HELPERS
     // ==============================
-    if (
-      session.stage === "SERVICE_WAITING_EXTRA_NOTES" &&
-      (type === "text" || type === "audio")
-    ) {
-      session.stage = "MENU";
+    const tableColumns = await getPrintJobsColumns().catch(() => new Set());
 
-      await sendMessage(
-        from,
-        `✅ Instruction received.
-
-Our Agent team will contact you soon on WhatsApp.`
+    async function createJobFromMedia({
+      printerId,
+      queueType,
+      serviceType,
+      mediaId,
+      originalName,
+      mimeType,
+      paperSize = "",
+      colorMode = "",
+      copies = 1,
+      pages = 1,
+      instructions = ""
+    }) {
+      const fileUrl = await downloadWhatsAppMediaToUploads(
+        mediaId,
+        originalName || "upload",
+        mimeType || "",
+        req
       );
 
-      return res.sendStatus(200);
+      if (!fileUrl) {
+        throw new Error("Failed to save WhatsApp media");
+      }
+
+      const cols = [];
+      const vals = [];
+      const params = [];
+
+      function addCol(name, value) {
+        if (tableColumns.has(name)) {
+          cols.push(name);
+          params.push(value);
+          vals.push(`$${params.length}`);
+        }
+      }
+
+      addCol("printer_id", printerId);
+      addCol("queue_type", queueType);
+      addCol("file_url", fileUrl);
+      addCol("original_name", originalName || "upload");
+      addCol("mime_type", mimeType || "");
+      addCol("status", "pending");
+      addCol("service_type", serviceType || "SERVICE");
+      addCol("paper_size", paperSize || null);
+      addCol("color_mode", colorMode || null);
+      addCol("copies", parseInt(copies, 10) || 1);
+      addCol("pages", parseInt(pages, 10) || 1);
+      addCol("customer_phone", from || null);
+      addCol("instructions", instructions || null);
+
+      const sql = `
+        INSERT INTO print_jobs (${cols.join(", ")})
+        VALUES (${vals.join(", ")})
+        RETURNING *
+      `;
+
+      const result = await pool.query(sql, params);
+      return result.rows[0] || null;
+    }
+
+    async function attachAudioToExistingJob(jobId, mediaId, mimeType) {
+      if (!jobId || !mediaId) return null;
+
+      const audioUrl = await downloadWhatsAppMediaToUploads(
+        mediaId,
+        `instruction_${jobId}`,
+        mimeType || "audio/ogg",
+        req
+      );
+
+      if (!audioUrl) return null;
+
+      if (!tableColumns.has("instruction_audio_url")) return null;
+
+      const result = await pool.query(
+        `
+        UPDATE print_jobs
+        SET instruction_audio_url = $1
+        WHERE id = $2
+        RETURNING *
+        `,
+        [audioUrl, jobId]
+      );
+
+      return result.rows[0] || null;
+    }
+
+    async function attachTextToExistingJob(jobId, textValue) {
+      if (!jobId || !textValue || !tableColumns.has("instructions")) return null;
+
+      const result = await pool.query(
+        `
+        UPDATE print_jobs
+        SET instructions = CASE
+          WHEN instructions IS NULL OR instructions = '' THEN $1
+          ELSE instructions || E'\\n\\n' || $1
+        END
+        WHERE id = $2
+        RETURNING *
+        `,
+        [textValue, jobId]
+      );
+
+      return result.rows[0] || null;
     }
 
     // =========================
     // MEDIA CAPTURE
     // =========================
     if (
-      (type === "image" || type === "document" || type === "video") ||
-      (type === "audio" && session.stage !== "SERVICE_WAITING_EXTRA_NOTES")
+      type === "image" ||
+      type === "document" ||
+      type === "video" ||
+      type === "audio"
     ) {
       const mediaObj =
         type === "image"
@@ -342,80 +435,62 @@ Our Agent team will contact you soon on WhatsApp.`
             : "video")
       };
 
-     // PRINT FILE ARRIVED
-if (
-  session.stage === "PRINT_WAITING_FILE" &&
-  (type === "image" || type === "document")
-) {
-  const mediaUrl = await downloadWhatsAppMediaToUploads(
-    mediaObj?.id,
-    mediaObj?.filename || "print_file",
-    mediaObj?.mime_type,
-    req
-  );
+      // PRINT FILE ARRIVED
+      if (
+        session.stage === "PRINT_WAITING_FILE" &&
+        (type === "image" || type === "document")
+      ) {
+        const job = await createJobFromMedia({
+          printerId: DEFAULT_PRINTER_ID,
+          queueType: "WORKER",
+          serviceType: "PRINT",
+          mediaId: mediaObj?.id,
+          originalName: mediaObj?.filename || "print_file",
+          mimeType: mediaObj?.mime_type || "",
+          paperSize: session.printSpec?.paper_size || "",
+          colorMode: session.printSpec?.color || "bw",
+          copies: session.printSpec?.copies || 1,
+          pages: session.printSpec?.pages || 1
+        });
 
-  try {
-    const result = await pool.query(
-      `
-      INSERT INTO print_jobs (
-        printer_id,
-        file_url,
-        original_name,
-        mime_type,
-        status,
-        service_type,
-        paper_size,
-        color_mode,
-        copies,
-        pages,
-        customer_phone
-      )
-      VALUES ($1,$2,$3,$4,'pending','PRINT',$5,$6,$7,$8,$9)
-      RETURNING id
-      `,
-      [
-        DEFAULT_PRINTER_ID,
-        mediaUrl,
-        mediaObj?.filename || "upload",
-        mediaObj?.mime_type || "",
-        session.printSpec.paper_size,
-        session.printSpec.color,
-        session.printSpec.copies,
-        session.printSpec.pages,
-        from
-      ]
-    );
+        session.lastServiceJobId = job?.id || null;
+        session.stage = "PRINT_FILE_UPLOADED_ACTION";
 
-    session.lastServiceJobId = result.rows[0].id;
-
-  } catch (err) {
-    console.error("PRINT INSERT ERROR:", err);
-  }
-
-  session.stage = "PRINT_FILE_UPLOADED_ACTION";
-
-  await sendMessage(
-    from,
-    `✅ File received and added to print queue.
+        await sendMessage(
+          from,
+          `✅ File received and added to print queue.
 
 Reply:
 1 - Continue with Agent
 2 - Checkout`
-  );
-
-  return res.sendStatus(200);
-}
+        );
+        return res.sendStatus(200);
+      }
 
       // LAMINATE FILE ARRIVED
       if (
         session.stage === "LAMINATE_WAITING_FILE" &&
         (type === "image" || type === "document")
       ) {
+        const job = await createJobFromMedia({
+          printerId: DISPATCH_QUEUE_ID,
+          queueType: "DISPATCH",
+          serviceType: "LAMINATE",
+          mediaId: mediaObj?.id,
+          originalName: mediaObj?.filename || "laminate_file",
+          mimeType: mediaObj?.mime_type || "",
+          paperSize: session.laminateSpec?.paper_size || "",
+          colorMode: "bw",
+          copies: session.laminateSpec?.copies || 1,
+          pages: 1
+        });
+
+        session.lastServiceJobId = job?.id || null;
         session.stage = "LAMINATE_FILE_UPLOADED_ACTION";
 
         await sendMessage(
           from,
-          `📄 Document received successfully.
+          `📄 Document received successfully and added to dispatch queue.
 
 Choose payment option:
 1 - Shopify Checkout
@@ -426,24 +501,46 @@ Choose payment option:
 
       // AGENT SERVICE FILE ARRIVED
       if (session.stage === "SERVICE_WAITING_UPLOAD") {
+        const job = await createJobFromMedia({
+          printerId: AGENT_QUEUE_ID,
+          queueType: "AGENT",
+          serviceType: session.selectedService || "SERVICE",
+          mediaId: mediaObj?.id,
+          originalName: mediaObj?.filename || "service_file",
+          mimeType: mediaObj?.mime_type || "",
+          copies: 1,
+          pages: 1
+        });
+
+        session.lastServiceJobId = job?.id || null;
+        session.stage = "SERVICE_WAITING_EXTRA_NOTES";
+
         await sendMessage(
           from,
-          `✅ Your file has been received.
+          `✅ Your file has been received and added to the Agent queue.
 
-Our team is reviewing your request and will contact you shortly on WhatsApp.`
+Please send any extra instruction now by text or voice note.`
         );
-        session.stage = "SERVICE_WAITING_EXTRA_NOTES";
         return res.sendStatus(200);
       }
 
       // PRINT INSTRUCTIONS AUDIO
       if (session.stage === "PRINT_WAITING_INSTRUCTIONS" && type === "audio") {
+        if (session.lastServiceJobId) {
+          await attachAudioToExistingJob(
+            session.lastServiceJobId,
+            mediaObj?.id,
+            mediaObj?.mime_type || "audio/ogg"
+          );
+        }
+
         await sendMessage(
           from,
-          `✅ Your voice instruction has been received and sent to our Agent team.
+          `✅ Your voice instruction has been received and attached to your print job.
 
 Our team will review your request and contact you shortly on WhatsApp.`
         );
+        session.stage = "MENU";
         return res.sendStatus(200);
       }
 
@@ -458,9 +555,23 @@ Our team will review your request and contact you shortly on WhatsApp.`
 
       // ID PHOTO FILE ARRIVED
       if (session.stage === "IDPHOTO_WAITING_UPLOAD" && type === "image") {
+        const job = await createJobFromMedia({
+          printerId: AGENT_QUEUE_ID,
+          queueType: "AGENT",
+          serviceType: "ID_PHOTO",
+          mediaId: mediaObj?.id,
+          originalName: mediaObj?.filename || "id_photo",
+          mimeType: mediaObj?.mime_type || "image/jpeg",
+          copies: 1,
+          pages: 1
+        });
+
+        session.lastServiceJobId = job?.id || null;
+        session.stage = "SERVICE_WAITING_EXTRA_NOTES";
+
         await sendMessage(
           from,
-          `✅ ID photo received.
+          `✅ ID photo received and added to Agent queue.
 
 Please send your instruction now as text or voice note.
 
@@ -470,15 +581,28 @@ Example:
 - 2 copies
 - standard US size`
         );
-        session.stage = "SERVICE_WAITING_EXTRA_NOTES";
         return res.sendStatus(200);
       }
 
       // IMAGE EDIT FILE ARRIVED
       if (session.stage === "IMAGE_EDIT_WAITING_UPLOAD" && type === "image") {
+        const job = await createJobFromMedia({
+          printerId: AGENT_QUEUE_ID,
+          queueType: "AGENT",
+          serviceType: "IMAGE_EDIT",
+          mediaId: mediaObj?.id,
+          originalName: mediaObj?.filename || "image_edit",
+          mimeType: mediaObj?.mime_type || "image/jpeg",
+          copies: 1,
+          pages: 1
+        });
+
+        session.lastServiceJobId = job?.id || null;
+        session.stage = "SERVICE_WAITING_EXTRA_NOTES";
+
         await sendMessage(
           from,
-          `✅ Image received.
+          `✅ Image received and added to Agent queue.
 
 Please send your instruction now as text or voice note.
 
@@ -488,15 +612,28 @@ Example:
 - add text
 - resize for social media`
         );
-        session.stage = "SERVICE_WAITING_EXTRA_NOTES";
         return res.sendStatus(200);
       }
 
       // VIDEO EDIT FILE ARRIVED
       if (session.stage === "VIDEO_EDIT_WAITING_UPLOAD" && type === "video") {
+        const job = await createJobFromMedia({
+          printerId: AGENT_QUEUE_ID,
+          queueType: "AGENT",
+          serviceType: "VIDEO_EDIT",
+          mediaId: mediaObj?.id,
+          originalName: mediaObj?.filename || "video_edit",
+          mimeType: mediaObj?.mime_type || "video/mp4",
+          copies: 1,
+          pages: 1
+        });
+
+        session.lastServiceJobId = job?.id || null;
+        session.stage = "SERVICE_WAITING_EXTRA_NOTES";
+
         await sendMessage(
           from,
-          `✅ Video received.
+          `✅ Video received and added to Agent queue.
 
 Please send your instruction now as text or voice note.
 
@@ -506,7 +643,6 @@ Example:
 - merge clips
 - improve sound`
         );
-        session.stage = "SERVICE_WAITING_EXTRA_NOTES";
         return res.sendStatus(200);
       }
 
@@ -515,15 +651,28 @@ Example:
         session.stage === "LESSON_WAITING_UPLOAD" &&
         (type === "document" || type === "image" || type === "audio")
       ) {
+        const job = await createJobFromMedia({
+          printerId: AGENT_QUEUE_ID,
+          queueType: "AGENT",
+          serviceType: "LESSON_HOMEWORK",
+          mediaId: mediaObj?.id,
+          originalName: mediaObj?.filename || "lesson_homework",
+          mimeType: mediaObj?.mime_type || "",
+          copies: 1,
+          pages: 1
+        });
+
+        session.lastServiceJobId = job?.id || null;
+        session.stage = "SERVICE_WAITING_EXTRA_NOTES";
+
         await sendMessage(
           from,
-          `✅ Lesson / Homework file received.
+          `✅ Lesson / Homework file received and added to Agent queue.
 
 Please send any extra instruction now as text or voice note.
 
 Our team will contact you shortly on WhatsApp.`
         );
-        session.stage = "SERVICE_WAITING_EXTRA_NOTES";
         return res.sendStatus(200);
       }
     }
@@ -982,15 +1131,18 @@ You can also add extra instructions by text or voice.`
       );
       return res.sendStatus(200);
     }
-
     // =========================
     // GENERIC EXTRA NOTES
     // =========================
     if (session.stage === "SERVICE_WAITING_EXTRA_NOTES") {
       if (type === "text" && lower) {
+        if (session.lastServiceJobId) {
+          await attachTextToExistingJob(session.lastServiceJobId, text.trim());
+        }
+
         await sendMessage(
           from,
-          `✅ Your message has been received.
+          `✅ Your message has been received and attached to your job.
 
 Our team will contact you shortly on WhatsApp.`
         );
@@ -999,9 +1151,17 @@ Our team will contact you shortly on WhatsApp.`
       }
 
       if (type === "audio") {
+        if (session.lastServiceJobId && message.audio?.id) {
+          await attachAudioToExistingJob(
+            session.lastServiceJobId,
+            message.audio.id,
+            message.audio?.mime_type || "audio/ogg"
+          );
+        }
+
         await sendMessage(
           from,
-          `✅ Your voice note has been received.
+          `✅ Your voice note has been received and attached to your job.
 
 Our team will contact you shortly on WhatsApp.`
         );
@@ -1017,14 +1177,6 @@ ${serviceMenu()}`
       );
       return res.sendStatus(200);
     }
-
-    await sendMessage(
-      from,
-      `Please reply with one of the options below:
-
-${serviceMenu()}`
-    );
-    return res.sendStatus(200);
 
   } catch (err) {
     console.error("Webhook error:", err.response?.data || err.message || err);
