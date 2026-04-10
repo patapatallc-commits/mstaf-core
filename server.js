@@ -342,23 +342,69 @@ Our Agent team will contact you soon on WhatsApp.`
             : "video")
       };
 
-      // PRINT FILE ARRIVED
-      if (
-        session.stage === "PRINT_WAITING_FILE" &&
-        (type === "image" || type === "document")
-      ) {
-        session.stage = "PRINT_FILE_UPLOADED_ACTION";
+     // PRINT FILE ARRIVED
+if (
+  session.stage === "PRINT_WAITING_FILE" &&
+  (type === "image" || type === "document")
+) {
+  const mediaUrl = await downloadWhatsAppMediaToUploads(
+    mediaObj?.id,
+    mediaObj?.filename || "print_file",
+    mediaObj?.mime_type,
+    req
+  );
 
-        await sendMessage(
-          from,
-          `✅ File received.
+  try {
+    const result = await pool.query(
+      `
+      INSERT INTO print_jobs (
+        printer_id,
+        file_url,
+        original_name,
+        mime_type,
+        status,
+        service_type,
+        paper_size,
+        color_mode,
+        copies,
+        pages,
+        customer_phone
+      )
+      VALUES ($1,$2,$3,$4,'pending','PRINT',$5,$6,$7,$8,$9)
+      RETURNING id
+      `,
+      [
+        DEFAULT_PRINTER_ID,
+        mediaUrl,
+        mediaObj?.filename || "upload",
+        mediaObj?.mime_type || "",
+        session.printSpec.paper_size,
+        session.printSpec.color,
+        session.printSpec.copies,
+        session.printSpec.pages,
+        from
+      ]
+    );
+
+    session.lastServiceJobId = result.rows[0].id;
+
+  } catch (err) {
+    console.error("PRINT INSERT ERROR:", err);
+  }
+
+  session.stage = "PRINT_FILE_UPLOADED_ACTION";
+
+  await sendMessage(
+    from,
+    `✅ File received and added to print queue.
 
 Reply:
 1 - Continue with Agent
 2 - Checkout`
-        );
-        return res.sendStatus(200);
-      }
+  );
+
+  return res.sendStatus(200);
+}
 
       // LAMINATE FILE ARRIVED
       if (
