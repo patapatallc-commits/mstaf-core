@@ -219,7 +219,90 @@ const SHOPIFY_VARIANTS = {
   LAMINATE_LEGAL: process.env.SHOPIFY_VARIANT_LAMINATE_LEGAL || "",
   LAMINATE_TABLOID: process.env.SHOPIFY_VARIANT_LAMINATE_TABLOID || ""
 };
+// =========================
+// AFRICA / NIGERIA PRICING
+// =========================
+function getNigeriaPrintPrice({ paper_size = "A4", color_mode = "BW", pages = 1, copies = 1 }) {
+  const p = String(paper_size || "A4").toUpperCase();
+  const c = String(color_mode || "BW").toUpperCase();
+  const qty = Math.max(1, Number(pages || 1)) * Math.max(1, Number(copies || 1));
 
+  let unit = 0;
+
+  if (p === "A4" || p === "LETTER") {
+    unit = c === "COLOR" ? 300 : 100;
+  } else if (p === "A3") {
+    unit = c === "COLOR" ? 500 : 200;
+  } else if (p === "CARD") {
+    unit = c === "COLOR" ? 1000 : 500;
+  } else {
+    unit = c === "COLOR" ? 300 : 100;
+  }
+
+  return {
+    qty,
+    unit,
+    total: qty * unit
+  };
+}
+
+function getNigeriaServicePrice(serviceType) {
+  const map = {
+    ID_CARD: 2000,
+    IMAGE_BASIC: 500,
+    IMAGE_BG_REMOVE: 700,
+    IMAGE_ENHANCE: 1000,
+    IMAGE_ADVANCED: 1000,
+    VIDEO_SHORT: 1000,
+    VIDEO_SOCIAL: 1000,
+    VIDEO_STANDARD: 1000,
+    VIDEO_ADVANCED: 1000
+  };
+
+  return map[String(serviceType || "").toUpperCase()] || 1000;
+}
+
+function formatNaira(amount) {
+  return "₦" + Number(amount || 0).toLocaleString("en-NG");
+}
+
+function getNigeriaPricingText({ service_type = "PRINTING", paper_size = "A4", color_mode = "BW", pages = 1, copies = 1 }) {
+  const s = String(service_type || "PRINTING").toUpperCase();
+
+  if (s === "PRINTING") {
+    const pricing = getNigeriaPrintPrice({ paper_size, color_mode, pages, copies });
+
+    return `🇳🇬 Africa / Nigeria Pricing
+
+Paper Size: ${paper_size}
+Color Mode: ${color_mode === "COLOR" ? "Color" : "Black & White"}
+Pages: ${pages}
+Copies: ${copies}
+
+Estimated Qty: ${pricing.qty}
+Unit Price: ${formatNaira(pricing.unit)}
+Estimated Total: ${formatNaira(pricing.total)}`;
+  }
+
+  const price = getNigeriaServicePrice(s);
+
+  return `🇳🇬 Africa / Nigeria Pricing
+
+Service: ${s.replaceAll("_", " ")}
+Estimated Price: ${formatNaira(price)}`;
+}
+
+function paymentOptionMenuText() {
+  return `
+
+Choose payment option:
+
+1. Shopify Checkout (USD)
+2. Africa Payment (₦ Nigeria Pricing)
+3. Continue with Agent
+
+Reply with 1, 2, or 3.`;
+}
 function buildShopifyCartUrl(variantId, quantity) {
   if (!variantId) return "";
   return `https://www.patapata.us/cart/${variantId}:${quantity}`;
@@ -1031,33 +1114,82 @@ Our team will contact you shortly on WhatsApp.`
     // =========================
     // PRINT PAYMENT CHOICE
     // =========================
-    if (session.stage === "PRINT_PAYMENT_CHOICE") {
-      const paperSize = session.printSpec?.paper_size || "A4";
-      const color = session.printSpec?.color || "bw";
-      const quantity = session.printSpec?.copies || 1;
+ if (lower === "2") {
+  session.stage = "PRINT_PAYMENT_CHOICE";
 
-      const variantId = getPrintVariantId(paperSize, color);
-      const checkoutUrl = buildShopifyCartUrl(variantId, quantity);
-      const africaUrl = "https://www.patapata.us/pages/africa-payment";
+  const paperSize = session.printSpec?.paper_size || "A4";
+  const color = (session.printSpec?.color || "bw").toUpperCase();
+  const quantity = session.printSpec?.copies || 1;
 
-      if (lower === "1") {
-        await sendMessage(from, `🛒 Shopify Checkout:\n${checkoutUrl || "Not configured yet"}`);
-        return res.sendStatus(200);
-      }
+  const variantId = getPrintVariantId(paperSize, color);
+  const checkoutUrl = buildShopifyCartUrl(variantId, quantity);
+  const africaUrl = "https://www.patapata.us/pages/africa-payment";
 
-      if (lower === "2") {
-        await sendMessage(from, `🌍 Africa Payment:\n${africaUrl}`);
-        return res.sendStatus(200);
-      }
+  await sendMessage(
+    from,
+    `Choose payment option:
 
-      await sendMessage(
-        from,
-        `Reply with:
+1 - Shopify Checkout
+2 - Africa Payment
+
+Shopify:
+${checkoutUrl || "Not configured yet"}
+
+Africa Payment:
+${africaUrl}
+
+Reply with 1 or 2.`
+  );
+  return res.sendStatus(200);
+}
+
+if (session.stage === "PRINT_PAYMENT_CHOICE") {
+  const paperSize = session.printSpec?.paper_size || "A4";
+  const color = (session.printSpec?.color || "bw").toUpperCase();
+  const quantity = session.printSpec?.copies || 1;
+
+  const variantId = getPrintVariantId(paperSize, color);
+  const checkoutUrl = buildShopifyCartUrl(variantId, quantity);
+  const africaUrl = "https://www.patapata.us/pages/africa-payment";
+
+  if (lower === "1") {
+    await sendMessage(
+      from,
+      `✅ Shopify checkout selected.
+
+Complete your payment here:
+${checkoutUrl || "Not configured yet"}
+
+After payment, reply here if you need any help.`
+    );
+    session.stage = "MENU";
+    return res.sendStatus(200);
+  }
+
+  if (lower === "2") {
+    await sendMessage(
+      from,
+      `✅ Africa payment selected.
+
+Use this link to continue:
+${africaUrl}
+
+After payment, send your payment details here so our team can confirm it.`
+    );
+    session.stage = "MENU";
+    return res.sendStatus(200);
+  }
+
+  await sendMessage(
+    from,
+    `Please reply with:
+
 1 - Shopify Checkout
 2 - Africa Payment`
-      );
-      return res.sendStatus(200);
-    }
+  );
+  return res.sendStatus(200);
+}
+      
 
     // =========================
     // LAMINATE SIZE
