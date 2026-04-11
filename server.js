@@ -1521,46 +1521,265 @@ app.get("/worker-dashboard", (req, res) => {
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>MSTAF Worker Dashboard</title>
   <style>
-    body { font-family: Arial, sans-serif; margin: 0; background:#f6f7fb; color:#222; }
-    .topbar { background:#111827; color:#fff; padding:16px 20px; font-size:20px; font-weight:700; }
-    .wrap { max-width:1100px; margin:20px auto; padding:0 16px; }
-    .toolbar { display:flex; gap:10px; flex-wrap:wrap; margin-bottom:16px; }
-    .toolbar input, .toolbar select, .toolbar button, .toolbar textarea {
-      padding:10px 12px; border-radius:10px; border:1px solid #d1d5db; font-size:14px;
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: Arial, sans-serif;
+      background: #f3f4f6;
+      color: #111827;
     }
-    .toolbar button { background:#111827; color:#fff; cursor:pointer; border:none; }
-    .job { background:#fff; border-radius:14px; padding:16px; margin-bottom:16px; box-shadow:0 4px 14px rgba(0,0,0,0.08); }
-    .row { display:grid; grid-template-columns:1fr 1fr; gap:14px; }
-    .meta { line-height:1.7; font-size:14px; }
-    .title { font-size:18px; font-weight:700; margin-bottom:10px; }
-    .label { display:inline-block; padding:4px 10px; border-radius:999px; background:#eef2ff; margin-right:8px; font-size:12px; }
-    .preview { background:#f9fafb; border:1px solid #e5e7eb; border-radius:12px; padding:10px; min-height:120px; }
-    .preview img, .preview video, .preview iframe { width:100%; max-height:360px; border-radius:10px; }
-    .actions { display:flex; flex-wrap:wrap; gap:8px; margin-top:12px; }
-    .actions button, .actions a {
-      padding:10px 12px; border-radius:10px; border:none; cursor:pointer; text-decoration:none;
-      font-size:14px; background:#111827; color:white;
+    .topbar {
+      background: linear-gradient(135deg, #0f172a, #111827, #1e293b);
+      color: #fff;
+      padding: 18px 22px;
+      font-size: 24px;
+      font-weight: 700;
+      box-shadow: 0 4px 18px rgba(0,0,0,0.12);
     }
-    .muted { color:#6b7280; font-size:13px; }
-    .audioBox { margin-top:10px; }
-    .replyBox { margin-top:12px; display:flex; flex-direction:column; gap:8px; }
+    .subbar {
+      padding: 10px 22px;
+      background: #fff;
+      border-bottom: 1px solid #e5e7eb;
+      color: #6b7280;
+      font-size: 14px;
+    }
+    .wrap {
+      max-width: 1280px;
+      margin: 20px auto;
+      padding: 0 16px 40px;
+    }
+    .toolbar {
+      display: grid;
+      grid-template-columns: 1.3fr 180px 180px 150px;
+      gap: 12px;
+      margin-bottom: 18px;
+    }
+    .toolbar input,
+    .toolbar select,
+    .toolbar button {
+      width: 100%;
+      padding: 12px 14px;
+      border-radius: 12px;
+      border: 1px solid #d1d5db;
+      font-size: 14px;
+      background: #fff;
+    }
+    .toolbar button {
+      background: #111827;
+      color: #fff;
+      border: none;
+      cursor: pointer;
+      font-weight: 700;
+    }
+    .toolbar button:hover {
+      opacity: 0.95;
+    }
+    .stats {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 12px;
+      margin-bottom: 18px;
+    }
+    .stat {
+      background: #fff;
+      border-radius: 16px;
+      padding: 16px;
+      box-shadow: 0 6px 18px rgba(0,0,0,0.06);
+      border: 1px solid #e5e7eb;
+    }
+    .stat .k {
+      font-size: 12px;
+      color: #6b7280;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+    .stat .v {
+      margin-top: 8px;
+      font-size: 28px;
+      font-weight: 700;
+    }
+    .job {
+      background: #fff;
+      border-radius: 18px;
+      padding: 18px;
+      margin-bottom: 18px;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.08);
+      border: 1px solid #e5e7eb;
+    }
+    .jobHeader {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      align-items: flex-start;
+      margin-bottom: 14px;
+    }
+    .title {
+      font-size: 20px;
+      font-weight: 700;
+      word-break: break-word;
+    }
+    .badges {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      padding: 6px 10px;
+      border-radius: 999px;
+      background: #eef2ff;
+      color: #1f2937;
+      font-size: 12px;
+      font-weight: 700;
+    }
+    .row {
+      display: grid;
+      grid-template-columns: 1.15fr 0.85fr;
+      gap: 16px;
+    }
+    .metaGrid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 10px;
+      margin-bottom: 14px;
+    }
+    .metaCard {
+      background: #f9fafb;
+      border: 1px solid #e5e7eb;
+      border-radius: 12px;
+      padding: 10px 12px;
+      min-height: 66px;
+    }
+    .metaCard .k {
+      font-size: 12px;
+      color: #6b7280;
+      margin-bottom: 4px;
+    }
+    .metaCard .v {
+      font-size: 14px;
+      font-weight: 600;
+      word-break: break-word;
+    }
+    .preview {
+      background: #f9fafb;
+      border: 1px solid #e5e7eb;
+      border-radius: 14px;
+      padding: 12px;
+      min-height: 180px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .preview img,
+    .preview video,
+    .preview iframe {
+      width: 100%;
+      max-height: 460px;
+      border-radius: 10px;
+      border: none;
+      background: #fff;
+    }
+    .actions {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin-top: 12px;
+    }
+    .actions button,
+    .actions a {
+      padding: 10px 12px;
+      border-radius: 10px;
+      border: none;
+      cursor: pointer;
+      text-decoration: none;
+      font-size: 14px;
+      font-weight: 700;
+      background: #111827;
+      color: white;
+    }
+    .actions .secondary {
+      background: #374151;
+    }
+    .actions .done {
+      background: #065f46;
+    }
+    .actions .error {
+      background: #991b1b;
+    }
+    .actions .wa {
+      background: #128C7E;
+    }
+    .actions .call {
+      background: #0f766e;
+    }
+    .muted {
+      color: #6b7280;
+      font-size: 13px;
+    }
+    .sectionTitle {
+      font-size: 13px;
+      font-weight: 700;
+      color: #374151;
+      margin: 14px 0 8px;
+      text-transform: uppercase;
+      letter-spacing: 0.03em;
+    }
+    .textBox {
+      background: #f9fafb;
+      border: 1px solid #e5e7eb;
+      border-radius: 12px;
+      padding: 12px;
+      white-space: pre-wrap;
+      word-break: break-word;
+      min-height: 48px;
+    }
+    .audioBox {
+      margin-top: 10px;
+    }
+    .replyBox {
+      margin-top: 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
     .replyBox textarea {
-      width:100%;
-      min-height:90px;
-      resize:vertical;
-      box-sizing:border-box;
-      font-family:Arial, sans-serif;
+      width: 100%;
+      min-height: 90px;
+      resize: vertical;
+      padding: 12px;
+      border-radius: 12px;
+      border: 1px solid #d1d5db;
+      font-family: Arial, sans-serif;
+      font-size: 14px;
     }
-    @media (max-width: 800px) {
-      .row { grid-template-columns:1fr; }
+    .empty {
+      background: #fff;
+      border-radius: 16px;
+      padding: 18px;
+      border: 1px solid #e5e7eb;
+      box-shadow: 0 6px 18px rgba(0,0,0,0.05);
+    }
+    @media (max-width: 980px) {
+      .toolbar { grid-template-columns: 1fr 1fr; }
+      .stats { grid-template-columns: repeat(2, 1fr); }
+      .row { grid-template-columns: 1fr; }
+      .metaGrid { grid-template-columns: 1fr; }
+    }
+    @media (max-width: 640px) {
+      .toolbar { grid-template-columns: 1fr; }
+      .stats { grid-template-columns: 1fr; }
+      .jobHeader { flex-direction: column; }
     }
   </style>
 </head>
 <body>
   <div class="topbar">MSTAF Worker Dashboard</div>
+  <div class="subbar">Worker + Agent view for print, media, routing, status updates, WhatsApp chat, and direct calling</div>
+
   <div class="wrap">
     <div class="toolbar">
-      <input id="search" placeholder="Search jobs..." />
+      <input id="search" placeholder="Search by file, customer, notes, instructions..." />
       <select id="status">
         <option value="">All Status</option>
         <option value="pending">pending</option>
@@ -1568,13 +1787,27 @@ app.get("/worker-dashboard", (req, res) => {
         <option value="done">done</option>
         <option value="error">error</option>
       </select>
+      <select id="queue">
+        <option value="">All Queues</option>
+        <option value="agent">Agent Queue</option>
+      </select>
       <button onclick="loadJobs()">Refresh</button>
     </div>
+
+    <div class="stats">
+      <div class="stat"><div class="k">Total Jobs</div><div class="v" id="statTotal">0</div></div>
+      <div class="stat"><div class="k">Pending</div><div class="v" id="statPending">0</div></div>
+      <div class="stat"><div class="k">Printing</div><div class="v" id="statPrinting">0</div></div>
+      <div class="stat"><div class="k">Done</div><div class="v" id="statDone">0</div></div>
+    </div>
+
     <div id="jobs" class="muted">Loading jobs...</div>
   </div>
 
   <script>
     const DASHBOARD_KEY = ${JSON.stringify(process.env.DASHBOARD_KEY || "")};
+    let autoRefreshTimer = null;
+    const draftReplies = {};
 
     function escapeHtml(value) {
       return String(value || "")
@@ -1589,6 +1822,18 @@ app.get("/worker-dashboard", (req, res) => {
     function isVideo(url) { return /\\.(mp4|webm|ogg|mov)$/i.test(url || ""); }
     function isPdf(url) { return /\\.(pdf)$/i.test(url || ""); }
 
+    function setStats(jobs) {
+      const total = jobs.length;
+      const pending = jobs.filter(j => String(j.status || "") === "pending").length;
+      const printing = jobs.filter(j => String(j.status || "") === "printing").length;
+      const done = jobs.filter(j => String(j.status || "") === "done").length;
+
+      document.getElementById("statTotal").textContent = total;
+      document.getElementById("statPending").textContent = pending;
+      document.getElementById("statPrinting").textContent = printing;
+      document.getElementById("statDone").textContent = done;
+    }
+
     async function markJob(id, status) {
       const error_message = status === "error" ? (prompt("Enter error message:") || "") : "";
       const res = await fetch("/api/dashboard/jobs/" + id + "/mark", {
@@ -1599,6 +1844,7 @@ app.get("/worker-dashboard", (req, res) => {
         },
         body: JSON.stringify({ status, error_message })
       });
+
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
         alert(data.error || "Failed to update job");
@@ -1607,12 +1853,33 @@ app.get("/worker-dashboard", (req, res) => {
       loadJobs();
     }
 
+    function rememberDraft(id, value) {
+      draftReplies[id] = value;
+    }
+
+    function getPreview(fileUrl) {
+      if (!fileUrl) return "<div class='muted'>No preview available</div>";
+      if (isImage(fileUrl)) {
+        return "<img src='" + fileUrl + "' alt='preview' />";
+      }
+      if (isVideo(fileUrl)) {
+        return "<video controls preload='metadata' onplay='pauseAutoRefresh()' onpause='resumeAutoRefresh()' onended='resumeAutoRefresh()'><source src='" + fileUrl + "'></video>";
+      }
+      if (isPdf(fileUrl)) {
+        return "<iframe src='" + fileUrl + "'></iframe>";
+      }
+      return "<a href='" + fileUrl + "' target='_blank'>Open file</a>";
+    }
+
     async function loadJobs() {
       const q = document.getElementById("search").value.trim();
       const status = document.getElementById("status").value;
+      const queue = document.getElementById("queue").value;
+
       const params = new URLSearchParams();
       if (q) params.set("q", q);
       if (status) params.set("status", status);
+      if (queue) params.set("queue", queue);
 
       const res = await fetch("/api/dashboard/jobs?" + params.toString(), {
         headers: { "x-dashboard-key": DASHBOARD_KEY }
@@ -1621,83 +1888,129 @@ app.get("/worker-dashboard", (req, res) => {
       const jobsEl = document.getElementById("jobs");
 
       if (!res.ok) {
-        jobsEl.innerHTML = "<div class='job'>Failed to load jobs.</div>";
+        jobsEl.innerHTML = "<div class='empty'>Failed to load jobs.</div>";
+        setStats([]);
         return;
       }
 
       const jobs = await res.json();
       if (!Array.isArray(jobs) || !jobs.length) {
-        jobsEl.innerHTML = "<div class='job'>No jobs found.</div>";
+        jobsEl.innerHTML = "<div class='empty'>No jobs found.</div>";
+        setStats([]);
         return;
       }
+
+      setStats(jobs);
 
       jobsEl.innerHTML = jobs.map(job => {
         const fileUrl = job.file_url || "";
         const audioUrl = job.instruction_audio_url || "";
-        let preview = "<div class='muted'>No preview available</div>";
+        const replyDraft = draftReplies[job.id] || "";
 
-        if (fileUrl) {
-          if (isImage(fileUrl)) {
-            preview = "<img src='" + fileUrl + "' alt='preview' />";
-          } else if (isVideo(fileUrl)) {
-            preview = "<video controls preload='metadata' onplay='pauseAutoRefresh()' onpause='resumeAutoRefresh()' onended='resumeAutoRefresh()'><source src='" + fileUrl + "'></video>";
-          } else if (isPdf(fileUrl)) {
-            preview = "<iframe src='" + fileUrl + "'></iframe>";
-          } else {
-            preview = "<a href='" + fileUrl + "' target='_blank'>Open file</a>";
-          }
-        }
+        const rawPhone =
+          job.customer_phone ||
+          job.phone ||
+          job.whatsapp_number ||
+          job.customer_whatsapp ||
+          job.customer_mobile ||
+          "";
+
+        const cleanPhone = String(rawPhone || "").replace(/[^\\d+]/g, "");
+        const waPhone = cleanPhone.replace(/^\\+/, "");
+
+        const contactButtons = cleanPhone
+          ? \`
+            <a href="https://wa.me/\${waPhone}" target="_blank" class="wa">WhatsApp Chat</a>
+            <a href="tel:\${cleanPhone}" class="call">Call Customer</a>
+          \`
+          : "";
 
         const audioPlayer = audioUrl
-          ? "<div class='audioBox'><div class='muted'>Instruction audio</div><audio controls preload='metadata' src='" + audioUrl + "' onplay='pauseAutoRefresh()' onpause='resumeAutoRefresh()' onended='resumeAutoRefresh()' style='width:100%'></audio></div>"
+          ? "<div class='audioBox'><div class='sectionTitle'>Instruction Audio</div><audio controls preload='metadata' src='" + audioUrl + "' onplay='pauseAutoRefresh()' onpause='resumeAutoRefresh()' onended='resumeAutoRefresh()' style='width:100%'></audio></div>"
           : "";
 
         return \`
           <div class="job">
-            <div class="title">\${escapeHtml(job.original_name || "Untitled job")}</div>
+            <div class="jobHeader">
+              <div class="title">\${escapeHtml(job.original_name || "Untitled job")}</div>
+              <div class="badges">
+                <span class="badge">#\${escapeHtml(job.id)}</span>
+                <span class="badge">\${escapeHtml(job.status || "unknown")}</span>
+                <span class="badge">\${escapeHtml(job.service_type || "service")}</span>
+              </div>
+            </div>
+
             <div class="row">
-              <div class="meta">
-                <div><span class="label">#\${escapeHtml(job.id)}</span><span class="label">\${escapeHtml(job.status)}</span></div>
-                <div><strong>Printer:</strong> \${escapeHtml(job.printer_id || "")}</div>
-                <div><strong>Service:</strong> \${escapeHtml(job.service_type || "")}</div>
-                <div><strong>Paper size:</strong> \${escapeHtml(job.paper_size || "")}</div>
-                <div><strong>Color:</strong> \${escapeHtml(job.color_mode || "")}</div>
-                <div><strong>Copies:</strong> \${escapeHtml(job.copies || "")}</div>
-                <div><strong>Pages:</strong> \${escapeHtml(job.pages || "")}</div>
-                <div><strong>Customer:</strong> \${escapeHtml(job.customer_name || "")}</div>
-                <div><strong>Email:</strong> \${escapeHtml(job.customer_email || "")}</div>
-                <div><strong>Notes:</strong> \${escapeHtml(job.notes || "")}</div>
-                <div><strong>Instructions:</strong> \${escapeHtml(job.instructions || "")}</div>
+              <div>
+                <div class="metaGrid">
+                  <div class="metaCard"><div class="k">Printer / Queue</div><div class="v">\${escapeHtml(job.printer_id || job.queue_type || "")}</div></div>
+                  <div class="metaCard"><div class="k">Paper Size</div><div class="v">\${escapeHtml(job.paper_size || "")}</div></div>
+                  <div class="metaCard"><div class="k">Color</div><div class="v">\${escapeHtml(job.color_mode || "")}</div></div>
+                  <div class="metaCard"><div class="k">Copies / Pages</div><div class="v">\${escapeHtml(job.copies || "")} / \${escapeHtml(job.pages || "")}</div></div>
+                  <div class="metaCard"><div class="k">Customer</div><div class="v">\${escapeHtml(job.customer_name || "")}</div></div>
+                  <div class="metaCard"><div class="k">Email</div><div class="v">\${escapeHtml(job.customer_email || "")}</div></div>
+                  <div class="metaCard"><div class="k">Phone</div><div class="v">\${escapeHtml(rawPhone || "")}</div></div>
+                  <div class="metaCard"><div class="k">Total Cost</div><div class="v">\${escapeHtml(job.total_cost || "")}</div></div>
+                </div>
+
+                <div class="sectionTitle">Notes</div>
+                <div class="textBox">\${escapeHtml(job.notes || "")}</div>
+
+                <div class="sectionTitle">Instructions</div>
+                <div class="textBox">\${escapeHtml(job.instructions || "")}</div>
+
                 \${audioPlayer}
+
                 <div class="actions">
                   <a href="\${fileUrl}" target="_blank">Open File</a>
-                  <button onclick="markJob('\${job.id}', 'printing')">Mark Printing</button>
-                  <button onclick="markJob('\${job.id}', 'done')">Mark Done</button>
-                  <button onclick="markJob('\${job.id}', 'error')">Mark Error</button>
+                  \${contactButtons}
+                  <button onclick="markJob('\${job.id}', 'printing')" class="secondary">Mark Printing</button>
+                  <button onclick="markJob('\${job.id}', 'done')" class="done">Mark Done</button>
+                  <button onclick="markJob('\${job.id}', 'error')" class="error">Mark Error</button>
                 </div>
+
                 <div class="replyBox">
-                  <div class="muted">WhatsApp reply box</div>
-                  <textarea placeholder="Type reply here..."></textarea>
+                  <div class="sectionTitle">WhatsApp Reply Box</div>
+                  <textarea
+                    placeholder="Type reply here..."
+                    oninput="rememberDraft('\${job.id}', this.value)"
+                  >\${escapeHtml(replyDraft)}</textarea>
                 </div>
               </div>
-              <div class="preview">\${preview}</div>
+
+              <div class="preview">
+                \${getPreview(fileUrl)}
+              </div>
             </div>
           </div>
         \`;
       }).join("");
     }
 
-    let autoRefreshTimer = null;
     function startAutoRefresh() {
       stopAutoRefresh();
       autoRefreshTimer = setInterval(loadJobs, 30000);
     }
+
     function stopAutoRefresh() {
       if (autoRefreshTimer) clearInterval(autoRefreshTimer);
       autoRefreshTimer = null;
     }
-    function pauseAutoRefresh() { stopAutoRefresh(); }
-    function resumeAutoRefresh() { startAutoRefresh(); }
+
+    function pauseAutoRefresh() {
+      stopAutoRefresh();
+    }
+
+    function resumeAutoRefresh() {
+      startAutoRefresh();
+    }
+
+    document.getElementById("search").addEventListener("keydown", function(e) {
+      if (e.key === "Enter") loadJobs();
+    });
+
+    document.getElementById("status").addEventListener("change", loadJobs);
+    document.getElementById("queue").addEventListener("change", loadJobs);
 
     loadJobs();
     startAutoRefresh();
@@ -1705,6 +2018,9 @@ app.get("/worker-dashboard", (req, res) => {
 </body>
 </html>`);
 });
+    
+
+ 
 app.get("/api/dashboard/jobs", requireDashboardKey, async (req, res) => {
   try {
     const {
