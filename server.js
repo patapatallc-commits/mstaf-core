@@ -1055,21 +1055,64 @@ Our team will review your request and contact you shortly on WhatsApp.`
         const checkoutUrl = buildShopifyCartUrl(variantId, quantity);
         const africaUrl = "https://www.patapata.us/pages/africa-payment";
 
-        await sendMessage(
-          from,
-          `Choose payment option:
+await sendMessage(
+  from,
+  `✅ File received and added to print queue.
 
-1 - Shopify Checkout
-2 - Africa Payment
+Choose option:
 
-Shopify:
-${checkoutUrl || "Not configured yet"}
+1 - Continue with Agent
+2 - Checkout (Shopify / Africa)
 
-Africa Payment:
-${africaUrl}
+--- Pricing Guide ---
+
+🇺🇸 USA (Shopify):
+• A4 B/W: $0.10
+• A4 Color: $0.50
+
+🇳🇬 Nigeria (Africa Payment):
+
+📄 Photocopy
+• Black & White: ₦50
+• Colored: ₦200
+
+📱 Printout from Phone
+• Black & White: ₦200
+• Colored: ₦200
+
+🆔 ID Card
+• ₦2,000
+
+📜 Letter Printing
+• Black & White: ₦500
+• Colored: ₦1,000
+
+🎨 Designing
+• ₦1,000
+
+💳 Printing on Card
+• ₦300
+
+📎 Binding (Tying)
+• ₦300
+
+✏️ Editing
+• ₦500
+
+📠 Scanning & Sending
+• Scanning: ₦200
+• Sending: ₦200
+
+🎉 Birthday Cards
+• Design: ₦500
+• Printing: ₦500
+
+📸 Passport Photographs
+• 4 Copies: ₦500
+• 8 Copies: ₦1,000
 
 Reply with 1 or 2.`
-        );
+);
         return res.sendStatus(200);
       }
 
@@ -1138,21 +1181,24 @@ After payment, reply here if you need any help.`
         session.stage = "MENU";
         return res.sendStatus(200);
       }
+if (lower === "2") {
+  await sendMessage(
+    from,
+    `🌍 Africa Payment (Nigeria Selected)
 
-      if (lower === "2") {
-        await sendMessage(
-          from,
-          `✅ Africa payment selected.
+💰 Price List:
+• A4 B/W: ₦100 per page
+• A4 Color: ₦500 per page
 
-Use this link to continue:
+👉 Complete your payment here:
 ${africaUrl}
 
-After payment, send your payment details here so our team can confirm it.`
-        );
-        session.stage = "MENU";
-        return res.sendStatus(200);
-      }
+📩 After payment, our team will process your job immediately.`
+  );
 
+  session.stage = "MENU";
+  return res.sendStatus(200);
+}
       await sendMessage(
         from,
         `Please reply with:
