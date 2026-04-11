@@ -2074,7 +2074,7 @@ app.get("/dashboard", requireDashboardKey, async (req, res) => {
     }
 
 
-}
+
     return parts.join("");
   }
 
