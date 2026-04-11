@@ -2231,7 +2231,9 @@ app.get("/worker-dashboard", (req, res) => {
         const fileUrl = job.file_url || job.public_url || "";
         const audioUrl = job.instruction_audio_url || "";
         const replyDraft = draftReplies[job.id] || "";
-
+        const openFileLink = fileUrl
+  ? "<a href='" + fileUrl + "' target='_blank' style='color:#93c5fd; font-weight:800;'>Open file</a>"
+  : "";
         const rawPhone =
           job.customer_phone ||
           job.phone ||
