@@ -1046,6 +1046,31 @@ Our team will review your request and contact you shortly on WhatsApp.`
 
       if (lower === "2") {
         session.stage = "PRINT_PAYMENT_CHOICE";
+        const paperSize = session.printSpec?.paper_size || "A4";
+const color = (session.printSpec?.color || "bw").toUpperCase();
+const quantity = session.printSpec?.copies || 1;
+
+const variantId = getPrintVariantId(paperSize, color);
+const checkoutUrl = buildShopifyCartUrl(variantId, quantity);
+const africaUrl = "https://www.patapata.us/pages/africa-payment";
+
+await sendMessage(
+  from,
+  `Choose payment option:
+
+1 - Shopify Checkout
+2 - Africa Payment
+
+Shopify:
+${checkoutUrl || "Not configured yet"}
+
+Africa Payment:
+${africaUrl}
+
+Reply with 1 or 2.`
+);
+
+return res.sendStatus(200);
 
         const paperSize = session.printSpec?.paper_size || "A4";
         const color = session.printSpec?.color || "bw";
