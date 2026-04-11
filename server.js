@@ -1515,42 +1515,24 @@ app.get("/worker-dashboard", (req, res) => {
   }
 
   const nigeriaStates = [
-    { name: "Abia", code: "AB" },
-    { name: "Adamawa", code: "AD" },
-    { name: "Akwa Ibom", code: "AK" },
-    { name: "Anambra", code: "AN" },
-    { name: "Bauchi", code: "BA" },
-    { name: "Bayelsa", code: "BY" },
-    { name: "Benue", code: "BE" },
-    { name: "Borno", code: "BO" },
-    { name: "Cross River", code: "CR" },
-    { name: "Delta", code: "DE" },
-    { name: "Ebonyi", code: "EB" },
-    { name: "Edo", code: "ED" },
-    { name: "Ekiti", code: "EK" },
-    { name: "Enugu", code: "EN" },
-    { name: "FCT", code: "FC" },
-    { name: "Gombe", code: "GO" },
-    { name: "Imo", code: "IM" },
-    { name: "Jigawa", code: "JI" },
-    { name: "Kaduna", code: "KD" },
-    { name: "Kano", code: "KN" },
-    { name: "Katsina", code: "KT" },
-    { name: "Kebbi", code: "KE" },
-    { name: "Kogi", code: "KO" },
-    { name: "Kwara", code: "KW" },
-    { name: "Lagos", code: "LA" },
-    { name: "Nasarawa", code: "NA" },
-    { name: "Niger", code: "NI" },
-    { name: "Ogun", code: "OG" },
-    { name: "Ondo", code: "ON" },
-    { name: "Osun", code: "OS" },
-    { name: "Oyo", code: "OY" },
-    { name: "Plateau", code: "PL" },
-    { name: "Rivers", code: "RI" },
-    { name: "Sokoto", code: "SO" },
-    { name: "Taraba", code: "TA" },
-    { name: "Yobe", code: "YO" },
+    { name: "Abia", code: "AB" }, { name: "Adamawa", code: "AD" },
+    { name: "Akwa Ibom", code: "AK" }, { name: "Anambra", code: "AN" },
+    { name: "Bauchi", code: "BA" }, { name: "Bayelsa", code: "BY" },
+    { name: "Benue", code: "BE" }, { name: "Borno", code: "BO" },
+    { name: "Cross River", code: "CR" }, { name: "Delta", code: "DE" },
+    { name: "Ebonyi", code: "EB" }, { name: "Edo", code: "ED" },
+    { name: "Ekiti", code: "EK" }, { name: "Enugu", code: "EN" },
+    { name: "FCT", code: "FC" }, { name: "Gombe", code: "GO" },
+    { name: "Imo", code: "IM" }, { name: "Jigawa", code: "JI" },
+    { name: "Kaduna", code: "KD" }, { name: "Kano", code: "KN" },
+    { name: "Katsina", code: "KT" }, { name: "Kebbi", code: "KE" },
+    { name: "Kogi", code: "KO" }, { name: "Kwara", code: "KW" },
+    { name: "Lagos", code: "LA" }, { name: "Nasarawa", code: "NA" },
+    { name: "Niger", code: "NI" }, { name: "Ogun", code: "OG" },
+    { name: "Ondo", code: "ON" }, { name: "Osun", code: "OS" },
+    { name: "Oyo", code: "OY" }, { name: "Plateau", code: "PL" },
+    { name: "Rivers", code: "RI" }, { name: "Sokoto", code: "SO" },
+    { name: "Taraba", code: "TA" }, { name: "Yobe", code: "YO" },
     { name: "Zamfara", code: "ZA" }
   ];
 
@@ -1590,323 +1572,439 @@ app.get("/worker-dashboard", (req, res) => {
     body {
       margin: 0;
       font-family: Arial, sans-serif;
-      background: #eef2f7;
-      color: #111827;
+      background: #0b1220;
+      color: #eef2ff;
     }
+
     .layout {
       display: grid;
       grid-template-columns: 300px 1fr;
       min-height: 100vh;
     }
+
     .sidebar {
-      background: linear-gradient(180deg, #0f172a, #111827, #1e293b);
-      color: #fff;
-      padding: 20px 16px;
+      background: linear-gradient(180deg, #081120, #0d1b33 55%, #11213d);
       border-right: 1px solid rgba(255,255,255,0.08);
+      padding: 18px 14px;
       overflow-y: auto;
     }
+
     .brand {
-      font-size: 26px;
-      font-weight: 800;
-      margin-bottom: 8px;
+      font-size: 24px;
+      font-weight: 900;
+      letter-spacing: 0.02em;
+      color: #ffffff;
+      margin-bottom: 10px;
     }
+
     .subtitle {
-      font-size: 13px;
       color: #cbd5e1;
+      font-size: 13px;
       line-height: 1.5;
       margin-bottom: 18px;
     }
-    .sideSection {
-      margin-bottom: 20px;
+
+    .sideCard {
       background: rgba(255,255,255,0.04);
       border: 1px solid rgba(255,255,255,0.08);
-      border-radius: 16px;
+      border-radius: 18px;
       padding: 14px;
+      margin-bottom: 16px;
+      box-shadow: inset 0 1px 0 rgba(255,255,255,0.04);
     }
+
     .sideTitle {
       font-size: 12px;
-      letter-spacing: 0.06em;
+      color: #f8fafc;
       text-transform: uppercase;
-      color: #cbd5e1;
+      letter-spacing: 0.06em;
       margin-bottom: 10px;
-      font-weight: 700;
-    }
-    .sideValue {
-      font-size: 22px;
       font-weight: 800;
     }
-    .printerGroup {
-      margin-bottom: 14px;
+
+    .sideValue {
+      font-size: 34px;
+      font-weight: 900;
+      color: #ffffff;
     }
-    .printerGroupTitle {
+
+    .groupTitle {
       font-size: 13px;
-      font-weight: 700;
-      color: #fff;
+      font-weight: 800;
       margin-bottom: 8px;
+      color: #ffffff;
     }
+
     .printerList {
       display: flex;
       flex-direction: column;
-      gap: 6px;
-      max-height: 180px;
+      gap: 7px;
+      max-height: 190px;
       overflow-y: auto;
       padding-right: 4px;
     }
+
     .printerTag {
-      font-size: 12px;
-      color: #e5e7eb;
       background: rgba(255,255,255,0.06);
       border: 1px solid rgba(255,255,255,0.08);
       border-radius: 10px;
       padding: 8px 10px;
+      color: #e2e8f0;
+      font-size: 12px;
+      line-height: 1.35;
     }
+
     .main {
-      padding: 20px;
-    }
-    .topbar {
-      background: #fff;
-      border: 1px solid #e5e7eb;
-      box-shadow: 0 10px 28px rgba(15, 23, 42, 0.06);
-      border-radius: 20px;
       padding: 18px;
-      margin-bottom: 18px;
-    }
-    .topbarTitle {
-      font-size: 28px;
-      font-weight: 800;
-      margin-bottom: 6px;
+      background: #e7edf5;
       color: #0f172a;
     }
-    .topbarText {
-      font-size: 14px;
-      color: #64748b;
+
+    .topPanel {
+      background: linear-gradient(180deg, #f8fbff, #eef4fb);
+      border: 1px solid #d7e2f0;
+      border-radius: 24px;
+      padding: 18px;
+      box-shadow: 0 12px 28px rgba(15,23,42,0.08);
+      margin-bottom: 18px;
     }
+
+    .topTitle {
+      font-size: 30px;
+      font-weight: 900;
+      color: #0b1830;
+      margin-bottom: 8px;
+    }
+
+    .topText {
+      font-size: 14px;
+      color: #5b6b84;
+      margin-bottom: 16px;
+    }
+
     .toolbar {
       display: grid;
-      grid-template-columns: 1.4fr 180px 180px 220px 140px;
+      grid-template-columns: 1.5fr 180px 180px 220px 150px;
       gap: 12px;
-      margin-top: 16px;
     }
+
     .toolbar input,
     .toolbar select,
     .toolbar button {
       width: 100%;
       padding: 13px 14px;
-      border-radius: 14px;
-      border: 1px solid #cbd5e1;
-      background: #fff;
+      border-radius: 16px;
+      border: 1px solid #c6d4e5;
+      background: #ffffff;
       font-size: 14px;
+      color: #0f172a;
     }
+
     .toolbar button {
-      background: linear-gradient(135deg, #0f172a, #1e293b);
-      color: white;
+      background: linear-gradient(180deg, #0f1b33, #142648);
+      color: #fff;
       border: none;
-      font-weight: 700;
+      font-weight: 800;
       cursor: pointer;
     }
+
     .stats {
       display: grid;
       grid-template-columns: repeat(5, 1fr);
       gap: 14px;
       margin-bottom: 18px;
     }
+
     .stat {
-      background: #fff;
-      border: 1px solid #e5e7eb;
-      border-radius: 18px;
-      padding: 16px;
-      box-shadow: 0 10px 24px rgba(15, 23, 42, 0.05);
+      background: #f8fbff;
+      border: 1px solid #d7e2f0;
+      border-radius: 22px;
+      padding: 16px 18px;
+      box-shadow: 0 12px 24px rgba(15,23,42,0.05);
     }
+
     .statK {
-      color: #64748b;
       font-size: 12px;
+      font-weight: 800;
+      color: #5b6b84;
       text-transform: uppercase;
       letter-spacing: 0.05em;
       margin-bottom: 8px;
-      font-weight: 700;
     }
+
     .statV {
       font-size: 34px;
-      font-weight: 800;
-      color: #0f172a;
+      font-weight: 900;
+      color: #0b1830;
     }
+
     .jobsWrap {
       display: flex;
       flex-direction: column;
       gap: 18px;
     }
-    .job {
-      background: #fff;
-      border: 1px solid #e5e7eb;
-      border-radius: 22px;
+
+    .jobCard {
+      background: linear-gradient(180deg, #10203b, #132746 55%, #142b4f);
+      color: #edf4ff;
+      border-radius: 24px;
+      border: 1px solid rgba(255,255,255,0.08);
       padding: 18px;
-      box-shadow: 0 14px 30px rgba(15, 23, 42, 0.06);
+      box-shadow: 0 18px 34px rgba(2,8,23,0.24);
     }
-    .jobHeader {
+
+    .jobHead {
       display: flex;
       justify-content: space-between;
       gap: 14px;
       align-items: flex-start;
-      margin-bottom: 16px;
-    }
-    .jobTitle {
-      font-size: 30px;
-      font-weight: 800;
-      color: #334155;
-      word-break: break-word;
-    }
-    .badges {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 8px;
-    }
-    .badge {
-      display: inline-flex;
-      align-items: center;
-      gap: 6px;
-      padding: 7px 12px;
-      border-radius: 999px;
-      background: #eef2ff;
-      color: #1e293b;
-      font-size: 12px;
-      font-weight: 800;
-    }
-    .jobBody {
-      display: grid;
-      grid-template-columns: 1.05fr 0.95fr;
-      gap: 16px;
-    }
-    .metaGrid {
-      display: grid;
-      grid-template-columns: repeat(2, 1fr);
-      gap: 12px;
       margin-bottom: 14px;
     }
-    .metaCard {
-      background: #f8fafc;
-      border: 1px solid #e2e8f0;
-      border-radius: 14px;
-      padding: 12px;
-      min-height: 72px;
-    }
-    .metaKey {
-      font-size: 12px;
-      color: #64748b;
-      margin-bottom: 5px;
-      font-weight: 700;
-    }
-    .metaValue {
-      font-size: 15px;
-      font-weight: 700;
-      color: #0f172a;
+
+    .jobTitle {
+      font-size: 30px;
+      font-weight: 900;
+      color: #ffffff;
       word-break: break-word;
     }
-    .sectionTitle {
-      margin: 14px 0 8px;
+
+    .badges {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .badge {
+      background: #e9eefc;
+      color: #16233c;
+      border-radius: 999px;
+      padding: 7px 12px;
       font-size: 12px;
-      font-weight: 800;
-      letter-spacing: 0.05em;
-      color: #475569;
-      text-transform: uppercase;
+      font-weight: 900;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
     }
-    .textBox {
-      background: #f8fafc;
-      border: 1px solid #e2e8f0;
-      border-radius: 14px;
-      padding: 12px;
-      min-height: 54px;
-      white-space: pre-wrap;
-      word-break: break-word;
-      color: #111827;
+
+    .jobBody {
+      display: grid;
+      grid-template-columns: 1fr 420px;
+      gap: 18px;
     }
-    .previewPanel {
+
+    .previewWrap {
       display: flex;
       flex-direction: column;
       gap: 12px;
     }
-    .preview {
-      min-height: 240px;
-      background: #f8fafc;
-      border: 1px solid #e2e8f0;
-      border-radius: 16px;
+
+    .previewBox {
+      min-height: 260px;
+      background: rgba(255,255,255,0.04);
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 18px;
       padding: 12px;
       display: flex;
       align-items: center;
       justify-content: center;
       overflow: hidden;
     }
-    .preview img,
-    .preview video,
-    .preview iframe {
+
+    .previewBox img,
+    .previewBox video,
+    .previewBox iframe {
       width: 100%;
-      max-height: 500px;
+      max-height: 520px;
       border-radius: 12px;
       border: none;
-      background: white;
+      background: #fff;
+      object-fit: contain;
     }
+
+    .previewFallback {
+      width: 100%;
+      min-height: 220px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #cbd5e1;
+      text-align: center;
+      background: rgba(255,255,255,0.02);
+      border-radius: 14px;
+      border: 1px dashed rgba(255,255,255,0.12);
+      padding: 18px;
+    }
+
+    .metaGrid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 12px;
+      margin-bottom: 14px;
+    }
+
+    .metaCard {
+      background: rgba(255,255,255,0.04);
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 14px;
+      padding: 12px;
+      min-height: 74px;
+    }
+
+    .metaKey {
+      font-size: 12px;
+      color: #ffd86b;
+      font-weight: 800;
+      margin-bottom: 6px;
+    }
+
+    .metaValue {
+      font-size: 15px;
+      font-weight: 700;
+      color: #ffffff;
+      word-break: break-word;
+    }
+
+    .sectionTitle {
+      font-size: 12px;
+      font-weight: 900;
+      color: #ffd86b;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      margin: 14px 0 8px;
+    }
+
+    .textBox {
+      background: rgba(255,255,255,0.04);
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 14px;
+      padding: 12px;
+      min-height: 52px;
+      color: #f8fafc;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+
+    .audioBox {
+      margin-top: 12px;
+    }
+
     .audioBox audio {
       width: 100%;
     }
+
+    .routeRow {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 10px;
+      margin-top: 14px;
+    }
+
+    .routeRow select {
+      width: 100%;
+      padding: 11px 12px;
+      border-radius: 12px;
+      border: 1px solid rgba(255,255,255,0.12);
+      background: #f8fbff;
+      color: #0f172a;
+      font-weight: 700;
+    }
+
     .actions {
       display: flex;
       flex-wrap: wrap;
-      gap: 9px;
+      gap: 8px;
       margin-top: 14px;
     }
+
+    .btn,
     .actions button,
-    .actions a {
+    .actions a,
+    .routeBtn {
       border: none;
       text-decoration: none;
       cursor: pointer;
-      border-radius: 12px;
-      padding: 11px 13px;
-      color: white;
-      font-size: 14px;
-      font-weight: 800;
+      border-radius: 8px;
+      padding: 8px 12px;
+      font-size: 13px;
+      font-weight: 900;
       display: inline-flex;
       align-items: center;
       justify-content: center;
+      line-height: 1;
     }
-    .btn-dark { background: #0f172a; }
-    .btn-secondary { background: #334155; }
-    .btn-done { background: #166534; }
-    .btn-error { background: #991b1b; }
-    .btn-wa { background: #128C7E; }
-    .btn-call { background: #0f766e; }
+
+    .btn-open { background: #dbeafe; color: #0f172a; }
+    .btn-claim { background: #facc15; color: #111827; }
+    .btn-start { background: #8b5cf6; color: #ffffff; }
+    .btn-done { background: #22c55e; color: #0b1220; }
+    .btn-fail { background: #fb7185; color: #0b1220; }
+    .btn-wa { background: #25d366; color: #062b18; }
+    .btn-call { background: #60a5fa; color: #0b1220; }
+    .routeBtn { background: #cbd5e1; color: #0f172a; }
+
+    .replyBox {
+      margin-top: 16px;
+    }
+
     .replyBox textarea {
       width: 100%;
-      min-height: 95px;
-      resize: vertical;
-      border-radius: 14px;
-      border: 1px solid #cbd5e1;
+      min-height: 105px;
+      border-radius: 12px;
+      border: 1px solid rgba(255,255,255,0.12);
+      background: #07121f;
+      color: #f8fafc;
       padding: 12px;
       font-size: 14px;
+      resize: vertical;
       font-family: Arial, sans-serif;
-      background: white;
     }
+
+    .sendRow {
+      margin-top: 8px;
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .sendBtn {
+      background: #93c5fd;
+      color: #0b1220;
+      border: none;
+      border-radius: 6px;
+      padding: 8px 12px;
+      font-size: 13px;
+      font-weight: 900;
+      cursor: pointer;
+    }
+
     .empty {
-      background: white;
-      border: 1px solid #e5e7eb;
+      background: #ffffff;
+      border: 1px solid #d7e2f0;
       border-radius: 18px;
       padding: 18px;
-      box-shadow: 0 10px 24px rgba(15, 23, 42, 0.05);
       color: #475569;
-      font-weight: 600;
+      font-weight: 700;
+      box-shadow: 0 10px 24px rgba(15,23,42,0.05);
     }
-    @media (max-width: 1280px) {
+
+    @media (max-width: 1320px) {
       .layout { grid-template-columns: 1fr; }
       .sidebar { display: none; }
       .toolbar { grid-template-columns: 1fr 1fr 1fr; }
       .stats { grid-template-columns: repeat(3, 1fr); }
       .jobBody { grid-template-columns: 1fr; }
     }
-    @media (max-width: 820px) {
+
+    @media (max-width: 860px) {
       .toolbar { grid-template-columns: 1fr; }
       .stats { grid-template-columns: repeat(2, 1fr); }
       .metaGrid { grid-template-columns: 1fr; }
-      .jobHeader { flex-direction: column; }
+      .jobHead { flex-direction: column; }
       .jobTitle { font-size: 24px; }
+      .jobBody { grid-template-columns: 1fr; }
+      .previewWrap { order: -1; }
     }
+
     @media (max-width: 520px) {
       .stats { grid-template-columns: 1fr; }
     }
@@ -1920,27 +2018,25 @@ app.get("/worker-dashboard", (req, res) => {
         Print-O-Matic worker + agent command center for USA hubs, Nigeria state printers, media jobs, dispatch routing, and customer contact.
       </div>
 
-      <div class="sideSection">
+      <div class="sideCard">
         <div class="sideTitle">Quick Totals</div>
         <div class="sideValue" id="sideTotal">0</div>
       </div>
 
       ${printerGroups.map(group => `
-        <div class="sideSection">
-          <div class="printerGroup">
-            <div class="printerGroupTitle">${group.group}</div>
-            <div class="printerList">
-              ${group.items.map(item => `<div class="printerTag">${item.label} — ${item.value}</div>`).join("")}
-            </div>
+        <div class="sideCard">
+          <div class="groupTitle">${group.group}</div>
+          <div class="printerList">
+            ${group.items.map(item => `<div class="printerTag">${item.label} — ${item.value}</div>`).join("")}
           </div>
         </div>
       `).join("")}
     </aside>
 
     <main class="main">
-      <div class="topbar">
-        <div class="topbarTitle">Worker Dashboard</div>
-        <div class="topbarText">Structured view for USA hubs, A3 printer, Nigeria state printers, dispatch queue, and agent queue.</div>
+      <div class="topPanel">
+        <div class="topTitle">Worker Dashboard</div>
+        <div class="topText">Structured view for USA hubs, A3 printer, Nigeria state printers, dispatch queue, and agent queue.</div>
 
         <div class="toolbar">
           <input id="search" placeholder="Search by file, customer, notes, instructions..." />
@@ -1984,6 +2080,8 @@ app.get("/worker-dashboard", (req, res) => {
     let autoRefreshTimer = null;
     const draftReplies = {};
 
+    const routeTargets = ${JSON.stringify(printerGroups.flatMap(g => g.items))};
+
     function escapeHtml(value) {
       return String(value || "")
         .replace(/&/g, "&amp;")
@@ -2024,10 +2122,33 @@ app.get("/worker-dashboard", (req, res) => {
         },
         body: JSON.stringify({ status, error_message })
       });
-
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
         alert(data.error || "Failed to update job");
+        return;
+      }
+      loadJobs();
+    }
+
+    async function routeJob(id) {
+      const select = document.getElementById("route-" + id);
+      if (!select || !select.value) {
+        alert("Choose a printer or queue first.");
+        return;
+      }
+
+      const res = await fetch("/api/dashboard/jobs/" + id + "/route", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-dashboard-key": DASHBOARD_KEY
+        },
+        body: JSON.stringify({ printer_id: select.value })
+      });
+
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        alert(data.error || "Failed to route job");
         return;
       }
       loadJobs();
@@ -2037,8 +2158,19 @@ app.get("/worker-dashboard", (req, res) => {
       draftReplies[id] = value;
     }
 
+    function sendReply(id) {
+      const text = draftReplies[id] || "";
+      if (!text.trim()) {
+        alert("Type a reply first.");
+        return;
+      }
+      alert("Reply draft saved for Job #" + id + ":\\n\\n" + text);
+    }
+
     function getPreview(fileUrl) {
-      if (!fileUrl) return "<div class='empty'>No preview available</div>";
+      if (!fileUrl) {
+        return "<div class='previewFallback'>No preview available</div>";
+      }
       if (isImage(fileUrl)) {
         return "<img src='" + fileUrl + "' alt='preview' />";
       }
@@ -2048,7 +2180,14 @@ app.get("/worker-dashboard", (req, res) => {
       if (isPdf(fileUrl)) {
         return "<iframe src='" + fileUrl + "'></iframe>";
       }
-      return "<a href='" + fileUrl + "' target='_blank' class='btn-dark'>Open file</a>";
+      return "<div class='previewFallback'>Preview unavailable for this file type.<br><br><a href='" + fileUrl + "' target='_blank' class='btn btn-open'>Open File</a></div>";
+    }
+
+    function buildRouteOptions(currentValue) {
+      return routeTargets.map(item => {
+        const selected = item.value === currentValue ? "selected" : "";
+        return "<option value='" + item.value + "' " + selected + ">" + escapeHtml(item.label) + " — " + escapeHtml(item.value) + "</option>";
+      }).join("");
     }
 
     async function loadJobs() {
@@ -2089,7 +2228,7 @@ app.get("/worker-dashboard", (req, res) => {
       setStats(jobs);
 
       jobsEl.innerHTML = jobs.map(job => {
-        const fileUrl = job.file_url || "";
+        const fileUrl = job.file_url || job.public_url || "";
         const audioUrl = job.instruction_audio_url || "";
         const replyDraft = draftReplies[job.id] || "";
 
@@ -2107,18 +2246,18 @@ app.get("/worker-dashboard", (req, res) => {
 
         const contactButtons = cleanPhone
           ? \`
-            <a href="https://wa.me/\${waPhone}" target="_blank" class="btn-wa">WhatsApp Chat</a>
-            <a href="tel:\${cleanPhone}" class="btn-call">Call Customer</a>
+            <a href="https://wa.me/\${waPhone}" target="_blank" class="btn btn-wa">WhatsApp</a>
+            <a href="tel:\${cleanPhone}" class="btn btn-call">Call</a>
           \`
           : "";
 
         const audioPlayer = audioUrl
-          ? "<div class='audioBox'><div class='sectionTitle'>Instruction Audio</div><audio controls preload='metadata' src='" + audioUrl + "' onplay='pauseAutoRefresh()' onpause='resumeAutoRefresh()' onended='resumeAutoRefresh()' style='width:100%'></audio></div>"
+          ? "<div class='audioBox'><div class='sectionTitle'>Voice Instruction</div><audio controls preload='metadata' src='" + audioUrl + "' onplay='pauseAutoRefresh()' onpause='resumeAutoRefresh()' onended='resumeAutoRefresh()'></audio></div>"
           : "";
 
         return \`
-          <div class="job">
-            <div class="jobHeader">
+          <div class="jobCard">
+            <div class="jobHead">
               <div class="jobTitle">\${escapeHtml(job.original_name || job.file_name || "Untitled job")}</div>
               <div class="badges">
                 <span class="badge">#\${escapeHtml(job.id)}</span>
@@ -2130,43 +2269,52 @@ app.get("/worker-dashboard", (req, res) => {
             <div class="jobBody">
               <div>
                 <div class="metaGrid">
+                  <div class="metaCard"><div class="metaKey">File URL</div><div class="metaValue">\${fileUrl ? `<a href="\${fileUrl}" target="_blank" style="color:#93c5fd; font-weight:800;">Open file</a>` : ""}</div></div>
+                  <div class="metaCard"><div class="metaKey">Original Name</div><div class="metaValue">\${escapeHtml(job.original_name || job.file_name || "")}</div></div>
+                  <div class="metaCard"><div class="metaKey">MIME Type</div><div class="metaValue">\${escapeHtml(job.mime_type || job.file_mime || "")}</div></div>
+                  <div class="metaCard"><div class="metaKey">Pages</div><div class="metaValue">\${escapeHtml(job.pages || "")}</div></div>
+                  <div class="metaCard"><div class="metaKey">Created</div><div class="metaValue">\${escapeHtml(job.created_at || "")}</div></div>
+                  <div class="metaCard"><div class="metaKey">Customer</div><div class="metaValue">\${escapeHtml(job.customer_name || rawPhone || "")}</div></div>
                   <div class="metaCard"><div class="metaKey">Printer / Queue</div><div class="metaValue">\${escapeHtml(job.printer_id || job.queue_type || "")}</div></div>
-                  <div class="metaCard"><div class="metaKey">Paper Size</div><div class="metaValue">\${escapeHtml(job.paper_size || "")}</div></div>
-                  <div class="metaCard"><div class="metaKey">Color</div><div class="metaValue">\${escapeHtml(job.color_mode || job.color_type || "")}</div></div>
-                  <div class="metaCard"><div class="metaKey">Copies / Pages</div><div class="metaValue">\${escapeHtml(job.copies || "")} / \${escapeHtml(job.pages || "")}</div></div>
-                  <div class="metaCard"><div class="metaKey">Customer</div><div class="metaValue">\${escapeHtml(job.customer_name || "")}</div></div>
-                  <div class="metaCard"><div class="metaKey">Email</div><div class="metaValue">\${escapeHtml(job.customer_email || "")}</div></div>
                   <div class="metaCard"><div class="metaKey">Phone</div><div class="metaValue">\${escapeHtml(rawPhone || "")}</div></div>
-                  <div class="metaCard"><div class="metaKey">Total Cost</div><div class="metaValue">\${escapeHtml(job.total_cost || job.price || "")}</div></div>
                 </div>
 
-                <div class="sectionTitle">Notes</div>
-                <div class="textBox">\${escapeHtml(job.notes || job.note || "")}</div>
-
-                <div class="sectionTitle">Instructions</div>
-                <div class="textBox">\${escapeHtml(job.instructions || job.customer_instructions || "")}</div>
+                <div class="sectionTitle">Text Instruction</div>
+                <div class="textBox">\${escapeHtml(job.instructions || job.customer_instructions || job.note || "")}</div>
 
                 \${audioPlayer}
 
+                <div class="routeRow">
+                  <select id="route-\${job.id}">
+                    <option value="">Choose printer / queue</option>
+                    \${buildRouteOptions(job.printer_id || "")}
+                  </select>
+                  <button class="routeBtn" onclick="routeJob('\${job.id}')">Route</button>
+                </div>
+
                 <div class="actions">
-                  <a href="\${fileUrl}" target="_blank" class="btn-dark">Open File</a>
+                  <button onclick="markJob('\${job.id}', 'printing')" class="btn btn-claim">Claim</button>
+                  <button onclick="markJob('\${job.id}', 'printing')" class="btn btn-start">Start</button>
+                  <button onclick="markJob('\${job.id}', 'done')" class="btn btn-done">Complete</button>
+                  <button onclick="markJob('\${job.id}', 'error')" class="btn btn-fail">Fail</button>
+                  <a href="\${fileUrl}" target="_blank" class="btn btn-open">Open File</a>
                   \${contactButtons}
-                  <button onclick="markJob('\${job.id}', 'printing')" class="btn-secondary">Mark Printing</button>
-                  <button onclick="markJob('\${job.id}', 'done')" class="btn-done">Mark Done</button>
-                  <button onclick="markJob('\${job.id}', 'error')" class="btn-error">Mark Error</button>
                 </div>
 
                 <div class="replyBox">
-                  <div class="sectionTitle">WhatsApp Reply Box</div>
+                  <div class="sectionTitle">Reply on WhatsApp</div>
                   <textarea
-                    placeholder="Type reply here..."
+                    placeholder="Type your update to the customer here..."
                     oninput="rememberDraft('\${job.id}', this.value)"
                   >\${escapeHtml(replyDraft)}</textarea>
+                  <div class="sendRow">
+                    <button class="sendBtn" onclick="sendReply('\${job.id}')">Send Reply</button>
+                  </div>
                 </div>
               </div>
 
-              <div class="previewPanel">
-                <div class="preview">
+              <div class="previewWrap">
+                <div class="previewBox">
                   \${getPreview(fileUrl)}
                 </div>
               </div>
@@ -2208,6 +2356,8 @@ app.get("/worker-dashboard", (req, res) => {
 </body>
 </html>`);
 });
+   
+
    
 app.get("/api/dashboard/jobs", requireDashboardKey, async (req, res) => {
   try {
