@@ -1187,41 +1187,7 @@ After payment, send your payment details here so our team can confirm it.`
 2 - Africa Payment`
 );
 return res.sendStatus(200);
-    await sendMessage(
-      from,
-      `✅ Shopify checkout selected.
-
-Complete your payment here:
-${checkoutUrl || "Not configured yet"}
-
-After payment, reply here if you need any help.`
-    );
-    session.stage = "MENU";
-    return res.sendStatus(200);
-  }
-
-  if (lower === "2") {
-    await sendMessage(
-      from,
-      `✅ Africa payment selected.
-
-Use this link to continue:
-${africaUrl}
-
-After payment, send your payment details here so our team can confirm it.`
-    );
-    session.stage = "MENU";
-    return res.sendStatus(200);
-  }
-
-  await sendMessage(
-    from,
-    `Please reply with:
-
-1 - Shopify Checkout
-2 - Africa Payment`
-  );
-  return res.sendStatus(200);
+   
 }
       
 
