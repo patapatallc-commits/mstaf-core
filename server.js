@@ -1214,7 +1214,10 @@ const DISPATCH_QUEUE_ID = process.env.DISPATCH_QUEUE_ID || "DISPATCH";
 const AGENT_QUEUE_ID = process.env.AGENT_QUEUE_ID || "AGENT";
 
 function requireDashboardKey(req, res, next) {
-  const key = req.query.key || req.headers["x-dashboard-key"] || req.body?.dashboard_key;
+  const key =
+  req.headers["x-dashboard-key"] ||
+  req.query.key ||
+  req.body?.dashboard_key;
   if (key !== DASHBOARD_KEY) {
     return res.status(401).send("Unauthorized dashboard key");
   }
