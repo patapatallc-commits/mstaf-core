@@ -1514,6 +1514,71 @@ app.get("/worker-dashboard", (req, res) => {
     return res.status(403).send("Invalid dashboard key");
   }
 
+  const nigeriaStates = [
+    { name: "Abia", code: "AB" },
+    { name: "Adamawa", code: "AD" },
+    { name: "Akwa Ibom", code: "AK" },
+    { name: "Anambra", code: "AN" },
+    { name: "Bauchi", code: "BA" },
+    { name: "Bayelsa", code: "BY" },
+    { name: "Benue", code: "BE" },
+    { name: "Borno", code: "BO" },
+    { name: "Cross River", code: "CR" },
+    { name: "Delta", code: "DE" },
+    { name: "Ebonyi", code: "EB" },
+    { name: "Edo", code: "ED" },
+    { name: "Ekiti", code: "EK" },
+    { name: "Enugu", code: "EN" },
+    { name: "FCT", code: "FC" },
+    { name: "Gombe", code: "GO" },
+    { name: "Imo", code: "IM" },
+    { name: "Jigawa", code: "JI" },
+    { name: "Kaduna", code: "KD" },
+    { name: "Kano", code: "KN" },
+    { name: "Katsina", code: "KT" },
+    { name: "Kebbi", code: "KE" },
+    { name: "Kogi", code: "KO" },
+    { name: "Kwara", code: "KW" },
+    { name: "Lagos", code: "LA" },
+    { name: "Nasarawa", code: "NA" },
+    { name: "Niger", code: "NI" },
+    { name: "Ogun", code: "OG" },
+    { name: "Ondo", code: "ON" },
+    { name: "Osun", code: "OS" },
+    { name: "Oyo", code: "OY" },
+    { name: "Plateau", code: "PL" },
+    { name: "Rivers", code: "RI" },
+    { name: "Sokoto", code: "SO" },
+    { name: "Taraba", code: "TA" },
+    { name: "Yobe", code: "YO" },
+    { name: "Zamfara", code: "ZA" }
+  ];
+
+  const printerGroups = [
+    {
+      group: "USA Hubs",
+      items: [
+        { label: "USA A4 Hub", value: DEFAULT_PRINTER_ID || "PP-USA-001" },
+        { label: "USA A3 Hub", value: A3_PRINTER_ID || "PP-USA-A3-001" },
+        { label: "USA Card Hub", value: CARD_PRINTER_ID || "PP-USA-CARD-001" }
+      ]
+    },
+    {
+      group: "Service Queues",
+      items: [
+        { label: "Dispatch Queue", value: DISPATCH_QUEUE_ID || "DISPATCH" },
+        { label: "Agent Queue", value: AGENT_QUEUE_ID || "AGENT" }
+      ]
+    },
+    {
+      group: "Nigeria State Printers",
+      items: nigeriaStates.flatMap((s) => [
+        { label: `${s.name} A4 Printer`, value: `PP-NG-${s.code}-A4-001` },
+        { label: `${s.name} Special Printer`, value: `PP-NG-${s.code}-SP-001` }
+      ])
+    }
+  ];
+
   return res.send(`<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -1525,283 +1590,393 @@ app.get("/worker-dashboard", (req, res) => {
     body {
       margin: 0;
       font-family: Arial, sans-serif;
-      background: #f3f4f6;
+      background: #eef2f7;
       color: #111827;
     }
-    .topbar {
-      background: linear-gradient(135deg, #0f172a, #111827, #1e293b);
+    .layout {
+      display: grid;
+      grid-template-columns: 300px 1fr;
+      min-height: 100vh;
+    }
+    .sidebar {
+      background: linear-gradient(180deg, #0f172a, #111827, #1e293b);
       color: #fff;
-      padding: 18px 22px;
-      font-size: 24px;
+      padding: 20px 16px;
+      border-right: 1px solid rgba(255,255,255,0.08);
+      overflow-y: auto;
+    }
+    .brand {
+      font-size: 26px;
+      font-weight: 800;
+      margin-bottom: 8px;
+    }
+    .subtitle {
+      font-size: 13px;
+      color: #cbd5e1;
+      line-height: 1.5;
+      margin-bottom: 18px;
+    }
+    .sideSection {
+      margin-bottom: 20px;
+      background: rgba(255,255,255,0.04);
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 16px;
+      padding: 14px;
+    }
+    .sideTitle {
+      font-size: 12px;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: #cbd5e1;
+      margin-bottom: 10px;
       font-weight: 700;
-      box-shadow: 0 4px 18px rgba(0,0,0,0.12);
     }
-    .subbar {
-      padding: 10px 22px;
+    .sideValue {
+      font-size: 22px;
+      font-weight: 800;
+    }
+    .printerGroup {
+      margin-bottom: 14px;
+    }
+    .printerGroupTitle {
+      font-size: 13px;
+      font-weight: 700;
+      color: #fff;
+      margin-bottom: 8px;
+    }
+    .printerList {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      max-height: 180px;
+      overflow-y: auto;
+      padding-right: 4px;
+    }
+    .printerTag {
+      font-size: 12px;
+      color: #e5e7eb;
+      background: rgba(255,255,255,0.06);
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 10px;
+      padding: 8px 10px;
+    }
+    .main {
+      padding: 20px;
+    }
+    .topbar {
       background: #fff;
-      border-bottom: 1px solid #e5e7eb;
-      color: #6b7280;
-      font-size: 14px;
+      border: 1px solid #e5e7eb;
+      box-shadow: 0 10px 28px rgba(15, 23, 42, 0.06);
+      border-radius: 20px;
+      padding: 18px;
+      margin-bottom: 18px;
     }
-    .wrap {
-      max-width: 1280px;
-      margin: 20px auto;
-      padding: 0 16px 40px;
+    .topbarTitle {
+      font-size: 28px;
+      font-weight: 800;
+      margin-bottom: 6px;
+      color: #0f172a;
+    }
+    .topbarText {
+      font-size: 14px;
+      color: #64748b;
     }
     .toolbar {
       display: grid;
-      grid-template-columns: 1.3fr 180px 180px 150px;
+      grid-template-columns: 1.4fr 180px 180px 220px 140px;
       gap: 12px;
-      margin-bottom: 18px;
+      margin-top: 16px;
     }
     .toolbar input,
     .toolbar select,
     .toolbar button {
       width: 100%;
-      padding: 12px 14px;
-      border-radius: 12px;
-      border: 1px solid #d1d5db;
-      font-size: 14px;
+      padding: 13px 14px;
+      border-radius: 14px;
+      border: 1px solid #cbd5e1;
       background: #fff;
+      font-size: 14px;
     }
     .toolbar button {
-      background: #111827;
-      color: #fff;
+      background: linear-gradient(135deg, #0f172a, #1e293b);
+      color: white;
       border: none;
-      cursor: pointer;
       font-weight: 700;
-    }
-    .toolbar button:hover {
-      opacity: 0.95;
+      cursor: pointer;
     }
     .stats {
       display: grid;
-      grid-template-columns: repeat(4, 1fr);
-      gap: 12px;
+      grid-template-columns: repeat(5, 1fr);
+      gap: 14px;
       margin-bottom: 18px;
     }
     .stat {
       background: #fff;
-      border-radius: 16px;
-      padding: 16px;
-      box-shadow: 0 6px 18px rgba(0,0,0,0.06);
       border: 1px solid #e5e7eb;
+      border-radius: 18px;
+      padding: 16px;
+      box-shadow: 0 10px 24px rgba(15, 23, 42, 0.05);
     }
-    .stat .k {
+    .statK {
+      color: #64748b;
       font-size: 12px;
-      color: #6b7280;
       text-transform: uppercase;
-      letter-spacing: 0.04em;
-    }
-    .stat .v {
-      margin-top: 8px;
-      font-size: 28px;
+      letter-spacing: 0.05em;
+      margin-bottom: 8px;
       font-weight: 700;
+    }
+    .statV {
+      font-size: 34px;
+      font-weight: 800;
+      color: #0f172a;
+    }
+    .jobsWrap {
+      display: flex;
+      flex-direction: column;
+      gap: 18px;
     }
     .job {
       background: #fff;
-      border-radius: 18px;
-      padding: 18px;
-      margin-bottom: 18px;
-      box-shadow: 0 8px 24px rgba(0,0,0,0.08);
       border: 1px solid #e5e7eb;
+      border-radius: 22px;
+      padding: 18px;
+      box-shadow: 0 14px 30px rgba(15, 23, 42, 0.06);
     }
     .jobHeader {
       display: flex;
       justify-content: space-between;
-      gap: 12px;
+      gap: 14px;
       align-items: flex-start;
-      margin-bottom: 14px;
+      margin-bottom: 16px;
     }
-    .title {
-      font-size: 20px;
-      font-weight: 700;
+    .jobTitle {
+      font-size: 30px;
+      font-weight: 800;
+      color: #334155;
       word-break: break-word;
     }
     .badges {
       display: flex;
-      gap: 8px;
       flex-wrap: wrap;
+      gap: 8px;
     }
     .badge {
       display: inline-flex;
       align-items: center;
-      padding: 6px 10px;
+      gap: 6px;
+      padding: 7px 12px;
       border-radius: 999px;
       background: #eef2ff;
-      color: #1f2937;
+      color: #1e293b;
       font-size: 12px;
-      font-weight: 700;
+      font-weight: 800;
     }
-    .row {
+    .jobBody {
       display: grid;
-      grid-template-columns: 1.15fr 0.85fr;
+      grid-template-columns: 1.05fr 0.95fr;
       gap: 16px;
     }
     .metaGrid {
       display: grid;
       grid-template-columns: repeat(2, 1fr);
-      gap: 10px;
+      gap: 12px;
       margin-bottom: 14px;
     }
     .metaCard {
-      background: #f9fafb;
-      border: 1px solid #e5e7eb;
-      border-radius: 12px;
-      padding: 10px 12px;
-      min-height: 66px;
-    }
-    .metaCard .k {
-      font-size: 12px;
-      color: #6b7280;
-      margin-bottom: 4px;
-    }
-    .metaCard .v {
-      font-size: 14px;
-      font-weight: 600;
-      word-break: break-word;
-    }
-    .preview {
-      background: #f9fafb;
-      border: 1px solid #e5e7eb;
+      background: #f8fafc;
+      border: 1px solid #e2e8f0;
       border-radius: 14px;
       padding: 12px;
-      min-height: 180px;
+      min-height: 72px;
+    }
+    .metaKey {
+      font-size: 12px;
+      color: #64748b;
+      margin-bottom: 5px;
+      font-weight: 700;
+    }
+    .metaValue {
+      font-size: 15px;
+      font-weight: 700;
+      color: #0f172a;
+      word-break: break-word;
+    }
+    .sectionTitle {
+      margin: 14px 0 8px;
+      font-size: 12px;
+      font-weight: 800;
+      letter-spacing: 0.05em;
+      color: #475569;
+      text-transform: uppercase;
+    }
+    .textBox {
+      background: #f8fafc;
+      border: 1px solid #e2e8f0;
+      border-radius: 14px;
+      padding: 12px;
+      min-height: 54px;
+      white-space: pre-wrap;
+      word-break: break-word;
+      color: #111827;
+    }
+    .previewPanel {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    .preview {
+      min-height: 240px;
+      background: #f8fafc;
+      border: 1px solid #e2e8f0;
+      border-radius: 16px;
+      padding: 12px;
       display: flex;
       align-items: center;
       justify-content: center;
+      overflow: hidden;
     }
     .preview img,
     .preview video,
     .preview iframe {
       width: 100%;
-      max-height: 460px;
-      border-radius: 10px;
+      max-height: 500px;
+      border-radius: 12px;
       border: none;
-      background: #fff;
+      background: white;
+    }
+    .audioBox audio {
+      width: 100%;
     }
     .actions {
       display: flex;
-      gap: 8px;
       flex-wrap: wrap;
-      margin-top: 12px;
+      gap: 9px;
+      margin-top: 14px;
     }
     .actions button,
     .actions a {
-      padding: 10px 12px;
-      border-radius: 10px;
       border: none;
-      cursor: pointer;
       text-decoration: none;
-      font-size: 14px;
-      font-weight: 700;
-      background: #111827;
-      color: white;
-    }
-    .actions .secondary {
-      background: #374151;
-    }
-    .actions .done {
-      background: #065f46;
-    }
-    .actions .error {
-      background: #991b1b;
-    }
-    .actions .wa {
-      background: #128C7E;
-    }
-    .actions .call {
-      background: #0f766e;
-    }
-    .muted {
-      color: #6b7280;
-      font-size: 13px;
-    }
-    .sectionTitle {
-      font-size: 13px;
-      font-weight: 700;
-      color: #374151;
-      margin: 14px 0 8px;
-      text-transform: uppercase;
-      letter-spacing: 0.03em;
-    }
-    .textBox {
-      background: #f9fafb;
-      border: 1px solid #e5e7eb;
+      cursor: pointer;
       border-radius: 12px;
-      padding: 12px;
-      white-space: pre-wrap;
-      word-break: break-word;
-      min-height: 48px;
+      padding: 11px 13px;
+      color: white;
+      font-size: 14px;
+      font-weight: 800;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
     }
-    .audioBox {
-      margin-top: 10px;
-    }
-    .replyBox {
-      margin-top: 14px;
-      display: flex;
-      flex-direction: column;
-      gap: 8px;
-    }
+    .btn-dark { background: #0f172a; }
+    .btn-secondary { background: #334155; }
+    .btn-done { background: #166534; }
+    .btn-error { background: #991b1b; }
+    .btn-wa { background: #128C7E; }
+    .btn-call { background: #0f766e; }
     .replyBox textarea {
       width: 100%;
-      min-height: 90px;
+      min-height: 95px;
       resize: vertical;
+      border-radius: 14px;
+      border: 1px solid #cbd5e1;
       padding: 12px;
-      border-radius: 12px;
-      border: 1px solid #d1d5db;
-      font-family: Arial, sans-serif;
       font-size: 14px;
+      font-family: Arial, sans-serif;
+      background: white;
     }
     .empty {
-      background: #fff;
-      border-radius: 16px;
-      padding: 18px;
+      background: white;
       border: 1px solid #e5e7eb;
-      box-shadow: 0 6px 18px rgba(0,0,0,0.05);
+      border-radius: 18px;
+      padding: 18px;
+      box-shadow: 0 10px 24px rgba(15, 23, 42, 0.05);
+      color: #475569;
+      font-weight: 600;
     }
-    @media (max-width: 980px) {
-      .toolbar { grid-template-columns: 1fr 1fr; }
-      .stats { grid-template-columns: repeat(2, 1fr); }
-      .row { grid-template-columns: 1fr; }
-      .metaGrid { grid-template-columns: 1fr; }
+    @media (max-width: 1280px) {
+      .layout { grid-template-columns: 1fr; }
+      .sidebar { display: none; }
+      .toolbar { grid-template-columns: 1fr 1fr 1fr; }
+      .stats { grid-template-columns: repeat(3, 1fr); }
+      .jobBody { grid-template-columns: 1fr; }
     }
-    @media (max-width: 640px) {
+    @media (max-width: 820px) {
       .toolbar { grid-template-columns: 1fr; }
-      .stats { grid-template-columns: 1fr; }
+      .stats { grid-template-columns: repeat(2, 1fr); }
+      .metaGrid { grid-template-columns: 1fr; }
       .jobHeader { flex-direction: column; }
+      .jobTitle { font-size: 24px; }
+    }
+    @media (max-width: 520px) {
+      .stats { grid-template-columns: 1fr; }
     }
   </style>
 </head>
 <body>
-  <div class="topbar">MSTAF Worker Dashboard</div>
-  <div class="subbar">Worker + Agent view for print, media, routing, status updates, WhatsApp chat, and direct calling</div>
+  <div class="layout">
+    <aside class="sidebar">
+      <div class="brand">MSTAF</div>
+      <div class="subtitle">
+        Print-O-Matic worker + agent command center for USA hubs, Nigeria state printers, media jobs, dispatch routing, and customer contact.
+      </div>
 
-  <div class="wrap">
-    <div class="toolbar">
-      <input id="search" placeholder="Search by file, customer, notes, instructions..." />
-      <select id="status">
-        <option value="">All Status</option>
-        <option value="pending">pending</option>
-        <option value="printing">printing</option>
-        <option value="done">done</option>
-        <option value="error">error</option>
-      </select>
-      <select id="queue">
-        <option value="">All Queues</option>
-        <option value="agent">Agent Queue</option>
-      </select>
-      <button onclick="loadJobs()">Refresh</button>
-    </div>
+      <div class="sideSection">
+        <div class="sideTitle">Quick Totals</div>
+        <div class="sideValue" id="sideTotal">0</div>
+      </div>
 
-    <div class="stats">
-      <div class="stat"><div class="k">Total Jobs</div><div class="v" id="statTotal">0</div></div>
-      <div class="stat"><div class="k">Pending</div><div class="v" id="statPending">0</div></div>
-      <div class="stat"><div class="k">Printing</div><div class="v" id="statPrinting">0</div></div>
-      <div class="stat"><div class="k">Done</div><div class="v" id="statDone">0</div></div>
-    </div>
+      ${printerGroups.map(group => `
+        <div class="sideSection">
+          <div class="printerGroup">
+            <div class="printerGroupTitle">${group.group}</div>
+            <div class="printerList">
+              ${group.items.map(item => `<div class="printerTag">${item.label} — ${item.value}</div>`).join("")}
+            </div>
+          </div>
+        </div>
+      `).join("")}
+    </aside>
 
-    <div id="jobs" class="muted">Loading jobs...</div>
+    <main class="main">
+      <div class="topbar">
+        <div class="topbarTitle">Worker Dashboard</div>
+        <div class="topbarText">Structured view for USA hubs, A3 printer, Nigeria state printers, dispatch queue, and agent queue.</div>
+
+        <div class="toolbar">
+          <input id="search" placeholder="Search by file, customer, notes, instructions..." />
+          <select id="status">
+            <option value="">All Status</option>
+            <option value="pending">pending</option>
+            <option value="printing">printing</option>
+            <option value="done">done</option>
+            <option value="error">error</option>
+          </select>
+          <select id="queue">
+            <option value="">All Queues</option>
+            <option value="agent">Agent Queue</option>
+          </select>
+          <select id="printer">
+            <option value="">All Printers / Queues</option>
+            ${printerGroups.map(group => `
+              <optgroup label="${group.group}">
+                ${group.items.map(item => `<option value="${item.value}">${item.label}</option>`).join("")}
+              </optgroup>
+            `).join("")}
+          </select>
+          <button onclick="loadJobs()">Refresh</button>
+        </div>
+      </div>
+
+      <div class="stats">
+        <div class="stat"><div class="statK">Total Jobs</div><div class="statV" id="statTotal">0</div></div>
+        <div class="stat"><div class="statK">Pending</div><div class="statV" id="statPending">0</div></div>
+        <div class="stat"><div class="statK">Printing</div><div class="statV" id="statPrinting">0</div></div>
+        <div class="stat"><div class="statK">Done</div><div class="statV" id="statDone">0</div></div>
+        <div class="stat"><div class="statK">Error</div><div class="statV" id="statError">0</div></div>
+      </div>
+
+      <div id="jobs" class="jobsWrap">Loading jobs...</div>
+    </main>
   </div>
 
   <script>
@@ -1827,11 +2002,16 @@ app.get("/worker-dashboard", (req, res) => {
       const pending = jobs.filter(j => String(j.status || "") === "pending").length;
       const printing = jobs.filter(j => String(j.status || "") === "printing").length;
       const done = jobs.filter(j => String(j.status || "") === "done").length;
+      const error = jobs.filter(j => String(j.status || "") === "error").length;
 
       document.getElementById("statTotal").textContent = total;
       document.getElementById("statPending").textContent = pending;
       document.getElementById("statPrinting").textContent = printing;
       document.getElementById("statDone").textContent = done;
+      document.getElementById("statError").textContent = error;
+
+      const sideTotal = document.getElementById("sideTotal");
+      if (sideTotal) sideTotal.textContent = total;
     }
 
     async function markJob(id, status) {
@@ -1858,7 +2038,7 @@ app.get("/worker-dashboard", (req, res) => {
     }
 
     function getPreview(fileUrl) {
-      if (!fileUrl) return "<div class='muted'>No preview available</div>";
+      if (!fileUrl) return "<div class='empty'>No preview available</div>";
       if (isImage(fileUrl)) {
         return "<img src='" + fileUrl + "' alt='preview' />";
       }
@@ -1868,18 +2048,20 @@ app.get("/worker-dashboard", (req, res) => {
       if (isPdf(fileUrl)) {
         return "<iframe src='" + fileUrl + "'></iframe>";
       }
-      return "<a href='" + fileUrl + "' target='_blank'>Open file</a>";
+      return "<a href='" + fileUrl + "' target='_blank' class='btn-dark'>Open file</a>";
     }
 
     async function loadJobs() {
       const q = document.getElementById("search").value.trim();
       const status = document.getElementById("status").value;
       const queue = document.getElementById("queue").value;
+      const printer = document.getElementById("printer").value;
 
       const params = new URLSearchParams();
       if (q) params.set("q", q);
       if (status) params.set("status", status);
       if (queue) params.set("queue", queue);
+      if (printer) params.set("printer_id", printer);
 
       const res = await fetch("/api/dashboard/jobs?" + params.toString(), {
         headers: { "x-dashboard-key": DASHBOARD_KEY }
@@ -1893,18 +2075,18 @@ app.get("/worker-dashboard", (req, res) => {
         return;
       }
 
-     const payload = await res.json();
-const jobs = Array.isArray(payload)
-  ? payload
-  : (Array.isArray(payload.jobs) ? payload.jobs : []);
+      const payload = await res.json();
+      const jobs = Array.isArray(payload)
+        ? payload
+        : (Array.isArray(payload.jobs) ? payload.jobs : []);
 
-if (!jobs.length) {
-  jobsEl.innerHTML = "<div class='empty'>No jobs found.</div>";
-  setStats([]);
-  return;
-}
+      if (!jobs.length) {
+        jobsEl.innerHTML = "<div class='empty'>No jobs found.</div>";
+        setStats([]);
+        return;
+      }
 
-setStats(jobs);
+      setStats(jobs);
 
       jobsEl.innerHTML = jobs.map(job => {
         const fileUrl = job.file_url || "";
@@ -1917,6 +2099,7 @@ setStats(jobs);
           job.whatsapp_number ||
           job.customer_whatsapp ||
           job.customer_mobile ||
+          job.from_phone ||
           "";
 
         const cleanPhone = String(rawPhone || "").replace(/[^\\d+]/g, "");
@@ -1924,8 +2107,8 @@ setStats(jobs);
 
         const contactButtons = cleanPhone
           ? \`
-            <a href="https://wa.me/\${waPhone}" target="_blank" class="wa">WhatsApp Chat</a>
-            <a href="tel:\${cleanPhone}" class="call">Call Customer</a>
+            <a href="https://wa.me/\${waPhone}" target="_blank" class="btn-wa">WhatsApp Chat</a>
+            <a href="tel:\${cleanPhone}" class="btn-call">Call Customer</a>
           \`
           : "";
 
@@ -1936,7 +2119,7 @@ setStats(jobs);
         return \`
           <div class="job">
             <div class="jobHeader">
-              <div class="title">\${escapeHtml(job.original_name || "Untitled job")}</div>
+              <div class="jobTitle">\${escapeHtml(job.original_name || job.file_name || "Untitled job")}</div>
               <div class="badges">
                 <span class="badge">#\${escapeHtml(job.id)}</span>
                 <span class="badge">\${escapeHtml(job.status || "unknown")}</span>
@@ -1944,33 +2127,33 @@ setStats(jobs);
               </div>
             </div>
 
-            <div class="row">
+            <div class="jobBody">
               <div>
                 <div class="metaGrid">
-                  <div class="metaCard"><div class="k">Printer / Queue</div><div class="v">\${escapeHtml(job.printer_id || job.queue_type || "")}</div></div>
-                  <div class="metaCard"><div class="k">Paper Size</div><div class="v">\${escapeHtml(job.paper_size || "")}</div></div>
-                  <div class="metaCard"><div class="k">Color</div><div class="v">\${escapeHtml(job.color_mode || "")}</div></div>
-                  <div class="metaCard"><div class="k">Copies / Pages</div><div class="v">\${escapeHtml(job.copies || "")} / \${escapeHtml(job.pages || "")}</div></div>
-                  <div class="metaCard"><div class="k">Customer</div><div class="v">\${escapeHtml(job.customer_name || "")}</div></div>
-                  <div class="metaCard"><div class="k">Email</div><div class="v">\${escapeHtml(job.customer_email || "")}</div></div>
-                  <div class="metaCard"><div class="k">Phone</div><div class="v">\${escapeHtml(rawPhone || "")}</div></div>
-                  <div class="metaCard"><div class="k">Total Cost</div><div class="v">\${escapeHtml(job.total_cost || "")}</div></div>
+                  <div class="metaCard"><div class="metaKey">Printer / Queue</div><div class="metaValue">\${escapeHtml(job.printer_id || job.queue_type || "")}</div></div>
+                  <div class="metaCard"><div class="metaKey">Paper Size</div><div class="metaValue">\${escapeHtml(job.paper_size || "")}</div></div>
+                  <div class="metaCard"><div class="metaKey">Color</div><div class="metaValue">\${escapeHtml(job.color_mode || job.color_type || "")}</div></div>
+                  <div class="metaCard"><div class="metaKey">Copies / Pages</div><div class="metaValue">\${escapeHtml(job.copies || "")} / \${escapeHtml(job.pages || "")}</div></div>
+                  <div class="metaCard"><div class="metaKey">Customer</div><div class="metaValue">\${escapeHtml(job.customer_name || "")}</div></div>
+                  <div class="metaCard"><div class="metaKey">Email</div><div class="metaValue">\${escapeHtml(job.customer_email || "")}</div></div>
+                  <div class="metaCard"><div class="metaKey">Phone</div><div class="metaValue">\${escapeHtml(rawPhone || "")}</div></div>
+                  <div class="metaCard"><div class="metaKey">Total Cost</div><div class="metaValue">\${escapeHtml(job.total_cost || job.price || "")}</div></div>
                 </div>
 
                 <div class="sectionTitle">Notes</div>
-                <div class="textBox">\${escapeHtml(job.notes || "")}</div>
+                <div class="textBox">\${escapeHtml(job.notes || job.note || "")}</div>
 
                 <div class="sectionTitle">Instructions</div>
-                <div class="textBox">\${escapeHtml(job.instructions || "")}</div>
+                <div class="textBox">\${escapeHtml(job.instructions || job.customer_instructions || "")}</div>
 
                 \${audioPlayer}
 
                 <div class="actions">
-                  <a href="\${fileUrl}" target="_blank">Open File</a>
+                  <a href="\${fileUrl}" target="_blank" class="btn-dark">Open File</a>
                   \${contactButtons}
-                  <button onclick="markJob('\${job.id}', 'printing')" class="secondary">Mark Printing</button>
-                  <button onclick="markJob('\${job.id}', 'done')" class="done">Mark Done</button>
-                  <button onclick="markJob('\${job.id}', 'error')" class="error">Mark Error</button>
+                  <button onclick="markJob('\${job.id}', 'printing')" class="btn-secondary">Mark Printing</button>
+                  <button onclick="markJob('\${job.id}', 'done')" class="btn-done">Mark Done</button>
+                  <button onclick="markJob('\${job.id}', 'error')" class="btn-error">Mark Error</button>
                 </div>
 
                 <div class="replyBox">
@@ -1982,8 +2165,10 @@ setStats(jobs);
                 </div>
               </div>
 
-              <div class="preview">
-                \${getPreview(fileUrl)}
+              <div class="previewPanel">
+                <div class="preview">
+                  \${getPreview(fileUrl)}
+                </div>
               </div>
             </div>
           </div>
@@ -2015,6 +2200,7 @@ setStats(jobs);
 
     document.getElementById("status").addEventListener("change", loadJobs);
     document.getElementById("queue").addEventListener("change", loadJobs);
+    document.getElementById("printer").addEventListener("change", loadJobs);
 
     loadJobs();
     startAutoRefresh();
@@ -2022,9 +2208,7 @@ setStats(jobs);
 </body>
 </html>`);
 });
-    
-
- 
+   
 app.get("/api/dashboard/jobs", requireDashboardKey, async (req, res) => {
   try {
     const {
