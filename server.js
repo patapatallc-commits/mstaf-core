@@ -2250,7 +2250,9 @@ app.get("/worker-dashboard", (req, res) => {
             <a href="tel:\${cleanPhone}" class="btn btn-call">Call</a>
           \`
           : "";
-
+        const openFileLink = fileUrl
+  ? "<a href='" + fileUrl + "' target='_blank' style='color:#93c5fd; font-weight:800;'>Open file</a>"
+  : "";
         const audioPlayer = audioUrl
           ? "<div class='audioBox'><div class='sectionTitle'>Voice Instruction</div><audio controls preload='metadata' src='" + audioUrl + "' onplay='pauseAutoRefresh()' onpause='resumeAutoRefresh()' onended='resumeAutoRefresh()'></audio></div>"
           : "";
@@ -2269,7 +2271,7 @@ app.get("/worker-dashboard", (req, res) => {
             <div class="jobBody">
               <div>
                 <div class="metaGrid">
-                  <div class="metaCard"><div class="metaKey">File URL</div><div class="metaValue">\${fileUrl ? `<a href="\${fileUrl}" target="_blank" style="color:#93c5fd; font-weight:800;">Open file</a>` : ""}</div></div>
+                  <div class="metaCard"><div class="metaKey">File URL</div><div class="metaValue">${openFileLink}</div></div>
                   <div class="metaCard"><div class="metaKey">Original Name</div><div class="metaValue">\${escapeHtml(job.original_name || job.file_name || "")}</div></div>
                   <div class="metaCard"><div class="metaKey">MIME Type</div><div class="metaValue">\${escapeHtml(job.mime_type || job.file_mime || "")}</div></div>
                   <div class="metaCard"><div class="metaKey">Pages</div><div class="metaValue">\${escapeHtml(job.pages || "")}</div></div>
