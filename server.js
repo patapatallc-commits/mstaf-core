@@ -1893,14 +1893,18 @@ app.get("/worker-dashboard", (req, res) => {
         return;
       }
 
-      const jobs = await res.json();
-      if (!Array.isArray(jobs) || !jobs.length) {
-        jobsEl.innerHTML = "<div class='empty'>No jobs found.</div>";
-        setStats([]);
-        return;
-      }
+     const payload = await res.json();
+const jobs = Array.isArray(payload)
+  ? payload
+  : (Array.isArray(payload.jobs) ? payload.jobs : []);
 
-      setStats(jobs);
+if (!jobs.length) {
+  jobsEl.innerHTML = "<div class='empty'>No jobs found.</div>";
+  setStats([]);
+  return;
+}
+
+setStats(jobs);
 
       jobsEl.innerHTML = jobs.map(job => {
         const fileUrl = job.file_url || "";
