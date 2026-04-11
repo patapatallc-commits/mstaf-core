@@ -2265,7 +2265,16 @@ return parts.join("");
   });
 
   loadJobs();
-  setInterval(loadJobs, 15000);
+  function mediaIsPlaying() {
+  return [...document.querySelectorAll("video, audio")].some(
+    el => !el.paused && !el.ended
+  );
+}
+
+setInterval(() => {
+  if (mediaIsPlaying()) return;
+  loadJobs();
+}, 8000);
 </script>
 </body>
 </html>`);
