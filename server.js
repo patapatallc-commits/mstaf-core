@@ -1218,7 +1218,7 @@ function requireDashboardKey(req, res, next) {
   req.headers["x-dashboard-key"] ||
   req.query.key ||
   req.body?.dashboard_key;
-  if (key !== DASHBOARD_KEY) {
+  if (key !== process.env.DASHBOARD_KEY) {
     return res.status(401).send("Unauthorized dashboard key");
   }
   next();
