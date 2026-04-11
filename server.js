@@ -539,14 +539,55 @@ app.post("/webhook", async (req, res) => {
         session.lastServiceJobId = job?.id || null;
         session.stage = "PRINT_FILE_UPLOADED_ACTION";
 
-        await sendMessage(
-          from,
-          `✅ File received and added to print queue.
+await sendMessage(
+  from,
+  `✅ File received and added to print queue.
 
-Reply:
+Choose option:
+
 1 - Continue with Agent
-2 - Checkout`
-        );
+2 - Checkout (Shopify / Africa)
+
+--- Pricing Guide ---
+
+🇺🇸 USA (Shopify):
+• A4 B/W: $0.10
+• A4 Color: $0.50
+
+🇳🇬 Nigeria (Africa Payment):
+
+📄 Photocopy
+• B/W: ₦50
+• Color: ₦200
+
+📱 Printout from Phone
+• B/W: ₦200
+• Color: ₦200
+
+📜 Letter Printing
+• B/W: ₦500
+• Color: ₦1,000
+
+🆔 ID Card: ₦2,000  
+🎨 Designing: ₦1,000  
+💳 Card Printing: ₦300  
+📎 Binding: ₦300  
+✏️ Editing: ₦500  
+
+📠 Scanning:
+• Scan: ₦200
+• Send: ₦200
+
+🎉 Birthday Cards:
+• Design: ₦500
+• Print: ₦500
+
+📸 Passport Photos:
+• 4 copies: ₦500
+• 8 copies: ₦1,000
+
+Reply with 1 or 2.`
+);
         return res.sendStatus(200);
       }
 
@@ -1045,75 +1086,7 @@ Our team will review your request and contact you shortly on WhatsApp.`
       }
 
       if (lower === "2") {
-        session.stage = "PRINT_PAYMENT_CHOICE";
-
-        const paperSize = session.printSpec?.paper_size || "A4";
-        const color = (session.printSpec?.color || "bw").toUpperCase();
-        const quantity = session.printSpec?.copies || 1;
-
-        const variantId = getPrintVariantId(paperSize, color);
-        const checkoutUrl = buildShopifyCartUrl(variantId, quantity);
-        const africaUrl = "https://www.patapata.us/pages/africa-payment";
-
-        await sendMessage(
-          from,
-          `Choose payment option:
-
-1 - Shopify Checkout
-2 - Africa Payment
-
-Shopify:
-${checkoutUrl || "Not configured yet"}
-
-Africa Payment:
-${africaUrl}
-
-Reply with 1 or 2.`
-        );
-        return res.sendStatus(200);
-      }
-
-      await sendMessage(
-        from,
-        `Reply:
-1 - Continue with Agent
-2 - Checkout`
-      );
-      return res.sendStatus(200);
-    }
-
-    // =========================
-    // PRINT AGENT INSTRUCTIONS
-    // =========================
-    if (session.stage === "PRINT_WAITING_INSTRUCTIONS") {
-      if (type === "text" && text.trim()) {
-        await sendMessage(
-          from,
-          `✅ Your ${session.printSpec?.paper_size || "print"} instructions have been received and sent to our Agent team.
-
-Our team will contact you shortly on WhatsApp.`
-        );
-        return res.sendStatus(200);
-      }
-
-      if (type === "audio") {
-        await sendMessage(
-          from,
-          `✅ Your voice instruction for your ${session.printSpec?.paper_size || "print"} request has been received and sent to our Agent team.
-
-Our team will contact you shortly on WhatsApp.`
-        );
-        return res.sendStatus(200);
-      }
-
-      await sendMessage(
-        from,
-        "Please send your instruction as text or voice note."
-      );
-      return res.sendStatus(200);
-    }
-
-    // =========================
+     // =========================
     // PRINT PAYMENT CHOICE
     // =========================
     if (session.stage === "PRINT_PAYMENT_CHOICE") {
@@ -1135,6 +1108,7 @@ ${checkoutUrl || "Not configured yet"}
 
 After payment, reply here if you need any help.`
         );
+
         session.stage = "MENU";
         return res.sendStatus(200);
       }
@@ -1147,8 +1121,41 @@ After payment, reply here if you need any help.`
 Use this link to continue:
 ${africaUrl}
 
+--- Nigeria Price Guide ---
+
+📄 Photocopy
+• B/W: ₦50
+• Color: ₦200
+
+📱 Printout from Phone
+• B/W: ₦200
+• Color: ₦200
+
+📜 Letter Printing
+• B/W: ₦500
+• Color: ₦1,000
+
+🆔 ID Card: ₦2,000
+🎨 Designing: ₦1,000
+💳 Card Printing: ₦300
+📎 Binding: ₦300
+✏️ Editing: ₦500
+
+📠 Scanning:
+• Scan: ₦200
+• Send: ₦200
+
+🎉 Birthday Cards:
+• Design: ₦500
+• Print: ₦500
+
+📸 Passport Photos:
+• 4 copies: ₦500
+• 8 copies: ₦1,000
+
 After payment, send your payment details here so our team can confirm it.`
         );
+
         session.stage = "MENU";
         return res.sendStatus(200);
       }
@@ -1160,9 +1167,9 @@ After payment, send your payment details here so our team can confirm it.`
 1 - Shopify Checkout
 2 - Africa Payment`
       );
-      return res.sendStatus(200);
-    }   
 
+      return res.sendStatus(200);
+    }
     // =========================
     // LAMINATE SIZE
     // =========================
