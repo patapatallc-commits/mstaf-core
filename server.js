@@ -2073,7 +2073,14 @@ app.get("/dashboard", requireDashboardKey, async (req, res) => {
       parts.push('<div class="insBox"><b>Text Instruction</b><br><span class="small">No saved text instruction on this job yet.</span></div>');
     }
 
+if (!parts.length) {
+  parts.push('<div class="insBox"><b>Text Instruction</b><br><span class="small">No saved text instruction on this job yet.</span></div>');
+}
 
+// ✅ SAFE VOICE PLAYER (no crash)
+if (job.instruction_audio_url) parts.push('<div class="insBox"><b>🎧 Voice Instruction</b><br><audio controls style="width:100%;margin-top:5px;"><source src="' + job.instruction_audio_url + '" type="audio/ogg"></audio></div>');
+
+return parts.join("");
 
     return parts.join("");
   }
