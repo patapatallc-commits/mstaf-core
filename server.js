@@ -1046,34 +1046,9 @@ Our team will review your request and contact you shortly on WhatsApp.`
 
       if (lower === "2") {
         session.stage = "PRINT_PAYMENT_CHOICE";
-        const paperSize = session.printSpec?.paper_size || "A4";
-const color = (session.printSpec?.color || "bw").toUpperCase();
-const quantity = session.printSpec?.copies || 1;
-
-const variantId = getPrintVariantId(paperSize, color);
-const checkoutUrl = buildShopifyCartUrl(variantId, quantity);
-const africaUrl = "https://www.patapata.us/pages/africa-payment";
-
-await sendMessage(
-  from,
-  `Choose payment option:
-
-1 - Shopify Checkout
-2 - Africa Payment
-
-Shopify:
-${checkoutUrl || "Not configured yet"}
-
-Africa Payment:
-${africaUrl}
-
-Reply with 1 or 2.`
-);
-
-return res.sendStatus(200);
 
         const paperSize = session.printSpec?.paper_size || "A4";
-        const color = session.printSpec?.color || "bw";
+        const color = (session.printSpec?.color || "bw").toUpperCase();
         const quantity = session.printSpec?.copies || 1;
 
         const variantId = getPrintVariantId(paperSize, color);
@@ -1091,7 +1066,9 @@ Shopify:
 ${checkoutUrl || "Not configured yet"}
 
 Africa Payment:
-${africaUrl}`
+${africaUrl}
+
+Reply with 1 or 2.`
         );
         return res.sendStatus(200);
       }
@@ -1139,82 +1116,52 @@ Our team will contact you shortly on WhatsApp.`
     // =========================
     // PRINT PAYMENT CHOICE
     // =========================
- if (lower === "2") {
-  session.stage = "PRINT_PAYMENT_CHOICE";
+    if (session.stage === "PRINT_PAYMENT_CHOICE") {
+      const paperSize = session.printSpec?.paper_size || "A4";
+      const color = (session.printSpec?.color || "bw").toUpperCase();
+      const quantity = session.printSpec?.copies || 1;
 
-  const paperSize = session.printSpec?.paper_size || "A4";
-  const color = (session.printSpec?.color || "bw").toUpperCase();
-  const quantity = session.printSpec?.copies || 1;
+      const variantId = getPrintVariantId(paperSize, color);
+      const checkoutUrl = buildShopifyCartUrl(variantId, quantity);
+      const africaUrl = "https://www.patapata.us/pages/africa-payment";
 
-  const variantId = getPrintVariantId(paperSize, color);
-  const checkoutUrl = buildShopifyCartUrl(variantId, quantity);
-  const africaUrl = "https://www.patapata.us/pages/africa-payment";
-
-  await sendMessage(
-    from,
-    `Choose payment option:
-
-1 - Shopify Checkout
-2 - Africa Payment
-
-Shopify:
-${checkoutUrl || "Not configured yet"}
-
-Africa Payment:
-${africaUrl}
-
-Reply with 1 or 2.`
-  );
-  return res.sendStatus(200);
-}
-
-if (session.stage === "PRINT_PAYMENT_CHOICE") {
-  const paperSize = session.printSpec?.paper_size || "A4";
-  const color = (session.printSpec?.color || "bw").toUpperCase();
-  const quantity = session.printSpec?.copies || 1;
-
-  const variantId = getPrintVariantId(paperSize, color);
-  const checkoutUrl = buildShopifyCartUrl(variantId, quantity);
-  const africaUrl = "https://www.patapata.us/pages/africa-payment";
-
- if (lower === "1") {
-  await sendMessage(
-    from,
-    `✅ Shopify checkout selected.
+      if (lower === "1") {
+        await sendMessage(
+          from,
+          `✅ Shopify checkout selected.
 
 Complete your payment here:
 ${checkoutUrl || "Not configured yet"}
 
 After payment, reply here if you need any help.`
-  );
-  session.stage = "MENU";
-  return res.sendStatus(200);
-}
+        );
+        session.stage = "MENU";
+        return res.sendStatus(200);
+      }
 
-if (lower === "2") {
-  await sendMessage(
-    from,
-    `✅ Africa payment selected.
+      if (lower === "2") {
+        await sendMessage(
+          from,
+          `✅ Africa payment selected.
 
 Use this link to continue:
 ${africaUrl}
 
 After payment, send your payment details here so our team can confirm it.`
-  );
-  session.stage = "MENU";
-  return res.sendStatus(200);
-}
-  await sendMessage(
-  from,
-  `Please reply with:
+        );
+        session.stage = "MENU";
+        return res.sendStatus(200);
+      }
+
+      await sendMessage(
+        from,
+        `Please reply with:
 
 1 - Shopify Checkout
 2 - Africa Payment`
-);
-return res.sendStatus(200);
-   
-}
-      
+      );
+      return res.sendStatus(200);
+    }   
 
     // =========================
     // LAMINATE SIZE
