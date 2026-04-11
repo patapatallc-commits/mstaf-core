@@ -2063,7 +2063,25 @@ app.get("/dashboard", requireDashboardKey, async (req, res) => {
     if (!parts.length) {
       parts.push('<div class="insBox"><b>Text Instruction</b><br><span class="small">No saved text instruction on this job yet.</span></div>');
     }
-
+// 🎧 VOICE NOTE BLOCK
+if (job.instruction_audio_url) {
+  parts.push(`
+    <div class="insBox" style="margin-top:10px;">
+      <b>🎧 Voice Instruction</b><br>
+      <audio controls style="width:100%; margin-top:5px;">
+        <source src="${job.instruction_audio_url}" type="audio/ogg">
+        Your browser does not support audio playback.
+      </audio>
+    </div>
+  `);
+} else {
+  parts.push(`
+    <div class="insBox" style="margin-top:10px; opacity:0.6;">
+      <b>🎧 Voice Instruction</b><br>
+      <span class="small">No voice note attached</span>
+    </div>
+  `);
+}
     return parts.join("");
   }
 
