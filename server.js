@@ -525,7 +525,11 @@ Please send any extra instruction now by text or voice note.`
       }
 
       // PRINT INSTRUCTIONS AUDIO
-      if (session.stage === "PRINT_WAITING_INSTRUCTIONS" && type === "audio") {
+      if (
+  (session.stage === "PRINT_WAITING_INSTRUCTIONS" ||
+    session.stage === "SERVICE_WAITING_EXTRA_NOTES") &&
+  type === "audio"
+) {
         if (session.lastServiceJobId) {
           await attachAudioToExistingJob(
             session.lastServiceJobId,
