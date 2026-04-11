@@ -1508,6 +1508,203 @@ async function getPrintJobsColumns() {
 /**
  * Main jobs API
  */
+app.get("/worker-dashboard", (req, res) => {
+  const key = String(req.query.key || "");
+  if (!DASHBOARD_KEY || key !== DASHBOARD_KEY) {
+    return res.status(403).send("Invalid dashboard key");
+  }
+
+  return res.send(`<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>MSTAF Worker Dashboard</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 0; background:#f6f7fb; color:#222; }
+    .topbar { background:#111827; color:#fff; padding:16px 20px; font-size:20px; font-weight:700; }
+    .wrap { max-width:1100px; margin:20px auto; padding:0 16px; }
+    .toolbar { display:flex; gap:10px; flex-wrap:wrap; margin-bottom:16px; }
+    .toolbar input, .toolbar select, .toolbar button, .toolbar textarea {
+      padding:10px 12px; border-radius:10px; border:1px solid #d1d5db; font-size:14px;
+    }
+    .toolbar button { background:#111827; color:#fff; cursor:pointer; border:none; }
+    .job { background:#fff; border-radius:14px; padding:16px; margin-bottom:16px; box-shadow:0 4px 14px rgba(0,0,0,0.08); }
+    .row { display:grid; grid-template-columns:1fr 1fr; gap:14px; }
+    .meta { line-height:1.7; font-size:14px; }
+    .title { font-size:18px; font-weight:700; margin-bottom:10px; }
+    .label { display:inline-block; padding:4px 10px; border-radius:999px; background:#eef2ff; margin-right:8px; font-size:12px; }
+    .preview { background:#f9fafb; border:1px solid #e5e7eb; border-radius:12px; padding:10px; min-height:120px; }
+    .preview img, .preview video, .preview iframe { width:100%; max-height:360px; border-radius:10px; }
+    .actions { display:flex; flex-wrap:wrap; gap:8px; margin-top:12px; }
+    .actions button, .actions a {
+      padding:10px 12px; border-radius:10px; border:none; cursor:pointer; text-decoration:none;
+      font-size:14px; background:#111827; color:white;
+    }
+    .muted { color:#6b7280; font-size:13px; }
+    .audioBox { margin-top:10px; }
+    .replyBox { margin-top:12px; display:flex; flex-direction:column; gap:8px; }
+    .replyBox textarea {
+      width:100%;
+      min-height:90px;
+      resize:vertical;
+      box-sizing:border-box;
+      font-family:Arial, sans-serif;
+    }
+    @media (max-width: 800px) {
+      .row { grid-template-columns:1fr; }
+    }
+  </style>
+</head>
+<body>
+  <div class="topbar">MSTAF Worker Dashboard</div>
+  <div class="wrap">
+    <div class="toolbar">
+      <input id="search" placeholder="Search jobs..." />
+      <select id="status">
+        <option value="">All Status</option>
+        <option value="pending">pending</option>
+        <option value="printing">printing</option>
+        <option value="done">done</option>
+        <option value="error">error</option>
+      </select>
+      <button onclick="loadJobs()">Refresh</button>
+    </div>
+    <div id="jobs" class="muted">Loading jobs...</div>
+  </div>
+
+  <script>
+    const DASHBOARD_KEY = ${JSON.stringify(process.env.DASHBOARD_KEY || "")};
+
+    function escapeHtml(value) {
+      return String(value || "")
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#39;");
+    }
+
+    function isImage(url) { return /\\.(jpg|jpeg|png|gif|webp)$/i.test(url || ""); }
+    function isVideo(url) { return /\\.(mp4|webm|ogg|mov)$/i.test(url || ""); }
+    function isPdf(url) { return /\\.(pdf)$/i.test(url || ""); }
+
+    async function markJob(id, status) {
+      const error_message = status === "error" ? (prompt("Enter error message:") || "") : "";
+      const res = await fetch("/api/dashboard/jobs/" + id + "/mark", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-dashboard-key": DASHBOARD_KEY
+        },
+        body: JSON.stringify({ status, error_message })
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        alert(data.error || "Failed to update job");
+        return;
+      }
+      loadJobs();
+    }
+
+    async function loadJobs() {
+      const q = document.getElementById("search").value.trim();
+      const status = document.getElementById("status").value;
+      const params = new URLSearchParams();
+      if (q) params.set("q", q);
+      if (status) params.set("status", status);
+
+      const res = await fetch("/api/dashboard/jobs?" + params.toString(), {
+        headers: { "x-dashboard-key": DASHBOARD_KEY }
+      });
+
+      const jobsEl = document.getElementById("jobs");
+
+      if (!res.ok) {
+        jobsEl.innerHTML = "<div class='job'>Failed to load jobs.</div>";
+        return;
+      }
+
+      const jobs = await res.json();
+      if (!Array.isArray(jobs) || !jobs.length) {
+        jobsEl.innerHTML = "<div class='job'>No jobs found.</div>";
+        return;
+      }
+
+      jobsEl.innerHTML = jobs.map(job => {
+        const fileUrl = job.file_url || "";
+        const audioUrl = job.instruction_audio_url || "";
+        let preview = "<div class='muted'>No preview available</div>";
+
+        if (fileUrl) {
+          if (isImage(fileUrl)) {
+            preview = "<img src='" + fileUrl + "' alt='preview' />";
+          } else if (isVideo(fileUrl)) {
+            preview = "<video controls preload='metadata' onplay='pauseAutoRefresh()' onpause='resumeAutoRefresh()' onended='resumeAutoRefresh()'><source src='" + fileUrl + "'></video>";
+          } else if (isPdf(fileUrl)) {
+            preview = "<iframe src='" + fileUrl + "'></iframe>";
+          } else {
+            preview = "<a href='" + fileUrl + "' target='_blank'>Open file</a>";
+          }
+        }
+
+        const audioPlayer = audioUrl
+          ? "<div class='audioBox'><div class='muted'>Instruction audio</div><audio controls preload='metadata' src='" + audioUrl + "' onplay='pauseAutoRefresh()' onpause='resumeAutoRefresh()' onended='resumeAutoRefresh()' style='width:100%'></audio></div>"
+          : "";
+
+        return \`
+          <div class="job">
+            <div class="title">\${escapeHtml(job.original_name || "Untitled job")}</div>
+            <div class="row">
+              <div class="meta">
+                <div><span class="label">#\${escapeHtml(job.id)}</span><span class="label">\${escapeHtml(job.status)}</span></div>
+                <div><strong>Printer:</strong> \${escapeHtml(job.printer_id || "")}</div>
+                <div><strong>Service:</strong> \${escapeHtml(job.service_type || "")}</div>
+                <div><strong>Paper size:</strong> \${escapeHtml(job.paper_size || "")}</div>
+                <div><strong>Color:</strong> \${escapeHtml(job.color_mode || "")}</div>
+                <div><strong>Copies:</strong> \${escapeHtml(job.copies || "")}</div>
+                <div><strong>Pages:</strong> \${escapeHtml(job.pages || "")}</div>
+                <div><strong>Customer:</strong> \${escapeHtml(job.customer_name || "")}</div>
+                <div><strong>Email:</strong> \${escapeHtml(job.customer_email || "")}</div>
+                <div><strong>Notes:</strong> \${escapeHtml(job.notes || "")}</div>
+                <div><strong>Instructions:</strong> \${escapeHtml(job.instructions || "")}</div>
+                \${audioPlayer}
+                <div class="actions">
+                  <a href="\${fileUrl}" target="_blank">Open File</a>
+                  <button onclick="markJob('\${job.id}', 'printing')">Mark Printing</button>
+                  <button onclick="markJob('\${job.id}', 'done')">Mark Done</button>
+                  <button onclick="markJob('\${job.id}', 'error')">Mark Error</button>
+                </div>
+                <div class="replyBox">
+                  <div class="muted">WhatsApp reply box</div>
+                  <textarea placeholder="Type reply here..."></textarea>
+                </div>
+              </div>
+              <div class="preview">\${preview}</div>
+            </div>
+          </div>
+        \`;
+      }).join("");
+    }
+
+    let autoRefreshTimer = null;
+    function startAutoRefresh() {
+      stopAutoRefresh();
+      autoRefreshTimer = setInterval(loadJobs, 30000);
+    }
+    function stopAutoRefresh() {
+      if (autoRefreshTimer) clearInterval(autoRefreshTimer);
+      autoRefreshTimer = null;
+    }
+    function pauseAutoRefresh() { stopAutoRefresh(); }
+    function resumeAutoRefresh() { startAutoRefresh(); }
+
+    loadJobs();
+    startAutoRefresh();
+  </script>
+</body>
+</html>`);
+});
 app.get("/api/dashboard/jobs", requireDashboardKey, async (req, res) => {
   try {
     const {
