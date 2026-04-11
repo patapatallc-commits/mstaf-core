@@ -2134,7 +2134,19 @@ app.get("/dashboard", requireDashboardKey, async (req, res) => {
             <div class="detailRow"><b>Customer</b><div>\${h(job.customer_phone || "-")}</div></div>
 
             \${renderInstructions(job)}
-
+${job.instruction_audio_url ? `
+  <div class="insBox" style="margin-top:10px;">
+    <b>🎧 Voice Instruction</b><br>
+    <audio controls style="width:100%; margin-top:6px;">
+      <source src="${h(job.instruction_audio_url)}" type="audio/ogg">
+    </audio>
+  </div>
+` : `
+  <div class="insBox" style="margin-top:10px; opacity:0.65;">
+    <b>🎧 Voice Instruction</b><br>
+    <span class="small">No voice note attached</span>
+  </div>
+`}
             <div class="routeRow">
               <select id="route_\${h(job.id)}">
                 \${routeOptions(job, printers)}
