@@ -2270,11 +2270,12 @@ return parts.join("");
             </div>
           </div>
           <div class="meta" style="text-align:right">
-Phone: \${h(job.customer_phone || "-")}<br>
-Paper: \${h(job.paper_size || "N/A")}<br>
-Color: \${h(job.color_mode || "BW")}<br>
-Copies: \${h(job.copies || 1)}
-</div>
+            Phone: \${h(job.customer_phone || "-")}<br>
+            Paper: \${h(job.paper_size || "N/A")}<br>
+            Color: \${h(job.color_mode || "BW")}<br>
+            Copies: \${h(job.copies || 1)}
+          </div>
+        </div>
 
         <div class="jobBody">
           <div class="previewBox">
