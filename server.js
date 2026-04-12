@@ -79,8 +79,6 @@ if (!fs.existsSync(uploadsDir)) {
 }
 
 // Multer storage
-const path = require("path");
-const fs = require("fs");
 
 const uploadsDir = path.resolve("uploads");
 
