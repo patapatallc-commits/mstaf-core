@@ -102,7 +102,7 @@ const app = express();
 app.use(express.json({ limit: "20mb" }));
 
 
-app.use("/uploads", express.static(uploadsDir));
+app.use("/uploads", express.static("/opt/render/project/src/uploads"));
 const PORT = process.env.PORT || 10000;
 
 // =========================
