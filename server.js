@@ -2380,7 +2380,7 @@ return parts.join("");
               <select id="route_\${h(job.id)}">
                 \${routeOptions(job, printers)}
               </select>
-              <button class="btn dark" onclick="routeJob('\${h(job.id)}')">Route</button>
+              <button type="button" class="btn dark" onclick="routeJob('${job.id}')">Route</button>
             </div>
 
             <div class="actionRow">
@@ -2446,20 +2446,52 @@ return parts.join("");
     }
   }
 
-  async function routeJob(id) {
-    try {
-      const printer_id = document.getElementById("route_" + id).value;
-      await api("/api/dashboard/jobs/" + id + "/route", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ printer_id })
-      });
-      loadJobs();
-    } catch (err) {
-      alert("Route failed: " + err.message);
-    }
-  }
+ async function routeJob(id) {
+  console.log("Route clicked:", id);
 
+  try {
+    const el = document.getElementById("route_" + id);
+
+    if (!el) {
+      alert("Dropdown not found");
+      return;
+    }
+
+    const printer_id = el.value;
+    console.log("Selected printer:", printer_id);
+
+    if (!printer_id) {
+      alert("Please select a printer");
+      return;
+    }
+
+    const res = await fetch("/api/dashboard/jobs/" + id + "/route", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-dashboard-key": DASHBOARD_KEY
+      },
+      body: JSON.stringify({ printer_id })
+    });
+
+    console.log("Response status:", res.status);
+
+    const data = await res.json().catch(() => ({}));
+    console.log("Response data:", data);
+
+    if (!res.ok) {
+      alert(data.error || "Route failed");
+      return;
+    }
+
+    alert("✅ Routed successfully");
+    loadJobs();
+
+  } catch (err) {
+    console.error(err);
+    alert("Route failed: " + err.message);
+  }
+}
   async function replyJob(id) {
     try {
       const message = document.getElementById("reply_" + id).value.trim();
