@@ -102,7 +102,17 @@ const app = express();
 app.use(express.json({ limit: "20mb" }));
 
 
-app.use("/uploads", express.static(path.join(process.cwd(), "uploads")));
+const UPLOADS_PATH = "/opt/render/project/src/uploads";
+
+app.use("/uploads", express.static(UPLOADS_PATH, {
+  fallthrough: false,
+  extensions: ["jpg", "png", "jpeg", "pdf", "mp4", "ogg"]
+}));
+
+app.get("/uploads/:file", (req, res) => {
+  const filePath = require("path").join(UPLOADS_PATH, req.params.file);
+  res.sendFile(filePath);
+});
 const PORT = process.env.PORT || 10000;
 
 // =========================
