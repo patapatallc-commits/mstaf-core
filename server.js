@@ -17,7 +17,7 @@ function getExtFromMime(mimeType = "") {
 }
 
 function safeBaseName(name = "upload") {
-  return String(name).replace(/[^\w.\-]+/g, "_");
+  return String(name).replace(/[^\w.\-]+/g, "_");F
 }
 
 async function downloadWhatsAppMediaToUploads(mediaId, fallbackName, mimeType, req) {
@@ -1689,6 +1689,83 @@ app.post("/api/dashboard/jobs/:id/reply", requireDashboardKey, express.json(), a
  * Manual dashboard upload to queue
  */
 app.post("/api/dashboard/manual-upload", requireDashboardKey, upload.single("file"), async (req, res) => {
+  try {
+    const file = req.file;
+    const {
+      service_type = "SERVICE",
+      instructions = "",
+      customer_phone = "",
+      queue_type = "AGENT",
+      paper_size = "",
+      color_mode = "BW",
+      copies = "1",
+      pages = "1"
+    } = req.body;
+
+    if (!file) {
+      return res.status(400).json({ ok: false, error: "File required" });
+    }
+
+    const base =
+      process.env.PUBLIC_BASE_URL ||
+      process.env.RENDER_EXTERNAL_URL ||
+      `${req.protocol}://${req.get("host")}`;
+
+    const fileUrl = `${base}/uploads/${encodeURIComponent(file.filename)}`;
+    const mimeType = file.mimetype || "";
+    const ext = (file.originalname || "").split(".").pop() || "";
+
+    const targetPrinterId =
+      queue_type === "AGENT"
+        ? AGENT_QUEUE_ID
+        : queue_type === "DISPATCH"
+          ? DISPATCH_QUEUE_ID
+          : DEFAULT_PRINTER_ID;
+
+    const columns = await getPrintJobsColumns();
+
+    const insertCols = [];
+    const insertVals = [];
+    const params = [];
+
+    function addCol(name, value) {
+      if (columns.has(name)) {
+        insertCols.push(name);
+        params.push(value);
+        insertVals.push(`$${params.length}`);
+      }
+    }
+
+    addCol("printer_id", targetPrinterId);
+    addCol("file_url", fileUrl);
+    addCol("original_name", file.originalname || "upload");
+    addCol("mime_type", mimeType);
+    addCol("file_ext", ext);
+    addCol("status", "pending");
+    addCol("service_type", service_type);
+    addCol("queue_type", queue_type);
+    addCol("instructions", instructions || null);
+    addCol("customer_phone", customer_phone || null);
+    addCol("paper_size", paper_size || null);
+    addCol("color_mode", color_mode || "BW");
+    addCol("copies", parseInt(copies, 10) || 1);
+    addCol("pages", parseInt(pages, 10) || 1);
+
+    const sql = `
+      INSERT INTO print_jobs (${insertCols.join(", ")})
+      VALUES (${insertVals.join(", ")})
+      RETURNING *
+    `;
+
+    const result = await pool.query(sql, params);
+    res.json({ ok: true, job: result.rows[0] || null });
+  } catch (err) {
+    console.error("Manual dashboard upload error:", err);
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+app.post("/api/upload", upload.single("file"), async (req, res) => {
   try {
     const file = req.file;
     const {
