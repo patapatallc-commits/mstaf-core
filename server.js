@@ -1567,448 +1567,139 @@ app.get("/worker-dashboard", (req, res) => {
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>MSTAF Worker Dashboard</title>
-  <style>
-    * { box-sizing: border-box; }
-    body {
-      margin: 0;
-      font-family: Arial, sans-serif;
-      background: #0b1220;
-      color: #eef2ff;
-    }
+ <style>
+  * { box-sizing: border-box; }
 
-    .layout {
-      display: grid;
-      grid-template-columns: 300px 1fr;
-      min-height: 100vh;
-    }
+  body {
+    margin: 0;
+    font-family: Arial, sans-serif;
+    background: #08111f;
+    color: #eef4ff;
+  }
 
-    .sidebar {
-      background: linear-gradient(180deg, #081120, #0d1b33 55%, #11213d);
-      border-right: 1px solid rgba(255,255,255,0.08);
-      padding: 18px 14px;
-      overflow-y: auto;
-    }
+  .layout {
+    display: grid;
+    grid-template-columns: 300px 1fr;
+    min-height: 100vh;
+  }
 
-    .brand {
-      font-size: 24px;
-      font-weight: 900;
-      letter-spacing: 0.02em;
-      color: #ffffff;
-      margin-bottom: 10px;
-    }
+  .sidebar {
+    background: linear-gradient(180deg, #07101d, #0b1730 55%, #10203d);
+    border-right: 1px solid rgba(255,255,255,0.08);
+    padding: 16px;
+  }
 
-    .subtitle {
-      color: #cbd5e1;
-      font-size: 13px;
-      line-height: 1.5;
-      margin-bottom: 18px;
-    }
+  .brand {
+    font-size: 22px;
+    font-weight: 900;
+    margin-bottom: 10px;
+  }
 
-    .sideCard {
-      background: rgba(255,255,255,0.04);
-      border: 1px solid rgba(255,255,255,0.08);
-      border-radius: 18px;
-      padding: 14px;
-      margin-bottom: 16px;
-      box-shadow: inset 0 1px 0 rgba(255,255,255,0.04);
-    }
+  .sideCard {
+    background: rgba(255,255,255,0.05);
+    border-radius: 14px;
+    padding: 12px;
+    margin-bottom: 12px;
+  }
 
-    .sideTitle {
-      font-size: 12px;
-      color: #f8fafc;
-      text-transform: uppercase;
-      letter-spacing: 0.06em;
-      margin-bottom: 10px;
-      font-weight: 800;
-    }
+  .main {
+    padding: 16px;
+    background: linear-gradient(180deg, #0b1426, #101e37);
+  }
 
-    .sideValue {
-      font-size: 34px;
-      font-weight: 900;
-      color: #ffffff;
-    }
+  .topPanel {
+    background: rgba(255,255,255,0.05);
+    border-radius: 16px;
+    padding: 14px;
+    margin-bottom: 14px;
+  }
 
-    .groupTitle {
-      font-size: 13px;
-      font-weight: 800;
-      margin-bottom: 8px;
-      color: #ffffff;
-    }
+  .toolbar {
+    display: grid;
+    grid-template-columns: 1fr 150px 150px 120px;
+    gap: 8px;
+  }
 
-    .printerList {
-      display: flex;
-      flex-direction: column;
-      gap: 7px;
-      max-height: 190px;
-      overflow-y: auto;
-      padding-right: 4px;
-    }
+  .toolbar input,
+  .toolbar select,
+  .toolbar button {
+    padding: 10px;
+    border-radius: 10px;
+    border: none;
+    background: #0b1426;
+    color: white;
+  }
 
-    .printerTag {
-      background: rgba(255,255,255,0.06);
-      border: 1px solid rgba(255,255,255,0.08);
-      border-radius: 10px;
-      padding: 8px 10px;
-      color: #e2e8f0;
-      font-size: 12px;
-      line-height: 1.35;
-    }
+  .stats {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 10px;
+    margin-bottom: 14px;
+  }
 
-    .main {
-      padding: 18px;
-      background: #e7edf5;
-      color: #0f172a;
-    }
+  .stat {
+    background: rgba(255,255,255,0.05);
+    padding: 10px;
+    border-radius: 12px;
+  }
 
-    .topPanel {
-      background: linear-gradient(180deg, #f8fbff, #eef4fb);
-      border: 1px solid #d7e2f0;
-      border-radius: 24px;
-      padding: 18px;
-      box-shadow: 0 12px 28px rgba(15,23,42,0.08);
-      margin-bottom: 18px;
-    }
+  .jobCard {
+    background: #132746;
+    border-radius: 16px;
+    padding: 14px;
+    margin-bottom: 14px;
+  }
 
-    .topTitle {
-      font-size: 30px;
-      font-weight: 900;
-      color: #0b1830;
-      margin-bottom: 8px;
-    }
+  .jobBody {
+    display: grid;
+    grid-template-columns: 1fr 380px;
+    gap: 12px;
+  }
 
-    .topText {
-      font-size: 14px;
-      color: #5b6b84;
-      margin-bottom: 16px;
-    }
+  .previewBox {
+    background: rgba(255,255,255,0.05);
+    border-radius: 10px;
+    min-height: 240px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
 
-    .toolbar {
-      display: grid;
-      grid-template-columns: 1.5fr 180px 180px 220px 150px;
-      gap: 12px;
-    }
+  .previewBox img,
+  .previewBox video,
+  .previewBox iframe {
+    width: 100%;
+    max-height: 480px;
+    border-radius: 8px;
+  }
 
-    .toolbar input,
-    .toolbar select,
-    .toolbar button {
-      width: 100%;
-      padding: 13px 14px;
-      border-radius: 16px;
-      border: 1px solid #c6d4e5;
-      background: #ffffff;
-      font-size: 14px;
-      color: #0f172a;
-    }
+  .actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: 8px;
+  }
 
-    .toolbar button {
-      background: linear-gradient(180deg, #0f1b33, #142648);
-      color: #fff;
-      border: none;
-      font-weight: 800;
-      cursor: pointer;
-    }
+  .btn {
+    padding: 6px 10px;
+    border-radius: 6px;
+    font-size: 12px;
+    border: none;
+    cursor: pointer;
+  }
 
-    .stats {
-      display: grid;
-      grid-template-columns: repeat(5, 1fr);
-      gap: 14px;
-      margin-bottom: 18px;
-    }
+  .btn-open { background: #dbeafe; }
+  .btn-start { background: #8b5cf6; color: white; }
+  .btn-done { background: #22c55e; }
+  .btn-fail { background: #fb7185; }
+  .btn-wa { background: #25d366; }
+  .btn-call { background: #60a5fa; }
 
-    .stat {
-      background: #f8fbff;
-      border: 1px solid #d7e2f0;
-      border-radius: 22px;
-      padding: 16px 18px;
-      box-shadow: 0 12px 24px rgba(15,23,42,0.05);
-    }
-
-    .statK {
-      font-size: 12px;
-      font-weight: 800;
-      color: #5b6b84;
-      text-transform: uppercase;
-      letter-spacing: 0.05em;
-      margin-bottom: 8px;
-    }
-
-    .statV {
-      font-size: 34px;
-      font-weight: 900;
-      color: #0b1830;
-    }
-
-    .jobsWrap {
-      display: flex;
-      flex-direction: column;
-      gap: 18px;
-    }
-
-    .jobCard {
-      background: linear-gradient(180deg, #10203b, #132746 55%, #142b4f);
-      color: #edf4ff;
-      border-radius: 24px;
-      border: 1px solid rgba(255,255,255,0.08);
-      padding: 18px;
-      box-shadow: 0 18px 34px rgba(2,8,23,0.24);
-    }
-
-    .jobHead {
-      display: flex;
-      justify-content: space-between;
-      gap: 14px;
-      align-items: flex-start;
-      margin-bottom: 14px;
-    }
-
-    .jobTitle {
-      font-size: 30px;
-      font-weight: 900;
-      color: #ffffff;
-      word-break: break-word;
-    }
-
-    .badges {
-      display: flex;
-      gap: 8px;
-      flex-wrap: wrap;
-    }
-
-    .badge {
-      background: #e9eefc;
-      color: #16233c;
-      border-radius: 999px;
-      padding: 7px 12px;
-      font-size: 12px;
-      font-weight: 900;
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-    }
-
-    .jobBody {
-      display: grid;
-      grid-template-columns: 1fr 420px;
-      gap: 18px;
-    }
-
-    .previewWrap {
-      display: flex;
-      flex-direction: column;
-      gap: 12px;
-    }
-
-    .previewBox {
-      min-height: 260px;
-      background: rgba(255,255,255,0.04);
-      border: 1px solid rgba(255,255,255,0.08);
-      border-radius: 18px;
-      padding: 12px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      overflow: hidden;
-    }
-
-    .previewBox img,
-    .previewBox video,
-    .previewBox iframe {
-      width: 100%;
-      max-height: 520px;
-      border-radius: 12px;
-      border: none;
-      background: #fff;
-      object-fit: contain;
-    }
-
-    .previewFallback {
-      width: 100%;
-      min-height: 220px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      color: #cbd5e1;
-      text-align: center;
-      background: rgba(255,255,255,0.02);
-      border-radius: 14px;
-      border: 1px dashed rgba(255,255,255,0.12);
-      padding: 18px;
-    }
-
-    .metaGrid {
-      display: grid;
-      grid-template-columns: repeat(2, 1fr);
-      gap: 12px;
-      margin-bottom: 14px;
-    }
-
-    .metaCard {
-      background: rgba(255,255,255,0.04);
-      border: 1px solid rgba(255,255,255,0.08);
-      border-radius: 14px;
-      padding: 12px;
-      min-height: 74px;
-    }
-
-    .metaKey {
-      font-size: 12px;
-      color: #ffd86b;
-      font-weight: 800;
-      margin-bottom: 6px;
-    }
-
-    .metaValue {
-      font-size: 15px;
-      font-weight: 700;
-      color: #ffffff;
-      word-break: break-word;
-    }
-
-    .sectionTitle {
-      font-size: 12px;
-      font-weight: 900;
-      color: #ffd86b;
-      text-transform: uppercase;
-      letter-spacing: 0.06em;
-      margin: 14px 0 8px;
-    }
-
-    .textBox {
-      background: rgba(255,255,255,0.04);
-      border: 1px solid rgba(255,255,255,0.08);
-      border-radius: 14px;
-      padding: 12px;
-      min-height: 52px;
-      color: #f8fafc;
-      white-space: pre-wrap;
-      word-break: break-word;
-    }
-
-    .audioBox {
-      margin-top: 12px;
-    }
-
-    .audioBox audio {
-      width: 100%;
-    }
-
-    .routeRow {
-      display: grid;
-      grid-template-columns: 1fr auto;
-      gap: 10px;
-      margin-top: 14px;
-    }
-
-    .routeRow select {
-      width: 100%;
-      padding: 11px 12px;
-      border-radius: 12px;
-      border: 1px solid rgba(255,255,255,0.12);
-      background: #f8fbff;
-      color: #0f172a;
-      font-weight: 700;
-    }
-
-    .actions {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 8px;
-      margin-top: 14px;
-    }
-
-    .btn,
-    .actions button,
-    .actions a,
-    .routeBtn {
-      border: none;
-      text-decoration: none;
-      cursor: pointer;
-      border-radius: 8px;
-      padding: 8px 12px;
-      font-size: 13px;
-      font-weight: 900;
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      line-height: 1;
-    }
-
-    .btn-open { background: #dbeafe; color: #0f172a; }
-    .btn-claim { background: #facc15; color: #111827; }
-    .btn-start { background: #8b5cf6; color: #ffffff; }
-    .btn-done { background: #22c55e; color: #0b1220; }
-    .btn-fail { background: #fb7185; color: #0b1220; }
-    .btn-wa { background: #25d366; color: #062b18; }
-    .btn-call { background: #60a5fa; color: #0b1220; }
-    .routeBtn { background: #cbd5e1; color: #0f172a; }
-
-    .replyBox {
-      margin-top: 16px;
-    }
-
-    .replyBox textarea {
-      width: 100%;
-      min-height: 105px;
-      border-radius: 12px;
-      border: 1px solid rgba(255,255,255,0.12);
-      background: #07121f;
-      color: #f8fafc;
-      padding: 12px;
-      font-size: 14px;
-      resize: vertical;
-      font-family: Arial, sans-serif;
-    }
-
-    .sendRow {
-      margin-top: 8px;
-      display: flex;
-      gap: 8px;
-      flex-wrap: wrap;
-    }
-
-    .sendBtn {
-      background: #93c5fd;
-      color: #0b1220;
-      border: none;
-      border-radius: 6px;
-      padding: 8px 12px;
-      font-size: 13px;
-      font-weight: 900;
-      cursor: pointer;
-    }
-
-    .empty {
-      background: #ffffff;
-      border: 1px solid #d7e2f0;
-      border-radius: 18px;
-      padding: 18px;
-      color: #475569;
-      font-weight: 700;
-      box-shadow: 0 10px 24px rgba(15,23,42,0.05);
-    }
-
-    @media (max-width: 1320px) {
-      .layout { grid-template-columns: 1fr; }
-      .sidebar { display: none; }
-      .toolbar { grid-template-columns: 1fr 1fr 1fr; }
-      .stats { grid-template-columns: repeat(3, 1fr); }
-      .jobBody { grid-template-columns: 1fr; }
-    }
-
-    @media (max-width: 860px) {
-      .toolbar { grid-template-columns: 1fr; }
-      .stats { grid-template-columns: repeat(2, 1fr); }
-      .metaGrid { grid-template-columns: 1fr; }
-      .jobHead { flex-direction: column; }
-      .jobTitle { font-size: 24px; }
-      .jobBody { grid-template-columns: 1fr; }
-      .previewWrap { order: -1; }
-    }
-
-    @media (max-width: 520px) {
-      .stats { grid-template-columns: 1fr; }
-    }
-  </style>
+  @media (max-width: 900px) {
+    .layout { grid-template-columns: 1fr; }
+    .jobBody { grid-template-columns: 1fr; }
+  }
+</style>
 </head>
 <body>
   <div class="layout">
