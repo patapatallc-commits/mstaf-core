@@ -100,6 +100,20 @@ require("dotenv").config();
 
 const app = express();
 app.use(express.json({ limit: "20mb" }));
+const cors = require("cors");
+
+app.use(cors({
+  origin: [
+    "https://patapata.us",
+    "https://www.patapata.us",
+    "https://patapata.myshopify.com"
+  ],
+  methods: ["GET", "POST", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "x-worker-key", "x-dashboard-key"],
+  credentials: false
+}));
+
+app.options("*", cors());
 
 
 const UPLOADS_PATH = "/opt/render/project/src/uploads";
