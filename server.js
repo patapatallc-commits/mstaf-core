@@ -2377,24 +2377,24 @@ return parts.join("");
             \${renderInstructions(job)}
 
             <div class="routeRow">
-              <select id="route_\${h(job.id)}">
-                \${routeOptions(job, printers)}
+              <select id="route_${h(job.id)}">
+                ${routeOptions(job, printers)}
               </select>
               <button type="button" class="btn dark" onclick="routeJob('${h(job.id)}')">Route</button>
             </div>
 
             <div class="actionRow">
-              <button class="btn secondary" onclick="markJob('\${h(job.id)}','claimed')">Claim</button>
-              <button class="btn purple" onclick="markJob('\${h(job.id)}','printing')">Start</button>
-              <button class="btn green" onclick="markJob('\${h(job.id)}','completed')">Complete</button>
-              <button class="btn red" onclick="markJob('\${h(job.id)}','failed')">Fail</button>
+             <button class="btn secondary" onclick="markJob('${h(job.id)}','claimed')">Claim</button>
+             <button class="btn purple" onclick="markJob('${h(job.id)}','printing')">Start</button>
+              <button class="btn green" onclick="markJob('${h(job.id)}','completed')">Complete</button>
+              <button class="btn red" onclick="markJob('${h(job.id)}','failed')">Fail</button>
             </div>
 
             <div class="replyBox">
               <b>Reply on WhatsApp</b>
-              <textarea id="reply_\${h(job.id)}" class="reply" placeholder="Type your update to the customer here..."></textarea>
+              <textarea id="reply_${h(job.id)}" class="reply" placeholder="Type your update to the customer here..."></textarea>
               <div class="actionRow">
-                <button class="btn" onclick="replyJob('\${h(job.id)}')">Send Reply</button>
+                <button class="btn" onclick="replyJob('${h(job.id)}')">Send Reply</button>
               </div>
             </div>
           </div>
