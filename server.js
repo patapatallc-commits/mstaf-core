@@ -1994,7 +1994,7 @@ app.get("/worker-dashboard", requireDashboardKey, async (req, res) => {
           <div class="badge">USA + Nigeria Routing</div>
         </div>
         <div class="topLinks">
-          <a href="/dashboard?key=${key}">Open Main Dashboard</a>
+          <a href="/worker-dashboard?key=${key}">Open Main Dashboard</a>
           <a href="/api/dashboard/jobs?key=${key}" target="_blank">Open Jobs API</a>
         </div>
       </div>
