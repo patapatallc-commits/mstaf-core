@@ -2380,7 +2380,7 @@ return parts.join("");
               <select id="route_\${h(job.id)}">
                 \${routeOptions(job, printers)}
               </select>
-              <button type="button" class="btn dark" onclick="routeJob('${job.id}')">Route</button>
+              <button type="button" class="btn dark" onclick="routeJob('${h(job.id)}')">Route</button>
             </div>
 
             <div class="actionRow">
