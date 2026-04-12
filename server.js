@@ -79,6 +79,15 @@ if (!fs.existsSync(uploadsDir)) {
 }
 
 // Multer storage
+const path = require("path");
+const fs = require("fs");
+
+const uploadsDir = path.resolve("uploads");
+
+if (!fs.existsSync(uploadsDir)) {
+  fs.mkdirSync(uploadsDir, { recursive: true });
+}
+
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
     cb(null, uploadsDir);
@@ -96,7 +105,9 @@ require("dotenv").config();
 
 const app = express();
 app.use(express.json({ limit: "20mb" }));
-app.use("/uploads", express.static(path.join(__dirname, "uploads")));
+
+
+app.use("/uploads", express.static(uploadsDir));
 const PORT = process.env.PORT || 10000;
 
 // =========================
