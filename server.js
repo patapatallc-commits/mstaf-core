@@ -42,7 +42,7 @@ async function downloadWhatsAppMediaToUploads(mediaId, fallbackName, mimeType, r
 
   const baseName = safeBaseName(fallbackName || mediaId || "upload");
   const finalName = `${Date.now()}_${baseName}${ext && !baseName.endsWith(ext) ? ext : ""}`;
-  const fullPath = path.join(uploadsDir, finalName);
+  const fullPath = path.join("/opt/render/project/src/uploads", finalName);
 
   const fileResp = await axios.get(downloadUrl, {
     responseType: "arraybuffer",
@@ -84,9 +84,9 @@ if (!fs.existsSync(uploadsDir)) {
 }
 
 const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    cb(null, uploadsDir);
-  },
+ destination: (req, file, cb) => {
+  cb(null, "/opt/render/project/src/uploads");
+},
   filename: (req, file, cb) => {
     const safeName = Date.now() + "-" + (file.originalname || "upload").replace(/[^\w.\-]+/g, "_");
     cb(null, safeName);
@@ -102,7 +102,7 @@ const app = express();
 app.use(express.json({ limit: "20mb" }));
 
 
-app.use("/uploads", express.static("/opt/render/project/src/uploads"));
+app.use("/uploads", express.static(path.join(process.cwd(), "uploads")));
 const PORT = process.env.PORT || 10000;
 
 // =========================
