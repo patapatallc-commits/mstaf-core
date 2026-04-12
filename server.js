@@ -2626,211 +2626,239 @@ app.get("/dashboard", requireDashboardKey, async (req, res) => {
   <meta charset="utf-8" />
   <title>MSTAF Worker & Agent Dashboard</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <style>
-    :root{
-      --bg:#08111f;
-      --panel:#0e1a2f;
-      --panel2:#13233f;
-      --line:rgba(255,255,255,.08);
-      --text:#eef5ff;
-      --muted:#a8b7d1;
-      --gold:#ffcc4d;
-      --blue:#42a5ff;
-      --green:#2dd36f;
-      --red:#ff6b6b;
-      --purple:#a56dff;
-      --cyan:#18d2d9;
-    }
-    *{box-sizing:border-box}
-    body{
-      margin:0;
-      background:
-        radial-gradient(circle at top right, rgba(66,165,255,.22), transparent 26%),
-        radial-gradient(circle at top left, rgba(255,204,77,.14), transparent 24%),
-        linear-gradient(180deg, #07101d 0%, #091425 100%);
-      color:var(--text);
-      font-family:Inter, Arial, sans-serif;
-    }
-    .wrap{max-width:1600px;margin:0 auto;padding:20px}
-    .hero{
-      display:grid;
-      grid-template-columns: 1.3fr .7fr;
-      gap:18px;
-      margin-bottom:18px;
-    }
-    .heroCard,.stats,.panel,.sidePanel,.uploadPanel{
-      background:linear-gradient(180deg, rgba(19,35,63,.95), rgba(10,19,35,.97));
-      border:1px solid var(--line);
-      border-radius:22px;
-      box-shadow:0 20px 60px rgba(0,0,0,.32);
-    }
-    .heroCard{padding:24px}
-    .heroTitle{
-      font-size:30px;font-weight:800;letter-spacing:.2px;margin-bottom:8px;
-    }
-    .heroSub{color:var(--muted);line-height:1.6}
-    .badgeRow{display:flex;flex-wrap:wrap;gap:10px;margin-top:16px}
-    .badge{
-      padding:10px 14px;border-radius:999px;
-      background:rgba(255,255,255,.05);
-      border:1px solid rgba(255,255,255,.08);
-      color:#fff;font-size:13px;font-weight:700;
-    }
-    .stats{
-      padding:18px;
-      display:grid;
-      grid-template-columns:1fr 1fr;
-      gap:12px;
-      align-content:start;
-    }
-    .stat{
-      padding:16px;border-radius:18px;background:rgba(255,255,255,.04);
-      border:1px solid rgba(255,255,255,.06);
-    }
-    .stat .k{font-size:28px;font-weight:800;margin-top:6px}
-    .toolbar{
-      display:grid;
-      grid-template-columns:1fr auto auto auto auto;
-      gap:12px;
-      margin-bottom:18px;
-    }
-    .toolbar input,.toolbar select,.toolbar button,.uploadPanel input,.uploadPanel select,.uploadPanel textarea{
-      width:100%;
-      background:#0c1730;
-      color:#fff;
-      border:1px solid rgba(255,255,255,.1);
-      border-radius:14px;
-      padding:12px 14px;
-      outline:none;
-    }
-    .toolbar button,.btn{
-      cursor:pointer;
-      font-weight:800;
-      border:none;
-      background:linear-gradient(90deg, var(--blue), #74b9ff);
-      color:#04111f;
-    }
-    .btn.secondary{background:linear-gradient(90deg, var(--gold), #ffd76e)}
-    .btn.green{background:linear-gradient(90deg, #2dd36f, #68e89b)}
-    .btn.red{background:linear-gradient(90deg, #ff6b6b, #ff8d8d)}
-    .btn.purple{background:linear-gradient(90deg, var(--purple), #c19aff); color:white;}
-    .btn.dark{background:linear-gradient(90deg, #2f3f5f, #4b618c); color:#fff;}
-    .main{
-      display:grid;
-      grid-template-columns:1.25fr .75fr;
-      gap:18px;
-      align-items:start;
-    }
-    .panel{padding:16px}
-    .sidePanel,.uploadPanel{padding:16px}
-    .tabs{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:16px}
-    .tab{
-      padding:10px 14px;border-radius:12px;border:1px solid rgba(255,255,255,.08);
-      background:rgba(255,255,255,.04);cursor:pointer;font-weight:800;
-    }
-    .tab.active{background:linear-gradient(90deg, var(--gold), #ffd76e); color:#07111d}
-    .jobGrid{display:grid;gap:16px}
-    .jobCard{
-      border:1px solid rgba(255,255,255,.08);
-      border-radius:22px;
-      overflow:hidden;
-      background:linear-gradient(180deg, rgba(255,255,255,.04), rgba(255,255,255,.02));
-    }
-    .jobHead{
-      padding:16px;
-      display:flex;justify-content:space-between;gap:12px;align-items:flex-start;
-      border-bottom:1px solid rgba(255,255,255,.08);
-      background:linear-gradient(90deg, rgba(255,204,77,.12), rgba(66,165,255,.09));
-    }
-    .jobTitle{font-size:18px;font-weight:800}
-    .meta{color:var(--muted);font-size:13px;line-height:1.5}
-    .pill{
-      display:inline-block;padding:7px 10px;border-radius:999px;font-size:12px;font-weight:800;
-      margin-left:6px;
-    }
-    .pill.pending{background:#ffe7a0;color:#4c3900}
-    .pill.claimed{background:#b8e3ff;color:#003459}
-    .pill.printing{background:#d1c0ff;color:#321a73}
-    .pill.completed{background:#bdf4cf;color:#0e4c23}
-    .pill.failed{background:#ffc2c2;color:#5e1010}
-    .jobBody{
-      padding:16px;
-      display:grid;
-      grid-template-columns:1.1fr .9fr;
-      gap:16px;
-    }
-    .previewBox,.detailBox{
-      background:rgba(0,0,0,.18);
-      border:1px solid rgba(255,255,255,.06);
-      border-radius:18px;
-      padding:14px;
-    }
-    iframe,video,audio,img{
-      width:100%;
-      border-radius:14px;
-      background:#000;
-    }
-    iframe{height:420px;border:none}
-    video{max-height:420px}
-    img{max-height:420px;object-fit:contain;background:#0a101a}
-    .noPreview{
-      min-height:220px;display:flex;align-items:center;justify-content:center;
-      color:var(--muted);text-align:center;border:1px dashed rgba(255,255,255,.12);border-radius:14px;
-      padding:20px;
-    }
-    .detailRow{display:grid;grid-template-columns:130px 1fr;gap:10px;margin-bottom:10px}
-    .detailRow b{color:#ffd76e}
-    .insBox,.replyBox,.noteBox{
-      margin-top:14px;
-      padding:12px;
-      border-radius:14px;
-      background:rgba(255,255,255,.04);
-      border:1px solid rgba(255,255,255,.06);
-    }
-    textarea.reply{
-      width:100%;min-height:100px;resize:vertical;
-      margin-top:10px;background:#08111f;color:#fff;border:1px solid rgba(255,255,255,.1);
-      border-radius:12px;padding:12px;
-    }
-    .actionRow{
-      display:flex;flex-wrap:wrap;gap:8px;margin-top:14px
-    }
-    .routeRow{
-      display:grid;grid-template-columns:1fr auto;gap:8px;margin-top:14px
-    }
-    .sidePanel h3,.uploadPanel h3,.panel h3{margin:4px 0 14px 0}
-    .printerList{display:grid;gap:10px;max-height:520px;overflow:auto;padding-right:4px}
-    .printerGroup{
-      border:1px solid rgba(255,255,255,.07);
-      border-radius:16px;padding:12px;background:rgba(255,255,255,.03)
-    }
-    .printerState{font-weight:800;margin-bottom:6px}
-    .printerItem{
-      color:var(--muted);font-size:13px;line-height:1.5;padding-left:8px
-    }
-    .uploadPanel form{display:grid;gap:10px}
-    .muted{color:var(--muted)}
-    .topLinks{display:flex;gap:10px;flex-wrap:wrap;margin-top:14px}
-    .topLinks a{
-      color:#07111d;text-decoration:none;background:linear-gradient(90deg,#ffd76e,#ffcc4d);
-      padding:10px 14px;border-radius:12px;font-weight:800
-    }
-    .small{font-size:12px;color:var(--muted)}
-    .emptyState{
-      padding:30px;
-      text-align:center;
-      color:var(--muted);
-      border:1px dashed rgba(255,255,255,.1);
-      border-radius:18px;
-      background:rgba(255,255,255,.02);
-    }
-    a.fileLink{color:#8fd1ff;text-decoration:none;font-weight:700}
-    a.fileLink:hover{text-decoration:underline}
-    @media (max-width: 1100px){
-      .hero,.main,.jobBody,.toolbar{grid-template-columns:1fr}
-    }
-  </style>
-</head>
+ <style>
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    font-family: Arial, sans-serif;
+    background: #08111f;
+    color: #eef4ff;
+  }
+
+  .layout {
+    display: grid;
+    grid-template-columns: 300px 1fr;
+    min-height: 100vh;
+  }
+
+  .sidebar {
+    background: linear-gradient(180deg, #07101d, #0b1730 55%, #10203d);
+    border-right: 1px solid rgba(255,255,255,0.08);
+    padding: 16px 14px;
+    overflow-y: auto;
+  }
+
+  .brand {
+    font-size: 24px;
+    font-weight: 900;
+    color: #ffffff;
+    margin-bottom: 10px;
+  }
+
+  .subtitle {
+    color: #d6e0f0;
+    font-size: 13px;
+    line-height: 1.5;
+    margin-bottom: 18px;
+  }
+
+  .sideCard {
+    background: linear-gradient(180deg, rgba(255,255,255,0.04), rgba(255,255,255,0.02));
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 18px;
+    padding: 14px;
+    margin-bottom: 16px;
+  }
+
+  .sideTitle {
+    font-size: 12px;
+    color: #ffffff;
+    text-transform: uppercase;
+    font-weight: 900;
+    margin-bottom: 10px;
+  }
+
+  .sideValue {
+    font-size: 34px;
+    font-weight: 900;
+    color: #ffffff;
+  }
+
+  .printerList {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    max-height: 200px;
+    overflow-y: auto;
+  }
+
+  .printerTag {
+    background: rgba(255,255,255,0.06);
+    border-radius: 10px;
+    padding: 8px 10px;
+    font-size: 12px;
+  }
+
+  .main {
+    padding: 18px;
+    background: linear-gradient(180deg, #0b1426, #101e37);
+  }
+
+  .topPanel {
+    background: rgba(255,255,255,0.05);
+    border-radius: 20px;
+    padding: 16px;
+    margin-bottom: 16px;
+  }
+
+  .topTitle {
+    font-size: 26px;
+    font-weight: 900;
+  }
+
+  .toolbar {
+    display: grid;
+    grid-template-columns: 1.5fr 180px 180px 150px;
+    gap: 10px;
+  }
+
+  .toolbar input,
+  .toolbar select,
+  .toolbar button {
+    padding: 12px;
+    border-radius: 12px;
+    border: none;
+    background: #0b1426;
+    color: white;
+  }
+
+  .toolbar button {
+    background: #17315d;
+    font-weight: bold;
+    cursor: pointer;
+  }
+
+  .stats {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 10px;
+    margin-bottom: 16px;
+  }
+
+  .stat {
+    background: rgba(255,255,255,0.05);
+    border-radius: 16px;
+    padding: 12px;
+  }
+
+  .statK {
+    font-size: 12px;
+    color: #f7cf67;
+    font-weight: bold;
+  }
+
+  .statV {
+    font-size: 28px;
+    font-weight: bold;
+  }
+
+  .jobCard {
+    background: #132746;
+    border-radius: 20px;
+    padding: 16px;
+    margin-bottom: 16px;
+  }
+
+  .jobTitle {
+    font-size: 22px;
+    font-weight: bold;
+    margin-bottom: 10px;
+  }
+
+  .jobBody {
+    display: grid;
+    grid-template-columns: 1fr 400px;
+    gap: 16px;
+  }
+
+  .previewBox {
+    background: rgba(255,255,255,0.05);
+    border-radius: 12px;
+    min-height: 250px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .previewBox img,
+  .previewBox video,
+  .previewBox iframe {
+    width: 100%;
+    max-height: 500px;
+    border-radius: 10px;
+  }
+
+  .metaGrid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 10px;
+  }
+
+  .metaCard {
+    background: rgba(255,255,255,0.05);
+    border-radius: 10px;
+    padding: 10px;
+  }
+
+  .actions {
+    margin-top: 10px;
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+  }
+
+  .btn {
+    padding: 6px 10px;
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: bold;
+    border: none;
+    cursor: pointer;
+  }
+
+  .btn-open { background: #dbeafe; color: #000; }
+  .btn-start { background: #8b5cf6; color: #fff; }
+  .btn-done { background: #22c55e; color: #000; }
+  .btn-fail { background: #fb7185; color: #000; }
+  .btn-wa { background: #25d366; color: #000; }
+  .btn-call { background: #60a5fa; color: #000; }
+
+  .replyBox textarea {
+    width: 100%;
+    min-height: 80px;
+    margin-top: 10px;
+    border-radius: 10px;
+    border: none;
+    padding: 10px;
+    background: #020b18;
+    color: white;
+  }
+
+  .sendBtn {
+    margin-top: 6px;
+    background: #93c5fd;
+    padding: 8px;
+    border-radius: 6px;
+    border: none;
+    cursor: pointer;
+  }
+
+  @media (max-width: 1000px) {
+    .layout { grid-template-columns: 1fr; }
+    .jobBody { grid-template-columns: 1fr; }
+  }
+</style>
 <body>
   <div class="wrap">
     <div class="hero">
