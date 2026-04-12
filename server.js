@@ -2270,10 +2270,39 @@ return parts.join("");
             </div>
           </div>
           <div class="meta" style="text-align:right">
-            Phone: \${h(job.customer_phone || "-")}<br>
-            Paper: \${h(job.paper_size || "N/A")}<br>
-            Color: \${h(job.color_mode || "BW")}<br>
-            Copies: \${h(job.copies || 1)}
+          Phone: ${h(job.customer_phone || "-")}<br>
+
+<div style="margin-top:8px; display:flex; gap:6px; flex-wrap:wrap;">
+  <a href="https://wa.me/${job.customer_phone}" target="_blank"
+     style="background:#25D366; color:white; padding:5px 8px; border-radius:6px; text-decoration:none; font-size:11px;">
+     💬 WhatsApp
+  </a>
+
+  <a href="tel:${job.customer_phone}"
+     style="background:#0a84ff; color:white; padding:5px 8px; border-radius:6px; text-decoration:none; font-size:11px;">
+     ☎ Call
+  </a>
+</div>
+
+Paper: ${h(job.paper_size || "N/A")}<br>
+Color: ${h(job.color_mode || "BW")}<br>
+Copies: ${h(job.copies || 1)}Phone: ${h(job.customer_phone || "-")}<br>
+
+<div style="margin-top:8px; display:flex; gap:6px; flex-wrap:wrap;">
+  <a href="https://wa.me/${job.customer_phone}" target="_blank"
+     style="background:#25D366; color:white; padding:5px 8px; border-radius:6px; text-decoration:none; font-size:11px;">
+     💬 WhatsApp
+  </a>
+
+  <a href="tel:${job.customer_phone}"
+     style="background:#0a84ff; color:white; padding:5px 8px; border-radius:6px; text-decoration:none; font-size:11px;">
+     ☎ Call
+  </a>
+</div>
+
+Paper: ${h(job.paper_size || "N/A")}<br>
+Color: ${h(job.color_mode || "BW")}<br>
+Copies: ${h(job.copies || 1)}
           </div>
         </div>
 
