@@ -2273,7 +2273,7 @@ app.get("/worker-dashboard", (req, res) => {
             <div class="jobBody">
               <div>
                 <div class="metaGrid">
-                  <div class="metaCard"><div class="metaKey">File URL</div><div class="metaValue">${openFileLink}</div></div>
+                  <div class="metaCard"><div class="metaKey">File URL</div><div class="metaValue">\${openFileLink}</div></div>
                   <div class="metaCard"><div class="metaKey">Original Name</div><div class="metaValue">\${escapeHtml(job.original_name || job.file_name || "")}</div></div>
                   <div class="metaCard"><div class="metaKey">MIME Type</div><div class="metaValue">\${escapeHtml(job.mime_type || job.file_mime || "")}</div></div>
                   <div class="metaCard"><div class="metaKey">Pages</div><div class="metaValue">\${escapeHtml(job.pages || "")}</div></div>
