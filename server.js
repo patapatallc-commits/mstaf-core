@@ -17,7 +17,7 @@ function getExtFromMime(mimeType = "") {
 }
 
 function safeBaseName(name = "upload") {
-  return String(name).replace(/[^\w.\-]+/g, "_");F
+  return String(name).replace(/[^\w.\-]+/g, "_");
 }
 
 async function downloadWhatsAppMediaToUploads(mediaId, fallbackName, mimeType, req) {
@@ -96,13 +96,6 @@ require("dotenv").config();
 
 const app = express();
 app.use(express.json({ limit: "20mb" }));
-const cors = require("cors");
-
-app.use(cors({
-  origin: "*",
-  methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-  allowedHeaders: ["Content-Type", "Authorization", "x-worker-key", "x-dashboard-key"]
-}));
 app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 const PORT = process.env.PORT || 10000;
 
@@ -1765,83 +1758,6 @@ app.post("/api/dashboard/manual-upload", requireDashboardKey, upload.single("fil
   }
 });
 
-app.post("/api/upload", upload.single("file"), async (req, res) => {
-  try {
-    const file = req.file;
-    const {
-      service_type = "SERVICE",
-      instructions = "",
-      customer_phone = "",
-      queue_type = "AGENT",
-      paper_size = "",
-      color_mode = "BW",
-      copies = "1",
-      pages = "1"
-    } = req.body;
-
-    if (!file) {
-      return res.status(400).json({ ok: false, error: "File required" });
-    }
-
-    const base =
-      process.env.PUBLIC_BASE_URL ||
-      process.env.RENDER_EXTERNAL_URL ||
-      `${req.protocol}://${req.get("host")}`;
-
-    const fileUrl = `${base}/uploads/${encodeURIComponent(file.filename)}`;
-    const mimeType = file.mimetype || "";
-    const ext = (file.originalname || "").split(".").pop() || "";
-
-    const targetPrinterId =
-      queue_type === "AGENT"
-        ? AGENT_QUEUE_ID
-        : queue_type === "DISPATCH"
-          ? DISPATCH_QUEUE_ID
-          : DEFAULT_PRINTER_ID;
-
-    const columns = await getPrintJobsColumns();
-
-    const insertCols = [];
-    const insertVals = [];
-    const params = [];
-
-    function addCol(name, value) {
-      if (columns.has(name)) {
-        insertCols.push(name);
-        params.push(value);
-        insertVals.push(`$${params.length}`);
-      }
-    }
-
-    addCol("printer_id", targetPrinterId);
-    addCol("file_url", fileUrl);
-    addCol("original_name", file.originalname || "upload");
-    addCol("mime_type", mimeType);
-    addCol("file_ext", ext);
-    addCol("status", "pending");
-    addCol("service_type", service_type);
-    addCol("queue_type", queue_type);
-    addCol("instructions", instructions || null);
-    addCol("customer_phone", customer_phone || null);
-    addCol("paper_size", paper_size || null);
-    addCol("color_mode", color_mode || "BW");
-    addCol("copies", parseInt(copies, 10) || 1);
-    addCol("pages", parseInt(pages, 10) || 1);
-
-    const sql = `
-      INSERT INTO print_jobs (${insertCols.join(", ")})
-      VALUES (${insertVals.join(", ")})
-      RETURNING *
-    `;
-
-    const result = await pool.query(sql, params);
-    res.json({ ok: true, job: result.rows[0] || null });
-  } catch (err) {
-    console.error("Manual dashboard upload error:", err);
-    res.status(500).json({ ok: false, error: err.message });
-  }
-});
-
 /**
  * Dashboard page
  */
@@ -2377,24 +2293,24 @@ return parts.join("");
             \${renderInstructions(job)}
 
             <div class="routeRow">
-              <select id="route_${h(job.id)}">
-                ${routeOptions(job, printers)}
+              <select id="route_\${h(job.id)}">
+                \${routeOptions(job, printers)}
               </select>
-              <button type="button" class="btn dark" onclick="routeJob('${h(job.id)}')">Route</button>
+              <button class="btn dark" onclick="routeJob('\${h(job.id)}')">Route</button>
             </div>
 
             <div class="actionRow">
-             <button class="btn secondary" onclick="markJob('${h(job.id)}','claimed')">Claim</button>
-             <button class="btn purple" onclick="markJob('${h(job.id)}','printing')">Start</button>
-              <button class="btn green" onclick="markJob('${h(job.id)}','completed')">Complete</button>
-              <button class="btn red" onclick="markJob('${h(job.id)}','failed')">Fail</button>
+              <button class="btn secondary" onclick="markJob('\${h(job.id)}','claimed')">Claim</button>
+              <button class="btn purple" onclick="markJob('\${h(job.id)}','printing')">Start</button>
+              <button class="btn green" onclick="markJob('\${h(job.id)}','completed')">Complete</button>
+              <button class="btn red" onclick="markJob('\${h(job.id)}','failed')">Fail</button>
             </div>
 
             <div class="replyBox">
               <b>Reply on WhatsApp</b>
-              <textarea id="reply_${h(job.id)}" class="reply" placeholder="Type your update to the customer here..."></textarea>
+              <textarea id="reply_\${h(job.id)}" class="reply" placeholder="Type your update to the customer here..."></textarea>
               <div class="actionRow">
-                <button class="btn" onclick="replyJob('${h(job.id)}')">Send Reply</button>
+                <button class="btn" onclick="replyJob('\${h(job.id)}')">Send Reply</button>
               </div>
             </div>
           </div>
@@ -2446,52 +2362,20 @@ return parts.join("");
     }
   }
 
- async function routeJob(id) {
-  console.log("Route clicked:", id);
-
-  try {
-    const el = document.getElementById("route_" + id);
-
-    if (!el) {
-      alert("Dropdown not found");
-      return;
+  async function routeJob(id) {
+    try {
+      const printer_id = document.getElementById("route_" + id).value;
+      await api("/api/dashboard/jobs/" + id + "/route", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ printer_id })
+      });
+      loadJobs();
+    } catch (err) {
+      alert("Route failed: " + err.message);
     }
-
-    const printer_id = el.value;
-    console.log("Selected printer:", printer_id);
-
-    if (!printer_id) {
-      alert("Please select a printer");
-      return;
-    }
-
-    const res = await fetch("/api/dashboard/jobs/" + id + "/route", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-dashboard-key": DASHBOARD_KEY
-      },
-      body: JSON.stringify({ printer_id })
-    });
-
-    console.log("Response status:", res.status);
-
-    const data = await res.json().catch(() => ({}));
-    console.log("Response data:", data);
-
-    if (!res.ok) {
-      alert(data.error || "Route failed");
-      return;
-    }
-
-    alert("✅ Routed successfully");
-    loadJobs();
-
-  } catch (err) {
-    console.error(err);
-    alert("Route failed: " + err.message);
   }
-}
+
   async function replyJob(id) {
     try {
       const message = document.getElementById("reply_" + id).value.trim();
