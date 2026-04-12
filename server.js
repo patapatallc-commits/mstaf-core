@@ -96,6 +96,13 @@ require("dotenv").config();
 
 const app = express();
 app.use(express.json({ limit: "20mb" }));
+const cors = require("cors");
+
+app.use(cors({
+  origin: "*",
+  methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization", "x-worker-key", "x-dashboard-key"]
+}));
 app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 const PORT = process.env.PORT || 10000;
 
