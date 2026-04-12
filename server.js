@@ -2421,8 +2421,23 @@ return parts.join("");
   );
 }
 
+let isUserTyping = false;
+
+document.addEventListener("focusin", (e) => {
+  if (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA") {
+    isUserTyping = true;
+  }
+});
+
+document.addEventListener("focusout", (e) => {
+  if (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA") {
+    isUserTyping = false;
+  }
+});
+
 setInterval(() => {
   if (mediaIsPlaying()) return;
+  if (isUserTyping) return;
   loadJobs();
 }, 8000);
 </script>
