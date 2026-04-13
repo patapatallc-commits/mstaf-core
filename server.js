@@ -55,6 +55,9 @@ async function downloadWhatsAppMediaToUploads(mediaId, fallbackName, mimeType, r
 
   const base =
     process.env.PUBLIC_BASE_URL ||
+   function buildUploadUrl(req, finalName) {
+  const base =
+    process.env.PUBLIC_BASE_URL ||
     process.env.RENDER_EXTERNAL_URL ||
     `${req.protocol}://${req.get("host")}`;
 
