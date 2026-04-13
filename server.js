@@ -1854,7 +1854,7 @@ app.post("/api/upload", upload.single("file"), async (req, res) => {
     return res.json({
       ok: true,
       id: result.rows[0].id,
-      file_url: "/uploads/" + file.filename,
+      file_url: buildUploadUrl(req, file.filename),
       routing: "Standard Printer (PP-USA-001)"
     });
 
