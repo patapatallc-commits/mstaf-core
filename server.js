@@ -1388,14 +1388,17 @@ app.get("/api/worker/next", async (req, res) => {
     const workerKey = req.headers["x-worker-key"];
     const printerId = String(req.query.printer_id || "").trim();
 
-    const validWorkerKey =
-      process.env.WORKER_KEY ||
-      process.env.PRINTER_KEY ||
-      process.env.SYSTEM_KEY;
+const validKeys = [
+  process.env.WORKER_KEY,
+  process.env.PRINTER_KEY,
+  process.env.SYSTEM_KEY,
+  process.env.DASHBOARD_KEY
+].filter(Boolean);
 
-    if (!workerKey || !validWorkerKey || workerKey !== validWorkerKey) {
-      return res.status(403).json({ ok: false, error: "Unauthorized" });
-    }
+if (!workerKey || !validKeys.includes(workerKey)) {
+  return res.status(403).json({ ok: false, error: "Unauthorized" });
+}   
+     
 
     if (!printerId) {
       return res.json({ ok: true, job: null });
