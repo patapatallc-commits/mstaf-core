@@ -1376,12 +1376,24 @@ ${serviceMenu()}`
 app.get("/health", (_req, res) => {
   res.json({ ok: true });
 });
+
+
+
+
+app.get("/api/health", (_req, res) => {
+  res.json({ ok: true });
+});
 app.get("/api/worker/next", async (req, res) => {
   try {
     const workerKey = req.headers["x-worker-key"];
     const printerId = String(req.query.printer_id || "").trim();
 
-    if (!workerKey || workerKey !== process.env.WORKER_KEY) {
+    const validWorkerKey =
+      process.env.WORKER_KEY ||
+      process.env.PRINTER_KEY ||
+      process.env.SYSTEM_KEY;
+
+    if (!workerKey || !validWorkerKey || workerKey !== validWorkerKey) {
       return res.status(403).json({ ok: false, error: "Unauthorized" });
     }
 
@@ -1408,7 +1420,11 @@ app.get("/api/worker/next", async (req, res) => {
     }
 
     await pool.query(
-      `UPDATE jobs SET status = 'printing' WHERE id = $1`,
+      `
+      UPDATE jobs
+      SET status = 'printing'
+      WHERE id = $1
+      `,
       [job.id]
     );
 
@@ -1426,7 +1442,12 @@ app.post("/api/worker/jobs/:id/status", async (req, res) => {
     const status = String(req.body.status || "").trim();
     const errorMessage = String(req.body.error_message || "").trim();
 
-    if (!workerKey || workerKey !== process.env.WORKER_KEY) {
+    const validWorkerKey =
+      process.env.WORKER_KEY ||
+      process.env.PRINTER_KEY ||
+      process.env.SYSTEM_KEY;
+
+    if (!workerKey || !validWorkerKey || workerKey !== validWorkerKey) {
       return res.status(403).json({ ok: false, error: "Unauthorized" });
     }
 
@@ -1452,10 +1473,6 @@ app.post("/api/worker/jobs/:id/status", async (req, res) => {
     console.error("WORKER STATUS ERROR:", err);
     return res.status(500).json({ ok: false, error: err.message });
   }
-});
-
-app.get("/api/health", (_req, res) => {
-  res.json({ ok: true });
 });
 // =============================
 // DASHBOARD (WORKER VIEW)
