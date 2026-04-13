@@ -1841,7 +1841,7 @@ app.post("/api/upload", upload.single("file"), async (req, res) => {
       RETURNING id
     `, [
       "PP-USA-001",
-      "/uploads/" + file.filename,
+      buildUploadUrl(req, file.filename),
       file.originalname,
       paper_size,
       color_mode,
