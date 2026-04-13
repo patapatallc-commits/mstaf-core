@@ -1711,6 +1711,67 @@ app.post("/api/dashboard/jobs/:id/reply", requireDashboardKey, express.json(), a
 /**
  * Manual dashboard upload to queue
  */
+// PUBLIC SHOPIFY UPLOAD (NO DASHBOARD KEY)
+app.post("/api/upload", upload.single("file"), async (req, res) => {
+  try {
+    const file = req.file;
+
+    const {
+      service_type = "PRINTING",
+      instructions = "",
+      paper_size = "A4",
+      color_mode = "BW",
+      copies = "1",
+      pages = "1",
+      laminating_type = "NONE",
+      laminating_qty = "0",
+      laminating_note = ""
+    } = req.body;
+
+    if (!file) {
+      return res.status(400).json({ ok: false, error: "No file uploaded" });
+    }
+
+    // Save job to DB (reuse your existing logic if you have one)
+    const result = await pool.query(`
+      INSERT INTO jobs (
+        status,
+        printer_id,
+        file_url,
+        original_name,
+        paper_size,
+        color_mode,
+        copies,
+        pages,
+        service_type,
+        instructions
+      )
+      VALUES ('pending', $1, $2, $3, $4, $5, $6, $7, $8, $9)
+      RETURNING id
+    `, [
+      "PP-USA-001",
+      "/uploads/" + file.filename,
+      file.originalname,
+      paper_size,
+      color_mode,
+      copies,
+      pages,
+      service_type,
+      instructions
+    ]);
+
+    return res.json({
+      ok: true,
+      id: result.rows[0].id,
+      file_url: "/uploads/" + file.filename,
+      routing: "Standard Printer (PP-USA-001)"
+    });
+
+  } catch (err) {
+    console.error("UPLOAD ERROR:", err);
+    return res.status(500).json({ ok: false, error: err.message });
+  }
+});
 app.post("/api/dashboard/manual-upload", requireDashboardKey, upload.single("file"), async (req, res) => {
   try {
     const file = req.file;
