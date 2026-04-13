@@ -1422,14 +1422,8 @@ if (!workerKey || !validKeys.includes(workerKey)) {
       return res.json({ ok: true, job: null });
     }
 
-    await pool.query(
-      `
-      UPDATE jobs
-      SET status = 'printing'
-      WHERE id = $1
-      `,
-      [job.id]
-    );
+ 
+      
 
     return res.json({ ok: true, job });
   } catch (err) {
