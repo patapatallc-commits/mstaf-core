@@ -1376,6 +1376,83 @@ ${serviceMenu()}`
 app.get("/health", (_req, res) => {
   res.json({ ok: true });
 });
+app.get("/api/worker/next", async (req, res) => {
+  try {
+    const workerKey = req.headers["x-worker-key"];
+    const printerId = String(req.query.printer_id || "").trim();
+
+    if (!workerKey || workerKey !== process.env.WORKER_KEY) {
+      return res.status(403).json({ ok: false, error: "Unauthorized" });
+    }
+
+    if (!printerId) {
+      return res.json({ ok: true, job: null });
+    }
+
+    const result = await pool.query(
+      `
+      SELECT *
+      FROM jobs
+      WHERE status = 'pending'
+        AND printer_id = $1
+      ORDER BY id ASC
+      LIMIT 1
+      `,
+      [printerId]
+    );
+
+    const job = result.rows[0];
+
+    if (!job) {
+      return res.json({ ok: true, job: null });
+    }
+
+    await pool.query(
+      `UPDATE jobs SET status = 'printing' WHERE id = $1`,
+      [job.id]
+    );
+
+    return res.json({ ok: true, job });
+  } catch (err) {
+    console.error("WORKER NEXT ERROR:", err);
+    return res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+app.post("/api/worker/jobs/:id/status", async (req, res) => {
+  try {
+    const workerKey = req.headers["x-worker-key"];
+    const jobId = req.params.id;
+    const status = String(req.body.status || "").trim();
+    const errorMessage = String(req.body.error_message || "").trim();
+
+    if (!workerKey || workerKey !== process.env.WORKER_KEY) {
+      return res.status(403).json({ ok: false, error: "Unauthorized" });
+    }
+
+    if (!jobId || !status) {
+      return res.status(400).json({ ok: false, error: "Missing job id or status" });
+    }
+
+    await pool.query(
+      `
+      UPDATE jobs
+      SET status = $1
+      WHERE id = $2
+      `,
+      [status, jobId]
+    );
+
+    if (errorMessage) {
+      console.error(`JOB ${jobId} ERROR: ${errorMessage}`);
+    }
+
+    return res.json({ ok: true });
+  } catch (err) {
+    console.error("WORKER STATUS ERROR:", err);
+    return res.status(500).json({ ok: false, error: err.message });
+  }
+});
 
 app.get("/api/health", (_req, res) => {
   res.json({ ok: true });
