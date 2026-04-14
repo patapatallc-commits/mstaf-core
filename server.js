@@ -52,6 +52,8 @@ async function downloadWhatsAppMediaToUploads(mediaId, fallbackName, mimeType, r
   });
 
   fs.writeFileSync(fullPath, Buffer.from(fileResp.data));
+  return fullPath;
+}
 
   
    function buildUploadUrl(req, finalName) {
