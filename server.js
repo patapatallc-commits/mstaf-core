@@ -53,8 +53,7 @@ async function downloadWhatsAppMediaToUploads(mediaId, fallbackName, mimeType, r
 
   fs.writeFileSync(fullPath, Buffer.from(fileResp.data));
 
-  const base =
-    process.env.PUBLIC_BASE_URL ||
+  
    function buildUploadUrl(req, finalName) {
   const base =
     process.env.PUBLIC_BASE_URL ||
