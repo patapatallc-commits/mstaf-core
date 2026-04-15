@@ -89,7 +89,7 @@ if (!fs.existsSync(uploadsDir)) {
 
 const storage = multer.diskStorage({
  destination: (req, file, cb) => {
-  cb(null, "/opt/render/project/src/uploads");
+  cb(null, uploadsDir);
 },
   filename: (req, file, cb) => {
     const safeName = Date.now() + "-" + (file.originalname || "upload").replace(/[^\w.\-]+/g, "_");
@@ -120,15 +120,10 @@ app.use(cors({
 app.options("*", cors());
 
 
-const UPLOADS_PATH = "/opt/render/project/src/uploads";
-
-app.use("/uploads", express.static(UPLOADS_PATH, {
-  fallthrough: false,
-  extensions: ["jpg", "png", "jpeg", "pdf", "mp4", "ogg"]
-}));
+app.use("/uploads", express.static(uploadsDir));
 
 app.get("/uploads/:file", (req, res) => {
-  const filePath = require("path").join(UPLOADS_PATH, req.params.file);
+  const filePath = path.join(uploadsDir, req.params.file);
   res.sendFile(filePath);
 });
 const PORT = process.env.PORT || 10000;
@@ -1387,89 +1382,47 @@ app.get("/health", (_req, res) => {
 app.get("/api/health", (_req, res) => {
   res.json({ ok: true });
 });
-app.get("/api/worker/next", async (req, res) => {
+app.post("/api/worker/jobs/:id/status", express.json(), async (req, res) => {
   try {
     const workerKey = req.headers["x-worker-key"];
-    const printerId = String(req.query.printer_id || "").trim();
+    const jobId = req.params.id;
+    const status = String(req.body?.status || "").trim().toLowerCase();
+    const errorMessage = String(req.body?.error_message || "").trim();
 
-const validKeys = [
-  process.env.WORKER_KEY,
-  process.env.PRINTER_KEY,
-  process.env.SYSTEM_KEY,
-  process.env.DASHBOARD_KEY
-].filter(Boolean);
+    const validKeys = [
+      process.env.WORKER_KEY,
+      process.env.PRINTER_KEY,
+      process.env.SYSTEM_KEY,
+      process.env.DASHBOARD_KEY
+    ].filter(Boolean);
 
-if (!workerKey || !validKeys.includes(workerKey)) {
-  return res.status(403).json({ ok: false, error: "Unauthorized" });
-}   
-     
+    if (!workerKey || !validKeys.includes(workerKey)) {
+      return res.status(403).json({ ok: false, error: "Unauthorized" });
+    }
 
-    if (!printerId) {
-      return res.json({ ok: true, job: null });
+    const allowed = new Set(["printing", "completed", "failed"]);
+
+    if (!allowed.has(status)) {
+      return res.status(400).json({ ok: false, error: "Invalid status" });
     }
 
     const result = await pool.query(
       `
-      SELECT *
-      FROM jobs
-      WHERE status = 'pending'
-        AND printer_id = $1
-      ORDER BY id ASC
-      LIMIT 1
+      UPDATE print_jobs
+      SET status = $1,
+          error_message = CASE
+            WHEN $2 <> '' THEN $2
+            ELSE error_message
+          END,
+          updated_at = NOW()
+      WHERE id = $3
+      RETURNING *
       `,
-      [printerId]
+      [status, errorMessage, jobId]
     );
 
-    const job = result.rows[0];
+    return res.json({ ok: true, job: result.rows[0] || null });
 
-    if (!job) {
-      return res.json({ ok: true, job: null });
-    }
-
- 
-      
-
-    return res.json({ ok: true, job });
-  } catch (err) {
-    console.error("WORKER NEXT ERROR:", err);
-    return res.status(500).json({ ok: false, error: err.message });
-  }
-});
-
-app.post("/api/worker/jobs/:id/status", async (req, res) => {
-  try {
-    const workerKey = req.headers["x-worker-key"];
-    const jobId = req.params.id;
-    const status = String(req.body.status || "").trim();
-    const errorMessage = String(req.body.error_message || "").trim();
-
-    const validWorkerKey =
-      process.env.WORKER_KEY ||
-      process.env.PRINTER_KEY ||
-      process.env.SYSTEM_KEY;
-
-    if (!workerKey || !validWorkerKey || workerKey !== validWorkerKey) {
-      return res.status(403).json({ ok: false, error: "Unauthorized" });
-    }
-
-    if (!jobId || !status) {
-      return res.status(400).json({ ok: false, error: "Missing job id or status" });
-    }
-
-    await pool.query(
-      `
-      UPDATE jobs
-      SET status = $1
-      WHERE id = $2
-      `,
-      [status, jobId]
-    );
-
-    if (errorMessage) {
-      console.error(`JOB ${jobId} ERROR: ${errorMessage}`);
-    }
-
-    return res.json({ ok: true });
   } catch (err) {
     console.error("WORKER STATUS ERROR:", err);
     return res.status(500).json({ ok: false, error: err.message });
@@ -1811,136 +1764,68 @@ app.post("/api/upload", upload.single("file"), async (req, res) => {
   try {
     const file = req.file;
 
-    const {
-      service_type = "PRINTING",
-      instructions = "",
-      paper_size = "A4",
-      color_mode = "BW",
-      copies = "1",
-      pages = "1",
-      laminating_type = "NONE",
-      laminating_qty = "0",
-      laminating_note = ""
-    } = req.body;
-
     if (!file) {
       return res.status(400).json({ ok: false, error: "No file uploaded" });
     }
 
-    // Save job to DB (reuse your existing logic if you have one)
-    const result = await pool.query(`
-      INSERT INTO jobs (
-        status,
+    const {
+      paper_size = "A4",
+      color_mode = "BW",
+      copies = "1",
+      pages = "1"
+    } = req.body;
+
+    const normalizedPaperSize = String(paper_size || "A4").toUpperCase();
+    const normalizedColorMode = String(color_mode || "BW").toUpperCase();
+    const copiesNum = Math.max(1, parseInt(copies, 10) || 1);
+    const pagesNum = Math.max(1, parseInt(pages, 10) || 1);
+
+    const printerId =
+      normalizedPaperSize === "A3" ? "PP-USA-A3-001" : "PP-USA-001";
+
+    const fileUrl = buildUploadUrl(req, file.filename);
+
+    const result = await pool.query(
+      `
+      INSERT INTO print_jobs (
         printer_id,
+        status,
         file_url,
         original_name,
         paper_size,
         color_mode,
         copies,
         pages,
-        service_type,
-        instructions
+        created_at,
+        updated_at
       )
-      VALUES ('pending', $1, $2, $3, $4, $5, $6, $7, $8, $9)
-      RETURNING id
-    `, [
-      "PP-USA-001",
-      buildUploadUrl(req, file.filename),
-      file.originalname,
-      paper_size,
-      color_mode,
-      copies,
-      pages,
-      service_type,
-      instructions
-    ]);
+      VALUES ($1, 'pending', $2, $3, $4, $5, $6, $7, NOW(), NOW())
+      RETURNING *
+      `,
+      [
+        printerId,
+        fileUrl,
+        file.originalname || file.filename,
+        normalizedPaperSize,
+        normalizedColorMode,
+        copiesNum,
+        pagesNum
+      ]
+    );
 
     return res.json({
       ok: true,
-      id: result.rows[0].id,
-      file_url: buildUploadUrl(req, file.filename),
-      routing: "Standard Printer (PP-USA-001)"
+      message: "Upload successful",
+      job: result.rows[0],
+      file_url: fileUrl,
+      printer_id: printerId
     });
-
   } catch (err) {
     console.error("UPLOAD ERROR:", err);
-    return res.status(500).json({ ok: false, error: err.message });
-  }
-});
-app.post("/api/dashboard/manual-upload", requireDashboardKey, upload.single("file"), async (req, res) => {
-  try {
-    const file = req.file;
-    const {
-      service_type = "SERVICE",
-      instructions = "",
-      customer_phone = "",
-      queue_type = "AGENT",
-      paper_size = "",
-      color_mode = "BW",
-      copies = "1",
-      pages = "1"
-    } = req.body;
-
-    if (!file) {
-      return res.status(400).json({ ok: false, error: "File required" });
-    }
-
-    const base =
-      process.env.PUBLIC_BASE_URL ||
-      process.env.RENDER_EXTERNAL_URL ||
-      `${req.protocol}://${req.get("host")}`;
-
-    const fileUrl = `${base}/uploads/${encodeURIComponent(file.filename)}`;
-    const mimeType = file.mimetype || "";
-    const ext = (file.originalname || "").split(".").pop() || "";
-
-    const targetPrinterId =
-      queue_type === "AGENT"
-        ? AGENT_QUEUE_ID
-        : queue_type === "DISPATCH"
-          ? DISPATCH_QUEUE_ID
-          : DEFAULT_PRINTER_ID;
-
-    const columns = await getPrintJobsColumns();
-
-    const insertCols = [];
-    const insertVals = [];
-    const params = [];
-
-    function addCol(name, value) {
-      if (columns.has(name)) {
-        insertCols.push(name);
-        params.push(value);
-        insertVals.push(`$${params.length}`);
-      }
-    }
-
-    addCol("printer_id", targetPrinterId);
-    addCol("file_url", fileUrl);
-    addCol("original_name", file.originalname || "upload");
-    addCol("mime_type", mimeType);
-    addCol("file_ext", ext);
-    addCol("status", "pending");
-    addCol("service_type", service_type);
-    addCol("queue_type", queue_type);
-    addCol("instructions", instructions || null);
-    addCol("customer_phone", customer_phone || null);
-    addCol("paper_size", paper_size || null);
-    addCol("color_mode", color_mode || "BW");
-    addCol("copies", parseInt(copies, 10) || 1);
-    addCol("pages", parseInt(pages, 10) || 1);
-
-    const sql = `
-      INSERT INTO print_jobs (${insertCols.join(", ")})
-      VALUES (${insertVals.join(", ")})
-      RETURNING *
-    `;
-
-    const result = await pool.query(sql, params);
-    res.json({ ok: true, job: result.rows[0] || null });
-  } catch (err) {
-    console.error("Manual dashboard upload error:", err);
-    res.status(500).json({ ok: false, error: err.message });
+    return res.status(500).json({
+      ok: false,
+      error: err.message || "Upload failed"
+    });
   }
 });
 
