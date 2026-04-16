@@ -1605,17 +1605,19 @@ app.get("/api/dashboard/jobs", requireDashboardKey, async (req, res) => {
     }
 
     if (queue === "agent") {
-      params.push(AGENT_QUEUE_ID);
-      where.push(`(printer_id = $${params.length} OR queue_type = 'AGENT')`);
-    } else if (queue === "dispatch") {
-      params.push(DISPATCH_QUEUE_ID);
-      where.push(`(printer_id = $${params.length} OR queue_type = 'DISPATCH')`);
-    } else if (queue === "worker") {
-      where.push(`(
-        COALESCE(queue_type, '') <> 'AGENT'
-        AND COALESCE(queue_type, '') <> 'DISPATCH'
-      )`);
-    }
+  where.push(`(queue_type = 'AGENT' OR printer_id = $${params.length + 1})`);
+  params.push(AGENT_QUEUE_ID);
+
+} else if (queue === "dispatch") {
+  where.push(`(queue_type = 'DISPATCH' OR printer_id = $${params.length + 1})`);
+  params.push(DISPATCH_QUEUE_ID);
+
+} else if (queue === "worker") {
+  where.push(`(
+    COALESCE(queue_type, '') <> 'AGENT'
+    AND COALESCE(queue_type, '') <> 'DISPATCH'
+  )`);
+}
 
     if (printer_id) {
       params.push(printer_id);
@@ -1636,13 +1638,32 @@ app.get("/api/dashboard/jobs", requireDashboardKey, async (req, res) => {
 
     params.push(Math.min(parseInt(limit, 10) || 100, 300));
 
-    const sql = `
-      SELECT *
-      FROM print_jobs
-      ${where.length ? `WHERE ${where.join(" AND ")}` : ""}
-      ORDER BY id DESC
-      LIMIT $${params.length}
-    `;
+ const sql = `
+  SELECT
+    id,
+    printer_id,
+    queue_type,
+    status,
+    file_url,
+    original_name,
+    paper_size,
+    color_mode,
+    copies,
+    pages,
+    instructions,
+    instruction_audio_url,
+    service_type,
+    customer_phone,
+    customer_name,
+    customer_email,
+    mime_type,
+    created_at,
+    updated_at
+  FROM print_jobs
+  ${where.length ? `WHERE ${where.join(" AND ")}` : ""}
+  ORDER BY id DESC
+  LIMIT $${params.length}
+`;
 
     const result = await pool.query(sql, params);
     res.json({ ok: true, jobs: result.rows, printers: getPrinterRegistry() });
