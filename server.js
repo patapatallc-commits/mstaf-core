@@ -2310,21 +2310,37 @@ app.get("/worker-dashboard", requireDashboardKey, async (req, res) => {
     if (job.error_message) {
       parts.push('<div class="insBox"><b>Error / Status Note</b><br>' + h(job.error_message).replace(/\\n/g, "<br>") + '</div>');
     }
-
-    if (!parts.length) {
-      parts.push('<div class="insBox"><b>Text Instruction</b><br><span class="small">No saved text instruction on this job yet.</span></div>');
-    }
-
-if (!parts.length) {
-  parts.push('<div class="insBox"><b>Text Instruction</b><br><span class="small">No saved text instruction on this job yet.</span></div>');
+// ✅ TEXT INSTRUCTIONS
+if (job.instructions && job.instructions.trim()) {
+  parts.push(`
+    <div class="insBox">
+      <b>📝 Text Instruction</b><br>
+      <span>${job.instructions}</span>
+    </div>
+  `);
+} else {
+  parts.push(`
+    <div class="insBox">
+      <b>📝 Text Instruction</b><br>
+      <span class="small">No instruction provided</span>
+    </div>
+  `);
 }
 
 // ✅ SAFE VOICE PLAYER (no crash)
-if (job.instruction_audio_url) parts.push('<div class="insBox"><b>🎧 Voice Instruction</b><br><audio controls style="width:100%;margin-top:5px;"><source src="' + job.instruction_audio_url + '" type="audio/ogg"></audio></div>');
+// ✅ VOICE NOTE PLAYER
+if (job.instruction_audio_url) {
+  parts.push(`
+    <div class="insBox">
+      <b>🎧 Voice Instruction</b><br>
+      <audio controls style="width:100%;margin-top:6px;">
+        <source src="${job.instruction_audio_url}">
+      </audio>
+    </div>
+  `);
+}
 
 return parts.join("");
-
-    return parts.join("");
   }
 
   function routeOptions(job, printers) {
