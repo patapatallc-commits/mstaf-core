@@ -579,8 +579,7 @@ Reply:
         return res.sendStatus(200);
       }
 
-      // LAMINATE FILE ARRIVED
-      if (
+     
         // ============================
 // LAMINATE SIZE SELECTION
 // ============================
