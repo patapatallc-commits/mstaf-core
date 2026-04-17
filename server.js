@@ -583,99 +583,11 @@ Reply:
         // ============================
 // LAMINATE SIZE SELECTION
 // ============================
-if (session.stage === "LAMINATE_WAITING_SIZE") {
-  let paperSize = "";
-
-  if (lower === "1" || lower === "letter") {
-    paperSize = "LETTER";
-  } else if (lower === "2" || lower === "legal") {
-    paperSize = "LEGAL";
-  } else if (lower === "3" || lower === "tabloid") {
-    paperSize = "TABLOID";
-  } else {
-    await sendMessage(
-      from,
-      `Please choose laminate size:
-
-1 - Letter
-2 - Legal
-3 - Tabloid`
-    );
-    return res.sendStatus(200);
-  }
-
-  session.laminateSpec = {
-    ...(session.laminateSpec || {}),
-    paper_size: paperSize
-  };
-
-  session.stage = "LAMINATE_WAITING_QUANTITY";
-
-  await sendMessage(
-    from,
-    `✅ Laminate size selected: ${paperSize}
-
-How many copies do you want?`
-  );
-  return res.sendStatus(200);
-}
 
 // ============================
 // LAMINATE QUANTITY
 // ============================
-if (session.stage === "LAMINATE_WAITING_QUANTITY") {
-  const quantity = parseInt((text || "").trim(), 10);
 
-  if (!quantity || quantity < 1) {
-    await sendMessage(from, "Please enter a valid laminate quantity.");
-    return res.sendStatus(200);
-  }
-
-  session.laminateSpec = {
-    ...(session.laminateSpec || {}),
-    copies: quantity
-  };
-
-  session.stage = "LAMINATE_WAITING_FILE";
-
-  await sendMessage(
-    from,
-    `✅ Quantity saved: ${quantity}
-
-Please upload the file or document for laminating.`
-  );
-  return res.sendStatus(200);
-}
-   if (
-  session.stage === "LAMINATE_WAITING_FILE" &&
-  (type === "image" || type === "document")
-) {
-        const job = await createJobFromMedia({
-          printerId: DISPATCH_QUEUE_ID,
-          queueType: "DISPATCH",
-          serviceType: "LAMINATE",
-          mediaId: mediaObj?.id,
-          originalName: mediaObj?.filename || "laminate_file",
-          mimeType: mediaObj?.mime_type || "",
-          paperSize: session.laminateSpec?.paper_size || "",
-          colorMode: "bw",
-          copies: session.laminateSpec?.copies || 1,
-          pages: 1
-        });
-
-        session.lastServiceJobId = job?.id || null;
-        session.stage = "LAMINATE_FILE_UPLOADED_ACTION";
-
-        await sendMessage(
-          from,
-          `📄 Document received successfully and added to dispatch queue.
-
-Choose payment option:
-1 - Shopify Checkout
-2 - Africa Payment`
-        );
-        return res.sendStatus(200);
-      }
 
       // AGENT SERVICE FILE ARRIVED
       if (session.stage === "SERVICE_WAITING_UPLOAD") {
@@ -880,6 +792,95 @@ ${serviceMenu()}`
     // =========================
     // MENU
     // =========================
+    if (session.stage === "LAMINATE_WAITING_SIZE") {
+  let paperSize = "";
+
+  if (lower === "1" || lower === "letter") {
+    paperSize = "LETTER";
+  } else if (lower === "2" || lower === "legal") {
+    paperSize = "LEGAL";
+  } else if (lower === "3" || lower === "tabloid") {
+    paperSize = "TABLOID";
+  } else {
+    await sendMessage(
+      from,
+      `Please choose laminate size:
+
+1 - Letter
+2 - Legal
+3 - Tabloid`
+    );
+    return res.sendStatus(200);
+  }
+
+  session.laminateSpec = {
+    ...(session.laminateSpec || {}),
+    paper_size: paperSize
+  };
+
+  session.stage = "LAMINATE_WAITING_QUANTITY";
+
+  await sendMessage(
+    from,
+    `✅ Laminate size selected: ${paperSize}
+
+How many copies do you want?`
+  );
+  return res.sendStatus(200);
+}
+   if (session.stage === "LAMINATE_WAITING_QUANTITY") {
+  const quantity = parseInt((text || "").trim(), 10);
+
+  if (!quantity || quantity < 1) {
+    await sendMessage(from, "Please enter a valid laminate quantity.");
+    return res.sendStatus(200);
+  }
+
+  session.laminateSpec = {
+    ...(session.laminateSpec || {}),
+    copies: quantity
+  };
+
+  session.stage = "LAMINATE_WAITING_FILE";
+
+  await sendMessage(
+    from,
+    `✅ Quantity saved: ${quantity}
+
+Please upload the file or document for laminating.`
+  );
+  return res.sendStatus(200);
+}
+   if (
+  session.stage === "LAMINATE_WAITING_FILE" &&
+  (type === "image" || type === "document")
+) {
+        const job = await createJobFromMedia({
+          printerId: DISPATCH_QUEUE_ID,
+          queueType: "DISPATCH",
+          serviceType: "LAMINATE",
+          mediaId: mediaObj?.id,
+          originalName: mediaObj?.filename || "laminate_file",
+          mimeType: mediaObj?.mime_type || "",
+          paperSize: session.laminateSpec?.paper_size || "",
+          colorMode: "bw",
+          copies: session.laminateSpec?.copies || 1,
+          pages: 1
+        });
+
+        session.lastServiceJobId = job?.id || null;
+        session.stage = "LAMINATE_FILE_UPLOADED_ACTION";
+
+        await sendMessage(
+          from,
+          `📄 Document received successfully and added to dispatch queue.
+
+Choose payment option:
+1 - Shopify Checkout
+2 - Africa Payment`
+        );
+        return res.sendStatus(200);
+      } 
     if (session.stage === "MENU") {
       if (lower === "1") {
         session.selectedService = "PRINT";
