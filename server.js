@@ -87,44 +87,36 @@ if (!fs.existsSync(uploadsDir)) {
   fs.mkdirSync(uploadsDir, { recursive: true });
 }
 
+function buildUploadUrl(req, finalName) {
+  const base =
+    process.env.PUBLIC_BASE_URL ||
+    process.env.RENDER_EXTERNAL_URL ||
+    `${req.protocol}://${req.get("host")}`;
+
+  return `${base}/uploads/${encodeURIComponent(finalName)}`;
+}
+
 const storage = multer.diskStorage({
- destination: (req, file, cb) => {
-  cb(null, uploadsDir);
-},
-  filename: (req, file, cb) => {
-    const safeName = Date.now() + "-" + (file.originalname || "upload").replace(/[^\w.\-]+/g, "_");
+  destination: (_req, _file, cb) => {
+    cb(null, uploadsDir);
+  },
+  filename: (_req, file, cb) => {
+    const safeName =
+      Date.now() +
+      "-" +
+      String(file.originalname || "upload").replace(/[^\w.\-]+/g, "_");
     cb(null, safeName);
   }
 });
 
 const upload = multer({ storage });
-const express = require("express");
-const axios = require("axios");
-require("dotenv").config();
-
-const app = express();
-app.use(express.json({ limit: "20mb" }));
-const cors = require("cors");
-
-app.use(cors({
-  origin: [
-    "https://patapata.us",
-    "https://www.patapata.us",
-    "https://patapata.myshopify.com"
-  ],
-  methods: ["GET", "POST", "OPTIONS"],
-  allowedHeaders: ["Content-Type", "x-worker-key", "x-dashboard-key"],
-  credentials: false
-}));
-
-app.options("*", cors());
-
 
 app.use("/uploads", express.static(uploadsDir));
 
 app.get("/uploads/:file", (req, res) => {
   const filePath = path.join(uploadsDir, req.params.file);
-  res.sendFile(filePath);
+  return res.sendFile(filePath);
+});
 });
 const PORT = process.env.PORT || 10000;
 
@@ -225,6 +217,7 @@ Choose laminate size:
 // =========================
 // SHOPIFY VARIANT HELPERS
 // =========================
+
 const SHOPIFY_VARIANTS = {
   PRINT_A4_BW: process.env.SHOPIFY_VARIANT_PRINT_A4_BW || "52221221273899",
   PRINT_A4_COLOR: process.env.SHOPIFY_VARIANT_PRINT_A4_COLOR || "52221221437739",
@@ -248,6 +241,78 @@ const SHOPIFY_VARIANTS = {
   LAMINATE_LEGAL: process.env.SHOPIFY_VARIANT_LAMINATE_LEGAL || "",
   LAMINATE_TABLOID: process.env.SHOPIFY_VARIANT_LAMINATE_TABLOID || ""
 };
+
+function normalizePaperSize(v = "") {
+  const s = String(v || "").trim().toUpperCase();
+  if (s === "A4") return "A4";
+  if (s === "A3") return "A3";
+  if (s === "LETTER") return "LETTER";
+  if (s === "LEGAL") return "LEGAL";
+  if (s === "TABLOID") return "TABLOID";
+  if (s === "CARD") return "CARD";
+  return "A4";
+}
+
+function normalizeColorMode(v = "") {
+  const s = String(v || "").trim().toUpperCase();
+  return s === "COLOR" ? "COLOR" : "BW";
+}
+
+function buildShopifyCartUrl(variantId, quantity) {
+  if (!variantId) return "";
+  return `https://www.patapata.us/cart/${variantId}:${Math.max(1, parseInt(quantity, 10) || 1)}`;
+}
+
+function getPrintVariantId(paperSize, colorMode) {
+  const size = normalizePaperSize(paperSize);
+  const color = normalizeColorMode(colorMode);
+
+  if (size === "A4") {
+    return color === "COLOR"
+      ? SHOPIFY_VARIANTS.PRINT_A4_COLOR
+      : SHOPIFY_VARIANTS.PRINT_A4_BW;
+  }
+
+  if (size === "A3") {
+    return color === "COLOR"
+      ? SHOPIFY_VARIANTS.PRINT_A3_COLOR
+      : SHOPIFY_VARIANTS.PRINT_A3_BW;
+  }
+
+  if (size === "LETTER") {
+    return color === "COLOR"
+      ? SHOPIFY_VARIANTS.PRINT_LETTER_COLOR
+      : SHOPIFY_VARIANTS.PRINT_LETTER_BW;
+  }
+
+  if (size === "LEGAL") {
+    return color === "COLOR"
+      ? SHOPIFY_VARIANTS.PRINT_LEGAL_COLOR
+      : SHOPIFY_VARIANTS.PRINT_LEGAL_BW;
+  }
+
+  if (size === "TABLOID") {
+    return color === "COLOR"
+      ? SHOPIFY_VARIANTS.PRINT_TABLOID_COLOR
+      : SHOPIFY_VARIANTS.PRINT_TABLOID_BW;
+  }
+
+  if (size === "CARD") {
+    return color === "COLOR"
+      ? SHOPIFY_VARIANTS.PRINT_CARD_COLOR
+      : SHOPIFY_VARIANTS.PRINT_CARD_BW;
+  }
+
+  return "";
+}
+
+function getLaminateVariantId(paperSize) {
+  const size = normalizePaperSize(paperSize);
+  if (size === "LETTER") return SHOPIFY_VARIANTS.LAMINATE_LETTER;
+  if (size === "LEGAL") return SHOPIFY_VARIANTS.LAMINATE_LEGAL;
+  if (size === "TABLOID") return SHOPIFY_VARIANTS.LAMINATE_TABLOID;
+  return "";
+}
 // =========================
 // AFRICA / NIGERIA PRICING
 // =========================
@@ -552,18 +617,21 @@ app.post("/webhook", async (req, res) => {
         session.stage === "PRINT_WAITING_FILE" &&
         (type === "image" || type === "document")
       ) {
-        const job = await createJobFromMedia({
-          printerId: DEFAULT_PRINTER_ID,
-          queueType: "WORKER",
-          serviceType: "PRINT",
-          mediaId: mediaObj?.id,
-          originalName: mediaObj?.filename || "print_file",
-          mimeType: mediaObj?.mime_type || "",
-          paperSize: session.printSpec?.paper_size || "",
-          colorMode: session.printSpec?.color || "bw",
-          copies: session.printSpec?.copies || 1,
-          pages: session.printSpec?.pages || 1
-        });
+     const job = await createJobFromMedia({
+  printerId:
+    normalizePaperSize(session.printSpec?.paper_size || "A4") === "A3"
+      ? A3_PRINTER_ID
+      : DEFAULT_PRINTER_ID,
+  queueType: "WORKER",
+  serviceType: "PRINT",
+  mediaId: mediaObj?.id,
+  originalName: mediaObj?.filename || "print_file",
+  mimeType: mediaObj?.mime_type || "",
+  paperSize: normalizePaperSize(session.printSpec?.paper_size || "A4"),
+  colorMode: normalizeColorMode(session.printSpec?.color || "BW"),
+  copies: session.printSpec?.copies || 1,
+  pages: session.printSpec?.pages || 1
+});
 
         session.lastServiceJobId = job?.id || null;
         session.stage = "PRINT_FILE_UPLOADED_ACTION";
@@ -1058,35 +1126,35 @@ After upload, you will choose:
     // =========================
     // PRINT FILE ACTION
     // =========================
-    if (session.stage === "PRINT_FILE_UPLOADED_ACTION") {
-      if (lower === "1") {
-        session.stage = "PRINT_WAITING_INSTRUCTIONS";
+ if (session.stage === "PRINT_FILE_UPLOADED_ACTION") {
+  if (lower === "1") {
+    session.stage = "PRINT_WAITING_INSTRUCTIONS";
 
-        await sendMessage(
-          from,
-          `✅ Your ${session.printSpec?.paper_size || "print"} request has been forwarded to our Agent team.
+    await sendMessage(
+      from,
+      `✅ Your ${session.printSpec?.paper_size || "print"} request has been forwarded to our Agent team.
 
 Please send any instructions now by text or voice.
 
 Our team will review your request and contact you shortly on WhatsApp.`
-        );
-        return res.sendStatus(200);
-      }
+    );
+    return res.sendStatus(200);
+  }
 
-      if (lower === "2") {
-        session.stage = "PRINT_PAYMENT_CHOICE";
+  if (lower === "2") {
+    session.stage = "PRINT_PAYMENT_CHOICE";
 
-        const paperSize = session.printSpec?.paper_size || "A4";
-        const color = (session.printSpec?.color || "bw").toUpperCase();
-        const quantity = session.printSpec?.copies || 1;
+    const paperSize = normalizePaperSize(session.printSpec?.paper_size || "A4");
+    const colorMode = normalizeColorMode(session.printSpec?.color || "BW");
+    const quantity = Math.max(1, parseInt(session.printSpec?.copies || 1, 10) || 1);
 
-        const variantId = getPrintVariantId(paperSize, color);
-        const checkoutUrl = buildShopifyCartUrl(variantId, quantity);
-        const africaUrl = "https://www.patapata.us/pages/africa-payment";
+    const variantId = getPrintVariantId(paperSize, colorMode);
+    const checkoutUrl = buildShopifyCartUrl(variantId, quantity);
+    const africaUrl = "https://www.patapata.us/pages/africa-payment";
 
-await sendMessage(
-  from,
-  `✅ File received and added to print queue.
+    await sendMessage(
+      from,
+      `✅ File received and added to print queue.
 
 Choose option:
 
@@ -1096,8 +1164,7 @@ Choose option:
 --- Pricing Guide ---
 
 🇺🇸 USA (Shopify):
-• A4 B/W: $0.10
-• A4 Color: $0.50
+• ${paperSize} ${colorMode === "COLOR" ? "Color" : "B/W"}: ${checkoutUrl ? "Checkout link ready" : "Variant not configured yet"}
 
 🇳🇬 Nigeria (Africa Payment):
 
@@ -1141,19 +1208,18 @@ Choose option:
 • 8 Copies: ₦1,000
 
 Reply with 1 or 2.`
-);
-        return res.sendStatus(200);
-      }
+    );
+    return res.sendStatus(200);
+  }
 
-      await sendMessage(
-        from,
-        `Reply:
+  await sendMessage(
+    from,
+    `Reply:
 1 - Continue with Agent
 2 - Checkout`
-      );
-      return res.sendStatus(200);
-    }
-
+  );
+  return res.sendStatus(200);
+}
     // =========================
     // PRINT AGENT INSTRUCTIONS
     // =========================
@@ -1188,55 +1254,97 @@ Our team will contact you shortly on WhatsApp.`
     // =========================
     // PRINT PAYMENT CHOICE
     // =========================
-    if (session.stage === "PRINT_PAYMENT_CHOICE") {
-      const paperSize = session.printSpec?.paper_size || "A4";
-      const color = (session.printSpec?.color || "bw").toUpperCase();
-      const quantity = session.printSpec?.copies || 1;
+if (session.stage === "PRINT_PAYMENT_CHOICE") {
+  const paperSize = normalizePaperSize(session.printSpec?.paper_size || "A4");
+  const colorMode = normalizeColorMode(session.printSpec?.color || "BW");
+  const quantity = Math.max(1, parseInt(session.printSpec?.copies || 1, 10) || 1);
 
-      const variantId = getPrintVariantId(paperSize, color);
-      const checkoutUrl = buildShopifyCartUrl(variantId, quantity);
-      const africaUrl = "https://www.patapata.us/pages/africa-payment";
+  const variantId = getPrintVariantId(paperSize, colorMode);
+  const checkoutUrl = buildShopifyCartUrl(variantId, quantity);
+  const africaUrl = "https://www.patapata.us/pages/africa-payment";
 
-      if (lower === "1") {
-        await sendMessage(
-          from,
-          `✅ Shopify checkout selected.
+  if (lower === "1") {
+    await sendMessage(
+      from,
+      `✅ Shopify checkout selected.
+
+Paper Size: ${paperSize}
+Color: ${colorMode}
+Copies: ${quantity}
 
 Complete your payment here:
-${checkoutUrl || "Not configured yet"}
+${checkoutUrl || "Shopify variant not configured yet"}`
+    );
+    session.stage = "MENU";
+    return res.sendStatus(200);
+  }
 
-After payment, reply here if you need any help.`
-        );
-        session.stage = "MENU";
-        return res.sendStatus(200);
-      }
-if (lower === "2") {
-  await sendMessage(
-    from,
-    `🌍 Africa Payment (Nigeria Selected)
+  if (lower === "2") {
+    await sendMessage(
+      from,
+      `🌍 Africa Payment selected.
 
-💰 Price List:
-• A4 B/W: ₦100 per page
-• A4 Color: ₦500 per page
+Paper Size: ${paperSize}
+Color: ${colorMode}
+Copies: ${quantity}
 
-👉 Complete your payment here:
+Complete payment here:
 ${africaUrl}
 
-📩 After payment, our team will process your job immediately.`
-  );
+--- Nigeria Price Guide ---
 
-  session.stage = "MENU";
-  return res.sendStatus(200);
-}
-      await sendMessage(
-        from,
-        `Please reply with:
+📄 Photocopy
+• Black & White: ₦50
+• Colored: ₦200
+
+📱 Printout from Phone
+• Black & White: ₦200
+• Colored: ₦200
+
+🆔 ID Card
+• ₦2,000
+
+📜 Letter Printing
+• Black & White: ₦500
+• Colored: ₦1,000
+
+🎨 Designing
+• ₦1,000
+
+💳 Printing on Card
+• ₦300
+
+📎 Binding (Tying)
+• ₦300
+
+✏️ Editing
+• ₦500
+
+📠 Scanning & Sending
+• Scanning: ₦200
+• Sending: ₦200
+
+🎉 Birthday Cards
+• Design: ₦500
+• Printing: ₦500
+
+📸 Passport Photographs
+• 4 Copies: ₦500
+• 8 Copies: ₦1,000`
+    );
+    session.stage = "MENU";
+    return res.sendStatus(200);
+  }
+
+  await sendMessage(
+    from,
+    `Please reply with:
 
 1 - Shopify Checkout
 2 - Africa Payment`
-      );
-      return res.sendStatus(200);
-    }   
+  );
+  return res.sendStatus(200);
+}
 
     // =========================
     // LAMINATE SIZE
@@ -1598,12 +1706,17 @@ app.get("/api/dashboard/jobs", requireDashboardKey, async (req, res) => {
 
     const params = [];
     const where = [];
+    // ✅ Only show recent active jobs
+where.push(`created_at >= NOW() - INTERVAL '3 days'`);
 
     if (status) {
       params.push(status);
       where.push(`status = $${params.length}`);
     }
-
+// ✅ Default to active jobs if no status filter
+if (!status) {
+  where.push(`status IN ('pending', 'printing')`);
+}
     if (queue === "agent") {
   where.push(`(queue_type = 'AGENT' OR printer_id = $${params.length + 1})`);
   params.push(AGENT_QUEUE_ID);
@@ -1793,18 +1906,27 @@ app.post("/api/upload", upload.single("file"), async (req, res) => {
       paper_size = "A4",
       color_mode = "BW",
       copies = "1",
-      pages = "1"
+      pages = "1",
+      instructions = "",
+      notes = "",
+      customer_name = "",
+      customer_email = ""
     } = req.body;
 
-    const normalizedPaperSize = String(paper_size || "A4").toUpperCase();
-    const normalizedColorMode = String(color_mode || "BW").toUpperCase();
+    const normalizedPaperSize = normalizePaperSize(paper_size);
+    const normalizedColorMode = normalizeColorMode(color_mode);
     const copiesNum = Math.max(1, parseInt(copies, 10) || 1);
     const pagesNum = Math.max(1, parseInt(pages, 10) || 1);
+    const normalizedInstructions = String(instructions || notes || "").trim();
+    const normalizedCustomerName = String(customer_name || "").trim();
+    const normalizedCustomerEmail = String(customer_email || "").trim();
 
     const printerId =
       normalizedPaperSize === "A3" ? "PP-USA-A3-001" : "PP-USA-001";
 
     const fileUrl = buildUploadUrl(req, file.filename);
+    const variantId = getPrintVariantId(normalizedPaperSize, normalizedColorMode);
+    const checkoutUrl = buildShopifyCartUrl(variantId, copiesNum);
 
     const result = await pool.query(
       `
@@ -1817,10 +1939,15 @@ app.post("/api/upload", upload.single("file"), async (req, res) => {
         color_mode,
         copies,
         pages,
+        instructions,
+        customer_name,
+        customer_email,
+        service_type,
+        queue_type,
         created_at,
         updated_at
       )
-      VALUES ($1, 'pending', $2, $3, $4, $5, $6, $7, NOW(), NOW())
+      VALUES ($1, 'pending', $2, $3, $4, $5, $6, $7, $8, $9, $10, 'PRINT', 'WORKER', NOW(), NOW())
       RETURNING *
       `,
       [
@@ -1830,16 +1957,20 @@ app.post("/api/upload", upload.single("file"), async (req, res) => {
         normalizedPaperSize,
         normalizedColorMode,
         copiesNum,
-        pagesNum
+        pagesNum,
+        normalizedInstructions,
+        normalizedCustomerName,
+        normalizedCustomerEmail
       ]
     );
 
     return res.json({
       ok: true,
       message: "Upload successful",
-      job: result.rows[0],
+      job: result.rows[0] || null,
       file_url: fileUrl,
-      printer_id: printerId
+      printer_id: printerId,
+      checkout_url: checkoutUrl
     });
   } catch (err) {
     console.error("UPLOAD ERROR:", err);
