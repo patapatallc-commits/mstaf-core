@@ -1157,33 +1157,49 @@ Reply with 1 or 2.`
     // =========================
     // PRINT AGENT INSTRUCTIONS
     // =========================
-    if (session.stage === "PRINT_WAITING_INSTRUCTIONS") {
-      if (type === "text" && text.trim()) {
-        await sendMessage(
-          from,
-          `✅ Your ${session.printSpec?.paper_size || "print"} instructions have been received and sent to our Agent team.
-
-Our team will contact you shortly on WhatsApp.`
-        );
-        return res.sendStatus(200);
-      }
-
-      if (type === "audio") {
-        await sendMessage(
-          from,
-          `✅ Your voice instruction for your ${session.printSpec?.paper_size || "print"} request has been received and sent to our Agent team.
-
-Our team will contact you shortly on WhatsApp.`
-        );
-        return res.sendStatus(200);
-      }
-
-      await sendMessage(
-        from,
-        "Please send your instruction as text or voice note."
-      );
-      return res.sendStatus(200);
+  if (session.stage === "PRINT_WAITING_INSTRUCTIONS") {
+  if (type === "text" && text.trim()) {
+    if (session.lastServiceJobId) {
+      await attachTextToExistingJob(session.lastServiceJobId, text.trim());
     }
+
+    await sendMessage(
+      from,
+      `✅ Your ${session.printSpec?.paper_size || "print"} instructions have been received and attached to your print job.
+
+Our team will contact you shortly on WhatsApp.`
+    );
+
+    session.stage = "MENU";
+    return res.sendStatus(200);
+  }
+
+  if (type === "audio") {
+    if (session.lastServiceJobId && message.audio?.id) {
+      await attachAudioToExistingJob(
+        session.lastServiceJobId,
+        message.audio.id,
+        message.audio?.mime_type || "audio/ogg"
+      );
+    }
+
+    await sendMessage(
+      from,
+      `✅ Your voice instruction for your ${session.printSpec?.paper_size || "print"} request has been received and attached to your print job.
+
+Our team will contact you shortly on WhatsApp.`
+    );
+
+    session.stage = "MENU";
+    return res.sendStatus(200);
+  }
+
+  await sendMessage(
+    from,
+    "Please send your instruction as text or voice note."
+  );
+  return res.sendStatus(200);
+}
 
     // =========================
     // PRINT PAYMENT CHOICE
