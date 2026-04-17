@@ -1,3 +1,21 @@
+const express = require("express");
+const axios = require("axios");
+const path = require("path");
+const fs = require("fs");
+const multer = require("multer");
+const { Pool } = require("pg");
+
+require("dotenv").config();
+
+const app = express();
+app.use(express.json({ limit: "20mb" }));
+
+const pool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+  ssl: {
+    rejectUnauthorized: false,
+  },
+});
 function getExtFromMime(mimeType = "") {
   const map = {
     "image/jpeg": ".jpg",
@@ -111,12 +129,7 @@ const storage = multer.diskStorage({
 
 const upload = multer({ storage });
 
-app.use("/uploads", express.static(uploadsDir));
 
-app.get("/uploads/:file", (req, res) => {
-  const filePath = path.join(uploadsDir, req.params.file);
-  return res.sendFile(filePath);
-});
 const PORT = process.env.PORT || 10000;
 
 // =========================
