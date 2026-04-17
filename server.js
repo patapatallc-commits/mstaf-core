@@ -888,12 +888,21 @@ ${serviceMenu()}`
         return res.sendStatus(200);
       }
 
-      if (lower === "2") {
-        session.selectedService = "LAMINATE";
-        session.stage = "LAMINATE_WAITING_SIZE";
-        await sendMessage(from, laminateSizeMenuText());
-        return res.sendStatus(200);
-      }
+ if (lower === "2") {
+  session.selectedService = "LAMINATE";
+  session.laminateSpec = {};
+  session.stage = "LAMINATE_WAITING_SIZE";
+
+  await sendMessage(
+    from,
+    `Please choose laminate size:
+
+1 - Letter
+2 - Legal
+3 - Tabloid`
+  );
+  return res.sendStatus(200);
+}
 
       if (lower === "3") {
         session.selectedService = "ID_PHOTO";
