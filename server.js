@@ -1869,6 +1869,45 @@ app.post("/api/upload", upload.single("file"), async (req, res) => {
 /**
  * Dashboard page
  */
+app.post("/api/dashboard/manual-upload", requireDashboardKey, upload.single("file"), async (req, res) => {
+  try {
+    const file = req.file;
+    if (!file) {
+      return res.status(400).json({ ok: false, error: "No file uploaded" });
+    }
+
+    const fileUrl = buildUploadUrl(req, file.filename);
+
+    const result = await pool.query(
+      `
+      INSERT INTO print_jobs (
+        printer_id,
+        queue_type,
+        status,
+        file_url,
+        original_name,
+        mime_type,
+        created_at,
+        updated_at
+      )
+      VALUES ($1, $2, 'pending', $3, $4, $5, NOW(), NOW())
+      RETURNING *
+      `,
+      [
+        DEFAULT_PRINTER_ID,
+        "AGENT",
+        fileUrl,
+        file.originalname || file.filename,
+        file.mimetype || ""
+      ]
+    );
+
+    return res.json({ ok: true, job: result.rows[0] });
+  } catch (err) {
+    console.error("Manual upload error:", err);
+    return res.status(500).json({ ok: false, error: err.message });
+  }
+});
 app.get("/worker-dashboard", requireDashboardKey, async (req, res) => {
   const key = encodeURIComponent(req.query.key || "");
   const printers = getPrinterRegistry();
