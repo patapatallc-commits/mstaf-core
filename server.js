@@ -646,9 +646,10 @@ Please upload the file or document for laminating.`
   );
   return res.sendStatus(200);
 }
-        session.stage === "LAMINATE_WAITING_FILE" &&
-        (type === "image" || type === "document")
-      ) {
+   if (
+  session.stage === "LAMINATE_WAITING_FILE" &&
+  (type === "image" || type === "document")
+) {
         const job = await createJobFromMedia({
           printerId: DISPATCH_QUEUE_ID,
           queueType: "DISPATCH",
