@@ -117,7 +117,6 @@ app.get("/uploads/:file", (req, res) => {
   const filePath = path.join(uploadsDir, req.params.file);
   return res.sendFile(filePath);
 });
-});
 const PORT = process.env.PORT || 10000;
 
 // =========================
