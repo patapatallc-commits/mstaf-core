@@ -581,6 +581,72 @@ Reply:
 
       // LAMINATE FILE ARRIVED
       if (
+        // ============================
+// LAMINATE SIZE SELECTION
+// ============================
+if (session.stage === "LAMINATE_WAITING_SIZE") {
+  let paperSize = "";
+
+  if (lower === "1" || lower === "letter") {
+    paperSize = "LETTER";
+  } else if (lower === "2" || lower === "legal") {
+    paperSize = "LEGAL";
+  } else if (lower === "3" || lower === "tabloid") {
+    paperSize = "TABLOID";
+  } else {
+    await sendMessage(
+      from,
+      `Please choose laminate size:
+
+1 - Letter
+2 - Legal
+3 - Tabloid`
+    );
+    return res.sendStatus(200);
+  }
+
+  session.laminateSpec = {
+    ...(session.laminateSpec || {}),
+    paper_size: paperSize
+  };
+
+  session.stage = "LAMINATE_WAITING_QUANTITY";
+
+  await sendMessage(
+    from,
+    `✅ Laminate size selected: ${paperSize}
+
+How many copies do you want?`
+  );
+  return res.sendStatus(200);
+}
+
+// ============================
+// LAMINATE QUANTITY
+// ============================
+if (session.stage === "LAMINATE_WAITING_QUANTITY") {
+  const quantity = parseInt((text || "").trim(), 10);
+
+  if (!quantity || quantity < 1) {
+    await sendMessage(from, "Please enter a valid laminate quantity.");
+    return res.sendStatus(200);
+  }
+
+  session.laminateSpec = {
+    ...(session.laminateSpec || {}),
+    copies: quantity
+  };
+
+  session.stage = "LAMINATE_WAITING_FILE";
+
+  await sendMessage(
+    from,
+    `✅ Quantity saved: ${quantity}
+
+Please upload the file or document for laminating.`
+  );
+  return res.sendStatus(200);
+}
         session.stage === "LAMINATE_WAITING_FILE" &&
         (type === "image" || type === "document")
       ) {
@@ -824,7 +890,7 @@ ${serviceMenu()}`
 
       if (lower === "2") {
         session.selectedService = "LAMINATE";
-        session.stage = "LAMINATE_SELECT_SIZE";
+        session.stage = "LAMINATE_WAITING_SIZE";
         await sendMessage(from, laminateSizeMenuText());
         return res.sendStatus(200);
       }
