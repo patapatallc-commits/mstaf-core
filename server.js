@@ -1201,135 +1201,108 @@ Our team will contact you shortly on WhatsApp.`
   return res.sendStatus(200);
 }
 
-    // =========================
-    // PRINT PAYMENT CHOICE
-    // =========================
-    if (session.stage === "PRINT_PAYMENT_CHOICE") {
-      const paperSize = session.printSpec?.paper_size || "A4";
-      const color = (session.printSpec?.color || "bw").toUpperCase();
-      const quantity = session.printSpec?.copies || 1;
+   // ============================
+// PRINT PAYMENT CHOICE
+// ============================
+if (session.stage === "PRINT_PAYMENT_CHOICE") {
+  const paperSize = session.printSpec?.paper_size || "A4";
+  const color = (session.printSpec?.color || "bw").toUpperCase();
+  const quantity = session.printSpec?.copies || 1;
 
-      const variantId = getPrintVariantId(paperSize, color);
-      const checkoutUrl = buildShopifyCartUrl(variantId, quantity);
-      const africaUrl = "https://www.patapata.us/pages/africa-payment";
+  const variantId = getPrintVariantId(paperSize, color);
+  const checkoutUrl = buildShopifyCartUrl(variantId, quantity);
+  const africaUrl = "https://www.patapata.us/pages/africa-payment";
 
-      if (lower === "1") {
-        await sendMessage(
-          from,
-          `✅ Shopify checkout selected.
+  if (lower === "1") {
+    await sendMessage(
+      from,
+      `✅ Shopify checkout selected.
 
 Complete your payment here:
 ${checkoutUrl || "Not configured yet"}
 
-After payment, reply here if you need any help.`
-        );
-        session.stage = "MENU";
-        return res.sendStatus(200);
-      }
-if (lower === "2") {
-  await sendMessage(
-    from,
-    `🌍 Africa Payment (Nigeria Selected)
-
-💰 Price List:
-• A4 B/W: ₦100 per page
-• A4 Color: ₦500 per page
-
-👉 Complete your payment here:
+You can also use Africa payment if preferred:
 ${africaUrl}
 
-📩 After payment, our team will process your job immediately.`
-  );
+--- Africa Price List ---
+🇳🇬 Nigeria Prices
 
-  session.stage = "MENU";
+• Photocopy B/W — ₦50
+• Photocopy Color — ₦200
+• Printout from phone B/W — ₦200
+• Printout from phone Color — ₦200
+• ID Card — ₦2,000
+• Letter Printing B/W — ₦500
+• Letter Printing Color — ₦1,000
+• Designing — ₦1,000
+• Printing on Card — ₦300
+• Binding — ₦300
+• Editing — ₦500
+• Scanning — ₦200
+• Sending — ₦200
+• Birthday Card Design — ₦500
+• Birthday Card Printing — ₦500
+• Passport Photos (4 copies) — ₦500
+• Passport Photos (8 copies) — ₦1,000
+
+After payment, reply here if you need any help.`
+    );
+
+    session.stage = "MENU";
+    return res.sendStatus(200);
+  }
+
+  if (lower === "2") {
+    await sendMessage(
+      from,
+      `✅ Africa payment selected.
+
+Please use this payment page:
+${africaUrl}
+
+--- Africa Price List ---
+🇳🇬 Nigeria Prices
+
+• Photocopy B/W — ₦50
+• Photocopy Color — ₦200
+• Printout from phone B/W — ₦200
+• Printout from phone Color — ₦200
+• ID Card — ₦2,000
+• Letter Printing B/W — ₦500
+• Letter Printing Color — ₦1,000
+• Designing — ₦1,000
+• Printing on Card — ₦300
+• Binding — ₦300
+• Editing — ₦500
+• Scanning — ₦200
+• Sending — ₦200
+• Birthday Card Design — ₦500
+• Birthday Card Printing — ₦500
+• Passport Photos (4 copies) — ₦500
+• Passport Photos (8 copies) — ₦1,000
+
+You can also use Shopify checkout if preferred:
+${checkoutUrl || "Not configured yet"}
+
+After payment, please send:
+1. Proof of payment
+2. Your print details
+3. Delivery or pickup instruction`
+    );
+
+    session.stage = "MENU";
+    return res.sendStatus(200);
+  }
+
+  await sendMessage(
+    from,
+    `Please reply with one option only:
+
+1 - Shopify Checkout
+2 - Africa Payment`
+  );
   return res.sendStatus(200);
 }
-      await sendMessage(
-        from,
-        `Please reply with:
-
-1 - Shopify Checkout
-2 - Africa Payment`
-      );
-      return res.sendStatus(200);
-    }   
-
-    // =========================
-    // LAMINATE SIZE
-    // =========================
-    if (session.stage === "LAMINATE_SELECT_SIZE") {
-      const sizeMap = {
-        "1": "LETTER",
-        "2": "LEGAL",
-        "3": "TABLOID"
-      };
-
-      const size = sizeMap[lower];
-      if (!size) {
-        await sendMessage(from, "Reply 1–3");
-        return res.sendStatus(200);
-      }
-
-      session.laminateSpec.paper_size = size;
-      session.stage = "LAMINATE_SELECT_COPIES";
-
-      await sendMessage(from, "How many copies?");
-      return res.sendStatus(200);
-    }
-
-    // =========================
-    // LAMINATE COPIES
-    // =========================
-    if (session.stage === "LAMINATE_SELECT_COPIES") {
-      const copies = parseInt(lower, 10);
-
-      if (!copies || copies < 1) {
-        await sendMessage(from, "Reply with a valid number of copies.");
-        return res.sendStatus(200);
-      }
-
-      session.laminateSpec.copies = copies;
-      session.stage = "LAMINATE_WAITING_FILE";
-
-      await sendMessage(
-        from,
-        `✅ Laminate details saved.
-
-Please upload your document now.
-
-You can also add extra instructions by text or voice.`
-      );
-      return res.sendStatus(200);
-    }
-
-    // =========================
-    // LAMINATE FILE ACTION
-    // =========================
-    if (session.stage === "LAMINATE_FILE_UPLOADED_ACTION") {
-      const paperSize = session.laminateSpec?.paper_size || "LETTER";
-      const quantity = session.laminateSpec?.copies || 1;
-      const variantId = getLaminateVariantId(paperSize);
-      const checkoutUrl = buildShopifyCartUrl(variantId, quantity);
-      const africaUrl = "https://www.patapata.us/pages/africa-payment";
-
-      if (lower === "1") {
-        await sendMessage(from, `🛒 Shopify Checkout:\n${checkoutUrl || "Not configured yet"}`);
-        return res.sendStatus(200);
-      }
-
-      if (lower === "2") {
-        await sendMessage(from, `🌍 Africa Payment:\n${africaUrl}`);
-        return res.sendStatus(200);
-      }
-
-      await sendMessage(
-        from,
-        `Reply with:
-1 - Shopify Checkout
-2 - Africa Payment`
-      );
-      return res.sendStatus(200);
-    }
     // =========================
     // GENERIC EXTRA NOTES
     // =========================
