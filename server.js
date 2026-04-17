@@ -2442,32 +2442,27 @@ app.get("/worker-dashboard", requireDashboardKey, async (req, res) => {
     }
 // ✅ TEXT INSTRUCTIONS
 if (job.instructions && job.instructions.trim()) {
-  parts.push(`
-    <div class="insBox">
-      <b>📝 Text Instruction</b><br>
-      <span>${job.instructions}</span>
-    </div>
-  `);
+  parts.push(
+    '<div class="insBox"><b>📝 Text Instruction</b><br><span>' +
+    h(job.instructions).replace(/\n/g, "<br>") +
+    '</span></div>'
+  );
 } else {
-  parts.push(`
-    <div class="insBox">
-      <b>📝 Text Instruction</b><br>
-      <span class="small">No instruction provided</span>
-    </div>
-  `);
+  parts.push(
+    '<div class="insBox"><b>📝 Text Instruction</b><br><span class="small">No instruction provided</span></div>'
+  );
 }
 
 // ✅ SAFE VOICE PLAYER (no crash)
+
 // ✅ VOICE NOTE PLAYER
 if (job.instruction_audio_url) {
-  parts.push(`
-    <div class="insBox">
-      <b>🎧 Voice Instruction</b><br>
-      <audio controls style="width:100%;margin-top:6px;">
-        <source src="${job.instruction_audio_url}">
-      </audio>
-    </div>
-  `);
+  parts.push(
+    '<div class="insBox"><b>🎧 Voice Instruction</b><br>' +
+    '<audio controls style="width:100%;margin-top:6px;">' +
+    '<source src="' + h(job.instruction_audio_url) + '">' +
+    '</audio></div>'
+  );
 }
 
 return parts.join("");
