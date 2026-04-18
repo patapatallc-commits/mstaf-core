@@ -639,22 +639,72 @@ Our team will review your request and contact you shortly on WhatsApp.`
       }
 
       // LAMINATE EXTRA AUDIO
+      // ==============================
+// LAMINATE TEXT INSTRUCTIONS
+// ==============================
+if (session.stage === "LAMINATE_WAITING_INSTRUCTIONS" && text) {
+
+  session.laminateSpec = {
+    ...(session.laminateSpec || {}),
+    instructions: text
+  };
+
+  if (session.lastServiceJobId) {
+    await pool.query(
+      `UPDATE print_jobs
+       SET instructions = $1,
+           updated_at = NOW()
+       WHERE id = $2`,
+      [
+        text,
+        session.lastServiceJobId
+      ]
+    );
+  }
+
+  session.stage = "LAMINATE_FILE_UPLOADED_ACTION";
+
+  await sendMessage(
+    from,
+    `✅ Instructions saved.
+
+Choose payment option:
+1 - Shopify Checkout
+2 - Africa Payment`
+  );
+
+  return res.sendStatus(200);
+}
   if (session.stage === "LAMINATE_WAITING_INSTRUCTIONS" && type === "audio") {
   session.laminateSpec = {
     ...(session.laminateSpec || {}),
     instruction_audio_id: mediaObj?.id || "",
     instruction_audio_url: mediaObj?.url || ""
   };
-
-  session.stage = "LAMINATE_WAITING_FILE";
-
-  await sendMessage(
-    from,
-    `✅ Your laminate voice instruction has been received.
-
-Please now upload the document to laminate.`
+if (session.lastServiceJobId) {
+  await pool.query(
+    `UPDATE print_jobs
+     SET instructions = $1,
+         instruction_audio_url = $2,
+         updated_at = NOW()
+     WHERE id = $3`,
+    [
+      session.laminateSpec?.instructions || "",
+      session.laminateSpec?.instruction_audio_url || "",
+      session.lastServiceJobId
+    ]
   );
+}
+  session.stage = "LAMINATE_FILE_UPLOADED_ACTION";
 
+ await sendMessage(
+  from,
+  `✅ Your laminate voice instruction has been received.
+
+Choose payment option:
+1 - Shopify Checkout
+2 - Africa Payment`
+);
   return res.sendStatus(200);
 }
      // ============================
@@ -680,16 +730,19 @@ if (
   });
 
   session.lastServiceJobId = job?.id || null;
-  session.stage = "LAMINATE_FILE_UPLOADED_ACTION";
+  session.stage = "LAMINATE_WAITING_INSTRUCTIONS";
 
-  await sendMessage(
-    from,
-    `📄 Document received successfully and added to queue.
+await sendMessage(
+  from,
+  `📄 Document received successfully and added to queue.
 
-Choose payment option:
-1 - Shopify Checkout
-2 - Africa Payment`
-  );
+Please send laminate instructions now.
+
+You can:
+• type instructions
+• send a voice note
+• or reply "no"`
+);
 
   return res.sendStatus(200);
 }
@@ -886,19 +939,13 @@ How many copies do you want?`
     ...(session.laminateSpec || {}),
     copies: quantity
   };
-
-  session.stage = "LAMINATE_WAITING_INSTRUCTIONS";
+session.stage = "LAMINATE_WAITING_FILE";
 
 await sendMessage(
   from,
   `✅ Quantity saved: ${quantity}
 
-Please send your laminate instructions.
-
-You can:
-• type instructions
-• send a voice note
-• or reply "no" if no instruction`
+Please upload the file or document for laminating.`
 );
   return res.sendStatus(200);
 }
@@ -928,13 +975,16 @@ pages: 1
         session.stage = "LAMINATE_WAITING_INSTRUCTIONS";
 
         await sendMessage(
-          from,
-          `📄 Document received successfully and added to dispatch queue.
+  from,
+  `📄 Document received successfully and added to queue.
 
-Choose payment option:
-1 - Shopify Checkout
-2 - Africa Payment`
-        );
+Please send laminate instructions now.
+
+You can:
+• type instructions
+• send a voice note
+• or reply "no"`
+);
         return res.sendStatus(200);
       } 
     // ============================
