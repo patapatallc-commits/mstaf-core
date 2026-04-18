@@ -2592,7 +2592,7 @@ app.get("/worker-dashboard", requireDashboardKey, async (req, res) => {
   </div>
 
 <script>
-  const DASHBOARD_KEY = ${JSON.stringify(req.query.key || "")};
+  const DASHBOARD_KEY = String(req.query.key || "");
   let currentQueue = "";
 
   function toggleUpload() {
