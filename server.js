@@ -2771,29 +2771,14 @@ return parts.join("");
               \${statusPill(job.status)}
             </div>
           </div>
-         <div class="meta" style="text-align:right">
+    <div class="meta" style="text-align:right">
   Phone: ${h(job.customer_phone || "-")}<br>
-
-  ${job.customer_phone ? `
-    <div style="margin-top:8px;display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;">
-      <a
-        href="https://wa.me/${String(job.customer_phone).replace(/[^0-9]/g, "")}"
-        target="_blank"
-        rel="noopener"
-        style="background:#25D366;color:#fff;padding:8px 12px;border-radius:10px;text-decoration:none;font-weight:700;font-size:12px;"
-      >
-        WhatsApp
-      </a>
-
-      <a
-        href="tel:${h(job.customer_phone)}"
-        style="background:#0b63ff;color:#fff;padding:8px 12px;border-radius:10px;text-decoration:none;font-weight:700;font-size:12px;"
-      >
-        Call
-      </a>
-    </div>
-  ` : ""}
-
+  ${job.customer_phone ? '<div style="margin-top:8px;display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;">'
+    + '<a href="https://wa.me/' + String(job.customer_phone).replace(/[^0-9]/g, "") + '" target="_blank" rel="noopener" style="background:#25D366;color:#fff;padding:8px 12px;border-radius:10px;text-decoration:none;font-weight:700;font-size:12px;">WhatsApp</a>'
+    + '<a href="tel:' + h(job.customer_phone) + '" style="background:#0b63ff;color:#fff;padding:8px 12px;border-radius:10px;text-decoration:none;font-weight:700;font-size:12px;">Call</a>'
+    + '</div>'
+    : ''
+  }
   <div style="margin-top:8px;">
     Paper: ${h(job.paper_size || "N/A")}<br>
     Color: ${h(job.color_mode || "BW")}<br>
