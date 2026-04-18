@@ -2039,6 +2039,9 @@ app.post("/api/dashboard/jobs/:id/reply", requireDashboardKey, express.json(), a
  * Manual dashboard upload to queue
  */
 // PUBLIC SHOPIFY UPLOAD (NO DASHBOARD KEY)
+// ==============================
+// PUBLIC SHOPIFY UPLOAD (WITH INSTRUCTIONS)
+// ==============================
 app.post("/api/upload", upload.single("file"), async (req, res) => {
   try {
     const file = req.file;
@@ -2046,68 +2049,90 @@ app.post("/api/upload", upload.single("file"), async (req, res) => {
     if (!file) {
       return res.status(400).json({ ok: false, error: "No file uploaded" });
     }
-const {
-  paper_size = "A4",
-  color_mode = "BW",
-  copies = "1",
-  pages = "1",
-  instructions = ""
-} = req.body;
+
+    const {
+      paper_size = "A4",
+      color_mode = "BW",
+      copies = "1",
+      pages = "1",
+      instructions = "",
+      customer_name = "",
+      customer_email = "",
+      customer_phone = ""
+    } = req.body;
 
     const normalizedPaperSize = String(paper_size || "A4").toUpperCase();
     const normalizedColorMode = String(color_mode || "BW").toUpperCase();
     const copiesNum = Math.max(1, parseInt(copies, 10) || 1);
     const pagesNum = Math.max(1, parseInt(pages, 10) || 1);
 
-    const printerId =
-      normalizedPaperSize === "A3" ? "PP-USA-A3-001" : "PP-USA-001";
-
     const fileUrl = buildUploadUrl(req, file.filename);
 
+    // Default printer routing
+    let printerId = DEFAULT_PRINTER_ID;
+
+    if (normalizedPaperSize === "A3") {
+      printerId = A3_PRINTER_ID;
+    }
+
+    if (normalizedPaperSize === "CARD") {
+      printerId = CARD_PRINTER_ID;
+    }
+
+    // ==============================
+    // SAVE JOB TO DB (WITH INSTRUCTIONS)
+    // ==============================
     const result = await pool.query(
       `
-    INSERT INTO print_jobs (
-  printer_id,
-  status,
-  file_url,
-  original_name,
-  paper_size,
-  color_mode,
-  copies,
-  pages,
-  instructions,
-  created_at,
-  updated_at
-)
-      VALUES ($1, 'pending', $2, $3, $4, $5, $6, $7, $8, NOW(), NOW())
+      INSERT INTO print_jobs (
+        printer_id,
+        status,
+        file_url,
+        original_name,
+        paper_size,
+        color_mode,
+        copies,
+        pages,
+        instructions,
+        customer_name,
+        customer_email,
+        customer_phone,
+        created_at,
+        updated_at
+      )
+      VALUES ($1, 'pending', $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, NOW(), NOW())
       RETURNING *
       `,
       [
-        [
-  printerId,
-  fileUrl,
-  file.originalname || file.filename,
-  normalizedPaperSize,
-  normalizedColorMode,
-  copiesNum,
-  pagesNum,
-  instructions
-]
+        printerId,
+        fileUrl,
+        file.originalname || file.filename,
+        normalizedPaperSize,
+        normalizedColorMode,
+        copiesNum,
+        pagesNum,
+        instructions || "",
+        customer_name || "",
+        customer_email || "",
+        customer_phone || ""
+      ]
     );
 
+    const job = result.rows[0];
+
+    // ==============================
+    // SUCCESS RESPONSE
+    // ==============================
     return res.json({
       ok: true,
-      message: "Upload successful",
-      job: result.rows[0],
+      job_id: job.id,
       file_url: fileUrl,
-      printer_id: printerId
+      instructions: job.instructions
     });
+
   } catch (err) {
-    console.error("UPLOAD ERROR:", err);
-    return res.status(500).json({
-      ok: false,
-      error: err.message || "Upload failed"
-    });
+    console.error("Shopify upload error:", err);
+    return res.status(500).json({ ok: false, error: "Upload failed" });
   }
 });
 
