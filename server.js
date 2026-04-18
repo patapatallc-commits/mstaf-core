@@ -639,13 +639,24 @@ Our team will review your request and contact you shortly on WhatsApp.`
       }
 
       // LAMINATE EXTRA AUDIO
-      if (session.stage === "LAMINATE_WAITING_FILE" && type === "audio") {
-        await sendMessage(
-          from,
-          "✅ Your laminate voice instruction has been received. Please now upload the document to laminate."
-        );
-        return res.sendStatus(200);
-      }
+  if (session.stage === "LAMINATE_WAITING_INSTRUCTIONS" && type === "audio") {
+  session.laminateSpec = {
+    ...(session.laminateSpec || {}),
+    instruction_audio_id: mediaObj?.id || "",
+    instruction_audio_url: mediaObj?.url || ""
+  };
+
+  session.stage = "LAMINATE_WAITING_FILE";
+
+  await sendMessage(
+    from,
+    `✅ Your laminate voice instruction has been received.
+
+Please now upload the document to laminate.`
+  );
+
+  return res.sendStatus(200);
+}
      // ============================
 // LAMINATE FILE ARRIVED (DOCUMENT / IMAGE)
 // ============================
@@ -876,14 +887,19 @@ How many copies do you want?`
     copies: quantity
   };
 
-  session.stage = "LAMINATE_WAITING_FILE";
+  session.stage = "LAMINATE_WAITING_INSTRUCTIONS";
 
-  await sendMessage(
-    from,
-    `✅ Quantity saved: ${quantity}
+await sendMessage(
+  from,
+  `✅ Quantity saved: ${quantity}
 
-Please upload the file or document for laminating.`
-  );
+Please send your laminate instructions.
+
+You can:
+• type instructions
+• send a voice note
+• or reply "no" if no instruction`
+);
   return res.sendStatus(200);
 }
    if (
