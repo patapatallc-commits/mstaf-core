@@ -881,6 +881,54 @@ Choose payment option:
         );
         return res.sendStatus(200);
       } 
+    // ============================
+// LAMINATE PAYMENT CHOICE
+// ============================
+if (session.stage === "LAMINATE_FILE_UPLOADED_ACTION") {
+  const paperSize = session.laminateSpec?.paper_size || "A4";
+  const quantity = session.laminateSpec?.copies || 1;
+
+  const variantId = getPrintVariantId(paperSize, "BW");
+  const checkoutUrl = buildShopifyCartUrl(variantId, quantity);
+  const africaUrl = "https://www.patapata.us/pages/africa-payment";
+
+  if (lower === "1") {
+    await sendMessage(
+      from,
+      `🛒 Shopify Checkout selected
+
+Complete your payment here:
+${checkoutUrl}
+
+After payment, reply here if you need help.`
+    );
+    session.stage = "MENU";
+    return res.sendStatus(200);
+  }
+
+  if (lower === "2") {
+    await sendMessage(
+      from,
+      `🌍 Africa Payment selected
+
+Complete your payment here:
+${africaUrl}
+
+After payment, reply here if you need help.`
+    );
+    session.stage = "MENU";
+    return res.sendStatus(200);
+  }
+
+  await sendMessage(
+    from,
+    `Please choose:
+
+1 - Shopify Checkout
+2 - Africa Payment`
+  );
+  return res.sendStatus(200);
+}
     if (session.stage === "MENU") {
       if (lower === "1") {
         session.selectedService = "PRINT";
