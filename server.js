@@ -902,25 +902,30 @@ You can:
 );
   return res.sendStatus(200);
 }
-   if (
+ if (
   session.stage === "LAMINATE_WAITING_FILE" &&
-  (type === "image" || type === "document")
+  mediaObj
 ) {
         const job = await createJobFromMedia({
-          printerId: DISPATCH_QUEUE_ID,
-          queueType: "DISPATCH",
+        printerId: DEFAULT_PRINTER_ID,
+         queueType: "WORKER",
           serviceType: "LAMINATE",
           mediaId: mediaObj?.id,
           originalName: mediaObj?.filename || "laminate_file",
           mimeType: mediaObj?.mime_type || "",
           paperSize: session.laminateSpec?.paper_size || "",
           colorMode: "bw",
-          copies: session.laminateSpec?.copies || 1,
-          pages: 1
+        copies: session.laminateSpec?.copies || 1,
+
+instructions: session.laminateSpec?.instructions || "",
+instructionAudioUrl: session.laminateSpec?.instruction_audio_url || "",
+customerPhone: from,
+
+pages: 1
         });
 
         session.lastServiceJobId = job?.id || null;
-        session.stage = "LAMINATE_FILE_UPLOADED_ACTION";
+        session.stage = "LAMINATE_WAITING_INSTRUCTIONS";
 
         await sendMessage(
           from,
