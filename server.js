@@ -2142,9 +2142,10 @@ app.post("/api/upload", upload.single("file"), async (req, res) => {
 app.post("/api/dashboard/manual-upload", requireDashboardKey, upload.single("file"), async (req, res) => {
   try {
     const file = req.file;
-    const {
+ const {
   customer_name = "",
-  customer_phone = ""
+  customer_phone = "",
+  instructions = ""
 } = req.body;
     if (!file) {
       return res.status(400).json({ ok: false, error: "No file uploaded" });
@@ -2163,20 +2164,22 @@ app.post("/api/dashboard/manual-upload", requireDashboardKey, upload.single("fil
         mime_type,
         customer_name,
 customer_phone,
+instructions,
         created_at,
         updated_at
       )
-     VALUES ($1, $2, 'pending', $3, $4, $5, $6, $7, NOW(), NOW())
+     VALUES ($1, $2, 'pending', $3, $4, $5, $6, $7, $8, NOW(), NOW())
       RETURNING *
       `,
-     [
+[
   DEFAULT_PRINTER_ID,
   "AGENT",
   fileUrl,
   file.originalname || file.filename,
   file.mimetype || "",
   customer_name,
-  customer_phone
+  customer_phone,
+  instructions
 ]
     );
 
