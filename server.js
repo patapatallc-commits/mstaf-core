@@ -646,7 +646,42 @@ Our team will review your request and contact you shortly on WhatsApp.`
         );
         return res.sendStatus(200);
       }
+     // ============================
+// LAMINATE FILE ARRIVED (DOCUMENT / IMAGE)
+// ============================
+if (
+  session.stage === "LAMINATE_WAITING_FILE" &&
+  mediaObj
+) {
+  const job = await createJobFromMedia({
+    printerId: DEFAULT_PRINTER_ID,
+    queueType: "WORKER",
+    serviceType: "LAMINATE",
+    mediaId: mediaObj?.id,
+    originalName: mediaObj?.filename || "laminate_file",
+    mimeType: mediaObj?.mime_type || "",
+    paperSize: session.laminateSpec?.paper_size || "",
+    colorMode: "BW",
+    copies: session.laminateSpec?.copies || 1,
+    pages: 1,
+    instructions: session.laminateSpec?.instructions || "",
+    customerPhone: from
+  });
 
+  session.lastServiceJobId = job?.id || null;
+  session.stage = "LAMINATE_FILE_UPLOADED_ACTION";
+
+  await sendMessage(
+    from,
+    `📄 Document received successfully and added to queue.
+
+Choose payment option:
+1 - Shopify Checkout
+2 - Africa Payment`
+  );
+
+  return res.sendStatus(200);
+}
       // ID PHOTO FILE ARRIVED
       if (session.stage === "IDPHOTO_WAITING_UPLOAD" && type === "image") {
         const job = await createJobFromMedia({
