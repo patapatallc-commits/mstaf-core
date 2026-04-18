@@ -1035,6 +1035,45 @@ After payment, reply here if you need help.`
   );
   return res.sendStatus(200);
 }
+    // ==============================
+// LAMINATE TEXT INSTRUCTIONS
+// ==============================
+if (session.stage === "LAMINATE_WAITING_INSTRUCTIONS") {
+
+  const instructionText = (text || "").trim();
+
+  session.laminateSpec = {
+    ...(session.laminateSpec || {}),
+    instructions:
+      instructionText.toLowerCase() === "no" ? "" : instructionText
+  };
+
+  if (session.lastServiceJobId) {
+    await pool.query(
+      `UPDATE print_jobs
+       SET instructions = $1,
+           updated_at = NOW()
+       WHERE id = $2`,
+      [
+        session.laminateSpec.instructions || "",
+        session.lastServiceJobId
+      ]
+    );
+  }
+
+  session.stage = "LAMINATE_FILE_UPLOADED_ACTION";
+
+  await sendMessage(
+    from,
+    `✅ Instructions saved.
+
+Choose payment option:
+1 - Shopify Checkout
+2 - Africa Payment`
+  );
+
+  return res.sendStatus(200);
+}
     if (session.stage === "MENU") {
       if (lower === "1") {
         session.selectedService = "PRINT";
