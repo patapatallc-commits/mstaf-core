@@ -2592,7 +2592,7 @@ app.get("/worker-dashboard", requireDashboardKey, async (req, res) => {
   </div>
 
 <script>
-  const DASHBOARD_KEY = String(req.query.key || "");
+  const DASHBOARD_KEY = ${JSON.stringify(req.query.key || "")};
   let currentQueue = "";
 
   function toggleUpload() {
@@ -2771,21 +2771,13 @@ return parts.join("");
               \${statusPill(job.status)}
             </div>
           </div>
-    <div class="meta" style="text-align:right">
-  Phone: ${String(job.customer_phone || "-")}<br>
-
-  ${job.customer_phone ? '<div style="margin-top:8px;display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;">'
-    + '<a href="https://wa.me/' + String(job.customer_phone).replace(/[^0-9]/g, "") + '" target="_blank" rel="noopener" style="background:#25D366;color:#fff;padding:8px 12px;border-radius:10px;text-decoration:none;font-weight:700;font-size:12px;">WhatsApp</a>'
-    + '<a href="tel:' + String(job.customer_phone) + '" style="background:#0b63ff;color:#fff;padding:8px 12px;border-radius:10px;text-decoration:none;font-weight:700;font-size:12px;">Call</a>'
-    + '</div>'
-    : ''}
-
-  <div style="margin-top:8px;">
-    Paper: ${String(job.paper_size || "N/A")}<br>
-    Color: ${String(job.color_mode || "BW")}<br>
-    Copies: ${String(job.copies || 1)}
-  </div>
-</div>
+          <div class="meta" style="text-align:right">
+            Phone: \${h(job.customer_phone || "-")}<br>
+            Paper: \${h(job.paper_size || "N/A")}<br>
+            Color: \${h(job.color_mode || "BW")}<br>
+            Copies: \${h(job.copies || 1)}
+          </div>
+        </div>
 
         <div class="jobBody">
           <div class="previewBox">
@@ -2793,34 +2785,34 @@ return parts.join("");
           </div>
 
           <div class="detailBox">
-            <div class="detailRow"><b>File URL</b><div>\${fileUrl ? '<a class="fileLink" href="' + String(fileUrl) + '" target="_blank">Open file</a>' : ''}
-            <div class="detailRow"><b>Original Name</b><div>\${String(job.original_name || "-")}</div></div>
-            <div class="detailRow"><b>MIME Type</b><div>\${String(job.mime_type || "-")}</div></div>
-            <div class="detailRow"><b>Pages</b><div>\${String(job.pages || 1)}</div></div>
-            <div class="detailRow"><b>Created</b><div>\${String(job.created_at || "-")}</div></div>
-            <div class="detailRow"><b>Customer</b><div>\${String(job.customer_phone || "-")}</div></div>
+            <div class="detailRow"><b>File URL</b><div>\${fileUrl ? '<a class="fileLink" href="' + h(fileUrl) + '" target="_blank">Open file</a>' : '<span class="small">No file</span>'}</div></div>
+            <div class="detailRow"><b>Original Name</b><div>\${h(job.original_name || "-")}</div></div>
+            <div class="detailRow"><b>MIME Type</b><div>\${h(job.mime_type || "-")}</div></div>
+            <div class="detailRow"><b>Pages</b><div>\${h(job.pages || 1)}</div></div>
+            <div class="detailRow"><b>Created</b><div>\${h(job.created_at || "-")}</div></div>
+            <div class="detailRow"><b>Customer</b><div>\${h(job.customer_phone || "-")}</div></div>
 
             \${renderInstructions(job)}
 
             <div class="routeRow">
-              <select id="route_\${String(job.id)}">
+              <select id="route_\${h(job.id)}">
                 \${routeOptions(job, printers)}
               </select>
-              <button class="btn dark" onclick="routeJob('${String(job.id)}')">Route</button>
+              <button class="btn dark" onclick="routeJob('\${h(job.id)}')">Route</button>
             </div>
 
             <div class="actionRow">
-              <button class="btn secondary"onclick="markJob('${String(job.id)}','claimed')">Claim</button>
-              <button class="btn purple" onclick="markJob('${String(job.id)}','printing')">Start</button>
-              <button class="btn green" onclick="markJob('${String(job.id)}','completed')">Complete</button>
-              <button class="btn red" onclick="markJob('${String(job.id)}','failed')">Fail</button>
+              <button class="btn secondary" onclick="markJob('\${h(job.id)}','claimed')">Claim</button>
+              <button class="btn purple" onclick="markJob('\${h(job.id)}','printing')">Start</button>
+              <button class="btn green" onclick="markJob('\${h(job.id)}','completed')">Complete</button>
+              <button class="btn red" onclick="markJob('\${h(job.id)}','failed')">Fail</button>
             </div>
 
             <div class="replyBox">
               <b>Reply on WhatsApp</b>
-              <textarea id="reply_${String(job.id)} class="reply" placeholder="Type your update to the customer here..."></textarea>
+              <textarea id="reply_\${h(job.id)}" class="reply" placeholder="Type your update to the customer here..."></textarea>
               <div class="actionRow">
-                <button class="btn" onclick="replyJob('${String(job.id)}')">Send Reply</button>
+                <button class="btn" onclick="replyJob('\${h(job.id)}')">Send Reply</button>
               </div>
             </div>
           </div>
@@ -2855,7 +2847,7 @@ return parts.join("");
       grid.innerHTML = jobs.map(job => renderJob(job, printers)).join("");
     } catch (err) {
       document.getElementById("jobGrid").innerHTML =
-        '<div class="emptyState">Dashboard load failed: ' + String(err.message) + '</div>';
+        '<div class="emptyState">Dashboard load failed: ' + h(err.message) + '</div>';
     }
   }
 
