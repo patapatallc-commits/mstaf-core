@@ -1148,38 +1148,38 @@ You can also type extra instructions or send a voice note.`
       if (lower === "4") {
         session.selectedService = "IMAGE_EDIT";
         session.stage = "IMAGE_EDIT_WAITING_UPLOAD";
-        await sendMessage(
-          from,
-`🖼️ Image Editing selected.
+await sendMessage(
+  from,
+  `🖼️ Image Editing selected.
 
 Africa Pricing:
 • Image Editing: ₦1000
 
 Please upload your image now and tell us what you would like us to do.
 
-You can also type extra instructions or send a voice note.`
+You can also type extra instructions or send a voice note.
 
 Our team will review your request and contact you shortly on WhatsApp.`
-        );
+);
         return res.sendStatus(200);
       }
 
       if (lower === "5") {
         session.selectedService = "VIDEO_EDIT";
         session.stage = "VIDEO_EDIT_WAITING_UPLOAD";
-        await sendMessage(
-          from,
-          `🎬 Video Editing selected.
+  await sendMessage(
+  from,
+  `🎬 Video Editing selected.
 
 Africa Pricing:
 • Video Editing: ₦1000
 
 Please upload your video now and tell us what you would like us to do.
 
-You can also type extra instructions or send a voice note.`
+You can also type extra instructions or send a voice note.
 
 Our team will review your request and contact you shortly on WhatsApp.`
-        );
+);
         return res.sendStatus(200);
       }
 
