@@ -1132,13 +1132,15 @@ Africa Laminating Prices:
         session.stage = "IDPHOTO_WAITING_UPLOAD";
         await sendMessage(
           from,
-          `📸 ID Photo selected.
+ `📸 ID Photo selected.
+
+Africa Pricing:
+• 4 copies: ₦500
+• 8 copies: ₦1000
 
 Please upload your photo now.
 
-You can also type extra instructions or send a voice note.
-
-Our team will review your request and provide pricing shortly.`
+You can also type extra instructions or send a voice note.`
         );
         return res.sendStatus(200);
       }
@@ -1148,11 +1150,14 @@ Our team will review your request and provide pricing shortly.`
         session.stage = "IMAGE_EDIT_WAITING_UPLOAD";
         await sendMessage(
           from,
-          `🖼️ Image Editing selected.
+`🖼️ Image Editing selected.
+
+Africa Pricing:
+• Image Editing: ₦1000
 
 Please upload your image now and tell us what you would like us to do.
 
-You can type instructions or send a voice note.
+You can also type extra instructions or send a voice note.`
 
 Our team will review your request and contact you shortly on WhatsApp.`
         );
@@ -1166,9 +1171,12 @@ Our team will review your request and contact you shortly on WhatsApp.`
           from,
           `🎬 Video Editing selected.
 
+Africa Pricing:
+• Video Editing: ₦1000
+
 Please upload your video now and tell us what you would like us to do.
 
-You can type instructions or send a voice note.
+You can also type extra instructions or send a voice note.`
 
 Our team will review your request and contact you shortly on WhatsApp.`
         );
