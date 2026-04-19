@@ -2732,28 +2732,20 @@ app.get("/worker-dashboard", requireDashboardKey, async (req, res) => {
       parts.push('<div class="insBox"><b>Error / Status Note</b><br>' + h(job.error_message).replace(/\\n/g, "<br>") + '</div>');
     }
 
+    if (!parts.length) {
+      parts.push('<div class="insBox"><b>Text Instruction</b><br><span class="small">No saved text instruction on this job yet.</span></div>');
+    }
+
 if (!parts.length) {
   parts.push('<div class="insBox"><b>Text Instruction</b><br><span class="small">No saved text instruction on this job yet.</span></div>');
 }
 
-// 🎧 SAFE VOICE PLAYER (fixed)
-if (
-  job.instruction_audio_url &&
-  String(job.instruction_audio_url).trim() &&
-  !String(job.instruction_audio_url).includes("lookaside.fbsbx.com")
-) {
-  parts.push(
-    '<div class="insBox"><b>🎧 Voice Instruction</b><br>' +
-    '<audio controls preload="metadata" style="width:100%;margin-top:8px;">' +
-    '<source src="' + h(String(job.instruction_audio_url)) + '">' +
-    'Your browser does not support audio.' +
-    '</audio>' +
-    '<div style="margin-top:6px;"><a class="fileLink" href="' + h(String(job.instruction_audio_url)) + '" target="_blank" rel="noopener">Open audio</a></div>' +
-    '</div>'
-  );
-}
+// ✅ SAFE VOICE PLAYER (no crash)
+if (job.instruction_audio_url) parts.push('<div class="insBox"><b>🎧 Voice Instruction</b><br><audio controls style="width:100%;margin-top:5px;"><source src="' + job.instruction_audio_url + '" type="audio/ogg"></audio></div>');
 
 return parts.join("");
+
+    return parts.join("");
   }
 
   function routeOptions(job, printers) {
@@ -2826,20 +2818,7 @@ return parts.join("");
               <button class="btn green" onclick="markJob('\${h(job.id)}','completed')">Complete</button>
               <button class="btn red" onclick="markJob('\${h(job.id)}','failed')">Fail</button>
             </div>
-            ${job.instruction_audio_url ? `
-  <div style="margin-top:10px;padding:10px;background:#0b1a2b;border-radius:10px;">
-    <div style="font-weight:700;margin-bottom:6px;color:#00d4ff;">🎧 Voice Instruction</div>
-    <audio
-      controls
-      preload="metadata"
-      style="width:100%;outline:none;"
-      src="${escapeHtml(String(job.instruction_audio_url || ""))}">
-    </audio>
-    <div style="font-size:11px;color:#aaa;margin-top:5px;">
-      If not playing, <a href="${escapeHtml(String(job.instruction_audio_url || ""))}" target="_blank" style="color:#4da3ff;">open manually</a>
-    </div>
-  </div>
-  ` : ""}
+
             <div class="replyBox">
               <b>Reply on WhatsApp</b>
               <textarea id="reply_\${h(job.id)}" class="reply" placeholder="Type your update to the customer here..."></textarea>
