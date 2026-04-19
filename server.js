@@ -338,24 +338,26 @@ function buildShopifyCartUrl(variantId, quantity) {
 }
 
 function getPrintVariantId(paperSize, color) {
-  const isColor = color === "color";
+  const normalizedPaperSize = String(paperSize || "A4").trim().toUpperCase();
+  const normalizedColor = String(color || "BW").trim().toUpperCase();
+  const isColor = normalizedColor === "COLOR";
 
-  if (paperSize === "A4") {
+  if (normalizedPaperSize === "A4") {
     return isColor ? SHOPIFY_VARIANTS.PRINT_A4_COLOR : SHOPIFY_VARIANTS.PRINT_A4_BW;
   }
-  if (paperSize === "A3") {
+  if (normalizedPaperSize === "A3") {
     return isColor ? SHOPIFY_VARIANTS.PRINT_A3_COLOR : SHOPIFY_VARIANTS.PRINT_A3_BW;
   }
-  if (paperSize === "LETTER") {
+  if (normalizedPaperSize === "LETTER") {
     return isColor ? SHOPIFY_VARIANTS.PRINT_LETTER_COLOR : SHOPIFY_VARIANTS.PRINT_LETTER_BW;
   }
-  if (paperSize === "LEGAL") {
+  if (normalizedPaperSize === "LEGAL") {
     return isColor ? SHOPIFY_VARIANTS.PRINT_LEGAL_COLOR : SHOPIFY_VARIANTS.PRINT_LEGAL_BW;
   }
-  if (paperSize === "TABLOID") {
+  if (normalizedPaperSize === "TABLOID") {
     return isColor ? SHOPIFY_VARIANTS.PRINT_TABLOID_COLOR : SHOPIFY_VARIANTS.PRINT_TABLOID_BW;
   }
-  if (paperSize === "CARD") {
+  if (normalizedPaperSize === "CARD") {
     return isColor ? SHOPIFY_VARIANTS.PRINT_CARD_COLOR : SHOPIFY_VARIANTS.PRINT_CARD_BW;
   }
 
