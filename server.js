@@ -1100,14 +1100,21 @@ Choose payment option:
   session.laminateSpec = {};
   session.stage = "LAMINATE_WAITING_SIZE";
 
-  await sendMessage(
-    from,
-    `Please choose laminate size:
+await sendMessage(
+  from,
+  `Please choose laminate size:
 
-1 - Letter
-2 - Legal
-3 - Tabloid`
-  );
+1 - A4
+2 - Letter
+3 - Legal
+4 - Tabloid
+
+Africa Laminating Prices:
+• A4: ₦300
+• Letter: ₦300
+• Legal: ₦300
+• Tabloid: ₦500`
+);
   return res.sendStatus(200);
 }
 
