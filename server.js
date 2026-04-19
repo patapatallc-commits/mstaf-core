@@ -1173,19 +1173,29 @@ Africa Laminating Prices:
       if (lower === "3") {
         session.selectedService = "ID_PHOTO";
         session.stage = "IDPHOTO_WAITING_UPLOAD";
-        await sendMessage(
-          from,
- `📸 ID Photo selected.
+const checkoutUrl = buildShopifyCartUrl(SHOPIFY_VARIANTS.ID_PRINT, 1);
 
-Africa Pricing:
+await sendMessage(
+  from,
+  `📸 ID Photo selected.
+
+🇺🇸 USA (Shopify):
+• ID Card Printing: $10
+🛒 Checkout:
+${checkoutUrl}
+
+🇳🇬 Africa Pricing:
 • 4 copies: ₦500
 • 8 copies: ₦1000
+🌍 Africa Payment:
+https://www.patapata.us/pages/africa-payment
 
 Please upload your photo now.
 
 You can also type extra instructions or send a voice note.`
-        );
-        return res.sendStatus(200);
+);
+return res.sendStatus(200);
+      
       }
 
       if (lower === "4") {
