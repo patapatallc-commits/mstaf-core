@@ -261,6 +261,11 @@ IMAGE_BASIC: process.env.SHOPIFY_VARIANT_IMAGE_BASIC || "52581935939883",
 IMAGE_BG_REMOVAL: process.env.SHOPIFY_VARIANT_IMAGE_BG_REMOVAL || "52581935972651",
 IMAGE_ENHANCEMENT: process.env.SHOPIFY_VARIANT_IMAGE_ENHANCEMENT || "52581936005419",
 IMAGE_ADVANCED: process.env.SHOPIFY_VARIANT_IMAGE_ADVANCED || "52581936038187",
+  // VIDEO EDITING
+VIDEO_SHORT: process.env.SHOPIFY_VARIANT_VIDEO_SHORT || "52582037061931",
+VIDEO_SOCIAL: process.env.SHOPIFY_VARIANT_VIDEO_SOCIAL || "52582037094699",
+VIDEO_STANDARD: process.env.SHOPIFY_VARIANT_VIDEO_STANDARD || "52582037127467",
+VIDEO_ADVANCED: process.env.SHOPIFY_VARIANT_VIDEO_ADVANCED || "52582037160235",
 };
 
 // =========================
@@ -826,6 +831,36 @@ Example:
       }
 
       // VIDEO EDIT FILE ARRIVED
+      if (session.stage === "VIDEO_EDIT_SELECT_TYPE") {
+  let variantId = "";
+
+  if (lower === "1") variantId = SHOPIFY_VARIANTS.VIDEO_SHORT;
+  else if (lower === "2") variantId = SHOPIFY_VARIANTS.VIDEO_SOCIAL;
+  else if (lower === "3") variantId = SHOPIFY_VARIANTS.VIDEO_STANDARD;
+  else if (lower === "4") variantId = SHOPIFY_VARIANTS.VIDEO_ADVANCED;
+  else {
+    await sendMessage(from, "Please choose 1–4.");
+    return res.sendStatus(200);
+  }
+
+  const checkoutUrl = buildShopifyCartUrl(variantId, 1);
+
+  await sendMessage(
+    from,
+    `✅ Service selected.
+
+🛒 Shopify Checkout:
+${checkoutUrl}
+
+🌍 Africa Payment:
+https://www.patapata.us/pages/africa-payment
+
+Or upload your video to continue with agent.`
+  );
+
+  session.stage = "VIDEO_EDIT_WAITING_UPLOAD";
+  return res.sendStatus(200);
+}
       if (session.stage === "VIDEO_EDIT_WAITING_UPLOAD" && type === "video") {
         const job = await createJobFromMedia({
           printerId: AGENT_QUEUE_ID,
