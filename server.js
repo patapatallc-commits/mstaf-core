@@ -903,23 +903,32 @@ ${serviceMenu()}`
     if (session.stage === "LAMINATE_WAITING_SIZE") {
   let paperSize = "";
 
-  if (lower === "1" || lower === "letter") {
-    paperSize = "LETTER";
-  } else if (lower === "2" || lower === "legal") {
-    paperSize = "LEGAL";
-  } else if (lower === "3" || lower === "tabloid") {
-    paperSize = "TABLOID";
-  } else {
-    await sendMessage(
-      from,
-      `Please choose laminate size:
+ if (lower === "1" || lower === "a4") {
+  paperSize = "A4";
+} else if (lower === "2" || lower === "letter") {
+  paperSize = "LETTER";
+} else if (lower === "3" || lower === "legal") {
+  paperSize = "LEGAL";
+} else if (lower === "4" || lower === "tabloid") {
+  paperSize = "TABLOID";
+} else {
+  await sendMessage(
+    from,
+    `Please choose laminate size:
 
-1 - Letter
-2 - Legal
-3 - Tabloid`
-    );
-    return res.sendStatus(200);
-  }
+1 - A4
+2 - Letter
+3 - Legal
+4 - Tabloid
+
+Africa Laminating Prices:
+• A4: ₦300
+• Letter: ₦300
+• Legal: ₦300
+• Tabloid: ₦500`
+  );
+  return res.sendStatus(200);
+}
 
   session.laminateSpec = {
     ...(session.laminateSpec || {}),
