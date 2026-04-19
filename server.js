@@ -991,11 +991,15 @@ You can:
 // LAMINATE PAYMENT CHOICE
 // ============================
 if (session.stage === "LAMINATE_FILE_UPLOADED_ACTION") {
-  const paperSize = session.laminateSpec?.paper_size || "A4";
-  const quantity = session.laminateSpec?.copies || 1;
+const paperSize = session.laminateSpec?.paper_size || "A4";
+const quantity = session.laminateSpec?.copies || 1;
+const colorMode = String(session.laminateSpec?.color_mode || "BW").trim().toUpperCase();
 
-  const variantId = getPrintVariantId(paperSize, "BW");
-  const checkoutUrl = buildShopifyCartUrl(variantId, quantity);
+const variantId = getPrintVariantId(
+  paperSize,
+  colorMode === "COLOR" ? "COLOR" : "BW"
+);
+const checkoutUrl = buildShopifyCartUrl(variantId, quantity);
   const africaUrl = "https://www.patapata.us/pages/africa-payment";
 
   if (lower === "1") {
