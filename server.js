@@ -2826,7 +2826,20 @@ return parts.join("");
               <button class="btn green" onclick="markJob('\${h(job.id)}','completed')">Complete</button>
               <button class="btn red" onclick="markJob('\${h(job.id)}','failed')">Fail</button>
             </div>
-
+${job.instruction_audio_url ? `
+  <div style="margin-top:10px;padding:10px;background:#0b1a2b;border-radius:10px;">
+    <div style="font-weight:700;margin-bottom:6px;color:#00d4ff;">🎧 Voice Instruction</div>
+    <audio
+      controls
+      preload="metadata"
+      style="width:100%;outline:none;"
+      src="${escapeHtml(String(job.instruction_audio_url || ""))}">
+    </audio>
+    <div style="font-size:11px;color:#aaa;margin-top:5px;">
+      If not playing, <a href="${escapeHtml(String(job.instruction_audio_url || ""))}" target="_blank" style="color:#4da3ff;">open manually</a>
+    </div>
+  </div>
+` : ``}
             <div class="replyBox">
               <b>Reply on WhatsApp</b>
               <textarea id="reply_\${h(job.id)}" class="reply" placeholder="Type your update to the customer here..."></textarea>
