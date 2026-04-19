@@ -2741,7 +2741,7 @@ if (!parts.length) {
 }
 
 // ✅ SAFE VOICE PLAYER (no crash)
-if (job.instruction_audio_url && String(job.instruction_audio_url).trim()) parts.push('<div class="insBox"><b>🎧 Voice Instruction</b><br><audio controls preload="metadata" style="width:100%;margin-top:8px;"><source src="' + h(String(job.instruction_audio_url).trim()) + '">Your browser does not support audio.</audio><div style="margin-top:6px;"><a class="fileLink" href="' + h(String(job.instruction_audio_url).trim()) + '" target="_blank" rel="noopener">Open audio</a></div></div>');
+if (job.instruction_audio_url && String(job.instruction_audio_url).trim() && !String(job.instruction_audio_url).includes("lookaside.fbsbx.com")) parts.push('<div class="insBox"><b>🎧 Voice Instruction</b><br><audio controls preload="metadata" style="width:100%;margin-top:8px;"><source src="' + h(String(job.instruction_audio_url)) + '">Your browser does not support audio.</audio><div style="margin-top:6px;"><a class="fileLink" href="' + h(String(job.instruction_audio_url)) + '" target="_blank" rel="noopener">Open audio</a></div></div>');
 
 return parts.join("");
 
