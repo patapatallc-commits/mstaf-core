@@ -800,7 +800,7 @@ Example:
         return res.sendStatus(200);
       }
 // IMAGE EDIT TYPE SELECT
-if (session.stage === "IMAGE_EDIT_SELECT_TYPE" && type === "text") {
+if (session.stage === "IMAGE_EDIT_SELECT_TYPE") {
   let variantId = "";
   let serviceLabel = "";
 
