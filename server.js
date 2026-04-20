@@ -482,6 +482,14 @@ Our team will review your request and contact you shortly on WhatsApp.`
 }
       // IMAGE EDIT FILE ARRIVED
       if (session.stage === "IMAGE_EDIT_WAITING_UPLOAD") {
+        const mediaObj =
+  type === "image"
+    ? message.image
+    : type === "document"
+    ? message.document
+    : type === "audio"
+    ? message.audio
+    : message.video;
         const job = await createJobFromMedia({
           printerId: AGENT_QUEUE_ID,
           queueType: "AGENT",
