@@ -1181,9 +1181,8 @@ await sendMessage(
 
 🇺🇸 USA (Shopify):
 • ID Card Printing: $10
-🛒 Checkout:
+Checkout link:
 ${checkoutUrl}
-
 🇳🇬 Africa Pricing:
 • 4 copies: ₦500
 • 8 copies: ₦1000
