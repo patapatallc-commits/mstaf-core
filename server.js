@@ -799,7 +799,114 @@ Example:
         );
         return res.sendStatus(200);
       }
+// IMAGE EDIT TYPE SELECT
+if (session.stage === "IMAGE_EDIT_SELECT_TYPE" && type === "text") {
+  let variantId = "";
+  let serviceLabel = "";
 
+  if (lower === "1") {
+    variantId = SHOPIFY_VARIANTS.IMAGE_BASIC;
+    serviceLabel = "Basic Image Edit";
+  } else if (lower === "2") {
+    variantId = SHOPIFY_VARIANTS.IMAGE_BG_REMOVAL;
+    serviceLabel = "Background Removal";
+  } else if (lower === "3") {
+    variantId = SHOPIFY_VARIANTS.IMAGE_ENHANCEMENT;
+    serviceLabel = "Product Photo Enhancement";
+  } else if (lower === "4") {
+    variantId = SHOPIFY_VARIANTS.IMAGE_ADVANCED;
+    serviceLabel = "Advanced Image Editing";
+  } else {
+    await sendMessage(
+      from,
+      `Please reply with:
+
+1 - Basic Image Edit
+2 - Background Removal
+3 - Product Photo Enhancement
+4 - Advanced Image Editing`
+    );
+    return res.sendStatus(200);
+  }
+
+  session.imageEditType = serviceLabel;
+  session.stage = "IMAGE_EDIT_WAITING_UPLOAD";
+
+  const checkoutUrl = buildShopifyCartUrl(variantId, 1);
+
+  await sendMessage(
+    from,
+    `🖼️ ${serviceLabel} selected.
+
+Checkout link:
+${checkoutUrl}
+
+Africa payment:
+https://www.patapata.us/pages/africa-payment
+
+Please upload your image now and tell us what you would like us to do.
+
+You can also type extra instructions or send a voice note.
+
+Our team will review your request and contact you shortly on WhatsApp.`
+  );
+
+  return res.sendStatus(200);
+}
+      // IMAGE EDIT TYPE SELECT
+if (session.stage === "IMAGE_EDIT_SELECT_TYPE" && type === "text") {
+  let variantId = "";
+  let serviceLabel = "";
+
+  if (lower === "1") {
+    variantId = SHOPIFY_VARIANTS.IMAGE_BASIC;
+    serviceLabel = "Basic Image Edit";
+  } else if (lower === "2") {
+    variantId = SHOPIFY_VARIANTS.IMAGE_BG_REMOVAL;
+    serviceLabel = "Background Removal";
+  } else if (lower === "3") {
+    variantId = SHOPIFY_VARIANTS.IMAGE_ENHANCEMENT;
+    serviceLabel = "Product Photo Enhancement";
+  } else if (lower === "4") {
+    variantId = SHOPIFY_VARIANTS.IMAGE_ADVANCED;
+    serviceLabel = "Advanced Image Editing";
+  } else {
+    await sendMessage(
+      from,
+      `Please reply with:
+
+1 - Basic Image Edit
+2 - Background Removal
+3 - Product Photo Enhancement
+4 - Advanced Image Editing`
+    );
+    return res.sendStatus(200);
+  }
+
+  session.imageEditType = serviceLabel;
+  session.stage = "IMAGE_EDIT_WAITING_UPLOAD";
+
+  const checkoutUrl = buildShopifyCartUrl(variantId, 1);
+
+  await sendMessage(
+    from,
+    `🖼️ ${serviceLabel} selected.
+
+Checkout link:
+${checkoutUrl}
+
+Africa payment:
+https://www.patapata.us/pages/africa-payment
+
+Please upload your image now and tell us what you would like us to do.
+
+You can also type extra instructions or send a voice note.
+
+Our team will review your request and contact you shortly on WhatsApp.`
+  );
+
+  return res.sendStatus(200);
+}
       // IMAGE EDIT FILE ARRIVED
       if (session.stage === "IMAGE_EDIT_WAITING_UPLOAD" && type === "image") {
         const job = await createJobFromMedia({
@@ -1198,41 +1305,26 @@ return res.sendStatus(200);
       
       }
 
-      if (lower === "4") {
-        session.selectedService = "IMAGE_EDIT";
-        session.stage = "IMAGE_EDIT_WAITING_UPLOAD";
-session.selectedService = "IMAGE_EDIT";
-session.stage = "IMAGE_EDIT_WAITING_UPLOAD";
+if (lower === "4") {
+  session.selectedService = "IMAGE_EDIT";
+  session.stage = "IMAGE_EDIT_SELECT_TYPE";
 
-const checkoutUrl = buildShopifyCartUrl(SHOPIFY_VARIANTS.IMAGE_BASIC, 1);
+  await sendMessage(
+    from,
+    `🖼️ Image Editing selected.
 
-await sendMessage(
-  from,
-  `🖼️ Image Editing selected.
+Choose image editing type:
 
-🇺🇸 USA (Shopify):
-• Basic Image Edit: $5
-• Background Removal: $7
-• Product Photo Enhancement: $10
-• Advanced Image Editing: $15
+1 - Basic Image Edit ($5)
+2 - Background Removal ($7)
+3 - Product Photo Enhancement ($10)
+4 - Advanced Image Editing ($15)
 
-Checkout link:
-${checkoutUrl}
+Reply with 1, 2, 3, or 4.`
+  );
 
-🇳🇬 Africa Pricing:
-• Image Editing: ₦1000
-
-Africa payment:
-https://www.patapata.us/pages/africa-payment
-
-Please upload your image now and tell us what you would like us to do.
-
-You can also type extra instructions or send a voice note.
-
-Our team will review your request and contact you shortly on WhatsApp.`
-);
-        return res.sendStatus(200);
-      }
+  return res.sendStatus(200);
+}
 
       if (lower === "5") {
         session.selectedService = "VIDEO_EDIT";
