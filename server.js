@@ -620,7 +620,46 @@ Example:
 
       return result.rows[0] || null;
     }
+ // IMAGE EDIT FILE ARRIVED
+if (session.stage === "IMAGE_EDIT_WAITING_UPLOAD") {
+  const mediaObj =
+    type === "image"
+      ? message.image
+      : type === "document"
+      ? message.document
+      : type === "audio"
+      ? message.audio
+      : message.video;
 
+  const job = await createJobFromMedia({
+    printerId: AGENT_QUEUE_ID,
+    queueType: "AGENT",
+    serviceType: "IMAGE_EDIT",
+    mediaId: mediaObj?.id,
+    originalName: mediaObj?.filename || "image_edit",
+    mimeType: mediaObj?.mime_type || "image/jpeg",
+    copies: 1,
+    pages: 1
+  });
+
+  session.lastServiceJobId = job?.id || null;
+  session.stage = "SERVICE_WAITING_EXTRA_NOTES";
+
+  await sendMessage(
+    from,
+    `✅ Image received and added to Agent queue.
+
+Please send your instruction now as text or voice note.
+
+Example:
+- remove background
+- enhance quality
+- add text
+- resize for social media`
+  );
+
+  return res.sendStatus(200);
+}
     // =========================
     // MEDIA CAPTURE
     // =========================
