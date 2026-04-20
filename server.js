@@ -602,19 +602,35 @@ if (session.stage === "IMAGE_EDIT_WAITING_UPLOAD") {
       ? message.audio
       : message.video;
 
+// HANDLE IMAGE EDIT UPLOAD
+if (session.stage === "IMAGE_EDIT_WAITING_UPLOAD") {
   const job = await createJobFromMedia({
     printerId: AGENT_QUEUE_ID,
     queueType: "AGENT",
     serviceType: "IMAGE_EDIT",
-    mediaId: mediaObj?.id,
-    originalName: mediaObj?.filename || "image_edit",
-    mimeType: mediaObj?.mime_type || "image/jpeg",
+    mediaId: mediaObj.id,
+    originalName: mediaObj.filename || "image_edit",
+    mimeType: mediaObj.mime_type || "image/jpeg",
     copies: 1,
     pages: 1
   });
 
   session.lastServiceJobId = job?.id || null;
   session.stage = "SERVICE_WAITING_EXTRA_NOTES";
+
+  await sendMessage(
+    from,
+    `🖼️ Image received and added to Agent queue.
+
+Please send your instruction now as text or voice note.`
+  );
+
+  return res.sendStatus(200);
+}
+
+
+// HANDLE VIDEO EDIT UPLOAD
+if (session.stage === "VIDEO
 
   await sendMessage(
     from,
@@ -673,6 +689,37 @@ Example:
 - remove background
 - enhance quality
 - add text
+- resize for social media`
+  );
+
+  return res.sendStatus(200);
+}
+      // HANDLE VIDEO EDIT UPLOAD
+if (session.stage === "VIDEO_EDIT_WAITING_UPLOAD") {
+  const job = await createJobFromMedia({
+    printerId: AGENT_QUEUE_ID,
+    queueType: "AGENT",
+    serviceType: "VIDEO_EDIT",
+    mediaId: mediaObj.id,
+    originalName: mediaObj.filename || "video_edit",
+    mimeType: mediaObj.mime_type || "video/mp4",
+    copies: 1,
+    pages: 1
+  });
+
+  session.lastServiceJobId = job?.id || null;
+  session.stage = "SERVICE_WAITING_EXTRA_NOTES";
+
+  await sendMessage(
+    from,
+    `🎬 Video received and added to Agent queue.
+
+Please send your instruction now as text or voice note.
+
+Example:
+- trim video
+- add captions
+- remove background noise
 - resize for social media`
   );
 
