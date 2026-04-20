@@ -1201,12 +1201,29 @@ return res.sendStatus(200);
       if (lower === "4") {
         session.selectedService = "IMAGE_EDIT";
         session.stage = "IMAGE_EDIT_WAITING_UPLOAD";
+session.selectedService = "IMAGE_EDIT";
+session.stage = "IMAGE_EDIT_WAITING_UPLOAD";
+
+const checkoutUrl = buildShopifyCartUrl(SHOPIFY_VARIANTS.IMAGE_BASIC, 1);
+
 await sendMessage(
   from,
   `🖼️ Image Editing selected.
 
-Africa Pricing:
+🇺🇸 USA (Shopify):
+• Basic Image Edit: $5
+• Background Removal: $7
+• Product Photo Enhancement: $10
+• Advanced Image Editing: $15
+
+Checkout link:
+${checkoutUrl}
+
+🇳🇬 Africa Pricing:
 • Image Editing: ₦1000
+
+Africa payment:
+https://www.patapata.us/pages/africa-payment
 
 Please upload your image now and tell us what you would like us to do.
 
