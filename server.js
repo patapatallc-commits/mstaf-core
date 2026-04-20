@@ -481,7 +481,7 @@ Our team will review your request and contact you shortly on WhatsApp.`
   return res.sendStatus(200);
 }
       // IMAGE EDIT FILE ARRIVED
-      if (session.stage === "IMAGE_EDIT_WAITING_UPLOAD" && type === "image") {
+      if (session.stage === "IMAGE_EDIT_WAITING_UPLOAD") {
         const job = await createJobFromMedia({
           printerId: AGENT_QUEUE_ID,
           queueType: "AGENT",
