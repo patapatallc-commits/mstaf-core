@@ -1171,67 +1171,92 @@ Or upload your video to continue with agent.`
   session.stage = "VIDEO_EDIT_WAITING_UPLOAD";
   return res.sendStatus(200);
 }
-      if (session.stage === "VIDEO_EDIT_WAITING_UPLOAD" && type === "video") {
-        const job = await createJobFromMedia({
-          printerId: AGENT_QUEUE_ID,
-          queueType: "AGENT",
-          serviceType: "VIDEO_EDIT",
-          mediaId: mediaObj?.id,
-          originalName: mediaObj?.filename || "video_edit",
-          mimeType: mediaObj?.mime_type || "video/mp4",
-          copies: 1,
-          pages: 1
-        });
+    // =========================
+// VIDEO EDIT UPLOAD
+// =========================
+if (session.stage === "VIDEO_EDIT_WAITING_UPLOAD" && type === "video") {
+  try {
+    const job = await createJobFromMedia({
+      printerId: AGENT_QUEUE_ID,
+      queueType: "AGENT",
+      serviceType: "VIDEO_EDIT",
+      mediaId: mediaObj.id,
+      originalName: mediaObj.filename || "video_edit",
+      mimeType: mediaObj.mime_type || "video/mp4",
+      copies: 1,
+      pages: 1
+    });
 
-        session.lastServiceJobId = job?.id || null;
-        session.stage = "SERVICE_WAITING_EXTRA_NOTES";
+    session.lastServiceJobId = job?.id || null;
+    session.stage = "SERVICE_WAITING_EXTRA_NOTES";
 
-        await sendMessage(
-          from,
-          `✅ Video received and added to Agent queue.
+    await sendMessage(
+      from,
+      `🎬 Video received and added to Agent queue.
 
-Please send your instruction now as text or voice note.
-
-Example:
-- trim video
-- add text
-- merge clips
-- improve sound`
-        );
-        return res.sendStatus(200);
-      }
-
-      // LESSON / HOMEWORK FILE ARRIVED
-      if (
-        session.stage === "LESSON_WAITING_UPLOAD" &&
-        (type === "document" || type === "image" || type === "audio")
-      ) {
-        const job = await createJobFromMedia({
-          printerId: AGENT_QUEUE_ID,
-          queueType: "AGENT",
-          serviceType: "LESSON_HOMEWORK",
-          mediaId: mediaObj?.id,
-          originalName: mediaObj?.filename || "lesson_homework",
-          mimeType: mediaObj?.mime_type || "",
-          copies: 1,
-          pages: 1
-        });
-
-        session.lastServiceJobId = job?.id || null;
-        session.stage = "SERVICE_WAITING_EXTRA_NOTES";
-
-        await sendMessage(
-          from,
-          `✅ Lesson / Homework file received and added to Agent queue.
-
-Please send any extra instruction now as text or voice note.
+Please send your video editing instructions now as text or voice note.
 
 Our team will contact you shortly on WhatsApp.`
-        );
-        return res.sendStatus(200);
+    );
+
+    return res.sendStatus(200);
+  } catch (err) {
+    console.error("VIDEO EDIT ERROR:", err.response?.data || err.message || err);
+    return res.sendStatus(200);
+  }
+}
+
+// =========================
+// SERVICE EXTRA NOTES
+// =========================
+if (session.stage === "SERVICE_WAITING_EXTRA_NOTES") {
+  try {
+    if (type === "text" && lower) {
+      if (session.lastServiceJobId) {
+        await attachTextToExistingJob(session.lastServiceJobId, text.trim());
       }
+
+      await sendMessage(
+        from,
+        `✅ Your message has been received and attached to your job.
+
+Our team will contact you shortly on WhatsApp.`
+      );
+
+      session.stage = "MENU";
+      return res.sendStatus(200);
     }
 
+    if (type === "audio") {
+      if (session.lastServiceJobId && message.audio?.id) {
+        await attachAudioToExistingJob(
+          session.lastServiceJobId,
+          message.audio.id,
+          message.audio?.mime_type || "audio/ogg"
+        );
+      }
+
+      await sendMessage(
+        from,
+        `✅ Your voice note has been received and attached to your job.
+
+Our team will contact you shortly on WhatsApp.`
+      );
+
+      session.stage = "MENU";
+      return res.sendStatus(200);
+    }
+
+    await sendMessage(
+      from,
+      `Please send your extra instruction as a text message or voice note.`
+    );
+    return res.sendStatus(200);
+  } catch (err) {
+    console.error("SERVICE EXTRA NOTES ERROR:", err.response?.data || err.message || err);
+    return res.sendStatus(200);
+  }
+}
     // =========================
     // GREETING / RESET
     // =========================
