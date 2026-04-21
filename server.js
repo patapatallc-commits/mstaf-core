@@ -2010,7 +2010,7 @@ Our team will contact you shortly on WhatsApp.`
         session.stage = "MENU";
         return res.sendStatus(200);
       }
-try {
+
       await sendMessage(
         from,
         `Please reply with one of the options below:
