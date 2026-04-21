@@ -1206,9 +1206,10 @@ Our team will contact you shortly on WhatsApp.`
   }
 }
 
-// =========================
+// ==============================
 // SERVICE EXTRA NOTES
-// =========================
+// ==============================
+
 if (session.stage === "SERVICE_WAITING_EXTRA_NOTES") {
   try {
     if (type === "text" && lower) {
@@ -1251,7 +1252,9 @@ Our team will contact you shortly on WhatsApp.`
       from,
       `Please send your extra instruction as a text message or voice note.`
     );
+
     return res.sendStatus(200);
+
   } catch (err) {
     console.error("SERVICE EXTRA NOTES ERROR:", err.response?.data || err.message || err);
     return res.sendStatus(200);
