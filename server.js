@@ -1973,9 +1973,6 @@ After payment, please send:
   );
   return res.sendStatus(200);
 }
-// =========================
-// GENERIC EXTRA NOTES
-// =========================
 if (session.stage === "SERVICE_WAITING_EXTRA_NOTES") {
   try {
     if (type === "text" && lower) {
@@ -2023,6 +2020,7 @@ ${serviceMenu()}`
     console.error("Webhook error:", err.response?.data || err.message || err);
     return res.sendStatus(200);
   }
+}
 });
   
 // ========================
