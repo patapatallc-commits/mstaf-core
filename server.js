@@ -602,15 +602,13 @@ if (session.stage === "IMAGE_EDIT_WAITING_UPLOAD") {
       ? message.audio
       : message.video;
 
-// HANDLE IMAGE EDIT UPLOAD
-if (session.stage === "IMAGE_EDIT_WAITING_UPLOAD") {
   const job = await createJobFromMedia({
     printerId: AGENT_QUEUE_ID,
     queueType: "AGENT",
     serviceType: "IMAGE_EDIT",
-    mediaId: mediaObj.id,
-    originalName: mediaObj.filename || "image_edit",
-    mimeType: mediaObj.mime_type || "image/jpeg",
+    mediaId: mediaObj?.id,
+    originalName: mediaObj?.filename || "image_edit",
+    mimeType: mediaObj?.mime_type || "image/jpeg",
     copies: 1,
     pages: 1
   });
@@ -620,16 +618,19 @@ if (session.stage === "IMAGE_EDIT_WAITING_UPLOAD") {
 
   await sendMessage(
     from,
-    `🖼️ Image received and added to Agent queue.
+    `✅ Image received and added to Agent queue.
 
-Please send your instruction now as text or voice note.`
+Please send your instruction now as text or voice note.
+
+Example:
+- remove background
+- enhance quality
+- add text
+- resize for social media`
   );
 
   return res.sendStatus(200);
 }
-
-
-
     // =========================
     // MEDIA CAPTURE
     // =========================
@@ -677,187 +678,53 @@ Example:
 
   return res.sendStatus(200);
 }
-/* =========================
-   VIDEO EDITING FLOW
-   ========================= */
+      session.pendingFile = {
+        type,
+        media_id: mediaObj?.id || "",
+        mime_type: mediaObj?.mime_type || "",
+        filename:
+          mediaObj?.filename ||
+          (type === "image"
+            ? "image"
+            : type === "document"
+            ? "document"
+            : type === "audio"
+            ? "audio"
+            : "video")
+      };
 
-if (
-  userState &&
-  (
-    userState.action === "VIDEO_EDITING" ||
-    userState.action === "VIDEO_EDITING_FILE" ||
-    userState.action === "VIDEO_EDITING_WAIT_FILE" ||
-    userState.action === "VIDEO_EDITING_WAITING_FOR_FILE"
-  )
-) {
-  try {
-    const hasVideo = message?.type === "video" && message?.video?.id;
-    const hasDocumentVideo =
-      message?.type === "document" &&
-      message?.document?.id &&
-      (
-        String(message?.document?.mime_type || "").startsWith("video/") ||
-        /\.(mp4|mov|avi|mkv|webm|mpeg|mpg|m4v)$/i.test(String(message?.document?.filename || ""))
-      );
+      // PRINT FILE ARRIVED
+      if (
+        session.stage === "PRINT_WAITING_FILE" &&
+        (type === "image" || type === "document")
+      ) {
+        const job = await createJobFromMedia({
+          printerId: DEFAULT_PRINTER_ID,
+          queueType: "WORKER",
+          serviceType: "PRINT",
+          mediaId: mediaObj?.id,
+          originalName: mediaObj?.filename || "print_file",
+          mimeType: mediaObj?.mime_type || "",
+          paperSize: session.printSpec?.paper_size || "",
+          colorMode: session.printSpec?.color || "bw",
+          copies: session.printSpec?.copies || 1,
+          pages: session.printSpec?.pages || 1
+        });
 
-    if (!hasVideo && !hasDocumentVideo) {
-      await sendMessage(
-        from,
-        "Please upload your video file for editing.\n\nSupported: MP4, MOV, AVI, MKV, WEBM."
-      );
-      return res.sendStatus(200);
-    }
+        session.lastServiceJobId = job?.id || null;
+        session.stage = "PRINT_FILE_UPLOADED_ACTION";
 
-    const mediaId = hasVideo ? message.video.id : message.document.id;
-    const originalName =
-      (hasDocumentVideo && message?.document?.filename) ||
-      `video-${Date.now()}.mp4`;
+        await sendMessage(
+          from,
+          `✅ File received and added to print queue.
 
-    let savedFileUrl = "";
-    let finalFileName = "";
-
-    try {
-      const saved = await downloadWhatsAppMedia(mediaId, originalName);
-      if (typeof saved === "string") {
-        savedFileUrl = saved;
-      } else if (saved && typeof saved === "object") {
-        savedFileUrl = saved.url || saved.file_url || "";
-        finalFileName = saved.filename || saved.name || "";
-      }
-    } catch (downloadErr) {
-      console.error("Video download error:", downloadErr?.response?.data || downloadErr?.message || downloadErr);
-      await sendMessage(
-        from,
-        "Your video was received, but saving failed. Please send the video again."
-      );
-      return res.sendStatus(200);
-    }
-
-    const fileUrl = savedFileUrl || "";
-    const safeOriginalName = finalFileName || originalName || `video-${Date.now()}.mp4`;
-
-    await pool.query(
-      `
-      INSERT INTO print_jobs
-      (
-        printer_id,
-        status,
-        file_url,
-        original_name,
-        service_type,
-        customer_phone,
-        customer_name,
-        instructions
-      )
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
-      `,
-      [
-        process.env.AGENT_QUEUE_ID || "AGENT",
-        "pending",
-        fileUrl,
-        safeOriginalName,
-        "VIDEO_EDITING",
-        from,
-        "",
-        ""
-      ]
-    );
-
-    await setUserState(from, {
-      action: "VIDEO_EDITING_WAITING_FOR_INSTRUCTION",
-      service_type: "VIDEO_EDITING",
-      file_url: fileUrl,
-      original_name: safeOriginalName
-    });
-
-    await sendMessage(
-      from,
-      "✅ Video received for editing.\n\nNow send your editing instructions as:\n• text message, or\n• voice note\n\nExample:\n- remove background noise\n- add captions\n- trim beginning\n- combine clips"
-    );
-
-    return res.sendStatus(200);
-  } catch (err) {
-    console.error("VIDEO_EDITING upload block error:", err?.response?.data || err?.message || err);
-    return res.sendStatus(200);
-  }
-}
-
-if (
-  userState &&
-  (
-    userState.action === "VIDEO_EDITING_WAITING_FOR_INSTRUCTION" ||
-    userState.action === "VIDEO_EDITING_INSTRUCTION"
-  )
-) {
-  try {
-    const textInstruction =
-      message?.type === "text"
-        ? String(message?.text?.body || "").trim()
-        : "";
-
-    const hasAudio =
-      message?.type === "audio" && message?.audio?.id;
-
-    let instructionAudioUrl = "";
-
-    if (!textInstruction && !hasAudio) {
-      await sendMessage(
-        from,
-        "Please send your video editing instructions as text or voice note."
-      );
-      return res.sendStatus(200);
-    }
-
-    if (hasAudio) {
-      try {
-        const audioSaved = await downloadWhatsAppMedia(
-          message.audio.id,
-          `instruction-${Date.now()}.ogg`
+Reply:
+1 - Continue with Agent
+2 - Checkout`
         );
-
-        if (typeof audioSaved === "string") {
-          instructionAudioUrl = audioSaved;
-        } else if (audioSaved && typeof audioSaved === "object") {
-          instructionAudioUrl = audioSaved.url || audioSaved.file_url || "";
-        }
-      } catch (audioErr) {
-        console.error("Instruction audio download error:", audioErr?.response?.data || audioErr?.message || audioErr);
+        return res.sendStatus(200);
       }
-    }
 
-    await pool.query(
-      `
-      UPDATE print_jobs
-      SET
-        instructions = COALESCE($1, instructions),
-        instruction_audio_url = COALESCE($2, instruction_audio_url),
-        updated_at = NOW()
-      WHERE customer_phone = $3
-        AND service_type = 'VIDEO_EDITING'
-        AND status = 'pending'
-      ORDER BY created_at DESC
-      LIMIT 1
-      `,
-      [
-        textInstruction || null,
-        instructionAudioUrl || null,
-        from
-      ]
-    );
-
-    await clearUserState(from);
-
-    await sendMessage(
-      from,
-      "✅ Your video editing request and instructions have been received.\n\nOur team will contact you shortly on WhatsApp."
-    );
-
-    return res.sendStatus(200);
-  } catch (err) {
-    console.error("VIDEO_EDITING instruction block error:", err?.response?.data || err?.message || err);
-    return res.sendStatus(200);
-  }
-}
      
         // ============================
 // LAMINATE SIZE SELECTION
@@ -1171,95 +1038,67 @@ Or upload your video to continue with agent.`
   session.stage = "VIDEO_EDIT_WAITING_UPLOAD";
   return res.sendStatus(200);
 }
-    // =========================
-// VIDEO EDIT UPLOAD
-// =========================
-if (session.stage === "VIDEO_EDIT_WAITING_UPLOAD" && type === "video") {
-  try {
-    const job = await createJobFromMedia({
-      printerId: AGENT_QUEUE_ID,
-      queueType: "AGENT",
-      serviceType: "VIDEO_EDIT",
-      mediaId: mediaObj.id,
-      originalName: mediaObj.filename || "video_edit",
-      mimeType: mediaObj.mime_type || "video/mp4",
-      copies: 1,
-      pages: 1
-    });
+      if (session.stage === "VIDEO_EDIT_WAITING_UPLOAD" && type === "video") {
+        const job = await createJobFromMedia({
+          printerId: AGENT_QUEUE_ID,
+          queueType: "AGENT",
+          serviceType: "VIDEO_EDIT",
+          mediaId: mediaObj?.id,
+          originalName: mediaObj?.filename || "video_edit",
+          mimeType: mediaObj?.mime_type || "video/mp4",
+          copies: 1,
+          pages: 1
+        });
 
-    session.lastServiceJobId = job?.id || null;
-    session.stage = "SERVICE_WAITING_EXTRA_NOTES";
+        session.lastServiceJobId = job?.id || null;
+        session.stage = "SERVICE_WAITING_EXTRA_NOTES";
 
-    await sendMessage(
-      from,
-      `🎬 Video received and added to Agent queue.
+        await sendMessage(
+          from,
+          `✅ Video received and added to Agent queue.
 
-Please send your video editing instructions now as text or voice note.
+Please send your instruction now as text or voice note.
 
-Our team will contact you shortly on WhatsApp.`
-    );
-
-    return res.sendStatus(200);
-  } catch (err) {
-    console.error("VIDEO EDIT ERROR:", err.response?.data || err.message || err);
-    return res.sendStatus(200);
-  }
-}
-
-// ==============================
-// SERVICE EXTRA NOTES
-// ==============================
-
-if (session.stage === "SERVICE_WAITING_EXTRA_NOTES") {
-  try {
-    if (type === "text" && lower) {
-      if (session.lastServiceJobId) {
-        await attachTextToExistingJob(session.lastServiceJobId, text.trim());
-      }
-
-      await sendMessage(
-        from,
-        `✅ Your message has been received and attached to your job.
-
-Our team will contact you shortly on WhatsApp.`
-      );
-
-      session.stage = "MENU";
-      return res.sendStatus(200);
-    }
-
-    if (type === "audio") {
-      if (session.lastServiceJobId && message.audio?.id) {
-        await attachAudioToExistingJob(
-          session.lastServiceJobId,
-          message.audio.id,
-          message.audio?.mime_type || "audio/ogg"
+Example:
+- trim video
+- add text
+- merge clips
+- improve sound`
         );
+        return res.sendStatus(200);
       }
 
-      await sendMessage(
-        from,
-        `✅ Your voice note has been received and attached to your job.
+      // LESSON / HOMEWORK FILE ARRIVED
+      if (
+        session.stage === "LESSON_WAITING_UPLOAD" &&
+        (type === "document" || type === "image" || type === "audio")
+      ) {
+        const job = await createJobFromMedia({
+          printerId: AGENT_QUEUE_ID,
+          queueType: "AGENT",
+          serviceType: "LESSON_HOMEWORK",
+          mediaId: mediaObj?.id,
+          originalName: mediaObj?.filename || "lesson_homework",
+          mimeType: mediaObj?.mime_type || "",
+          copies: 1,
+          pages: 1
+        });
+
+        session.lastServiceJobId = job?.id || null;
+        session.stage = "SERVICE_WAITING_EXTRA_NOTES";
+
+        await sendMessage(
+          from,
+          `✅ Lesson / Homework file received and added to Agent queue.
+
+Please send any extra instruction now as text or voice note.
 
 Our team will contact you shortly on WhatsApp.`
-      );
-
-      session.stage = "MENU";
-      return res.sendStatus(200);
+        );
+        return res.sendStatus(200);
+      }
     }
 
-    await sendMessage(
-      from,
-      `Please send your extra instruction as a text message or voice note.`
-    );
-
-    return res.sendStatus(200);
-
-  } catch (err) {
-    console.error("SERVICE EXTRA NOTES ERROR:", err.response?.data || err.message || err);
-    return res.sendStatus(200);
-  }
-}
     // =========================
     // GREETING / RESET
     // =========================
@@ -2001,55 +1840,59 @@ After payment, please send:
   );
   return res.sendStatus(200);
 }
-if (session.stage === "SERVICE_WAITING_EXTRA_NOTES") {
-  try {
-    if (type === "text" && lower) {
-      if (session.lastServiceJobId) {
-        await attachTextToExistingJob(session.lastServiceJobId, text.trim());
-      }
+    // =========================
+    // GENERIC EXTRA NOTES
+    // =========================
+    if (session.stage === "SERVICE_WAITING_EXTRA_NOTES") {
+      if (type === "text" && lower) {
+        if (session.lastServiceJobId) {
+          await attachTextToExistingJob(session.lastServiceJobId, text.trim());
+        }
 
-      await sendMessage(
-        from,
-        `✅ Your message has been received and attached to your job.
+        await sendMessage(
+          from,
+          `✅ Your message has been received and attached to your job.
 
 Our team will contact you shortly on WhatsApp.`
-      );
-      session.stage = "MENU";
-      return res.sendStatus(200);
-    }
-
-    if (type === "audio") {
-      if (session.lastServiceJobId && message.audio?.id) {
-        await attachAudioToExistingJob(
-          session.lastServiceJobId,
-          message.audio.id,
-          message.audio?.mime_type || "audio/ogg"
         );
+        session.stage = "MENU";
+        return res.sendStatus(200);
+      }
+
+      if (type === "audio") {
+        if (session.lastServiceJobId && message.audio?.id) {
+          await attachAudioToExistingJob(
+            session.lastServiceJobId,
+            message.audio.id,
+            message.audio?.mime_type || "audio/ogg"
+          );
+        }
+
+        await sendMessage(
+          from,
+          `✅ Your voice note has been received and attached to your job.
+
+Our team will contact you shortly on WhatsApp.`
+        );
+        session.stage = "MENU";
+        return res.sendStatus(200);
       }
 
       await sendMessage(
         from,
-        `✅ Your voice note has been received and attached to your job.
-
-Our team will contact you shortly on WhatsApp.`
-      );
-      session.stage = "MENU";
-      return res.sendStatus(200);
-    }
-
-    await sendMessage(
-      from,
-      `Please reply with one of the options below:
+        `Please reply with one of the options below:
 
 ${serviceMenu()}`
-    );
-    return res.sendStatus(200);
+      );
+      return res.sendStatus(200);
+    }
+
   } catch (err) {
     console.error("Webhook error:", err.response?.data || err.message || err);
     return res.sendStatus(200);
   }
-
 });
+
   
 // ========================
 // HEALTH
