@@ -629,24 +629,7 @@ Please send your instruction now as text or voice note.`
 }
 
 
-// HANDLE VIDEO EDIT UPLOAD
-if (session.stage === "VIDEO
 
-  await sendMessage(
-    from,
-    `✅ Image received and added to Agent queue.
-
-Please send your instruction now as text or voice note.
-
-Example:
-- remove background
-- enhance quality
-- add text
-- resize for social media`
-  );
-
-  return res.sendStatus(200);
-}
     // =========================
     // MEDIA CAPTURE
     // =========================
