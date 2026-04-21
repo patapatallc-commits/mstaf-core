@@ -1973,59 +1973,57 @@ After payment, please send:
   );
   return res.sendStatus(200);
 }
-    // =========================
-    // GENERIC EXTRA NOTES
-    // =========================
-    if (session.stage === "SERVICE_WAITING_EXTRA_NOTES") {
-      if (type === "text" && lower) {
-        if (session.lastServiceJobId) {
-          await attachTextToExistingJob(session.lastServiceJobId, text.trim());
-        }
-
-        await sendMessage(
-          from,
-          `✅ Your message has been received and attached to your job.
-
-Our team will contact you shortly on WhatsApp.`
-        );
-        session.stage = "MENU";
-        return res.sendStatus(200);
-      }
-
-      if (type === "audio") {
-        if (session.lastServiceJobId && message.audio?.id) {
-          await attachAudioToExistingJob(
-            session.lastServiceJobId,
-            message.audio.id,
-            message.audio?.mime_type || "audio/ogg"
-          );
-        }
-
-        await sendMessage(
-          from,
-          `✅ Your voice note has been received and attached to your job.
-
-Our team will contact you shortly on WhatsApp.`
-        );
-        session.stage = "MENU";
-        return res.sendStatus(200);
+// =========================
+// GENERIC EXTRA NOTES
+// =========================
+if (session.stage === "SERVICE_WAITING_EXTRA_NOTES") {
+  try {
+    if (type === "text" && lower) {
+      if (session.lastServiceJobId) {
+        await attachTextToExistingJob(session.lastServiceJobId, text.trim());
       }
 
       await sendMessage(
         from,
-        `Please reply with one of the options below:
+        `✅ Your message has been received and attached to your job.
+
+Our team will contact you shortly on WhatsApp.`
+      );
+      session.stage = "MENU";
+      return res.sendStatus(200);
+    }
+
+    if (type === "audio") {
+      if (session.lastServiceJobId && message.audio?.id) {
+        await attachAudioToExistingJob(
+          session.lastServiceJobId,
+          message.audio.id,
+          message.audio?.mime_type || "audio/ogg"
+        );
+      }
+
+      await sendMessage(
+        from,
+        `✅ Your voice note has been received and attached to your job.
+
+Our team will contact you shortly on WhatsApp.`
+      );
+      session.stage = "MENU";
+      return res.sendStatus(200);
+    }
+
+    await sendMessage(
+      from,
+      `Please reply with one of the options below:
 
 ${serviceMenu()}`
-      );
-      return res.sendStatus(200);
-    
-
+    );
+    return res.sendStatus(200);
   } catch (err) {
     console.error("Webhook error:", err.response?.data || err.message || err);
     return res.sendStatus(200);
   }
 });
-
   
 // ========================
 // HEALTH
