@@ -1006,56 +1006,27 @@ Example:
         );
         return res.sendStatus(200);
       }
+if (session.stage === "VIDEO_EDIT_WAITING_UPLOAD" && type === "video") {
+  const job = await createJobFromMedia({
+    printerId: AGENT_QUEUE_ID,
+    queueType: "AGENT",
+    serviceType: session.videoEditType || "VIDEO_EDIT",
+    mediaId: mediaObj?.id,
+    originalName: mediaObj?.filename || "video_edit",
+    mimeType: mediaObj?.mime_type || "video/mp4",
+    copies: 1,
+    pages: 1
+  });
 
-      // VIDEO EDIT FILE ARRIVED
-      if (session.stage === "VIDEO_EDIT_SELECT_TYPE") {
-  let variantId = "";
-
-  if (lower === "1") variantId = SHOPIFY_VARIANTS.VIDEO_SHORT;
-  else if (lower === "2") variantId = SHOPIFY_VARIANTS.VIDEO_SOCIAL;
-  else if (lower === "3") variantId = SHOPIFY_VARIANTS.VIDEO_STANDARD;
-  else if (lower === "4") variantId = SHOPIFY_VARIANTS.VIDEO_ADVANCED;
-  else {
-    await sendMessage(from, "Please choose 1–4.");
-    return res.sendStatus(200);
-  }
-
-  const checkoutUrl = buildShopifyCartUrl(variantId, 1);
+  session.lastServiceJobId = job?.id || null;
+  session.stage = "SERVICE_WAITING_EXTRA_NOTES";
 
   await sendMessage(
     from,
-    `✅ Service selected.
+    `✅ Video received and added to Agent queue.
 
-🛒 Shopify Checkout:
-${checkoutUrl}
-
-🌍 Africa Payment:
-https://www.patapata.us/pages/africa-payment
-
-Or upload your video to continue with agent.`
-  );
-
-  session.stage = "VIDEO_EDIT_WAITING_UPLOAD";
-  return res.sendStatus(200);
-}
-      if (session.stage === "VIDEO_EDIT_WAITING_UPLOAD" && type === "video") {
-        const job = await createJobFromMedia({
-          printerId: AGENT_QUEUE_ID,
-          queueType: "AGENT",
-          serviceType: "VIDEO_EDIT",
-          mediaId: mediaObj?.id,
-          originalName: mediaObj?.filename || "video_edit",
-          mimeType: mediaObj?.mime_type || "video/mp4",
-          copies: 1,
-          pages: 1
-        });
-
-        session.lastServiceJobId = job?.id || null;
-        session.stage = "SERVICE_WAITING_EXTRA_NOTES";
-
-        await sendMessage(
-          from,
-          `✅ Video received and added to Agent queue.
+Selected service:
+${session.videoEditType || "Video Edit"}
 
 Please send your instruction now as text or voice note.
 
@@ -1064,9 +1035,10 @@ Example:
 - add text
 - merge clips
 - improve sound`
-        );
-        return res.sendStatus(200);
-      }
+  );
+
+  return res.sendStatus(200);
+}
 
       // LESSON / HOMEWORK FILE ARRIVED
       if (
@@ -1394,26 +1366,84 @@ Reply with 1, 2, 3, or 4.`
 
   return res.sendStatus(200);
 }
+// VIDEO EDIT TYPE SELECT
+if (session.stage === "VIDEO_EDIT_SELECT_TYPE") {
+  let variantId = "";
+  let serviceLabel = "";
 
-      if (lower === "5") {
-        session.selectedService = "VIDEO_EDIT";
-        session.stage = "VIDEO_EDIT_WAITING_UPLOAD";
+  if (lower === "1") {
+    variantId = SHOPIFY_VARIANTS.VIDEO_SHORT;
+    serviceLabel = "Short Video Edit";
+  } else if (lower === "2") {
+    variantId = SHOPIFY_VARIANTS.VIDEO_SOCIAL;
+    serviceLabel = "Social Media Video Edit";
+  } else if (lower === "3") {
+    variantId = SHOPIFY_VARIANTS.VIDEO_STANDARD;
+    serviceLabel = "Standard Video Edit";
+  } else if (lower === "4") {
+    variantId = SHOPIFY_VARIANTS.VIDEO_ADVANCED;
+    serviceLabel = "Advanced Video Edit";
+  } else {
+    await sendMessage(
+      from,
+      `Please reply with:
+
+1 - Short Video Edit
+2 - Social Media Video Edit
+3 - Standard Video Edit
+4 - Advanced Video Edit`
+    );
+    return res.sendStatus(200);
+  }
+
+  session.videoEditType = serviceLabel;
+  session.stage = "VIDEO_EDIT_WAITING_UPLOAD";
+
+  const checkoutUrl = buildShopifyCartUrl(variantId, 1);
+  const africaUrl = "https://www.patapata.us/pages/africa-payment";
+
   await sendMessage(
-  from,
-  `🎬 Video Editing selected.
+    from,
+    `🎬 ${serviceLabel} selected.
 
-Africa Pricing:
-• Video Editing: ₦1000
+🛒 Shopify Checkout:
+${checkoutUrl || "Not configured yet"}
+
+🌍 Africa Payment:
+${africaUrl}
+
+🇳🇬 Africa Pricing:
+• ${serviceLabel} — ₦1,000
 
 Please upload your video now and tell us what you would like us to do.
 
 You can also type extra instructions or send a voice note.
 
 Our team will review your request and contact you shortly on WhatsApp.`
-);
-        return res.sendStatus(200);
-      }
+  );
 
+  return res.sendStatus(200);
+}
+if (lower === "5") {
+  session.selectedService = "VIDEO_EDIT";
+  session.stage = "VIDEO_EDIT_SELECT_TYPE";
+
+  await sendMessage(
+    from,
+    `🎬 Video Editing selected.
+
+Choose video editing type:
+
+1 - Short Video Edit
+2 - Social Media Video Edit
+3 - Standard Video Edit
+4 - Advanced Video Edit
+
+Reply with 1, 2, 3, or 4.`
+  );
+
+  return res.sendStatus(200);
+}
       if (lower === "6") {
         session.selectedService = "LESSON_HOMEWORK";
         session.stage = "LESSON_WAITING_UPLOAD";
