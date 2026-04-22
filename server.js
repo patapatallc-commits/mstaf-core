@@ -455,7 +455,56 @@ if (session.stage === "IMAGE_EDIT_SELECT_TYPE") {
     );
     return res.sendStatus(200);
   }
+if (session.stage === "VIDEO_EDIT_SELECT_TYPE") {
+  let variantId = "";
+  let serviceLabel = "";
 
+  if (lower === "1") {
+    variantId = SHOPIFY_VARIANTS.VIDEO_SHORT;
+    serviceLabel = "Short Video Edit";
+  } else if (lower === "2") {
+    variantId = SHOPIFY_VARIANTS.VIDEO_SOCIAL;
+    serviceLabel = "Social Media Video Edit";
+  } else if (lower === "3") {
+    variantId = SHOPIFY_VARIANTS.VIDEO_STANDARD;
+    serviceLabel = "Standard Video Edit";
+  } else if (lower === "4") {
+    variantId = SHOPIFY_VARIANTS.VIDEO_ADVANCED;
+    serviceLabel = "Advanced Video Edit";
+  } else {
+    await sendMessage(
+      from,
+      `Please reply with:
+
+1 - Short Video Edit
+2 - Social Media Video Edit
+3 - Standard Video Edit
+4 - Advanced Video Edit`
+    );
+    return res.sendStatus(200);
+  }
+
+  session.videoEditType = serviceLabel;
+  session.videoVariantId = variantId;
+  session.stage = "VIDEO_EDIT_WAITING_UPLOAD";
+
+  const checkoutUrl = buildShopifyCartUrl(variantId, 1);
+
+  await sendMessage(
+    from,
+    `✅ Selected: ${serviceLabel}
+
+Upload your video now.
+
+Checkout options:
+🛒 Shopify: ${checkoutUrl}
+🌍 Africa Payment: https://www.patapata.us/pages/africa-payment
+
+After upload, send your instruction as text or voice note.`
+  );
+
+  return res.sendStatus(200);
+}
   session.imageEditType = serviceLabel;
   session.stage = "IMAGE_EDIT_WAITING_UPLOAD";
 
@@ -1366,35 +1415,6 @@ Reply with 1, 2, 3, or 4.`
 
   return res.sendStatus(200);
 }
-// VIDEO EDIT TYPE SELECT
-if (session.stage === "VIDEO_EDIT_SELECT_TYPE") {
-  let variantId = "";
-  let serviceLabel = "";
-
-  if (lower === "1") {
-    variantId = SHOPIFY_VARIANTS.VIDEO_SHORT;
-    serviceLabel = "Short Video Edit";
-  } else if (lower === "2") {
-    variantId = SHOPIFY_VARIANTS.VIDEO_SOCIAL;
-    serviceLabel = "Social Media Video Edit";
-  } else if (lower === "3") {
-    variantId = SHOPIFY_VARIANTS.VIDEO_STANDARD;
-    serviceLabel = "Standard Video Edit";
-  } else if (lower === "4") {
-    variantId = SHOPIFY_VARIANTS.VIDEO_ADVANCED;
-    serviceLabel = "Advanced Video Edit";
-  } else {
-    await sendMessage(
-      from,
-      `Please reply with:
-
-1 - Short Video Edit
-2 - Social Media Video Edit
-3 - Standard Video Edit
-4 - Advanced Video Edit`
-    );
-    return res.sendStatus(200);
-  }
 
   session.videoEditType = serviceLabel;
   session.stage = "VIDEO_EDIT_WAITING_UPLOAD";
