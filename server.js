@@ -1337,43 +1337,67 @@ Choose payment option:
 
   return res.sendStatus(200);
 }
-    if (session.stage === "MENU") {
-      if (lower === "1") {
-        session.selectedService = "PRINT";
-        session.stage = "PRINT_SELECT_SIZE";
-        await sendMessage(from, printSizeMenuText());
-        return res.sendStatus(200);
-      }
+if (session.stage === "MENU") {
+  if (lower === "1") {
+    session.selectedService = "PRINT";
+    session.stage = "PRINT_SELECT_SIZE";
+    await sendMessage(from, printSizeMenuText());
+    return res.sendStatus(200);
+  }
 
- if (lower === "2") {
-  session.selectedService = "LAMINATE";
-  session.laminateSpec = {};
-  session.stage = "LAMINATE_WAITING_SIZE";
-
-await sendMessage(
-  from,
-  `Please choose laminate size:
+  if (lower === "2") {
+    session.selectedService = "LAMINATE";
+    session.laminateSpec = {};
+    session.stage = "LAMINATE_WAITING_SIZE";
+    await sendMessage(
+      from,
+      `Please choose laminate size:
 
 1 - A4
 2 - Letter
 3 - Legal
-4 - Tabloid
+4 - Tabloid`
+    );
+    return res.sendStatus(200);
+  }
 
-Africa Laminating Prices:
-• A4: ₦300
-• Letter: ₦300
-• Legal: ₦300
-• Tabloid: ₦500`
-);
-  return res.sendStatus(200);
-}
-if (lower === "5") {
-  session.selectedService = "VIDEO_EDIT";
-  session.stage = "VIDEO_EDIT_SELECT_TYPE";
+  if (lower === "3") {
+    session.selectedService = "ID_PHOTO";
+    session.stage = "ID_PHOTO_WAITING_UPLOAD";
+    await sendMessage(
+      from,
+      `📸 ID Photo selected.
 
-  await sendMessage(
-    from,
-    `🎬 Video Editing selected.
+Please upload your photo now and send any instruction as text or voice note.`
+    );
+    return res.sendStatus(200);
+  }
+
+  if (lower === "4") {
+    session.selectedService = "IMAGE_EDIT";
+    session.stage = "IMAGE_EDIT_SELECT_TYPE";
+    await sendMessage(
+      from,
+      `🖼️ Image Editing selected.
+
+Choose image editing type:
+
+1 - Basic Image Edit
+2 - Background Removal
+3 - Product Photo Enhancement
+4 - Advanced Image Editing
+
+Reply with 1, 2, 3, or 4.`
+    );
+    return res.sendStatus(200);
+  }
+
+  if (lower === "5") {
+    session.selectedService = "VIDEO_EDIT";
+    session.stage = "VIDEO_EDIT_SELECT_TYPE";
+    await sendMessage(
+      from,
+      `🎬 Video Editing selected.
 
 Choose video editing type:
 
@@ -1383,100 +1407,25 @@ Choose video editing type:
 4 - Advanced Video Edit
 
 Reply with 1, 2, 3, or 4.`
-  );
+    );
+    return res.sendStatus(200);
+  }
 
+  if (lower === "6") {
+    session.selectedService = "TRANSCRIPT";
+    session.stage = "TRANSCRIPT_WAITING_UPLOAD";
+    await sendMessage(
+      from,
+      `📝 Transcript selected.
+
+Please upload the audio or video file now.`
+    );
+    return res.sendStatus(200);
+  }
+
+  await sendMessage(from, serviceMenu());
   return res.sendStatus(200);
 }
-      if (lower === "3") {
-        session.selectedService = "ID_PHOTO";
-        session.stage = "IDPHOTO_WAITING_UPLOAD";
-const checkoutUrl = buildShopifyCartUrl(SHOPIFY_VARIANTS.ID_PRINT, 1);
-
-await sendMessage(
-  from,
-  `📸 ID Photo selected.
-
-🇺🇸 USA (Shopify):
-• ID Card Printing: $10
-Checkout link:
-${checkoutUrl}
-🇳🇬 Africa Pricing:
-• 4 copies: ₦500
-• 8 copies: ₦1000
-🌍 Africa Payment:
-https://www.patapata.us/pages/africa-payment
-
-Please upload your photo now.
-
-You can also type extra instructions or send a voice note.`
-);
-return res.sendStatus(200);
-      
-      }
-
-if (lower === "4") {
-  session.selectedService = "IMAGE_EDIT";
-  session.stage = "IMAGE_EDIT_SELECT_TYPE";
-
-  await sendMessage(
-    from,
-    `🖼️ Image Editing selected.
-
-Choose image editing type:
-
-1 - Basic Image Edit ($5)
-2 - Background Removal ($7)
-3 - Product Photo Enhancement ($10)
-4 - Advanced Image Editing ($15)
-
-Reply with 1, 2, 3, or 4.`
-  );
-
-  return res.sendStatus(200);
-}
-
-  session.videoEditType = serviceLabel;
-  session.stage = "VIDEO_EDIT_WAITING_UPLOAD";
-
-  const checkoutUrl = buildShopifyCartUrl(variantId, 1);
-  const africaUrl = "https://www.patapata.us/pages/africa-payment";
-
-  await sendMessage(
-    from,
-    `🎬 ${serviceLabel} selected.
-
-🛒 Shopify Checkout:
-${checkoutUrl || "Not configured yet"}
-
-🌍 Africa Payment:
-${africaUrl}
-
-🇳🇬 Africa Pricing:
-• ${serviceLabel} — ₦1,000
-
-Please upload your video now and tell us what you would like us to do.
-
-You can also type extra instructions or send a voice note.
-
-Our team will review your request and contact you shortly on WhatsApp.`
-  );
-
-  return res.sendStatus(200);
-}
-
-      if (lower === "6") {
-        session.selectedService = "LESSON_HOMEWORK";
-        session.stage = "LESSON_WAITING_UPLOAD";
-        await sendMessage(
-          from,
-          `📚 Lesson / Homework selected.
-
-Please upload your file or send your instructions now.
-
-Our team will review your request and contact you shortly on WhatsApp.`
-        );
-        return res.sendStatus(200);
-      }
 
       if (lower === "7") {
         session.selectedService = "AGENT";
