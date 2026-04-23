@@ -1350,6 +1350,8 @@ Reply with 1, 2, 3, or 4.`
   if (lower === "5") {
     session.selectedService = "VIDEO_EDIT";
     session.stage = "VIDEO_EDIT_SELECT_TYPE";
+  delete session.menuContext;
+
     await sendMessage(
       from,
       `🎬 Video Editing selected.
@@ -1833,14 +1835,14 @@ Our team will contact you shortly on WhatsApp.`
         return res.sendStatus(200);
       }
 if (!session.stage) {
-      await sendMessage(
-        from,
-        `Please reply with one of the options below:
+  await sendMessage(
+    from,
+    `Please reply with one of the options below:
 
 ${serviceMenu()}`
-      );
-      return res.sendStatus(200);
-    }
+  );
+  return res.sendStatus(200);
+}
 
   } catch (err) {
     console.error("Webhook error:", err.response?.data || err.message || err);
