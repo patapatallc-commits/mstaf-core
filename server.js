@@ -1534,8 +1534,9 @@ Our team will contact you shortly on WhatsApp.`
         return res.sendStatus(200);
       }
 
-      await sendMessage(from, serviceMenu());
-      return res.sendStatus(200);
+    session.stage = "MENU";
+await sendMessage(from, serviceMenu());
+return res.sendStatus(200);
     
 
     // =========================
