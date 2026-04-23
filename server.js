@@ -1080,14 +1080,18 @@ Our team will contact you shortly on WhatsApp.`
     ) {
       resetSession(from);
 
-      await sendMessage(
-        from,
-        `Hello 👋 Welcome to PATAPATA Print-O-Matic
+   if (!session.stage) {
+  session.stage = "MENU";
+
+  await sendMessage(
+    from,
+    `Hello 👋 Welcome to PATAPATA Print-O-Matic
 
 ${serviceMenu()}`
-      );
-      return res.sendStatus(200);
-    }
+  );
+
+  return res.sendStatus(200);
+}
 
     // =========================
     // MENU
