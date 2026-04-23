@@ -1367,7 +1367,26 @@ Africa Laminating Prices:
 );
   return res.sendStatus(200);
 }
+if (lower === "5") {
+  session.selectedService = "VIDEO_EDIT";
+  session.stage = "VIDEO_EDIT_SELECT_TYPE";
 
+  await sendMessage(
+    from,
+    `🎬 Video Editing selected.
+
+Choose video editing type:
+
+1 - Short Video Edit
+2 - Social Media Video Edit
+3 - Standard Video Edit
+4 - Advanced Video Edit
+
+Reply with 1, 2, 3, or 4.`
+  );
+
+  return res.sendStatus(200);
+}
       if (lower === "3") {
         session.selectedService = "ID_PHOTO";
         session.stage = "IDPHOTO_WAITING_UPLOAD";
@@ -1444,26 +1463,7 @@ Our team will review your request and contact you shortly on WhatsApp.`
 
   return res.sendStatus(200);
 }
-if (lower === "5") {
-  session.selectedService = "VIDEO_EDIT";
-  session.stage = "VIDEO_EDIT_SELECT_TYPE";
 
-  await sendMessage(
-    from,
-    `🎬 Video Editing selected.
-
-Choose video editing type:
-
-1 - Short Video Edit
-2 - Social Media Video Edit
-3 - Standard Video Edit
-4 - Advanced Video Edit
-
-Reply with 1, 2, 3, or 4.`
-  );
-
-  return res.sendStatus(200);
-}
       if (lower === "6") {
         session.selectedService = "LESSON_HOMEWORK";
         session.stage = "LESSON_WAITING_UPLOAD";
