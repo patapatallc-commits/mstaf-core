@@ -1832,7 +1832,7 @@ Our team will contact you shortly on WhatsApp.`
         session.stage = "MENU";
         return res.sendStatus(200);
       }
-
+if (!session.stage) {
       await sendMessage(
         from,
         `Please reply with one of the options below:
