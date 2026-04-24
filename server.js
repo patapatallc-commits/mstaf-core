@@ -422,19 +422,9 @@ app.post("/webhook", async (req, res) => {
     const session = getSession(from);
 
     let text = "";
-    if (type === "text") {
-      text = message.text?.body || "";
-    }
-
+    if (type === "text") text = message.text?.body || "";
     const lower = text.toLowerCase().trim();
-          // IMAGE EDIT TYPE SELECT
 
-
-    
-   
-    // ==============================
-    // WHATSAPP MEDIA / EXTRA NOTES HELPERS
-    // ==============================
     const tableColumns = await getPrintJobsColumns().catch(() => new Set());
 
     async function createJobFromMedia({
@@ -457,9 +447,7 @@ app.post("/webhook", async (req, res) => {
         req
       );
 
-      if (!fileUrl) {
-        throw new Error("Failed to save WhatsApp media");
-      }
+      if (!fileUrl) throw new Error("Failed to save WhatsApp media");
 
       const cols = [];
       const vals = [];
@@ -487,18 +475,38 @@ app.post("/webhook", async (req, res) => {
       addCol("customer_phone", from || null);
       addCol("instructions", instructions || null);
 
-      const sql = `
-        INSERT INTO print_jobs (${cols.join(", ")})
-        VALUES (${vals.join(", ")})
-        RETURNING *
-      `;
+      const result = await pool.query(
+        `INSERT INTO print_jobs (${cols.join(", ")})
+         VALUES (${vals.join(", ")})
+         RETURNING *`,
+        params
+      );
 
-      const result = await pool.query(sql, params);
+      return result.rows[0] || null;
+    }
+
+    async function attachTextToExistingJob(jobId, textValue) {
+      if (!jobId || !textValue || !tableColumns.has("instructions")) return null;
+
+      const result = await pool.query(
+        `
+        UPDATE print_jobs
+        SET instructions = CASE
+          WHEN instructions IS NULL OR instructions = '' THEN $1
+          ELSE instructions || E'\\n\\n' || $1
+        END,
+        updated_at = NOW()
+        WHERE id = $2
+        RETURNING *
+        `,
+        [textValue, jobId]
+      );
+
       return result.rows[0] || null;
     }
 
     async function attachAudioToExistingJob(jobId, mediaId, mimeType) {
-      if (!jobId || !mediaId) return null;
+      if (!jobId || !mediaId || !tableColumns.has("instruction_audio_url")) return null;
 
       const audioUrl = await downloadWhatsAppMediaToUploads(
         mediaId,
@@ -509,12 +517,11 @@ app.post("/webhook", async (req, res) => {
 
       if (!audioUrl) return null;
 
-      if (!tableColumns.has("instruction_audio_url")) return null;
-
       const result = await pool.query(
         `
         UPDATE print_jobs
-        SET instruction_audio_url = $1
+        SET instruction_audio_url = $1,
+            updated_at = NOW()
         WHERE id = $2
         RETURNING *
         `,
@@ -524,109 +531,235 @@ app.post("/webhook", async (req, res) => {
       return result.rows[0] || null;
     }
 
-async function createTextOnlyServiceJob(serviceType, instructionsText) {
-  const result = await pool.query(
-    `
-    INSERT INTO print_jobs (
-      printer_id,
-      queue_type,
-      status,
-      service_type,
-      customer_phone,
-      instructions,
-      created_at,
-      updated_at
-    )
-    VALUES ($1, 'AGENT', 'pending', $2, $3, $4, NOW(), NOW())
-    RETURNING *
-    `,
-    [
-      AGENT_QUEUE_ID,
-      serviceType,
-      from || "",
-      instructionsText || ""
-    ]
-  );
+    async function createTextOnlyServiceJob(serviceType, instructionsText) {
+      const result = await pool.query(
+        `
+        INSERT INTO print_jobs (
+          printer_id,
+          queue_type,
+          status,
+          service_type,
+          customer_phone,
+          instructions,
+          created_at,
+          updated_at
+        )
+        VALUES ($1, 'AGENT', 'pending', $2, $3, $4, NOW(), NOW())
+        RETURNING *
+        `,
+        [AGENT_QUEUE_ID, serviceType, from || "", instructionsText || ""]
+      );
 
-  return result.rows[0] || null;
-}
- // IMAGE EDIT FILE ARRIVED
-if (session.stage === "IMAGE_EDIT_WAITING_UPLOAD") {
-  const mediaObj =
-    type === "image"
-      ? message.image
-      : type === "document"
-      ? message.document
-      : type === "audio"
-      ? message.audio
-      : message.video;
+      return result.rows[0] || null;
+    }
 
-  const job = await createJobFromMedia({
-    printerId: AGENT_QUEUE_ID,
-    queueType: "AGENT",
-    serviceType: "IMAGE_EDIT",
-    mediaId: mediaObj?.id,
-    originalName: mediaObj?.filename || "image_edit",
-    mimeType: mediaObj?.mime_type || "image/jpeg",
-    copies: 1,
-    pages: 1
-  });
+    if (type === "text" && ["hi", "hello", "hey", "menu", "start"].includes(lower)) {
+      resetSession(from);
+      const freshSession = getSession(from);
+      freshSession.stage = "MENU";
 
-  session.lastServiceJobId = job?.id || null;
-  session.stage = "SERVICE_WAITING_EXTRA_NOTES";
+      await sendMessage(
+        from,
+        `Hello 👋 Welcome to PATAPATA Print-O-Matic
 
-  await sendMessage(
-    from,
-    `✅ Image received and added to Agent queue.
+${serviceMenu()}`
+      );
+      return res.sendStatus(200);
+    }
 
-Please send your instruction now as text or voice note.
+    if (session.stage === "MENU") {
+      if (lower === "1") {
+        session.selectedService = "PRINT";
+        session.stage = "PRINT_SELECT_SIZE";
+        await sendMessage(from, printSizeMenuText());
+        return res.sendStatus(200);
+      }
 
-Example:
-- remove background
-- enhance quality
-- add text
-- resize for social media`
-  );
+      if (lower === "2") {
+        session.selectedService = "LAMINATE";
+        session.laminateSpec = {};
+        session.stage = "LAMINATE_WAITING_SIZE";
+        await sendMessage(from, laminateSizeMenuText());
+        return res.sendStatus(200);
+      }
 
-  return res.sendStatus(200);
-}
-          if (session.stage === "VIDEO_EDIT_SELECT_TYPE" && type === "text") {
-  let variantId = "";
-  let serviceLabel = "";
+      if (lower === "3") {
+        session.selectedService = "ID_PHOTO";
+        session.stage = "IDPHOTO_WAITING_UPLOAD";
+        await sendMessage(from, "📸 ID Photo selected. Please upload your photo now.");
+        return res.sendStatus(200);
+      }
 
-  if (lower === "1") {
-    variantId = SHOPIFY_VARIANTS.VIDEO_SHORT;
-    serviceLabel = "Short Video Edit";
-  } else if (lower === "2") {
-    variantId = SHOPIFY_VARIANTS.VIDEO_SOCIAL;
-    serviceLabel = "Social Media Video Edit";
-  } else if (lower === "3") {
-    variantId = SHOPIFY_VARIANTS.VIDEO_STANDARD;
-    serviceLabel = "Standard Video Edit";
-  } else if (lower === "4") {
-    variantId = SHOPIFY_VARIANTS.VIDEO_ADVANCED;
-    serviceLabel = "Advanced Video Edit";
-  } else {
-    await sendMessage(
-      from,
-      `Please reply with:
+      if (lower === "4") {
+        session.selectedService = "IMAGE_EDIT";
+        session.stage = "IMAGE_EDIT_SELECT_TYPE";
+        await sendMessage(
+          from,
+          `🖼️ Image Editing selected.
+
+Choose image editing type:
+
+1 - Basic Image Edit
+2 - Background Removal
+3 - Product Photo Enhancement
+4 - Advanced Image Editing`
+        );
+        return res.sendStatus(200);
+      }
+
+      if (lower === "5") {
+        session.selectedService = "VIDEO_EDIT";
+        session.stage = "VIDEO_EDIT_SELECT_TYPE";
+        await sendMessage(
+          from,
+          `🎬 Video Editing selected.
+
+Choose video editing type:
 
 1 - Short Video Edit
 2 - Social Media Video Edit
 3 - Standard Video Edit
 4 - Advanced Video Edit`
-    );
-    return res.sendStatus(200);
-  }
-    // =========================
-    // MEDIA CAPTURE
-    // =========================
-    if (
-      type === "image" ||
-      type === "document" ||
-      type === "video" ||
-      type === "audio"
-    ) {
+        );
+        return res.sendStatus(200);
+      }
+
+      if (lower === "6") {
+        session.selectedService = "LESSON_HOMEWORK";
+        session.stage = "LESSON_WAITING_UPLOAD";
+        await sendMessage(from, "📚 Lesson / Homework selected. Please upload your file now.");
+        return res.sendStatus(200);
+      }
+
+      if (lower === "7") {
+        session.selectedService = "TALK_TO_AGENT";
+        session.stage = "SERVICE_WAITING_EXTRA_NOTES";
+        await sendMessage(from, "👨‍💼 Talk to Agent selected. Please type your request now.");
+        return res.sendStatus(200);
+      }
+
+      if (lower === "8") {
+        session.selectedService = "AUTO_MECHANIC";
+        session.stage = "SERVICE_WAITING_EXTRA_NOTES";
+        await sendMessage(from, "🔧 Send your location, vehicle type, and the problem.");
+        return res.sendStatus(200);
+      }
+
+      if (lower === "9") {
+        session.selectedService = "RIDE_TO_WORK";
+        session.stage = "SERVICE_WAITING_EXTRA_NOTES";
+        await sendMessage(from, "🚗 Send pickup location, destination, date, and time.");
+        return res.sendStatus(200);
+      }
+
+      if (lower === "10") {
+        session.selectedService = "SHARED_APARTMENT_RENT";
+        session.stage = "SERVICE_WAITING_EXTRA_NOTES";
+        await sendMessage(from, "🏠 Send preferred location, budget, and move-in date.");
+        return res.sendStatus(200);
+      }
+
+      if (lower === "11") {
+        session.selectedService = "INDOOR_OUTDOOR_HELPER";
+        session.stage = "SERVICE_WAITING_EXTRA_NOTES";
+        await sendMessage(from, "🧰 Send helper type, indoor/outdoor, location, date, and time.");
+        return res.sendStatus(200);
+      }
+
+      await sendMessage(from, serviceMenu());
+      return res.sendStatus(200);
+    }
+
+    if (session.stage === "IMAGE_EDIT_SELECT_TYPE" && type === "text") {
+      const imageMap = {
+        "1": ["Basic Image Edit", SHOPIFY_VARIANTS.IMAGE_BASIC],
+        "2": ["Background Removal", SHOPIFY_VARIANTS.IMAGE_BG_REMOVAL],
+        "3": ["Product Photo Enhancement", SHOPIFY_VARIANTS.IMAGE_ENHANCEMENT],
+        "4": ["Advanced Image Editing", SHOPIFY_VARIANTS.IMAGE_ADVANCED]
+      };
+
+      const selected = imageMap[lower];
+      if (!selected) {
+        await sendMessage(from, "Reply 1, 2, 3, or 4.");
+        return res.sendStatus(200);
+      }
+
+      session.imageEditType = selected[0];
+      session.stage = "IMAGE_EDIT_WAITING_UPLOAD";
+
+      await sendMessage(
+        from,
+        `✅ Selected: ${selected[0]}
+
+Shopify Checkout:
+${buildShopifyCartUrl(selected[1], 1)}
+
+Africa Payment:
+https://www.patapata.us/pages/africa-payment
+
+Please upload your image now.`
+      );
+      return res.sendStatus(200);
+    }
+
+    if (session.stage === "VIDEO_EDIT_SELECT_TYPE" && type === "text") {
+      const videoMap = {
+        "1": ["Short Video Edit", SHOPIFY_VARIANTS.VIDEO_SHORT],
+        "2": ["Social Media Video Edit", SHOPIFY_VARIANTS.VIDEO_SOCIAL],
+        "3": ["Standard Video Edit", SHOPIFY_VARIANTS.VIDEO_STANDARD],
+        "4": ["Advanced Video Edit", SHOPIFY_VARIANTS.VIDEO_ADVANCED]
+      };
+
+      const selected = videoMap[lower];
+      if (!selected) {
+        await sendMessage(from, "Reply 1, 2, 3, or 4.");
+        return res.sendStatus(200);
+      }
+
+      session.videoEditType = selected[0];
+      session.videoVariantId = selected[1];
+      session.stage = "VIDEO_EDIT_WAITING_UPLOAD";
+
+      await sendMessage(
+        from,
+        `✅ Selected: ${selected[0]}
+
+Shopify Checkout:
+${buildShopifyCartUrl(selected[1], 1)}
+
+Africa Payment:
+https://www.patapata.us/pages/africa-payment
+
+Please upload your video now.`
+      );
+      return res.sendStatus(200);
+    }
+
+    if (session.stage === "SERVICE_WAITING_EXTRA_NOTES") {
+      if (type === "text" && lower) {
+        const job = await createTextOnlyServiceJob(
+          session.selectedService || "AGENT_REQUEST",
+          text.trim()
+        );
+
+        session.lastServiceJobId = job?.id || null;
+
+        await sendMessage(
+          from,
+          `✅ Your request has been received.
+
+Our team will contact you shortly on WhatsApp.`
+        );
+
+        session.stage = "MENU";
+        return res.sendStatus(200);
+      }
+
+      await sendMessage(from, "Please send your request as text.");
+      return res.sendStatus(200);
+    }
+
+    if (type === "image" || type === "document" || type === "video" || type === "audio") {
       const mediaObj =
         type === "image"
           ? message.image
@@ -635,251 +768,41 @@ Example:
           : type === "audio"
           ? message.audio
           : message.video;
-if (session.stage === "IMAGE_EDIT_WAITING_UPLOAD") {
-  const job = await createJobFromMedia({
-    printerId: AGENT_QUEUE_ID,
-    queueType: "AGENT",
-    serviceType: "IMAGE_EDIT",
-    mediaId: mediaObj?.id,
-    originalName: mediaObj?.filename || "image_edit",
-    mimeType: mediaObj?.mime_type || "image/jpeg",
-    copies: 1,
-    pages: 1
-  });
 
-  session.lastServiceJobId = job?.id || null;
-  session.stage = "SERVICE_WAITING_EXTRA_NOTES";
-
-  await sendMessage(
-    from,
-    `✅ Image received and added to Agent queue.
-
-Please send your instruction now as text or voice note.
-
-Example:
-- remove background
-- enhance quality
-- add text
-- resize for social media`
-  );
-
-  return res.sendStatus(200);
-}
-      session.pendingFile = {
-        type,
-        media_id: mediaObj?.id || "",
-        mime_type: mediaObj?.mime_type || "",
-        filename:
-          mediaObj?.filename ||
-          (type === "image"
-            ? "image"
-            : type === "document"
-            ? "document"
-            : type === "audio"
-            ? "audio"
-            : "video")
-      };
-
-      // PRINT FILE ARRIVED
-      if (
-        session.stage === "PRINT_WAITING_FILE" &&
-        (type === "image" || type === "document")
-      ) {
-        const job = await createJobFromMedia({
-          printerId: DEFAULT_PRINTER_ID,
-          queueType: "WORKER",
-          serviceType: "PRINT",
-          mediaId: mediaObj?.id,
-          originalName: mediaObj?.filename || "print_file",
-          mimeType: mediaObj?.mime_type || "",
-          paperSize: session.printSpec?.paper_size || "",
-          colorMode: session.printSpec?.color || "bw",
-          copies: session.printSpec?.copies || 1,
-          pages: session.printSpec?.pages || 1
-        });
-
-        session.lastServiceJobId = job?.id || null;
-        session.stage = "PRINT_FILE_UPLOADED_ACTION";
-
-        await sendMessage(
-          from,
-          `✅ File received and added to print queue.
-
-Reply:
-1 - Continue with Agent
-2 - Checkout`
-        );
-        return res.sendStatus(200);
-      }
-
-     
-        // ============================
-// LAMINATE SIZE SELECTION
-// ============================
-
-// ============================
-// LAMINATE QUANTITY
-// ============================
-
-
-      // AGENT SERVICE FILE ARRIVED
-      if (session.stage === "SERVICE_WAITING_UPLOAD") {
+      if (session.stage === "IMAGE_EDIT_WAITING_UPLOAD") {
         const job = await createJobFromMedia({
           printerId: AGENT_QUEUE_ID,
           queueType: "AGENT",
-          serviceType: session.selectedService || "SERVICE",
+          serviceType: session.imageEditType || "IMAGE_EDIT",
           mediaId: mediaObj?.id,
-          originalName: mediaObj?.filename || "service_file",
-          mimeType: mediaObj?.mime_type || "",
-          copies: 1,
-          pages: 1
+          originalName: mediaObj?.filename || "image_edit",
+          mimeType: mediaObj?.mime_type || "image/jpeg"
         });
 
         session.lastServiceJobId = job?.id || null;
         session.stage = "SERVICE_WAITING_EXTRA_NOTES";
 
-        await sendMessage(
-          from,
-          `✅ Your file has been received and added to the Agent queue.
-
-Please send any extra instruction now by text or voice note.`
-        );
+        await sendMessage(from, "✅ Image received. Send your instruction now.");
         return res.sendStatus(200);
       }
 
-      // PRINT INSTRUCTIONS AUDIO
-      if (
-  (session.stage === "PRINT_WAITING_INSTRUCTIONS" ||
-    session.stage === "SERVICE_WAITING_EXTRA_NOTES") &&
-  type === "audio"
-) {
-        if (session.lastServiceJobId) {
-          await attachAudioToExistingJob(
-            session.lastServiceJobId,
-            mediaObj?.id,
-            mediaObj?.mime_type || "audio/ogg"
-          );
-        }
+      if (session.stage === "VIDEO_EDIT_WAITING_UPLOAD" && type === "video") {
+        const job = await createJobFromMedia({
+          printerId: AGENT_QUEUE_ID,
+          queueType: "AGENT",
+          serviceType: session.videoEditType || "VIDEO_EDIT",
+          mediaId: mediaObj?.id,
+          originalName: mediaObj?.filename || "video_edit",
+          mimeType: mediaObj?.mime_type || "video/mp4"
+        });
 
-        await sendMessage(
-          from,
-          `✅ Your voice instruction has been received and attached to your print job.
+        session.lastServiceJobId = job?.id || null;
+        session.stage = "SERVICE_WAITING_EXTRA_NOTES";
 
-Our team will review your request and contact you shortly on WhatsApp.`
-        );
-        session.stage = "MENU";
+        await sendMessage(from, "✅ Video received. Send your instruction now.");
         return res.sendStatus(200);
       }
 
-      // LAMINATE EXTRA AUDIO
-      // ==============================
-// LAMINATE TEXT INSTRUCTIONS
-// ==============================
-if (session.stage === "LAMINATE_WAITING_INSTRUCTIONS" && text) {
-
-  session.laminateSpec = {
-    ...(session.laminateSpec || {}),
-    instructions: text
-  };
-
-  if (session.lastServiceJobId) {
-    await pool.query(
-      `UPDATE print_jobs
-       SET instructions = $1,
-           updated_at = NOW()
-       WHERE id = $2`,
-      [
-        text,
-        session.lastServiceJobId
-      ]
-    );
-  }
-
-  session.stage = "LAMINATE_FILE_UPLOADED_ACTION";
-
-  await sendMessage(
-    from,
-    `✅ Instructions saved.
-
-Choose payment option:
-1 - Shopify Checkout
-2 - Africa Payment`
-  );
-
-  return res.sendStatus(200);
-}
-  if (session.stage === "LAMINATE_WAITING_INSTRUCTIONS" && type === "audio") {
-  session.laminateSpec = {
-    ...(session.laminateSpec || {}),
-    instruction_audio_id: mediaObj?.id || "",
-    instruction_audio_url: mediaObj?.url || ""
-  };
-if (session.lastServiceJobId) {
-  await pool.query(
-    `UPDATE print_jobs
-     SET instructions = $1,
-         instruction_audio_url = $2,
-         updated_at = NOW()
-     WHERE id = $3`,
-    [
-      session.laminateSpec?.instructions || "",
-      session.laminateSpec?.instruction_audio_url || "",
-      session.lastServiceJobId
-    ]
-  );
-}
-  session.stage = "LAMINATE_FILE_UPLOADED_ACTION";
-
- await sendMessage(
-  from,
-  `✅ Your laminate voice instruction has been received.
-
-Choose payment option:
-1 - Shopify Checkout
-2 - Africa Payment`
-);
-  return res.sendStatus(200);
-}
-     // ============================
-// LAMINATE FILE ARRIVED (DOCUMENT / IMAGE)
-// ============================
-if (
-  session.stage === "LAMINATE_WAITING_FILE" &&
-  mediaObj
-) {
-  const job = await createJobFromMedia({
-    printerId: DEFAULT_PRINTER_ID,
-    queueType: "WORKER",
-    serviceType: "LAMINATE",
-    mediaId: mediaObj?.id,
-    originalName: mediaObj?.filename || "laminate_file",
-    mimeType: mediaObj?.mime_type || "",
-    paperSize: session.laminateSpec?.paper_size || "",
-    colorMode: "BW",
-    copies: session.laminateSpec?.copies || 1,
-    pages: 1,
-    instructions: session.laminateSpec?.instructions || "",
-    customerPhone: from
-  });
-
-  session.lastServiceJobId = job?.id || null;
-  session.stage = "LAMINATE_WAITING_INSTRUCTIONS";
-
-await sendMessage(
-  from,
-  `📄 Document received successfully and added to queue.
-
-Please send laminate instructions now.
-
-You can:
-• type instructions
-• send a voice note
-• or reply "no"`
-);
-
-  return res.sendStatus(200);
-}
-      // ID PHOTO FILE ARRIVED
       if (session.stage === "IDPHOTO_WAITING_UPLOAD" && type === "image") {
         const job = await createJobFromMedia({
           printerId: AGENT_QUEUE_ID,
@@ -887,1013 +810,32 @@ You can:
           serviceType: "ID_PHOTO",
           mediaId: mediaObj?.id,
           originalName: mediaObj?.filename || "id_photo",
-          mimeType: mediaObj?.mime_type || "image/jpeg",
-          copies: 1,
-          pages: 1
+          mimeType: mediaObj?.mime_type || "image/jpeg"
         });
 
         session.lastServiceJobId = job?.id || null;
         session.stage = "SERVICE_WAITING_EXTRA_NOTES";
 
-        await sendMessage(
-          from,
-          `✅ ID photo received and added to Agent queue.
-
-Please send your instruction now as text or voice note.
-
-Example:
-- passport size
-- white background
-- 2 copies
-- standard US size`
-        );
-        return res.sendStatus(200);
-      }
-      // IMAGE EDIT TYPE SELECT
-if (session.stage === "IMAGE_EDIT_SELECT_TYPE" && type === "text") {
-  let variantId = "";
-  let serviceLabel = "";
-
-  if (lower === "1") {
-    variantId = SHOPIFY_VARIANTS.IMAGE_BASIC;
-    serviceLabel = "Basic Image Edit";
-  } else if (lower === "2") {
-    variantId = SHOPIFY_VARIANTS.IMAGE_BG_REMOVAL;
-    serviceLabel = "Background Removal";
-  } else if (lower === "3") {
-    variantId = SHOPIFY_VARIANTS.IMAGE_ENHANCEMENT;
-    serviceLabel = "Product Photo Enhancement";
-  } else if (lower === "4") {
-    variantId = SHOPIFY_VARIANTS.IMAGE_ADVANCED;
-    serviceLabel = "Advanced Image Editing";
-  } else {
-    await sendMessage(
-      from,
-      `Please reply with:
-
-1 - Basic Image Edit
-2 - Background Removal
-3 - Product Photo Enhancement
-4 - Advanced Image Editing`
-    );
-    return res.sendStatus(200);
-  }
-
-  session.imageEditType = serviceLabel;
-  session.stage = "IMAGE_EDIT_WAITING_UPLOAD";
-
-  const checkoutUrl = buildShopifyCartUrl(variantId, 1);
-
-  await sendMessage(
-    from,
-    `🖼️ ${serviceLabel} selected.
-
-Checkout link:
-${checkoutUrl}
-
-Africa payment:
-https://www.patapata.us/pages/africa-payment
-
-Please upload your image now and tell us what you would like us to do.
-
-You can also type extra instructions or send a voice note.
-
-Our team will review your request and contact you shortly on WhatsApp.`
-  );
-
-  return res.sendStatus(200);
-}
-      // IMAGE EDIT FILE ARRIVED
-      if (session.stage === "IMAGE_EDIT_WAITING_UPLOAD" && type === "image") {
-        const job = await createJobFromMedia({
-          printerId: AGENT_QUEUE_ID,
-          queueType: "AGENT",
-          serviceType: "IMAGE_EDIT",
-          mediaId: mediaObj?.id,
-          originalName: mediaObj?.filename || "image_edit",
-          mimeType: mediaObj?.mime_type || "image/jpeg",
-          copies: 1,
-          pages: 1
-        });
-
-        session.lastServiceJobId = job?.id || null;
-        session.stage = "SERVICE_WAITING_EXTRA_NOTES";
-
-        await sendMessage(
-          from,
-          `✅ Image received and added to Agent queue.
-
-Please send your instruction now as text or voice note.
-
-Example:
-- remove background
-- enhance quality
-- add text
-- resize for social media`
-        );
-        return res.sendStatus(200);
-      }
-
-
-  session.videoEditType = serviceLabel;
-  session.videoVariantId = variantId;
-  session.stage = "VIDEO_EDIT_WAITING_UPLOAD";
-
-  const checkoutUrl = buildShopifyCartUrl(variantId, 1);
-
-  await sendMessage(
-    from,
-    `✅ Selected: ${serviceLabel}
-
-Upload your video now.
-
-Checkout options:
-🛒 Shopify: ${checkoutUrl}
-🌍 Africa Payment: https://www.patapata.us/pages/africa-payment
-
-After upload, send your instruction as text or voice note.`
-  );
-
-  return res.sendStatus(200);
-}
-if (session.stage === "VIDEO_EDIT_WAITING_UPLOAD" && type === "video") {
-  const job = await createJobFromMedia({
-    printerId: AGENT_QUEUE_ID,
-    queueType: "AGENT",
-    serviceType: session.videoEditType || "VIDEO_EDIT",
-    mediaId: mediaObj?.id,
-    originalName: mediaObj?.filename || "video_edit",
-    mimeType: mediaObj?.mime_type || "video/mp4",
-    copies: 1,
-    pages: 1
-  });
-
-  session.lastServiceJobId = job?.id || null;
-  session.stage = "SERVICE_WAITING_EXTRA_NOTES";
-
-  await sendMessage(
-    from,
-    `✅ Video received and added to Agent queue.
-
-Selected service:
-${session.videoEditType || "Video Edit"}
-
-Please send your instruction now as text or voice note.
-
-Example:
-- trim video
-- add text
-- merge clips
-- improve sound`
-  );
-
-  return res.sendStatus(200);
-}
-
-      // LESSON / HOMEWORK FILE ARRIVED
-      if (
-        session.stage === "LESSON_WAITING_UPLOAD" &&
-        (type === "document" || type === "image" || type === "audio")
-      ) {
-        const job = await createJobFromMedia({
-          printerId: AGENT_QUEUE_ID,
-          queueType: "AGENT",
-          serviceType: "LESSON_HOMEWORK",
-          mediaId: mediaObj?.id,
-          originalName: mediaObj?.filename || "lesson_homework",
-          mimeType: mediaObj?.mime_type || "",
-          copies: 1,
-          pages: 1
-        });
-
-        session.lastServiceJobId = job?.id || null;
-        session.stage = "SERVICE_WAITING_EXTRA_NOTES";
-
-        await sendMessage(
-          from,
-          `✅ Lesson / Homework file received and added to Agent queue.
-
-Please send any extra instruction now as text or voice note.
-
-Our team will contact you shortly on WhatsApp.`
-        );
+        await sendMessage(from, "✅ ID photo received. Send your instruction now.");
         return res.sendStatus(200);
       }
     }
 
-    // =========================
-    // GREETING / RESET
-    // =========================
-    if (
-      type === "text" &&
-      ["hi", "hello", "hey", "menu", "start"].includes(lower)
-    ) {
-      resetSession(from);
-
- if (!session.stage) {
-  await sendMessage(
-    from,
-    `Hello 👋 Welcome to PATAPATA Print-O-Matic
+    await sendMessage(
+      from,
+      `Please reply with one of the options below:
 
 ${serviceMenu()}`
-  );
-  return res.sendStatus(200);
-}
-    // =========================
-    // MENU
-    // =========================
-    if (session.stage === "LAMINATE_WAITING_SIZE") {
-  let paperSize = "";
-
- if (lower === "1" || lower === "a4") {
-  paperSize = "A4";
-} else if (lower === "2" || lower === "letter") {
-  paperSize = "LETTER";
-} else if (lower === "3" || lower === "legal") {
-  paperSize = "LEGAL";
-} else if (lower === "4" || lower === "tabloid") {
-  paperSize = "TABLOID";
-} else {
-  await sendMessage(
-    from,
-    `Please choose laminate size:
-
-1 - A4
-2 - Letter
-3 - Legal
-4 - Tabloid
-
-Africa Laminating Prices:
-• A4: ₦300
-• Letter: ₦300
-• Legal: ₦300
-• Tabloid: ₦500`
-  );
-  return res.sendStatus(200);
-}
-
-  session.laminateSpec = {
-    ...(session.laminateSpec || {}),
-    paper_size: paperSize
-  };
-
-  session.stage = "LAMINATE_WAITING_QUANTITY";
-
-  await sendMessage(
-    from,
-    `✅ Laminate size selected: ${paperSize}
-
-How many copies do you want?`
-  );
-  return res.sendStatus(200);
-}
-   if (session.stage === "LAMINATE_WAITING_QUANTITY") {
-  const quantity = parseInt((text || "").trim(), 10);
-
-  if (!quantity || quantity < 1) {
-    await sendMessage(from, "Please enter a valid laminate quantity.");
-    return res.sendStatus(200);
-  }
-
-  session.laminateSpec = {
-    ...(session.laminateSpec || {}),
-    copies: quantity
-  };
-session.stage = "LAMINATE_WAITING_FILE";
-
-await sendMessage(
-  from,
-  `✅ Quantity saved: ${quantity}
-
-Please upload the file or document for laminating.`
-);
-  return res.sendStatus(200);
-}
- if (
-  session.stage === "LAMINATE_WAITING_FILE" &&
-  mediaObj
-) {
-        const job = await createJobFromMedia({
-        printerId: DEFAULT_PRINTER_ID,
-         queueType: "WORKER",
-          serviceType: "LAMINATE",
-          mediaId: mediaObj?.id,
-          originalName: mediaObj?.filename || "laminate_file",
-          mimeType: mediaObj?.mime_type || "",
-          paperSize: session.laminateSpec?.paper_size || "",
-          colorMode: "bw",
-        copies: session.laminateSpec?.copies || 1,
-
-instructions: session.laminateSpec?.instructions || "",
-instructionAudioUrl: session.laminateSpec?.instruction_audio_url || "",
-customerPhone: from,
-
-pages: 1
-        });
-
-        session.lastServiceJobId = job?.id || null;
-        session.stage = "LAMINATE_WAITING_INSTRUCTIONS";
-
-        await sendMessage(
-  from,
-  `📄 Document received successfully and added to queue.
-
-Please send laminate instructions now.
-
-You can:
-• type instructions
-• send a voice note
-• or reply "no"`
-);
-        return res.sendStatus(200);
-      } 
-    // ============================
-// LAMINATE PAYMENT CHOICE
-// ============================
-if (session.stage === "LAMINATE_FILE_UPLOADED_ACTION") {
-const paperSize = session.laminateSpec?.paper_size || "A4";
-const quantity = session.laminateSpec?.copies || 1;
-const colorMode = String(session.laminateSpec?.color_mode || "BW").trim().toUpperCase();
-
-const variantId = getPrintVariantId(
-  paperSize,
-  colorMode === "COLOR" ? "COLOR" : "BW"
-);
-const checkoutUrl = buildShopifyCartUrl(variantId, quantity);
-  const africaUrl = "https://www.patapata.us/pages/africa-payment";
-
-  if (lower === "1") {
-    await sendMessage(
-      from,
-      `🛒 Shopify Checkout selected
-
-Complete your payment here:
-${checkoutUrl}
-
-After payment, reply here if you need help.`
-    );
-    session.stage = "MENU";
-    return res.sendStatus(200);
-  }
-
-  if (lower === "2") {
-    await sendMessage(
-      from,
-      `🌍 Africa Payment selected
-
-Complete your payment here:
-${africaUrl}
-
-After payment, reply here if you need help.`
-    );
-    session.stage = "MENU";
-    return res.sendStatus(200);
-  }
-
-  await sendMessage(
-    from,
-    `Please choose:
-
-1 - Shopify Checkout
-2 - Africa Payment`
-  );
-  return res.sendStatus(200);
-}
-    // ==============================
-// LAMINATE TEXT INSTRUCTIONS
-// ==============================
-if (session.stage === "LAMINATE_WAITING_INSTRUCTIONS") {
-
-  const instructionText = (text || "").trim();
-
-  session.laminateSpec = {
-    ...(session.laminateSpec || {}),
-    instructions:
-      instructionText.toLowerCase() === "no" ? "" : instructionText
-  };
-
-  if (session.lastServiceJobId) {
-    await pool.query(
-      `UPDATE print_jobs
-       SET instructions = $1,
-           updated_at = NOW()
-       WHERE id = $2`,
-      [
-        session.laminateSpec.instructions || "",
-        session.lastServiceJobId
-      ]
-    );
-  }
-
-  session.stage = "LAMINATE_FILE_UPLOADED_ACTION";
-
-  await sendMessage(
-    from,
-    `✅ Instructions saved.
-
-Choose payment option:
-1 - Shopify Checkout
-2 - Africa Payment`
-  );
-
-  return res.sendStatus(200);
-}
-if (session.stage === "MENU") {
-  if (lower === "1") {
-    session.selectedService = "PRINT";
-    session.stage = "PRINT_SELECT_SIZE";
-    await sendMessage(from, printSizeMenuText());
-    return res.sendStatus(200);
-  }
-
-  if (lower === "2") {
-    session.selectedService = "LAMINATE";
-    session.laminateSpec = {};
-    session.stage = "LAMINATE_WAITING_SIZE";
-    await sendMessage(from, laminateSizeMenuText());
-    return res.sendStatus(200);
-  }
-
-  if (lower === "3") {
-    session.selectedService = "ID_PHOTO";
-    session.stage = "IDPHOTO_WAITING_UPLOAD";
-    await sendMessage(
-      from,
-      `📸 ID Photo selected.
-
-Please upload your photo now.
-
-After upload, send your instruction as text or voice note.`
-    );
-    return res.sendStatus(200);
-  }
-
-  if (lower === "4") {
-    session.selectedService = "IMAGE_EDIT";
-    session.stage = "IMAGE_EDIT_SELECT_TYPE";
-    await sendMessage(
-      from,
-      `🖼️ Image Editing selected.
-
-Choose image editing type:
-
-1 - Basic Image Edit
-2 - Background Removal
-3 - Product Photo Enhancement
-4 - Advanced Image Editing
-
-Reply with 1, 2, 3, or 4.`
-    );
-    return res.sendStatus(200);
-  }
-
-  if (lower === "5") {
-    session.selectedService = "VIDEO_EDIT";
-    session.stage = "VIDEO_EDIT_SELECT_TYPE";
-    delete session.menuContext;
-
-    await sendMessage(
-      from,
-      `🎬 Video Editing selected.
-
-Choose video editing type:
-
-1 - Short Video Edit
-2 - Social Media Video Edit
-3 - Standard Video Edit
-4 - Advanced Video Edit
-
-Reply with 1, 2, 3, or 4.`
-    );
-    return res.sendStatus(200);
-  }
-
-  if (lower === "6") {
-    session.selectedService = "LESSON_HOMEWORK";
-    session.stage = "LESSON_WAITING_UPLOAD";
-    await sendMessage(
-      from,
-      `📚 Lesson / Homework selected.
-
-Please upload your file, image, or voice note now.
-
-After upload, send any extra instruction.`
-    );
-    return res.sendStatus(200);
-  }
-
-  if (lower === "7") {
-    session.selectedService = "TALK_TO_AGENT";
-    session.stage = "SERVICE_WAITING_EXTRA_NOTES";
-    await sendMessage(
-      from,
-      `👨‍💼 Talk to Agent selected.
-
-Please type your request clearly.
-
-Example:
-- what you need help with
-- your location
-- best time to contact you
-
-Our team will contact you shortly on WhatsApp.`
-    );
-    return res.sendStatus(200);
-  }
-
-  if (lower === "8") {
-    session.selectedService = "AUTO_MECHANIC";
-    session.stage = "SERVICE_WAITING_EXTRA_NOTES";
-    await sendMessage(
-      from,
-      `🔧 Find Auto Mechanic selected.
-
-Please send:
-1. Your location
-2. Car make and model
-3. The problem with the vehicle
-4. Whether the car can move or needs towing
-
-Our team will connect you with a mechanic shortly.`
-    );
-    return res.sendStatus(200);
-  }
-
-  if (lower === "9") {
-    session.selectedService = "RIDE_TO_WORK";
-    session.stage = "SERVICE_WAITING_EXTRA_NOTES";
-    await sendMessage(
-      from,
-      `🚗 Need Ride to Work selected.
-
-Please send:
-1. Pickup location
-2. Destination
-3. Date and time
-4. One-way or round trip
-
-Our team will contact you shortly on WhatsApp.`
-    );
-    return res.sendStatus(200);
-  }
-
-  if (lower === "10") {
-    session.selectedService = "SHARED_APARTMENT_RENT";
-    session.stage = "SERVICE_WAITING_EXTRA_NOTES";
-    await sendMessage(
-      from,
-      `🏠 Shared Apartment / Rent selected.
-
-Please send:
-1. Preferred location
-2. Budget
-3. Move-in date
-4. Room type or apartment type
-
-Our team will contact you shortly on WhatsApp.`
-    );
-    return res.sendStatus(200);
-  }
-
-  if (lower === "11") {
-    session.selectedService = "INDOOR_OUTDOOR_HELPER";
-    session.stage = "SERVICE_WAITING_EXTRA_NOTES";
-    await sendMessage(
-      from,
-      `🧰 Indoor / Outdoor Helper selected.
-
-Please send:
-1. Type of helper needed
-2. Indoor or outdoor work
-3. Your location
-4. Date and time needed
-5. Any special instruction
-
-Our team will contact you shortly on WhatsApp.`
-    );
-    return res.sendStatus(200);
-  }
-
-  await sendMessage(
-    from,
-    `Please reply with one of the options below:
-
-${serviceMenu()}`
-  );
-  return res.sendStatus(200);
-}
-
-    session.stage = "MENU";
-await sendMessage(from, serviceMenu());
-return res.sendStatus(200);
-    
-
-    // =========================
-    // PRINT SIZE
-    // =========================
-    if (session.stage === "PRINT_SELECT_SIZE") {
-      const sizeMap = {
-        "1": "A4",
-        "2": "A3",
-        "3": "LETTER",
-        "4": "LEGAL",
-        "5": "TABLOID",
-        "6": "CARD"
-      };
-
-      const size = sizeMap[lower];
-      if (!size) {
-        await sendMessage(from, "Reply 1–6");
-        return res.sendStatus(200);
-      }
-
-      session.printSpec.paper_size = size;
-      session.stage = "PRINT_SELECT_COLOR";
-
-      await sendMessage(from, printColorMenuText());
-      return res.sendStatus(200);
-    }
-
-    // =========================
-    // PRINT COLOR
-    // =========================
-    if (session.stage === "PRINT_SELECT_COLOR") {
-      if (lower === "1") {
-        session.printSpec.color = "bw";
-      } else if (lower === "2") {
-        session.printSpec.color = "color";
-      } else {
-        await sendMessage(from, "Reply 1 or 2");
-        return res.sendStatus(200);
-      }
-
-      session.stage = "PRINT_SELECT_COPIES";
-      await sendMessage(from, "How many copies?");
-      return res.sendStatus(200);
-    }
-
-    // =========================
-    // PRINT COPIES
-    // =========================
-    if (session.stage === "PRINT_SELECT_COPIES") {
-      const copies = parseInt(lower, 10);
-
-      if (!copies || copies < 1) {
-        await sendMessage(from, "Reply with a valid number of copies.");
-        return res.sendStatus(200);
-      }
-
-      session.printSpec.copies = copies;
-      session.stage = "PRINT_SELECT_PAGES";
-
-      await sendMessage(from, "How many pages?");
-      return res.sendStatus(200);
-    }
-
-    // =========================
-    // PRINT PAGES
-    // =========================
-    if (session.stage === "PRINT_SELECT_PAGES") {
-      const pages = parseInt(lower, 10);
-
-      if (!pages || pages < 1) {
-        await sendMessage(from, "Reply with a valid number of pages.");
-        return res.sendStatus(200);
-      }
-
-      session.printSpec.pages = pages;
-      session.stage = "PRINT_WAITING_FILE";
-
-      await sendMessage(
-        from,
-        `✅ Print details saved.
-
-Please upload your document or image now.
-
-After upload, you will choose:
-1 - Continue with Agent
-2 - Checkout`
-      );
-      return res.sendStatus(200);
-    }
-
-    // =========================
-    // PRINT WAITING FOR FILE
-    // =========================
-    if (session.stage === "PRINT_WAITING_FILE") {
-      await sendMessage(
-        from,
-        `Please upload your document or image first.
-
-After upload, you will choose:
-1 - Continue with Agent
-2 - Checkout`
-      );
-      return res.sendStatus(200);
-    }
-
-    // =========================
-    // PRINT FILE ACTION
-    // =========================
-    if (session.stage === "PRINT_FILE_UPLOADED_ACTION") {
-      if (lower === "1") {
-        session.stage = "PRINT_WAITING_INSTRUCTIONS";
-
-        await sendMessage(
-          from,
-          `✅ Your ${session.printSpec?.paper_size || "print"} request has been forwarded to our Agent team.
-
-Please send any instructions now by text or voice.
-
-Our team will review your request and contact you shortly on WhatsApp.`
-        );
-        return res.sendStatus(200);
-      }
-
-      if (lower === "2") {
-        session.stage = "PRINT_PAYMENT_CHOICE";
-
-        const paperSize = session.printSpec?.paper_size || "A4";
-        const color = (session.printSpec?.color || "bw").toUpperCase();
-        const quantity = session.printSpec?.copies || 1;
-
-        const variantId = getPrintVariantId(paperSize, color);
-        const checkoutUrl = buildShopifyCartUrl(variantId, quantity);
-        const africaUrl = "https://www.patapata.us/pages/africa-payment";
-
-await sendMessage(
-  from,
-  `✅ File received and added to print queue.
-
-Choose option:
-
-1 - Continue with Agent
-2 - Checkout (Shopify / Africa)
-
---- Pricing Guide ---
-
-🇺🇸 USA (Shopify):
-• A4 B/W: $0.10
-• A4 Color: $0.50
-
-🇳🇬 Nigeria (Africa Payment):
-
-📄 Photocopy
-• Black & White: ₦50
-• Colored: ₦200
-
-📱 Printout from Phone
-• Black & White: ₦200
-• Colored: ₦200
-
-🆔 ID Card
-• ₦2,000
-
-📜 Letter Printing
-• Black & White: ₦500
-• Colored: ₦1,000
-
-🎨 Designing
-• ₦1,000
-
-💳 Printing on Card
-• ₦300
-
-📎 Binding (Tying)
-• ₦300
-
-✏️ Editing
-• ₦500
-
-📠 Scanning & Sending
-• Scanning: ₦200
-• Sending: ₦200
-
-🎉 Birthday Cards
-• Design: ₦500
-• Printing: ₦500
-
-📸 Passport Photographs
-• 4 Copies: ₦500
-• 8 Copies: ₦1,000
-
-Reply with 1 or 2.`
-);
-        return res.sendStatus(200);
-      }
-
-      await sendMessage(
-        from,
-        `Reply:
-1 - Continue with Agent
-2 - Checkout`
-      );
-      return res.sendStatus(200);
-    }
-
-    // =========================
-    // PRINT AGENT INSTRUCTIONS
-    // =========================
-  if (session.stage === "PRINT_WAITING_INSTRUCTIONS") {
-  if (type === "text" && text.trim()) {
-    if (session.lastServiceJobId) {
-      await attachTextToExistingJob(session.lastServiceJobId, text.trim());
-    }
-
-    await sendMessage(
-      from,
-      `✅ Your ${session.printSpec?.paper_size || "print"} instructions have been received and attached to your print job.
-
-Our team will contact you shortly on WhatsApp.`
     );
 
     session.stage = "MENU";
     return res.sendStatus(200);
-  }
 
-  if (type === "audio") {
-    if (session.lastServiceJobId && message.audio?.id) {
-      await attachAudioToExistingJob(
-        session.lastServiceJobId,
-        message.audio.id,
-        message.audio?.mime_type || "audio/ogg"
-      );
-    }
-
-    await sendMessage(
-      from,
-      `✅ Your voice instruction for your ${session.printSpec?.paper_size || "print"} request has been received and attached to your print job.
-
-Our team will contact you shortly on WhatsApp.`
-    );
-
-    session.stage = "MENU";
-    return res.sendStatus(200);
-  }
-
-  await sendMessage(
-    from,
-    "Please send your instruction as text or voice note."
-  );
-  return res.sendStatus(200);
-}
-
-   // ============================
-// PRINT PAYMENT CHOICE
-// ============================
-if (session.stage === "PRINT_PAYMENT_CHOICE") {
-  const paperSize = session.printSpec?.paper_size || "A4";
-  const color = (session.printSpec?.color || "bw").toUpperCase();
-  const quantity = session.printSpec?.copies || 1;
-
-  const variantId = getPrintVariantId(paperSize, color);
-  const checkoutUrl = buildShopifyCartUrl(variantId, quantity);
-  const africaUrl = "https://www.patapata.us/pages/africa-payment";
-
-  if (lower === "1") {
-    await sendMessage(
-      from,
-      `✅ Shopify checkout selected.
-
-Complete your payment here:
-${checkoutUrl || "Not configured yet"}
-
-You can also use Africa payment if preferred:
-${africaUrl}
-
---- Africa Price List ---
-🇳🇬 Nigeria Prices
-
-• Photocopy B/W — ₦50
-• Photocopy Color — ₦200
-• Printout from phone B/W — ₦200
-• Printout from phone Color — ₦200
-• ID Card — ₦2,000
-• Letter Printing B/W — ₦500
-• Letter Printing Color — ₦1,000
-• Designing — ₦1,000
-• Printing on Card — ₦300
-• Binding — ₦300
-• Editing — ₦500
-• Scanning — ₦200
-• Sending — ₦200
-• Birthday Card Design — ₦500
-• Birthday Card Printing — ₦500
-• Passport Photos (4 copies) — ₦500
-• Passport Photos (8 copies) — ₦1,000
-
-After payment, reply here if you need any help.`
-    );
-
-    session.stage = "MENU";
-    return res.sendStatus(200);
-  }
-
-  if (lower === "2") {
-    await sendMessage(
-      from,
-      `✅ Africa payment selected.
-
-Please use this payment page:
-${africaUrl}
-
---- Africa Price List ---
-🇳🇬 Nigeria Prices
-
-• Photocopy B/W — ₦50
-• Photocopy Color — ₦200
-• Printout from phone B/W — ₦200
-• Printout from phone Color — ₦200
-• ID Card — ₦2,000
-• Letter Printing B/W — ₦500
-• Letter Printing Color — ₦1,000
-• Designing — ₦1,000
-• Printing on Card — ₦300
-• Binding — ₦300
-• Editing — ₦500
-• Scanning — ₦200
-• Sending — ₦200
-• Birthday Card Design — ₦500
-• Birthday Card Printing — ₦500
-• Passport Photos (4 copies) — ₦500
-• Passport Photos (8 copies) — ₦1,000
-
-You can also use Shopify checkout if preferred:
-${checkoutUrl || "Not configured yet"}
-
-After payment, please send:
-1. Proof of payment
-2. Your print details
-3. Delivery or pickup instruction`
-    );
-
-    session.stage = "MENU";
-    return res.sendStatus(200);
-  }
-
-  await sendMessage(
-    from,
-    `Please reply with one option only:
-
-1 - Shopify Checkout
-2 - Africa Payment`
-  );
-  return res.sendStatus(200);
-}
-    // =========================
-    // GENERIC EXTRA NOTES
-    // =========================
-   if (session.stage === "SERVICE_WAITING_EXTRA_NOTES") {
-  if (type === "text" && lower) {
-    if (session.lastServiceJobId) {
-      await attachTextToExistingJob(session.lastServiceJobId, text.trim());
-    } else {
-      const job = await createTextOnlyServiceJob(
-        session.selectedService || "AGENT_REQUEST",
-        text.trim()
-      );
-      session.lastServiceJobId = job?.id || null;
-    }
-
-    await sendMessage(
-      from,
-      `✅ Your request has been received.
-
-Our team will review it and contact you shortly on WhatsApp.`
-    );
-
-    session.stage = "MENU";
-    return res.sendStatus(200);
-  }
-
-  if (type === "audio") {
-    if (session.lastServiceJobId && message.audio?.id) {
-      await attachAudioToExistingJob(
-        session.lastServiceJobId,
-        message.audio.id,
-        message.audio?.mime_type || "audio/ogg"
-      );
-    }
-
-    await sendMessage(
-      from,
-      `✅ Your voice note has been received.
-
-Our team will review it and contact you shortly on WhatsApp.`
-    );
-
-    session.stage = "MENU";
-    return res.sendStatus(200);
-  }
-
-await sendMessage(from, "Please send your request as text or voice note.");
-return res.sendStatus(200);
   } catch (err) {
     console.error("Webhook error:", err.response?.data || err.message || err);
     return res.sendStatus(200);
   }
 });
-  
 // ========================
 // HEALTH
 // ========================
