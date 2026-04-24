@@ -193,7 +193,8 @@ function serviceMenu() {
 8 - Find Auto Mechanic
 9 - Need Ride to Work
 10 - Shared Apartment / Rent
-11 - Need Indoor or Outdoor Helper`;
+11 - Need Indoor or Outdoor Helper
+12 - Custom T-Shirt Print`;
 }
 
 function printSizeMenuText() {
@@ -665,10 +666,33 @@ Choose video editing type:
         await sendMessage(from, "🧰 Send helper type, indoor/outdoor, location, date, and time.");
         return res.sendStatus(200);
       }
+}   // line 668
 
-      await sendMessage(from, serviceMenu());
-      return res.sendStatus(200);
-    }
+if (lower === "12") {
+  session.selectedService = "TSHIRT_PRINT";
+  session.stage = "TSHIRT_SELECT_SIZE";
+
+  await sendMessage(
+    from,
+    `👕 Custom T-Shirt Printing
+
+Please choose a size:
+
+S - Small
+M - Medium
+L - Large
+XL - Extra Large
+XXL - Double XL
+
+Reply with S, M, L, XL, or XXL.`
+  );
+
+  return res.sendStatus(200);
+}
+
+await sendMessage(from, serviceMenu());
+return res.sendStatus(200);
+    
 
     if (session.stage === "IMAGE_EDIT_SELECT_TYPE" && type === "text") {
       const imageMap = {
@@ -734,6 +758,57 @@ Please upload your video now.`
       );
       return res.sendStatus(200);
     }
+    if (session.stage === "TSHIRT_SELECT_SIZE" && type === "text") {
+  const size = text.trim().toUpperCase();
+
+  const validSizes = ["S", "M", "L", "XL", "XXL"];
+
+  if (!validSizes.includes(size)) {
+    await sendMessage(from, "Please reply with S, M, L, XL, or XXL.");
+    return res.sendStatus(200);
+  }
+
+  session.tshirtSize = size;
+  session.stage = "TSHIRT_WAITING_TEXT";
+
+  await sendMessage(
+    from,
+    `✅ Size selected: ${size}
+
+Please type the text you want printed on your T-shirt.
+
+You can also include:
+- Color preference
+- Placement (front/back)
+
+Our team will contact you shortly on WhatsApp after submission.`
+  );
+
+  return res.sendStatus(200);
+}
+    if (session.stage === "TSHIRT_WAITING_TEXT" && type === "text") {
+  const designText = text.trim();
+
+  const job = await createTextOnlyServiceJob(
+    "TSHIRT_PRINT",
+    `Size: ${session.tshirtSize}\nDesign: ${designText}`
+  );
+
+  session.lastServiceJobId = job?.id || null;
+
+  await sendMessage(
+    from,
+    `👕 Your T-shirt request has been received.
+
+Size: ${session.tshirtSize}
+Design: ${designText}
+
+Our team will contact you shortly on WhatsApp.`
+  );
+
+  session.stage = "MENU";
+  return res.sendStatus(200);
+}
 if (session.stage === "SERVICE_WAITING_EXTRA_NOTES") {
   if (type === "text" && lower) {
     if (session.lastServiceJobId) {
@@ -780,9 +855,6 @@ Our team will contact you shortly on WhatsApp.`
   await sendMessage(from, "Please send your instruction as text or voice note.");
   return res.sendStatus(200);
 }
-      await sendMessage(from, "Please send your request as text.");
-      return res.sendStatus(200);
-    }
 
     if (type === "image" || type === "document" || type === "video" || type === "audio") {
       const mediaObj =
