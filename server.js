@@ -192,7 +192,8 @@ function serviceMenu() {
 7 - Talk to Agent
 8 - Find Auto Mechanic
 9 - Need Ride to Work
-10 - Shared Apartment / Rent`;
+10 - Shared Apartment / Rent
+11 - Need Indoor or Outdoor Helper`;
 }
 
 function printSizeMenuText() {
@@ -523,24 +524,32 @@ app.post("/webhook", async (req, res) => {
       return result.rows[0] || null;
     }
 
-    async function attachTextToExistingJob(jobId, textValue) {
-      if (!jobId || !textValue || !tableColumns.has("instructions")) return null;
+async function createTextOnlyServiceJob(serviceType, instructionsText) {
+  const result = await pool.query(
+    `
+    INSERT INTO print_jobs (
+      printer_id,
+      queue_type,
+      status,
+      service_type,
+      customer_phone,
+      instructions,
+      created_at,
+      updated_at
+    )
+    VALUES ($1, 'AGENT', 'pending', $2, $3, $4, NOW(), NOW())
+    RETURNING *
+    `,
+    [
+      AGENT_QUEUE_ID,
+      serviceType,
+      from || "",
+      instructionsText || ""
+    ]
+  );
 
-      const result = await pool.query(
-        `
-        UPDATE print_jobs
-        SET instructions = CASE
-          WHEN instructions IS NULL OR instructions = '' THEN $1
-          ELSE instructions || E'\\n\\n' || $1
-        END
-        WHERE id = $2
-        RETURNING *
-        `,
-        [textValue, jobId]
-      );
-
-      return result.rows[0] || null;
-    }
+  return result.rows[0] || null;
+}
  // IMAGE EDIT FILE ARRIVED
 if (session.stage === "IMAGE_EDIT_WAITING_UPLOAD") {
   const mediaObj =
@@ -1300,26 +1309,20 @@ if (session.stage === "MENU") {
     session.selectedService = "LAMINATE";
     session.laminateSpec = {};
     session.stage = "LAMINATE_WAITING_SIZE";
-    await sendMessage(
-      from,
-      `Please choose laminate size:
-
-1 - A4
-2 - Letter
-3 - Legal
-4 - Tabloid`
-    );
+    await sendMessage(from, laminateSizeMenuText());
     return res.sendStatus(200);
   }
 
   if (lower === "3") {
     session.selectedService = "ID_PHOTO";
-    session.stage = "ID_PHOTO_WAITING_UPLOAD";
+    session.stage = "IDPHOTO_WAITING_UPLOAD";
     await sendMessage(
       from,
       `📸 ID Photo selected.
 
-Please upload your photo now and send any instruction as text or voice note.`
+Please upload your photo now.
+
+After upload, send your instruction as text or voice note.`
     );
     return res.sendStatus(200);
   }
@@ -1346,7 +1349,7 @@ Reply with 1, 2, 3, or 4.`
   if (lower === "5") {
     session.selectedService = "VIDEO_EDIT";
     session.stage = "VIDEO_EDIT_SELECT_TYPE";
-  delete session.menuContext;
+    delete session.menuContext;
 
     await sendMessage(
       from,
@@ -1365,76 +1368,119 @@ Reply with 1, 2, 3, or 4.`
   }
 
   if (lower === "6") {
-    session.selectedService = "TRANSCRIPT";
-    session.stage = "TRANSCRIPT_WAITING_UPLOAD";
+    session.selectedService = "LESSON_HOMEWORK";
+    session.stage = "LESSON_WAITING_UPLOAD";
     await sendMessage(
       from,
-      `📝 Transcript selected.
+      `📚 Lesson / Homework selected.
 
-Please upload the audio or video file now.`
+Please upload your file, image, or voice note now.
+
+After upload, send any extra instruction.`
     );
     return res.sendStatus(200);
   }
 
-  await sendMessage(from, serviceMenu());
+  if (lower === "7") {
+    session.selectedService = "TALK_TO_AGENT";
+    session.stage = "SERVICE_WAITING_EXTRA_NOTES";
+    await sendMessage(
+      from,
+      `👨‍💼 Talk to Agent selected.
+
+Please type your request clearly.
+
+Example:
+- what you need help with
+- your location
+- best time to contact you
+
+Our team will contact you shortly on WhatsApp.`
+    );
+    return res.sendStatus(200);
+  }
+
+  if (lower === "8") {
+    session.selectedService = "AUTO_MECHANIC";
+    session.stage = "SERVICE_WAITING_EXTRA_NOTES";
+    await sendMessage(
+      from,
+      `🔧 Find Auto Mechanic selected.
+
+Please send:
+1. Your location
+2. Car make and model
+3. The problem with the vehicle
+4. Whether the car can move or needs towing
+
+Our team will connect you with a mechanic shortly.`
+    );
+    return res.sendStatus(200);
+  }
+
+  if (lower === "9") {
+    session.selectedService = "RIDE_TO_WORK";
+    session.stage = "SERVICE_WAITING_EXTRA_NOTES";
+    await sendMessage(
+      from,
+      `🚗 Need Ride to Work selected.
+
+Please send:
+1. Pickup location
+2. Destination
+3. Date and time
+4. One-way or round trip
+
+Our team will contact you shortly on WhatsApp.`
+    );
+    return res.sendStatus(200);
+  }
+
+  if (lower === "10") {
+    session.selectedService = "SHARED_APARTMENT_RENT";
+    session.stage = "SERVICE_WAITING_EXTRA_NOTES";
+    await sendMessage(
+      from,
+      `🏠 Shared Apartment / Rent selected.
+
+Please send:
+1. Preferred location
+2. Budget
+3. Move-in date
+4. Room type or apartment type
+
+Our team will contact you shortly on WhatsApp.`
+    );
+    return res.sendStatus(200);
+  }
+
+  if (lower === "11") {
+    session.selectedService = "INDOOR_OUTDOOR_HELPER";
+    session.stage = "SERVICE_WAITING_EXTRA_NOTES";
+    await sendMessage(
+      from,
+      `🧰 Indoor / Outdoor Helper selected.
+
+Please send:
+1. Type of helper needed
+2. Indoor or outdoor work
+3. Your location
+4. Date and time needed
+5. Any special instruction
+
+Our team will contact you shortly on WhatsApp.`
+    );
+    return res.sendStatus(200);
+  }
+
+  await sendMessage(
+    from,
+    `Please reply with one of the options below:
+
+${serviceMenu()}`
+  );
   return res.sendStatus(200);
 }
-
-      if (lower === "7") {
-        session.selectedService = "AGENT";
-        session.stage = "SERVICE_WAITING_EXTRA_NOTES";
-        await sendMessage(
-          from,
-          `👨‍💼 Talk to Agent selected.
-
-Please type your request now.
-
-Our Agent team will contact you shortly on WhatsApp.`
-        );
-        return res.sendStatus(200);
-      }
-
-      if (lower === "8") {
-        session.selectedService = "MECHANIC";
-        session.stage = "SERVICE_WAITING_EXTRA_NOTES";
-        await sendMessage(
-          from,
-          `🔧 Auto Mechanic request received.
-
-Please send your location and the type of issue with your vehicle.
-
-Our team will connect you with a nearby mechanic shortly on WhatsApp.`
-        );
-        return res.sendStatus(200);
-      }
-
-      if (lower === "9") {
-        session.selectedService = "RIDE_TO_WORK";
-        session.stage = "SERVICE_WAITING_EXTRA_NOTES";
-        await sendMessage(
-          from,
-          `🚗 Ride to Work selected.
-
-Please send your pickup location and destination.
-
-Our team will contact you shortly on WhatsApp.`
-        );
-        return res.sendStatus(200);
-      }
-
-      if (lower === "10") {
-        session.selectedService = "APARTMENT";
-        session.stage = "SERVICE_WAITING_EXTRA_NOTES";
-        await sendMessage(
-          from,
-          `🏠 Shared Apartment / Rent selected.
-
-Please send your preferred location and budget.
-
-Our team will contact you shortly on WhatsApp.`
-        );
-        return res.sendStatus(200);
-      }
 
     session.stage = "MENU";
 await sendMessage(from, serviceMenu());
@@ -1796,50 +1842,52 @@ After payment, please send:
     // =========================
     // GENERIC EXTRA NOTES
     // =========================
-    if (session.stage === "SERVICE_WAITING_EXTRA_NOTES") {
-      if (type === "text" && lower) {
-        if (session.lastServiceJobId) {
-          await attachTextToExistingJob(session.lastServiceJobId, text.trim());
-        }
+   if (session.stage === "SERVICE_WAITING_EXTRA_NOTES") {
+  if (type === "text" && lower) {
+    if (session.lastServiceJobId) {
+      await attachTextToExistingJob(session.lastServiceJobId, text.trim());
+    } else {
+      const job = await createTextOnlyServiceJob(
+        session.selectedService || "AGENT_REQUEST",
+        text.trim()
+      );
+      session.lastServiceJobId = job?.id || null;
+    }
 
-        await sendMessage(
-          from,
-          `✅ Your message has been received and attached to your job.
+    await sendMessage(
+      from,
+      `✅ Your request has been received.
 
-Our team will contact you shortly on WhatsApp.`
-        );
-        session.stage = "MENU";
-        return res.sendStatus(200);
-      }
+Our team will review it and contact you shortly on WhatsApp.`
+    );
 
-      if (type === "audio") {
-        if (session.lastServiceJobId && message.audio?.id) {
-          await attachAudioToExistingJob(
-            session.lastServiceJobId,
-            message.audio.id,
-            message.audio?.mime_type || "audio/ogg"
-          );
-        }
+    session.stage = "MENU";
+    return res.sendStatus(200);
+  }
 
-        await sendMessage(
-          from,
-          `✅ Your voice note has been received and attached to your job.
+  if (type === "audio") {
+    if (session.lastServiceJobId && message.audio?.id) {
+      await attachAudioToExistingJob(
+        session.lastServiceJobId,
+        message.audio.id,
+        message.audio?.mime_type || "audio/ogg"
+      );
+    }
 
-Our team will contact you shortly on WhatsApp.`
-        );
-        session.stage = "MENU";
-        return res.sendStatus(200);
-      }
-if (!session.stage) {
-  await sendMessage(
-    from,
-    `Please reply with one of the options below:
+    await sendMessage(
+      from,
+      `✅ Your voice note has been received.
 
-${serviceMenu()}`
-  );
+Our team will review it and contact you shortly on WhatsApp.`
+    );
+
+    session.stage = "MENU";
+    return res.sendStatus(200);
+  }
+
+  await sendMessage(from, "Please send your request as text or voice note.");
   return res.sendStatus(200);
 }
-
   } catch (err) {
     console.error("Webhook error:", err.response?.data || err.message || err);
     return res.sendStatus(200);
