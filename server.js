@@ -1887,14 +1887,11 @@ Our team will review it and contact you shortly on WhatsApp.`
 
 await sendMessage(from, "Please send your request as text or voice note.");
 return res.sendStatus(200);
-    }
-
   } catch (err) {
     console.error("Webhook error:", err.response?.data || err.message || err);
     return res.sendStatus(200);
   }
 });
-
   
 // ========================
 // HEALTH
