@@ -848,7 +848,31 @@ if (session.stage === "SERVICE_WAITING_EXTRA_NOTES") {
       );
       session.lastServiceJobId = job?.id || null;
     }
+if (type === "audio" && message.audio?.id) {
+  if (!session.lastServiceJobId) {
+    const job = await createTextOnlyServiceJob(
+      session.selectedService || "AGENT_REQUEST",
+      "Voice instruction"
+    );
+    session.lastServiceJobId = job?.id || null;
+  }
 
+  await attachAudioToExistingJob(
+    session.lastServiceJobId,
+    message.audio.id,
+    message.audio?.mime_type || "audio/ogg"
+  );
+
+  await sendMessage(
+    from,
+    `✅ Your voice instruction has been received.
+
+Our team will contact you shortly on WhatsApp.`
+  );
+
+  session.stage = "MENU";
+  return res.sendStatus(200);
+}
     await sendMessage(
       from,
       `✅ Your request has been received.
@@ -910,7 +934,32 @@ Our team will contact you shortly on WhatsApp.`
         await sendMessage(from, "✅ Image received. Send your instruction now.");
         return res.sendStatus(200);
       }
+if (session.stage === "LESSON_WAITING_UPLOAD") {
+  const job = await createJobFromMedia({
+    printerId: AGENT_QUEUE_ID,
+    queueType: "AGENT",
+    serviceType: "LESSON_HOMEWORK",
+    mediaId: mediaObj?.id,
+    originalName: mediaObj?.filename || "lesson_homework",
+    mimeType: mediaObj?.mime_type || "",
+    copies: 1,
+    pages: 1
+  });
 
+  session.lastServiceJobId = job?.id || null;
+  session.stage = "SERVICE_WAITING_EXTRA_NOTES";
+
+  await sendMessage(
+    from,
+    `✅ Lesson / Homework file received.
+
+Please send your instruction now as text or voice note.
+
+Our team will contact you shortly on WhatsApp.`
+  );
+
+  return res.sendStatus(200);
+}
       if (session.stage === "VIDEO_EDIT_WAITING_UPLOAD" && type === "video") {
         const job = await createJobFromMedia({
           printerId: AGENT_QUEUE_ID,
