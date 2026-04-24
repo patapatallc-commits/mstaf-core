@@ -590,6 +590,34 @@ Example:
 
   return res.sendStatus(200);
 }
+          if (session.stage === "VIDEO_EDIT_SELECT_TYPE" && type === "text") {
+  let variantId = "";
+  let serviceLabel = "";
+
+  if (lower === "1") {
+    variantId = SHOPIFY_VARIANTS.VIDEO_SHORT;
+    serviceLabel = "Short Video Edit";
+  } else if (lower === "2") {
+    variantId = SHOPIFY_VARIANTS.VIDEO_SOCIAL;
+    serviceLabel = "Social Media Video Edit";
+  } else if (lower === "3") {
+    variantId = SHOPIFY_VARIANTS.VIDEO_STANDARD;
+    serviceLabel = "Standard Video Edit";
+  } else if (lower === "4") {
+    variantId = SHOPIFY_VARIANTS.VIDEO_ADVANCED;
+    serviceLabel = "Advanced Video Edit";
+  } else {
+    await sendMessage(
+      from,
+      `Please reply with:
+
+1 - Short Video Edit
+2 - Social Media Video Edit
+3 - Standard Video Edit
+4 - Advanced Video Edit`
+    );
+    return res.sendStatus(200);
+  }
     // =========================
     // MEDIA CAPTURE
     // =========================
@@ -965,34 +993,7 @@ Example:
         );
         return res.sendStatus(200);
       }
-      if (session.stage === "VIDEO_EDIT_SELECT_TYPE" && type === "text") {
-  let variantId = "";
-  let serviceLabel = "";
 
-  if (lower === "1") {
-    variantId = SHOPIFY_VARIANTS.VIDEO_SHORT;
-    serviceLabel = "Short Video Edit";
-  } else if (lower === "2") {
-    variantId = SHOPIFY_VARIANTS.VIDEO_SOCIAL;
-    serviceLabel = "Social Media Video Edit";
-  } else if (lower === "3") {
-    variantId = SHOPIFY_VARIANTS.VIDEO_STANDARD;
-    serviceLabel = "Standard Video Edit";
-  } else if (lower === "4") {
-    variantId = SHOPIFY_VARIANTS.VIDEO_ADVANCED;
-    serviceLabel = "Advanced Video Edit";
-  } else {
-    await sendMessage(
-      from,
-      `Please reply with:
-
-1 - Short Video Edit
-2 - Social Media Video Edit
-3 - Standard Video Edit
-4 - Advanced Video Edit`
-    );
-    return res.sendStatus(200);
-  }
 
   session.videoEditType = serviceLabel;
   session.videoVariantId = variantId;
