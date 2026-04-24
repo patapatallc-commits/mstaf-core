@@ -734,27 +734,52 @@ Please upload your video now.`
       );
       return res.sendStatus(200);
     }
+if (session.stage === "SERVICE_WAITING_EXTRA_NOTES") {
+  if (type === "text" && lower) {
+    if (session.lastServiceJobId) {
+      await attachTextToExistingJob(session.lastServiceJobId, text.trim());
+    } else {
+      const job = await createTextOnlyServiceJob(
+        session.selectedService || "AGENT_REQUEST",
+        text.trim()
+      );
+      session.lastServiceJobId = job?.id || null;
+    }
 
-    if (session.stage === "SERVICE_WAITING_EXTRA_NOTES") {
-      if (type === "text" && lower) {
-        const job = await createTextOnlyServiceJob(
-          session.selectedService || "AGENT_REQUEST",
-          text.trim()
-        );
-
-        session.lastServiceJobId = job?.id || null;
-
-        await sendMessage(
-          from,
-          `✅ Your request has been received.
+    await sendMessage(
+      from,
+      `✅ Your instruction has been received.
 
 Our team will contact you shortly on WhatsApp.`
-        );
+    );
 
-        session.stage = "MENU";
-        return res.sendStatus(200);
-      }
+    session.stage = "MENU";
+    return res.sendStatus(200);
+  }
 
+  if (type === "audio" && message.audio?.id) {
+    if (session.lastServiceJobId) {
+      await attachAudioToExistingJob(
+        session.lastServiceJobId,
+        message.audio.id,
+        message.audio?.mime_type || "audio/ogg"
+      );
+    }
+
+    await sendMessage(
+      from,
+      `✅ Your voice instruction has been received.
+
+Our team will contact you shortly on WhatsApp.`
+    );
+
+    session.stage = "MENU";
+    return res.sendStatus(200);
+  }
+
+  await sendMessage(from, "Please send your instruction as text or voice note.");
+  return res.sendStatus(200);
+}
       await sendMessage(from, "Please send your request as text.");
       return res.sendStatus(200);
     }
