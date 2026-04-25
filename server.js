@@ -567,129 +567,116 @@ ${serviceMenu()}`
       );
       return res.sendStatus(200);
     }
-if (session.stage === "MENU") {
-  if (lower === "1") {
-    session.selectedService = "PRINT";
-    session.stage = "PRINT_SELECT_SIZE";
-    await sendMessage(from, printSizeMenuText());
-    return res.sendStatus(200);
-  }
 
-  if (lower === "2") {
-    session.selectedService = "LAMINATE";
-    session.laminateSpec = {};
-    session.stage = "LAMINATE_WAITING_SIZE";
-    await sendMessage(from, laminateSizeMenuText());
-    return res.sendStatus(200);
-  }
+    if (session.stage === "MENU") {
+      if (lower === "1") {
+        session.selectedService = "PRINT";
+        session.stage = "PRINT_SELECT_SIZE";
+        await sendMessage(from, printSizeMenuText());
+        return res.sendStatus(200);
+      }
 
-  if (lower === "3") {
-    session.selectedService = "ID_PHOTO";
-    session.stage = "IDPHOTO_WAITING_UPLOAD";
-    await sendMessage(from, "📸 ID Photo selected. Please upload your photo now.");
-    return res.sendStatus(200);
-  }
+      if (lower === "2") {
+        session.selectedService = "LAMINATE";
+        session.laminateSpec = {};
+        session.stage = "LAMINATE_WAITING_SIZE";
+        await sendMessage(from, laminateSizeMenuText());
+        return res.sendStatus(200);
+      }
 
-  if (lower === "4") {
-    session.selectedService = "IMAGE_EDIT";
-    session.stage = "IMAGE_EDIT_SELECT_TYPE";
-    await sendMessage(
-      from,
-      `🖼️ Image Editing selected.
+      if (lower === "3") {
+        session.selectedService = "ID_PHOTO";
+        session.stage = "IDPHOTO_WAITING_UPLOAD";
+        await sendMessage(from, "📸 ID Photo selected. Please upload your photo now.");
+        return res.sendStatus(200);
+      }
+
+      if (lower === "4") {
+        session.selectedService = "IMAGE_EDIT";
+        session.stage = "IMAGE_EDIT_SELECT_TYPE";
+        await sendMessage(
+          from,
+          `🖼️ Image Editing selected.
 
 Choose image editing type:
 
 1 - Basic Image Edit
 2 - Background Removal
 3 - Product Photo Enhancement
-4 - Advanced Image Editing
+4 - Advanced Image Editing`
+        );
+        return res.sendStatus(200);
+      }
 
-Reply with 1, 2, 3, or 4.`
-    );
-    return res.sendStatus(200);
-  }
-
-  if (lower === "5") {
-    session.selectedService = "VIDEO_EDIT";
-    session.stage = "VIDEO_EDIT_SELECT_TYPE";
-    await sendMessage(
-      from,
-      `🎬 Video Editing selected.
+      if (lower === "5") {
+        session.selectedService = "VIDEO_EDIT";
+        session.stage = "VIDEO_EDIT_SELECT_TYPE";
+        await sendMessage(
+          from,
+          `🎬 Video Editing selected.
 
 Choose video editing type:
 
 1 - Short Video Edit
 2 - Social Media Video Edit
 3 - Standard Video Edit
-4 - Advanced Video Edit
+4 - Advanced Video Edit`
+        );
+        return res.sendStatus(200);
+      }
 
-Reply with 1, 2, 3, or 4.`
-    );
-    return res.sendStatus(200);
-  }
+      if (lower === "6") {
+        session.selectedService = "LESSON_HOMEWORK";
+        session.stage = "LESSON_WAITING_UPLOAD";
+        await sendMessage(from, "📚 Lesson / Homework selected. Please upload your file now.");
+        return res.sendStatus(200);
+      }
 
-  if (lower === "6") {
-    session.selectedService = "LESSON_HOMEWORK";
-    session.stage = "LESSON_WAITING_UPLOAD";
-    await sendMessage(from, "📚 Lesson / Homework selected. Please upload your file now.");
-    return res.sendStatus(200);
-  }
+      if (lower === "7") {
+        session.selectedService = "TALK_TO_AGENT";
+        session.stage = "SERVICE_WAITING_EXTRA_NOTES";
+        await sendMessage(from, "👨‍💼 Talk to Agent selected. Please type your request now.");
+        return res.sendStatus(200);
+      }
 
-  if (lower === "7") {
-    session.selectedService = "TALK_TO_AGENT";
-    session.stage = "SERVICE_WAITING_EXTRA_NOTES";
-    await sendMessage(from, "👨‍💼 Talk to Agent selected. Please type your request now.");
-    return res.sendStatus(200);
-  }
+      if (lower === "8") {
+        session.selectedService = "AUTO_MECHANIC";
+        session.stage = "SERVICE_WAITING_EXTRA_NOTES";
+        await sendMessage(from, "🔧 Send your location, vehicle type, and the problem.");
+        return res.sendStatus(200);
+      }
 
-  if (lower === "8") {
-    session.selectedService = "AUTO_MECHANIC";
-    session.stage = "SERVICE_WAITING_EXTRA_NOTES";
-    await sendMessage(from, "🔧 Please send your location, vehicle type, and the problem.");
-    return res.sendStatus(200);
-  }
+      if (lower === "9") {
+        session.selectedService = "RIDE_TO_WORK";
+        session.stage = "SERVICE_WAITING_EXTRA_NOTES";
+        await sendMessage(from, "🚗 Send pickup location, destination, date, and time.");
+        return res.sendStatus(200);
+      }
 
-  if (lower === "9") {
-    session.selectedService = "RIDE_TO_WORK";
-    session.stage = "SERVICE_WAITING_EXTRA_NOTES";
-    await sendMessage(from, "🚗 Please send pickup location, destination, date, and time.");
-    return res.sendStatus(200);
-  }
+      if (lower === "10") {
+        session.selectedService = "SHARED_APARTMENT_RENT";
+        session.stage = "SERVICE_WAITING_EXTRA_NOTES";
+        await sendMessage(from, "🏠 Send preferred location, budget, and move-in date.");
+        return res.sendStatus(200);
+      }
 
-  if (lower === "10") {
-    session.selectedService = "SHARED_APARTMENT_RENT";
-    session.stage = "SERVICE_WAITING_EXTRA_NOTES";
-    await sendMessage(from, "🏠 Please send preferred location, budget, and move-in date.");
-    return res.sendStatus(200);
-  }
+      if (lower === "11") {
+        session.selectedService = "INDOOR_OUTDOOR_HELPER";
+        session.stage = "SERVICE_WAITING_EXTRA_NOTES";
+        await sendMessage(from, "🧰 Send helper type, indoor/outdoor, location, date, and time.");
+        return res.sendStatus(200);
+      }
+}   // line 668
 
-  if (lower === "11") {
-    session.selectedService = "INDOOR_OUTDOOR_HELPER";
-    session.stage = "SERVICE_WAITING_EXTRA_NOTES";
-    await sendMessage(
-      from,
-      `🧰 Indoor / Outdoor Helper selected.
+if (lower === "12") {
+  session.selectedService = "TSHIRT_PRINT";
+  session.stage = "TSHIRT_SELECT_SIZE";
 
-Please send:
-1. Type of helper needed
-2. Indoor or outdoor work
-3. Your location
-4. Date and time needed
+  await sendMessage(
+    from,
+    `👕 Custom T-Shirt Printing
 
-Our team will contact you shortly on WhatsApp.`
-    );
-    return res.sendStatus(200);
-  }
-
-  if (lower === "12") {
-    session.selectedService = "TSHIRT_PRINT";
-    session.stage = "TSHIRT_SELECT_SIZE";
-
-    await sendMessage(
-      from,
-      `👕 Custom T-Shirt Printing selected.
-
-Please choose a T-shirt size:
+Please choose a size:
 
 S - Small
 M - Medium
@@ -698,34 +685,35 @@ XL - Extra Large
 XXL - Double XL
 
 Reply with S, M, L, XL, or XXL.`
-    );
-    return res.sendStatus(200);
-  }
+  );
 
-  await sendMessage(from, serviceMenu());
   return res.sendStatus(200);
 }
 
-if (session.stage === "IMAGE_EDIT_SELECT_TYPE" && type === "text") {
-  const imageMap = {
-    "1": ["Basic Image Edit", SHOPIFY_VARIANTS.IMAGE_BASIC],
-    "2": ["Background Removal", SHOPIFY_VARIANTS.IMAGE_BG_REMOVAL],
-    "3": ["Product Photo Enhancement", SHOPIFY_VARIANTS.IMAGE_ENHANCEMENT],
-    "4": ["Advanced Image Editing", SHOPIFY_VARIANTS.IMAGE_ADVANCED]
-  };
+await sendMessage(from, serviceMenu());
+return res.sendStatus(200);
+    
 
-  const selected = imageMap[lower];
-  if (!selected) {
-    await sendMessage(from, "Reply 1, 2, 3, or 4.");
-    return res.sendStatus(200);
-  }
+    if (session.stage === "IMAGE_EDIT_SELECT_TYPE" && type === "text") {
+      const imageMap = {
+        "1": ["Basic Image Edit", SHOPIFY_VARIANTS.IMAGE_BASIC],
+        "2": ["Background Removal", SHOPIFY_VARIANTS.IMAGE_BG_REMOVAL],
+        "3": ["Product Photo Enhancement", SHOPIFY_VARIANTS.IMAGE_ENHANCEMENT],
+        "4": ["Advanced Image Editing", SHOPIFY_VARIANTS.IMAGE_ADVANCED]
+      };
 
-  session.imageEditType = selected[0];
-  session.stage = "IMAGE_EDIT_WAITING_UPLOAD";
+      const selected = imageMap[lower];
+      if (!selected) {
+        await sendMessage(from, "Reply 1, 2, 3, or 4.");
+        return res.sendStatus(200);
+      }
 
-  await sendMessage(
-    from,
-    `✅ Selected: ${selected[0]}
+      session.imageEditType = selected[0];
+      session.stage = "IMAGE_EDIT_WAITING_UPLOAD";
+
+      await sendMessage(
+        from,
+        `✅ Selected: ${selected[0]}
 
 Shopify Checkout:
 ${buildShopifyCartUrl(selected[1], 1)}
@@ -734,31 +722,31 @@ Africa Payment:
 https://www.patapata.us/pages/africa-payment
 
 Please upload your image now.`
-  );
-  return res.sendStatus(200);
-}
+      );
+      return res.sendStatus(200);
+    }
 
-if (session.stage === "VIDEO_EDIT_SELECT_TYPE" && type === "text") {
-  const videoMap = {
-    "1": ["Short Video Edit", SHOPIFY_VARIANTS.VIDEO_SHORT],
-    "2": ["Social Media Video Edit", SHOPIFY_VARIANTS.VIDEO_SOCIAL],
-    "3": ["Standard Video Edit", SHOPIFY_VARIANTS.VIDEO_STANDARD],
-    "4": ["Advanced Video Edit", SHOPIFY_VARIANTS.VIDEO_ADVANCED]
-  };
+    if (session.stage === "VIDEO_EDIT_SELECT_TYPE" && type === "text") {
+      const videoMap = {
+        "1": ["Short Video Edit", SHOPIFY_VARIANTS.VIDEO_SHORT],
+        "2": ["Social Media Video Edit", SHOPIFY_VARIANTS.VIDEO_SOCIAL],
+        "3": ["Standard Video Edit", SHOPIFY_VARIANTS.VIDEO_STANDARD],
+        "4": ["Advanced Video Edit", SHOPIFY_VARIANTS.VIDEO_ADVANCED]
+      };
 
-  const selected = videoMap[lower];
-  if (!selected) {
-    await sendMessage(from, "Reply 1, 2, 3, or 4.");
-    return res.sendStatus(200);
-  }
+      const selected = videoMap[lower];
+      if (!selected) {
+        await sendMessage(from, "Reply 1, 2, 3, or 4.");
+        return res.sendStatus(200);
+      }
 
-  session.videoEditType = selected[0];
-  session.videoVariantId = selected[1];
-  session.stage = "VIDEO_EDIT_WAITING_UPLOAD";
+      session.videoEditType = selected[0];
+      session.videoVariantId = selected[1];
+      session.stage = "VIDEO_EDIT_WAITING_UPLOAD";
 
-  await sendMessage(
-    from,
-    `✅ Selected: ${selected[0]}
+      await sendMessage(
+        from,
+        `✅ Selected: ${selected[0]}
 
 Shopify Checkout:
 ${buildShopifyCartUrl(selected[1], 1)}
@@ -767,30 +755,16 @@ Africa Payment:
 https://www.patapata.us/pages/africa-payment
 
 Please upload your video now.`
-  );
-  return res.sendStatus(200);
-}
+      );
+      return res.sendStatus(200);
+    }
+    if (session.stage === "TSHIRT_SELECT_SIZE" && type === "text") {
+  const size = text.trim().toUpperCase();
 
-if (session.stage === "TSHIRT_SELECT_SIZE" && type === "text") {
-  const rawSize = text.trim().toLowerCase();
+  const validSizes = ["S", "M", "L", "XL", "XXL"];
 
-  const sizeMap = {
-    s: "Small",
-    small: "Small",
-    m: "Medium",
-    medium: "Medium",
-    l: "Large",
-    large: "Large",
-    xl: "Extra Large",
-    "extra large": "Extra Large",
-    xxl: "Double XL",
-    "double xl": "Double XL"
-  };
-
-  const size = sizeMap[rawSize];
-
-  if (!size) {
-    await sendMessage(from, "Please reply with Small, Medium, Large, XL, or XXL.");
+  if (!validSizes.includes(size)) {
+    await sendMessage(from, "Please reply with S, M, L, XL, or XXL.");
     return res.sendStatus(200);
   }
 
@@ -804,16 +778,15 @@ if (session.stage === "TSHIRT_SELECT_SIZE" && type === "text") {
 Please type the text you want printed on your T-shirt.
 
 You can also include:
-- Shirt color
-- Print color
-- Front or back placement
+- Color preference
+- Placement (front/back)
 
-Our team will contact you shortly on WhatsApp.`
+Our team will contact you shortly on WhatsApp after submission.`
   );
+
   return res.sendStatus(200);
 }
-
-if (session.stage === "TSHIRT_WAITING_TEXT" && type === "text") {
+    if (session.stage === "TSHIRT_WAITING_TEXT" && type === "text") {
   const designText = text.trim();
 
   const job = await createTextOnlyServiceJob(
@@ -836,7 +809,6 @@ Our team will contact you shortly on WhatsApp.`
   session.stage = "MENU";
   return res.sendStatus(200);
 }
-
 if (session.stage === "SERVICE_WAITING_EXTRA_NOTES") {
   if (type === "text" && lower) {
     if (session.lastServiceJobId) {
@@ -861,19 +833,13 @@ Our team will contact you shortly on WhatsApp.`
   }
 
   if (type === "audio" && message.audio?.id) {
-    if (!session.lastServiceJobId) {
-      const job = await createTextOnlyServiceJob(
-        session.selectedService || "AGENT_REQUEST",
-        "Voice instruction"
+    if (session.lastServiceJobId) {
+      await attachAudioToExistingJob(
+        session.lastServiceJobId,
+        message.audio.id,
+        message.audio?.mime_type || "audio/ogg"
       );
-      session.lastServiceJobId = job?.id || null;
     }
-
-    await attachAudioToExistingJob(
-      session.lastServiceJobId,
-      message.audio.id,
-      message.audio?.mime_type || "audio/ogg"
-    );
 
     await sendMessage(
       from,
@@ -913,47 +879,10 @@ Our team will contact you shortly on WhatsApp.`
         session.lastServiceJobId = job?.id || null;
         session.stage = "SERVICE_WAITING_EXTRA_NOTES";
 
-      await sendMessage(
-  from,
-  `✅ Image received.
+        await sendMessage(from, "✅ Image received. Send your instruction now.");
+        return res.sendStatus(200);
+      }
 
-Please send your instruction now.
-
-You can send it as:
-- Text message
-- Voice note / audio`
-);
-return res.sendStatus(200);
-if (session.stage === "LESSON_WAITING_UPLOAD") {
-  const job = await createJobFromMedia({
-    printerId: AGENT_QUEUE_ID,
-    queueType: "AGENT",
-    serviceType: "LESSON_HOMEWORK",
-    mediaId: mediaObj?.id,
-    originalName: mediaObj?.filename || "lesson_homework",
-    mimeType: mediaObj?.mime_type || "",
-    copies: 1,
-    pages: 1
-  });
-
-  session.lastServiceJobId = job?.id || null;
-  session.stage = "SERVICE_WAITING_EXTRA_NOTES";
-
-  await sendMessage(
-  from,
-  `✅ Lesson / Homework file received.
-
-Please send your instruction now.
-
-You can send it as:
-- Text message
-- Voice note / audio
-
-Our team will contact you shortly on WhatsApp.`
-);
-
-  return res.sendStatus(200);
-}
       if (session.stage === "VIDEO_EDIT_WAITING_UPLOAD" && type === "video") {
         const job = await createJobFromMedia({
           printerId: AGENT_QUEUE_ID,
@@ -967,16 +896,7 @@ Our team will contact you shortly on WhatsApp.`
         session.lastServiceJobId = job?.id || null;
         session.stage = "SERVICE_WAITING_EXTRA_NOTES";
 
-        await sendMessage(
-  from,
-  `✅ Video received.
-
-Please send your instruction now.
-
-You can send it as:
-- Text message
-- Voice note / audio`
-);
+        await sendMessage(from, "✅ Video received. Send your instruction now.");
         return res.sendStatus(200);
       }
 
@@ -993,16 +913,7 @@ You can send it as:
         session.lastServiceJobId = job?.id || null;
         session.stage = "SERVICE_WAITING_EXTRA_NOTES";
 
-      await sendMessage(
-  from,
-  `✅ ID photo received.
-
-Please send your instruction now.
-
-You can send it as:
-- Text message
-- Voice note / audio`
-);
+        await sendMessage(from, "✅ ID photo received. Send your instruction now.");
         return res.sendStatus(200);
       }
     }
@@ -1022,28 +933,6 @@ ${serviceMenu()}`
     return res.sendStatus(200);
   }
 });
-async function attachTextToExistingJob(jobId, text) {
-  try {
-    await pool.query(
-      `UPDATE print_jobs SET instructions = COALESCE(instructions, '') || $1 WHERE id = $2`,
-      [`\n${text}`, jobId]
-    );
-  } catch (err) {
-    console.error("Attach text error:", err);
-  }
-}
-async function attachAudioToExistingJob(jobId, mediaId) {
-  try {
-    const audioUrl = buildWhatsAppMediaUrl(mediaId);
-
-    await pool.query(
-      `UPDATE print_jobs SET instruction_audio_url = $1 WHERE id = $2`,
-      [audioUrl, jobId]
-    );
-  } catch (err) {
-    console.error("Attach audio error:", err);
-  }
-}
 // ========================
 // HEALTH
 // ========================
