@@ -1194,22 +1194,22 @@ Reply:
   if (lower === "1") {
     await sendMessage(
       from,
-      "✅ Payment via Shopify confirmed.\n\nYour job is now being processed. Thank you for your order!"
+      "✅ Shopify payment noted.\n\nOur team will contact you shortly on WhatsApp."
     );
 
     session.stage = "MENU";
-    await sendMessage(from, serviceMenu());
+  
     return res.sendStatus(200);
   }
 
   if (lower === "2") {
     await sendMessage(
       from,
-      "✅ Africa Payment selected.\n\nOur team will verify your payment and process your job shortly."
+     "✅ Africa Payment noted.\n\nOur team will contact you shortly on WhatsApp."
     );
 
     session.stage = "MENU";
-    await sendMessage(from, serviceMenu());
+    
     return res.sendStatus(200);
   }
 
