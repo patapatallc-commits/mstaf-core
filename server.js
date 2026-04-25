@@ -1189,50 +1189,48 @@ Reply:
 
   return res.sendStatus(200);
 }
-      else if (session.stage === "PRINT_PAYMENT_CHOICE" && type === "text") {
-
+if (session.stage === "PRINT_PAYMENT_CHOICE" && type === "text") {
   if (lower === "1") {
+    session.stage = "DONE";
     await sendMessage(
       from,
-      "✅ Shopify payment noted.\n\nOur team will contact you shortly on WhatsApp."
-    );
+      `✅ Shopify payment noted.
 
-    session.stage = "MENU";
-  
+Our team will contact you shortly on WhatsApp.`
+    );
     return res.sendStatus(200);
   }
 
   if (lower === "2") {
+    session.stage = "DONE";
     await sendMessage(
       from,
-     "✅ Africa Payment noted.\n\nOur team will contact you shortly on WhatsApp."
-    );
+      `✅ Africa Payment noted.
 
-    session.stage = "MENU";
-    
+Our team will contact you shortly on WhatsApp.`
+    );
     return res.sendStatus(200);
   }
 
   if (lower === "3") {
+    session.stage = "SERVICE_WAITING_EXTRA_NOTES";
     await sendMessage(
       from,
-      "👨‍💼 You chose to continue with an agent.\n\nPlease send any additional instructions as text or voice note."
-    );
+      `👨‍💼 Continue with Agent selected.
 
-    session.stage = "SERVICE_WAITING_EXTRA_NOTES";
+Please send any additional instruction as text or voice note.`
+    );
     return res.sendStatus(200);
   }
 
-  // fallback if wrong input
   await sendMessage(
     from,
-    `Please choose a valid option:
+    `Please choose:
 
 1 - I paid with Shopify
 2 - I paid with Africa Payment
 3 - Continue with Agent`
   );
-
   return res.sendStatus(200);
 }
       if (session.stage === "JOB_WAITING_CV") {
