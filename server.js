@@ -701,11 +701,61 @@ Reply with S, M, L, XL, or XXL.`
     );
     return res.sendStatus(200);
   }
+  if (lower === "13") {
+  session.selectedService = "JOB_APPLICATION";
+  session.stage = "JOB_SELECT_ROLE";
+
+  await sendMessage(
+    from,
+    `💼 Job Application / CV Submission
+
+Please choose the role you are applying for:
+
+1 - Graphic Designer
+2 - Print Machine Operator
+3 - Customer Support Agent
+4 - Delivery Driver
+5 - Video Editor
+
+Reply with 1, 2, 3, 4, or 5.`
+  );
+
+  return res.sendStatus(200);
+}
 
   await sendMessage(from, serviceMenu());
   return res.sendStatus(200);
 }
+if (session.stage === "JOB_SELECT_ROLE" && type === "text") {
+  const roleMap = {
+    "1": "Graphic Designer",
+    "2": "Print Machine Operator",
+    "3": "Customer Support Agent",
+    "4": "Delivery Driver",
+    "5": "Video Editor"
+  };
 
+  const role = roleMap[lower];
+
+  if (!role) {
+    await sendMessage(from, "Please reply with 1, 2, 3, 4, or 5.");
+    return res.sendStatus(200);
+  }
+
+  session.jobRole = role;
+  session.stage = "JOB_WAITING_CV";
+
+  await sendMessage(
+    from,
+    `✅ Selected Role: ${role}
+
+Please upload your CV (PDF or document).
+
+You can also send a voice note with additional information.`
+  );
+
+  return res.sendStatus(200);
+}
 if (session.stage === "IMAGE_EDIT_SELECT_TYPE" && type === "text") {
   const imageMap = {
     "1": ["Basic Image Edit", SHOPIFY_VARIANTS.IMAGE_BASIC],
@@ -917,6 +967,32 @@ Our team will contact you shortly on WhatsApp.`
           : type === "audio"
           ? message.audio
           : message.video;
+      if (session.stage === "JOB_WAITING_CV") {
+  const job = await createJobFromMedia({
+    printerId: AGENT_QUEUE_ID,
+    queueType: "AGENT",
+    serviceType: "JOB_APPLICATION",
+    mediaId: mediaObj?.id,
+    originalName: mediaObj?.filename || "cv_upload",
+    mimeType: mediaObj?.mime_type || "application/pdf"
+  });
+
+  session.lastServiceJobId = job?.id || null;
+  session.stage = "SERVICE_WAITING_EXTRA_NOTES";
+
+  await sendMessage(
+    from,
+    `✅ CV received for ${session.jobRole}
+
+You can now send:
+• Text instruction
+• OR voice note
+
+Our team will review and contact you shortly.`
+  );
+
+  return res.sendStatus(200);
+}
 
       if (session.stage === "IMAGE_EDIT_WAITING_UPLOAD") {
         const job = await createJobFromMedia({
