@@ -183,7 +183,11 @@ function resetSession(from) {
 // MENUS
 // =========================
 function serviceMenu() {
-  return `1 - Print
+  return `📋 Welcome to PATAPATA Print-O-Matic
+
+Please choose a service:
+
+1 - Print
 2 - Laminate
 3 - ID Photo
 4 - Image Editing
@@ -194,7 +198,10 @@ function serviceMenu() {
 9 - Need Ride to Work
 10 - Shared Apartment / Rent
 11 - Need Indoor or Outdoor Helper
-12 - Custom T-Shirt Print`;
+12 - Custom T-Shirt Print
+13 - 💼 Search for Jobs on Print-O-Matic
+
+Reply with a number (1–13).`;
 }
 
 function printSizeMenuText() {
@@ -445,64 +452,234 @@ ${serviceMenu()}`);
     // =========================
     // MAIN MENU
     // =========================
-    if (session.stage === "MENU" && type === "text") {
+if (session.stage === "MENU" && type === "text") {
+  if (lower === "1") {
+    session.selectedService = "PRINT";
+    session.stage = "PRINT_SELECT_SIZE";
+    await sendMessage(from, printSizeMenuText());
+    return res.sendStatus(200);
+  }
 
-      if (lower === "6") {
-        session.selectedService = "LESSON_HOMEWORK";
-        session.stage = "LESSON_WAITING_UPLOAD";
-        await sendMessage(from, "📘 Lesson selected. Please upload your document.");
-        return res.sendStatus(200);
-      }
+  if (lower === "2") {
+    session.selectedService = "LAMINATE";
+    session.laminateSpec = {};
+    session.stage = "LAMINATE_WAITING_SIZE";
+    await sendMessage(from, laminateSizeMenuText());
+    return res.sendStatus(200);
+  }
 
-      if (lower === "11") {
-        session.selectedService = "INDOOR_OUTDOOR_HELPER";
-        session.stage = "SERVICE_WAITING_EXTRA_NOTES";
+  if (lower === "3") {
+    session.selectedService = "ID_PHOTO";
+    session.stage = "IDPHOTO_WAITING_UPLOAD";
+    await sendMessage(
+      from,
+      `📸 ID Photo selected.
 
-        await sendMessage(from, `🧰 Helper selected.
+Please upload your photo now.
+
+After upload, you can send your instruction as:
+- Text message
+- Voice note / audio`
+    );
+    return res.sendStatus(200);
+  }
+
+  if (lower === "4") {
+    session.selectedService = "IMAGE_EDIT";
+    session.stage = "IMAGE_EDIT_SELECT_TYPE";
+    await sendMessage(
+      from,
+      `🖼️ Image Editing selected.
+
+Choose image editing type:
+
+1 - Basic Image Edit
+2 - Background Removal
+3 - Product Photo Enhancement
+4 - Advanced Image Editing
+
+Reply with 1, 2, 3, or 4.`
+    );
+    return res.sendStatus(200);
+  }
+
+  if (lower === "5") {
+    session.selectedService = "VIDEO_EDIT";
+    session.stage = "VIDEO_EDIT_SELECT_TYPE";
+    await sendMessage(
+      from,
+      `🎬 Video Editing selected.
+
+Choose video editing type:
+
+1 - Short Video Edit
+2 - Social Media Video Edit
+3 - Standard Video Edit
+4 - Advanced Video Edit
+
+Reply with 1, 2, 3, or 4.`
+    );
+    return res.sendStatus(200);
+  }
+
+  if (lower === "6") {
+    session.selectedService = "LESSON_HOMEWORK";
+    session.stage = "LESSON_WAITING_UPLOAD";
+    await sendMessage(
+      from,
+      `📚 Lesson / Homework selected.
+
+Please upload your document, image, audio, or video file now.`
+    );
+    return res.sendStatus(200);
+  }
+
+  if (lower === "7") {
+    session.selectedService = "TALK_TO_AGENT";
+    session.stage = "SERVICE_WAITING_EXTRA_NOTES";
+    await sendMessage(from, "👨‍💼 Talk to Agent selected. Please send your request as text or voice note.");
+    return res.sendStatus(200);
+  }
+
+  if (lower === "8") {
+    session.selectedService = "AUTO_MECHANIC";
+    session.stage = "SERVICE_WAITING_EXTRA_NOTES";
+    await sendMessage(from, "🔧 Please send your location, vehicle type, and the problem.");
+    return res.sendStatus(200);
+  }
+
+  if (lower === "9") {
+    session.selectedService = "RIDE_TO_WORK";
+    session.stage = "SERVICE_WAITING_EXTRA_NOTES";
+    await sendMessage(from, "🚗 Please send pickup location, destination, date, and time.");
+    return res.sendStatus(200);
+  }
+
+  if (lower === "10") {
+    session.selectedService = "SHARED_APARTMENT_RENT";
+    session.stage = "SERVICE_WAITING_EXTRA_NOTES";
+    await sendMessage(from, "🏠 Please send preferred location, budget, and move-in date.");
+    return res.sendStatus(200);
+  }
+
+  if (lower === "11") {
+    session.selectedService = "INDOOR_OUTDOOR_HELPER";
+    session.stage = "SERVICE_WAITING_EXTRA_NOTES";
+    await sendMessage(
+      from,
+      `🧰 Indoor / Outdoor Helper selected.
 
 Please send:
-• Type of helper
-• Indoor or outdoor
-• Location
-• Date & time
+1. Type of helper needed
+2. Indoor or outdoor work
+3. Your location
+4. Date and time needed
 
-You can send as text or voice note.`);
+You can send as text or voice note.`
+    );
+    return res.sendStatus(200);
+  }
 
-        return res.sendStatus(200);
-      }
+  if (lower === "12") {
+    session.selectedService = "TSHIRT_PRINT";
+    session.stage = "TSHIRT_SELECT_SIZE";
+    await sendMessage(
+      from,
+      `👕 Custom T-Shirt Printing selected.
 
-      if (lower === "12") {
-        session.selectedService = "TSHIRT_PRINT";
-        session.stage = "TSHIRT_SELECT_SIZE";
+Please choose a T-shirt size:
 
-        await sendMessage(from, `👕 T-Shirt Printing
+S - Small
+M - Medium
+L - Large
+XL - Extra Large
+XXL - Double XL
 
-Choose size:
-S, M, L, XL, XXL`);
+Reply with S, M, L, XL, or XXL.`
+    );
+    return res.sendStatus(200);
+  }
 
-        return res.sendStatus(200);
-      }
+  if (lower === "13") {
+    session.selectedService = "JOB_APPLICATION";
+    session.stage = "JOB_SELECT_ROLE";
+    await sendMessage(
+      from,
+      `💼 Search for Jobs on Print-O-Matic
 
-      // JOB SEARCH (NEW)
-      if (lower === "13") {
-        session.selectedService = "JOB_APPLICATION";
-        session.stage = "JOB_SELECT_ROLE";
+Please choose the role you are interested in:
 
-        await sendMessage(from, `💼 Job Opportunities (Print-O-Matic)
+1 - Graphic Designer
+2 - Print Machine Operator
+3 - Customer Support Agent
+4 - Delivery Driver
+5 - Video Editor
 
-Choose a role:
+Reply with 1, 2, 3, 4, or 5.`
+    );
+    return res.sendStatus(200);
+  }
+if (session.stage === "JOB_SELECT_ROLE" && type === "text") {
+  const roles = {
+    "1": "Graphic Designer",
+    "2": "Print Machine Operator",
+    "3": "Customer Support Agent",
+    "4": "Delivery Driver",
+    "5": "Video Editor"
+  };
 
-1 - Graphic Designer  
-2 - Print Machine Operator  
-3 - Customer Support Agent  
-4 - Delivery Driver  
-5 - Video Editor  
+  const selectedRole = roles[lower];
 
-Reply with 1 - 5`);
+  if (!selectedRole) {
+    await sendMessage(from, "Please reply with 1, 2, 3, 4, or 5.");
+    return res.sendStatus(200);
+  }
 
-        return res.sendStatus(200);
-      }
-    }
+  session.jobRole = selectedRole;
+  session.stage = "JOB_WAITING_CV";
+
+  await sendMessage(
+    from,
+    `✅ ${selectedRole} selected.
+
+Please upload your CV now (PDF, Word, or Image).
+
+Our team will review your application.`
+  );
+
+  return res.sendStatus(200);
+}
+ if (session.stage === "JOB_WAITING_CV" && (type === "document" || type === "image")) {
+  const mediaObj =
+    type === "document"
+      ? message.document
+      : message.image;
+
+  await createJobFromMedia({
+    printerId: AGENT_QUEUE_ID,
+    queueType: "AGENT",
+    serviceType: "JOB_APPLICATION",
+    mediaId: mediaObj.id,
+    originalName: mediaObj.filename || "cv_upload",
+    mimeType: mediaObj.mime_type || "",
+    instructions: `Job Application - ${session.jobRole}`
+  });
+
+  await sendMessage(
+    from,
+    `✅ CV received successfully.
+
+Our Agents will contact you shortly on WhatsApp.
+
+Thank you for applying with PATAPATA Print-O-Matic.`
+  );
+
+  session.stage = "MENU";
+  return res.sendStatus(200);
+} 
+  await sendMessage(from, serviceMenu());
+  return res.sendStatus(200);
+}
 
     // =========================
     // JOB ROLE SELECT
