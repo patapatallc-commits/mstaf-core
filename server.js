@@ -254,9 +254,9 @@ const SHOPIFY_VARIANTS = {
   PRINT_CARD_BW: process.env.SHOPIFY_VARIANT_PRINT_CARD_BW || "",
   PRINT_CARD_COLOR: process.env.SHOPIFY_VARIANT_PRINT_CARD_COLOR || "",
 
-  LAMINATE_LETTER: process.env.SHOPIFY_VARIANT_LAMINATE_LETTER || "",
-  LAMINATE_LEGAL: process.env.SHOPIFY_VARIANT_LAMINATE_LEGAL || "",
-LAMINATE_TABLOID: process.env.SHOPIFY_VARIANT_LAMINATE_TABLOID || "",
+LAMINATE_LETTER: process.env.SHOPIFY_VARIANT_LAMINATE_LETTER || "10307335749931",
+LAMINATE_LEGAL: process.env.SHOPIFY_VARIANT_LAMINATE_LEGAL || "10307335881003",
+LAMINATE_TABLOID: process.env.SHOPIFY_VARIANT_LAMINATE_TABLOID || "10307335946539",
   // ==========================
 // IMAGE EDITING
 // ==========================
@@ -388,10 +388,15 @@ function getPrintVariantId(paperSize, color) {
   return "";
 }
 
-function getLaminateVariantId(paperSize) {
-  if (paperSize === "LETTER") return SHOPIFY_VARIANTS.LAMINATE_LETTER;
-  if (paperSize === "LEGAL") return SHOPIFY_VARIANTS.LAMINATE_LEGAL;
-  if (paperSize === "TABLOID") return SHOPIFY_VARIANTS.LAMINATE_TABLOID;
+function getLaminateVariantId(size) {
+  if (!size) return "";
+
+  const s = String(size).trim().toUpperCase();
+
+  if (s === "A4" || s === "LETTER") return SHOPIFY_VARIANTS.LAMINATE_LETTER;
+  if (s === "LEGAL") return SHOPIFY_VARIANTS.LAMINATE_LEGAL;
+  if (s === "TABLOID") return SHOPIFY_VARIANTS.LAMINATE_TABLOID;
+
   return "";
 }
 
