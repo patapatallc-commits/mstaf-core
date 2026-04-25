@@ -194,7 +194,8 @@ function serviceMenu() {
 9 - Need Ride to Work
 10 - Shared Apartment / Rent
 11 - Need Indoor or Outdoor Helper
-12 - Custom T-Shirt Print`;
+12 - Custom T-Shirt Print
+13 - Job Search / Submit CV`;
 }
 
 function printSizeMenuText() {
