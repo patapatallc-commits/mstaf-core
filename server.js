@@ -1189,7 +1189,7 @@ Reply:
 
   return res.sendStatus(200);
 }
-      if (session.stage === "PRINT_PAYMENT_CHOICE" && type === "text") {
+      else if (session.stage === "PRINT_PAYMENT_CHOICE" && type === "text") {
 
   if (lower === "1") {
     await sendMessage(
@@ -1361,7 +1361,7 @@ Our team will contact you shortly on WhatsApp.`
     }
 
   // Only show menu if already in MENU stage
-if (session.stage === "MENU") {
+else if (session.stage === "MENU") {
   await sendMessage(
     from,
     `Please reply with one of the options below:
