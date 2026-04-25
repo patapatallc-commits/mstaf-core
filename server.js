@@ -1360,15 +1360,20 @@ Our team will contact you shortly on WhatsApp.`
       }
     }
 
-    await sendMessage(
-      from,
-      `Please reply with one of the options below:
+  // Only show menu if already in MENU stage
+if (session.stage === "MENU") {
+  await sendMessage(
+    from,
+    `Please reply with one of the options below:
 
 ${serviceMenu()}`
-    );
+  );
 
-    session.stage = "MENU";
-    return res.sendStatus(200);
+  return res.sendStatus(200);
+}
+
+// Otherwise do nothing (prevent override)
+return res.sendStatus(200);
 
   } catch (err) {
     console.error("Webhook error:", err.response?.data || err.message || err);
