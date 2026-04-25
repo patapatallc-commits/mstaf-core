@@ -1097,6 +1097,144 @@ Our team will contact you shortly on WhatsApp.`
           : type === "audio"
           ? message.audio
           : message.video;
+      if (session.stage === "PRINT_WAITING_UPLOAD") {
+  const paperSize = session.printSpec?.paper_size || "A4";
+  const colorMode = session.printSpec?.color_mode || "BW";
+  const copies = session.printSpec?.copies || 1;
+  const pages = session.printSpec?.pages || 1;
+
+  const job = await createJobFromMedia({
+    printerId: DEFAULT_PRINTER_ID,
+    queueType: "WORKER",
+    serviceType: "PRINTING",
+    mediaId: mediaObj?.id,
+    originalName: mediaObj?.filename || "print_upload",
+    mimeType: mediaObj?.mime_type || "",
+    paperSize,
+    colorMode,
+    copies,
+    pages
+  });
+
+  session.lastServiceJobId = job?.id || null;
+  session.stage = "PRINT_PAYMENT_CHOICE";
+
+  const variantId = getPrintVariantId(paperSize, colorMode);
+  const checkoutUrl = buildShopifyCartUrl(variantId, copies);
+
+  await sendMessage(
+    from,
+    `✅ File received and added to print queue.
+
+Paper: ${paperSize}
+Color: ${colorMode === "COLOR" ? "Color" : "Black & White"}
+Copies: ${copies}
+Pages: ${pages}
+
+Shopify Checkout:
+${checkoutUrl || "Checkout link not available for this paper/color yet."}
+
+Africa Payment:
+https://www.patapata.us/pages/africa-payment
+
+Reply:
+1 - I paid with Shopify
+2 - I paid with Africa Payment
+3 - Continue with Agent`
+  );
+
+  return res.sendStatus(200);
+}
+
+if (session.stage === "LAMINATE_WAITING_FILE") {
+  const size = session.laminateSpec?.size || "LETTER";
+  const quantity = session.laminateSpec?.quantity || 1;
+
+  const job = await createJobFromMedia({
+    printerId: DISPATCH_QUEUE_ID,
+    queueType: "DISPATCH",
+    serviceType: "LAMINATING",
+    mediaId: mediaObj?.id,
+    originalName: mediaObj?.filename || "laminate_upload",
+    mimeType: mediaObj?.mime_type || "",
+    copies: quantity,
+    pages: 1,
+    instructions: `Laminate size: ${size}\nQuantity: ${quantity}`
+  });
+
+  session.lastServiceJobId = job?.id || null;
+  session.stage = "PRINT_PAYMENT_CHOICE";
+
+  const variantId = getLaminateVariantId(size);
+  const checkoutUrl = buildShopifyCartUrl(variantId, quantity);
+
+  await sendMessage(
+    from,
+    `✅ Laminate file received.
+
+Size: ${size}
+Quantity: ${quantity}
+
+Shopify Checkout:
+${checkoutUrl || "Checkout link not available for this laminate size yet."}
+
+Africa Payment:
+https://www.patapata.us/pages/africa-payment
+
+Reply:
+1 - I paid with Shopify
+2 - I paid with Africa Payment
+3 - Continue with Agent`
+  );
+
+  return res.sendStatus(200);
+}
+      if (session.stage === "PRINT_PAYMENT_CHOICE" && type === "text") {
+
+  if (lower === "1") {
+    await sendMessage(
+      from,
+      "✅ Payment via Shopify confirmed.\n\nYour job is now being processed. Thank you for your order!"
+    );
+
+    session.stage = "MENU";
+    await sendMessage(from, serviceMenu());
+    return res.sendStatus(200);
+  }
+
+  if (lower === "2") {
+    await sendMessage(
+      from,
+      "✅ Africa Payment selected.\n\nOur team will verify your payment and process your job shortly."
+    );
+
+    session.stage = "MENU";
+    await sendMessage(from, serviceMenu());
+    return res.sendStatus(200);
+  }
+
+  if (lower === "3") {
+    await sendMessage(
+      from,
+      "👨‍💼 You chose to continue with an agent.\n\nPlease send any additional instructions as text or voice note."
+    );
+
+    session.stage = "SERVICE_WAITING_EXTRA_NOTES";
+    return res.sendStatus(200);
+  }
+
+  // fallback if wrong input
+  await sendMessage(
+    from,
+    `Please choose a valid option:
+
+1 - I paid with Shopify
+2 - I paid with Africa Payment
+3 - Continue with Agent`
+  );
+
+  return res.sendStatus(200);
+}
       if (session.stage === "JOB_WAITING_CV") {
   const job = await createJobFromMedia({
     printerId: AGENT_QUEUE_ID,
