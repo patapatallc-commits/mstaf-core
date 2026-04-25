@@ -727,6 +727,135 @@ Reply with 1, 2, 3, 4, or 5.`
   await sendMessage(from, serviceMenu());
   return res.sendStatus(200);
 }
+   if (session.stage === "PRINT_SELECT_SIZE" && type === "text") {
+  const sizeMap = {
+    "1": "A4",
+    "2": "A3",
+    "3": "LETTER",
+    "4": "LEGAL",
+    "5": "TABLOID",
+    "6": "CARD"
+  };
+
+  const selectedSize = sizeMap[lower];
+
+  if (!selectedSize) {
+    await sendMessage(from, printSizeMenuText());
+    return res.sendStatus(200);
+  }
+
+  session.printSpec.paper_size = selectedSize;
+  session.stage = "PRINT_SELECT_COLOR";
+
+  await sendMessage(from, printColorMenuText());
+  return res.sendStatus(200);
+}
+
+if (session.stage === "PRINT_SELECT_COLOR" && type === "text") {
+  const colorMap = {
+    "1": "BW",
+    "2": "COLOR"
+  };
+
+  const selectedColor = colorMap[lower];
+
+  if (!selectedColor) {
+    await sendMessage(from, printColorMenuText());
+    return res.sendStatus(200);
+  }
+
+  session.printSpec.color_mode = selectedColor;
+  session.stage = "PRINT_WAITING_COPIES";
+
+  await sendMessage(from, "How many copies do you want?");
+  return res.sendStatus(200);
+}
+
+if (session.stage === "PRINT_WAITING_COPIES" && type === "text") {
+  const copies = parseInt(lower, 10);
+
+  if (!copies || copies < 1) {
+    await sendMessage(from, "Please type a valid number of copies, for example: 1, 2, 5, or 10.");
+    return res.sendStatus(200);
+  }
+
+  session.printSpec.copies = copies;
+  session.stage = "PRINT_WAITING_PAGES";
+
+  await sendMessage(from, "How many pages are in the document?");
+  return res.sendStatus(200);
+}
+
+if (session.stage === "PRINT_WAITING_PAGES" && type === "text") {
+  const pages = parseInt(lower, 10);
+
+  if (!pages || pages < 1) {
+    await sendMessage(from, "Please type a valid page count, for example: 1, 2, 5, or 10.");
+    return res.sendStatus(200);
+  }
+
+  session.printSpec.pages = pages;
+  session.stage = "PRINT_WAITING_UPLOAD";
+
+  await sendMessage(
+    from,
+    `✅ Print setup complete.
+
+Paper: ${session.printSpec.paper_size}
+Color: ${session.printSpec.color_mode === "COLOR" ? "Color" : "Black & White"}
+Copies: ${session.printSpec.copies}
+Pages: ${session.printSpec.pages}
+
+Please upload your PDF, image, or document now.`
+  );
+
+  return res.sendStatus(200);
+} 
+    if (session.stage === "LAMINATE_WAITING_SIZE" && type === "text") {
+  const sizeMap = {
+    "1": "A4",
+    "2": "LETTER",
+    "3": "LEGAL",
+    "4": "TABLOID"
+  };
+
+  const selectedSize = sizeMap[lower];
+
+  if (!selectedSize) {
+    await sendMessage(from, laminateSizeMenuText());
+    return res.sendStatus(200);
+  }
+
+  session.laminateSpec.size = selectedSize;
+  session.stage = "LAMINATE_WAITING_QUANTITY";
+
+  await sendMessage(from, "How many documents/pages do you want laminated?");
+  return res.sendStatus(200);
+}
+
+if (session.stage === "LAMINATE_WAITING_QUANTITY" && type === "text") {
+  const quantity = parseInt(lower, 10);
+
+  if (!quantity || quantity < 1) {
+    await sendMessage(from, "Please type a valid quantity, for example: 1, 2, 5, or 10.");
+    return res.sendStatus(200);
+  }
+
+  session.laminateSpec.quantity = quantity;
+  session.stage = "LAMINATE_WAITING_FILE";
+
+  await sendMessage(
+    from,
+    `✅ Laminate setup complete.
+
+Size: ${session.laminateSpec.size}
+Quantity: ${session.laminateSpec.quantity}
+
+Please upload your file/image now.`
+  );
+
+  return res.sendStatus(200);
+}
 if (session.stage === "JOB_SELECT_ROLE" && type === "text") {
   const roleMap = {
     "1": "Graphic Designer",
@@ -1008,7 +1137,14 @@ Our team will review and contact you shortly.`
         session.lastServiceJobId = job?.id || null;
         session.stage = "SERVICE_WAITING_EXTRA_NOTES";
 
-        await sendMessage(from, "✅ Image received. Send your instruction now.");
+        await sendMessage(
+  from,
+  `✅ Image received.
+
+Please send your instruction now as text or voice note.
+
+Our team will contact you shortly on WhatsApp.`
+);
         return res.sendStatus(200);
       }
 if (session.stage === "LESSON_WAITING_UPLOAD") {
@@ -1050,7 +1186,14 @@ Our team will contact you shortly on WhatsApp.`
         session.lastServiceJobId = job?.id || null;
         session.stage = "SERVICE_WAITING_EXTRA_NOTES";
 
-        await sendMessage(from, "✅ Video received. Send your instruction now.");
+        await sendMessage(
+  from,
+  `✅ Video received.
+
+Please send your instruction now as text or voice note.
+
+Our team will contact you shortly on WhatsApp.`
+);
         return res.sendStatus(200);
       }
 
@@ -1067,7 +1210,14 @@ Our team will contact you shortly on WhatsApp.`
         session.lastServiceJobId = job?.id || null;
         session.stage = "SERVICE_WAITING_EXTRA_NOTES";
 
-        await sendMessage(from, "✅ ID photo received. Send your instruction now.");
+        await sendMessage(
+  from,
+  `✅ ID photo received.
+
+Please send your instruction now as text or voice note.
+
+Our team will contact you shortly on WhatsApp.`
+);
         return res.sendStatus(200);
       }
     }
