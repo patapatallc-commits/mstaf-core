@@ -848,34 +848,10 @@ if (session.stage === "SERVICE_WAITING_EXTRA_NOTES") {
       );
       session.lastServiceJobId = job?.id || null;
     }
-if (type === "audio" && message.audio?.id) {
-  if (!session.lastServiceJobId) {
-    const job = await createTextOnlyServiceJob(
-      session.selectedService || "AGENT_REQUEST",
-      "Voice instruction"
-    );
-    session.lastServiceJobId = job?.id || null;
-  }
 
-  await attachAudioToExistingJob(
-    session.lastServiceJobId,
-    message.audio.id,
-    message.audio?.mime_type || "audio/ogg"
-  );
-
-  await sendMessage(
-    from,
-    `✅ Your voice instruction has been received.
-
-Our team will contact you shortly on WhatsApp.`
-  );
-
-  session.stage = "MENU";
-  return res.sendStatus(200);
-}
     await sendMessage(
       from,
-      `✅ Your request has been received.
+      `✅ Your instruction has been received.
 
 Our team will contact you shortly on WhatsApp.`
     );
@@ -885,13 +861,19 @@ Our team will contact you shortly on WhatsApp.`
   }
 
   if (type === "audio" && message.audio?.id) {
-    if (session.lastServiceJobId) {
-      await attachAudioToExistingJob(
-        session.lastServiceJobId,
-        message.audio.id,
-        message.audio?.mime_type || "audio/ogg"
+    if (!session.lastServiceJobId) {
+      const job = await createTextOnlyServiceJob(
+        session.selectedService || "AGENT_REQUEST",
+        "Voice instruction"
       );
+      session.lastServiceJobId = job?.id || null;
     }
+
+    await attachAudioToExistingJob(
+      session.lastServiceJobId,
+      message.audio.id,
+      message.audio?.mime_type || "audio/ogg"
+    );
 
     await sendMessage(
       from,
@@ -904,7 +886,7 @@ Our team will contact you shortly on WhatsApp.`
     return res.sendStatus(200);
   }
 
-  await sendMessage(from, "Please send your request as text or voice note.");
+  await sendMessage(from, "Please send your instruction as text or voice note.");
   return res.sendStatus(200);
 }
 
@@ -931,9 +913,17 @@ Our team will contact you shortly on WhatsApp.`
         session.lastServiceJobId = job?.id || null;
         session.stage = "SERVICE_WAITING_EXTRA_NOTES";
 
-        await sendMessage(from, "✅ Image received. Send your instruction now.");
-        return res.sendStatus(200);
-      }
+      await sendMessage(
+  from,
+  `✅ Image received.
+
+Please send your instruction now.
+
+You can send it as:
+- Text message
+- Voice note / audio`
+);
+return res.sendStatus(200);
 if (session.stage === "LESSON_WAITING_UPLOAD") {
   const job = await createJobFromMedia({
     printerId: AGENT_QUEUE_ID,
@@ -950,13 +940,17 @@ if (session.stage === "LESSON_WAITING_UPLOAD") {
   session.stage = "SERVICE_WAITING_EXTRA_NOTES";
 
   await sendMessage(
-    from,
-    `✅ Lesson / Homework file received.
+  from,
+  `✅ Lesson / Homework file received.
 
-Please send your instruction now as text or voice note.
+Please send your instruction now.
+
+You can send it as:
+- Text message
+- Voice note / audio
 
 Our team will contact you shortly on WhatsApp.`
-  );
+);
 
   return res.sendStatus(200);
 }
@@ -973,7 +967,16 @@ Our team will contact you shortly on WhatsApp.`
         session.lastServiceJobId = job?.id || null;
         session.stage = "SERVICE_WAITING_EXTRA_NOTES";
 
-        await sendMessage(from, "✅ Video received. Send your instruction now.");
+        await sendMessage(
+  from,
+  `✅ Video received.
+
+Please send your instruction now.
+
+You can send it as:
+- Text message
+- Voice note / audio`
+);
         return res.sendStatus(200);
       }
 
@@ -990,7 +993,16 @@ Our team will contact you shortly on WhatsApp.`
         session.lastServiceJobId = job?.id || null;
         session.stage = "SERVICE_WAITING_EXTRA_NOTES";
 
-        await sendMessage(from, "✅ ID photo received. Send your instruction now.");
+      await sendMessage(
+  from,
+  `✅ ID photo received.
+
+Please send your instruction now.
+
+You can send it as:
+- Text message
+- Voice note / audio`
+);
         return res.sendStatus(200);
       }
     }
@@ -1010,6 +1022,28 @@ ${serviceMenu()}`
     return res.sendStatus(200);
   }
 });
+async function attachTextToExistingJob(jobId, text) {
+  try {
+    await pool.query(
+      `UPDATE print_jobs SET instructions = COALESCE(instructions, '') || $1 WHERE id = $2`,
+      [`\n${text}`, jobId]
+    );
+  } catch (err) {
+    console.error("Attach text error:", err);
+  }
+}
+async function attachAudioToExistingJob(jobId, mediaId) {
+  try {
+    const audioUrl = buildWhatsAppMediaUrl(mediaId);
+
+    await pool.query(
+      `UPDATE print_jobs SET instruction_audio_url = $1 WHERE id = $2`,
+      [audioUrl, jobId]
+    );
+  } catch (err) {
+    console.error("Attach audio error:", err);
+  }
+}
 // ========================
 // HEALTH
 // ========================
