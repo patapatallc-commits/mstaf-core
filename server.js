@@ -1189,50 +1189,6 @@ Reply:
 
   return res.sendStatus(200);
 }
-if (session.stage === "PRINT_PAYMENT_CHOICE" && type === "text") {
-  if (lower === "1") {
-    session.stage = "DONE";
-    await sendMessage(
-      from,
-      `✅ Shopify payment noted.
-
-Our team will contact you shortly on WhatsApp.`
-    );
-    return res.sendStatus(200);
-  }
-
-  if (lower === "2") {
-    session.stage = "DONE";
-    await sendMessage(
-      from,
-      `✅ Africa Payment noted.
-
-Our team will contact you shortly on WhatsApp.`
-    );
-    return res.sendStatus(200);
-  }
-
-  if (lower === "3") {
-    session.stage = "SERVICE_WAITING_EXTRA_NOTES";
-    await sendMessage(
-      from,
-      `👨‍💼 Continue with Agent selected.
-
-Please send any additional instruction as text or voice note.`
-    );
-    return res.sendStatus(200);
-  }
-
-  await sendMessage(
-    from,
-    `Please choose:
-
-1 - I paid with Shopify
-2 - I paid with Africa Payment
-3 - Continue with Agent`
-  );
-  return res.sendStatus(200);
-}
       if (session.stage === "JOB_WAITING_CV") {
   const job = await createJobFromMedia({
     printerId: AGENT_QUEUE_ID,
@@ -1357,7 +1313,57 @@ Our team will contact you shortly on WhatsApp.`
         return res.sendStatus(200);
       }
     }
+if (session.stage === "PRINT_PAYMENT_CHOICE" && type === "text") {
+  if (lower === "1") {
+    session.stage = "DONE";
 
+    await sendMessage(
+      from,
+      `✅ Shopify payment noted.
+
+Our team will contact you shortly on WhatsApp.`
+    );
+
+    return res.sendStatus(200);
+  }
+
+  if (lower === "2") {
+    session.stage = "DONE";
+
+    await sendMessage(
+      from,
+      `✅ Africa Payment noted.
+
+Our team will contact you shortly on WhatsApp.`
+    );
+
+    return res.sendStatus(200);
+  }
+
+  if (lower === "3") {
+    session.stage = "SERVICE_WAITING_EXTRA_NOTES";
+
+    await sendMessage(
+      from,
+      `👨‍💼 Continue with Agent selected.
+
+Please send any additional instruction as text or voice note.`
+    );
+
+    return res.sendStatus(200);
+  }
+
+  await sendMessage(
+    from,
+    `Please choose:
+
+1 - I paid with Shopify
+2 - I paid with Africa Payment
+3 - Continue with Agent`
+  );
+
+  return res.sendStatus(200);
+}
   // Only show menu if already in MENU stage
 else if (session.stage === "MENU") {
   await sendMessage(
