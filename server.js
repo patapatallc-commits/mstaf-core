@@ -77,7 +77,7 @@ const pool = new Pool({
   },
 });
 // Ensure uploads folder exists
-
+const path = require("path");
 
 // Multer storage
 
@@ -103,7 +103,6 @@ const axios = require("axios");
 require("dotenv").config();
 
 const app = express();
-const path = require("path");
 
 
 app.use("/uploads", express.static(uploadsDir));
