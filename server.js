@@ -104,12 +104,10 @@ require("dotenv").config();
 
 const app = express();
 const path = require("path");
-
-
-const uploadsDir = path.join(__dirname, "uploads");
-fs.mkdirSync(uploadsDir, { recursive: true });
+const uploadsDir = path.resolve("uploads");
 
 app.use("/uploads", express.static(uploadsDir));
+
 app.use(express.static("public"));
 app.get("/", (req, res) => {
   res.sendFile(path.join(__dirname, "public", "index.html"));
