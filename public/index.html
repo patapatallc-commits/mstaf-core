@@ -5,20 +5,25 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 
   <style>
-    body {
-      margin: 0;
-      background: #000;
-      font-family: Arial, sans-serif;
-      display: flex;
-      justify-content: center;
-    }
+   html, body {
+  margin: 0;
+  padding: 0;
+  background: #000;
+  font-family: Arial, sans-serif;
+  width: 100%;
+  overflow-x: hidden;
+}
 
-    .container {
-      position: relative;
-      width: 100%;
-      max-width: 1200px;
-    }
+body {
+  display: block;
+}
 
+.container {
+  position: relative;
+  width: 100%;
+  max-width: 1200px;
+  margin: 0 auto;
+}
     .landing-img {
       width: 100%;
       display: block;
@@ -74,6 +79,34 @@
         top: 60%;
       }
     }
+    @media (max-width: 700px) {
+  .container {
+    max-width: none;
+    width: 100vw;
+  }
+
+  .landing-img {
+    width: 100vw;
+    height: auto;
+  }
+
+  .cv-flash {
+    top: 55%;
+    font-size: 13px;
+    padding: 12px 20px;
+    max-width: 85vw;
+    text-align: center;
+  }
+
+  /* Adjust clickable zones for mobile */
+  .top-upload { left: 30%; top: 35.5%; width: 19%; height: 6%; }
+  .top-whatsapp { left: 49%; top: 35.5%; width: 22%; height: 6%; }
+
+  .card-upload { left: 9%; top: 83%; width: 14%; height: 5%; }
+  .card-laminate { left: 31%; top: 83%; width: 15%; height: 5%; }
+  .card-image { left: 52%; top: 83%; width: 15%; height: 5%; }
+  .card-video { left: 74%; top: 83%; width: 15%; height: 5%; }
+}
   </style>
 </head>
 
