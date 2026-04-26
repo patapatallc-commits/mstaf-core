@@ -1625,6 +1625,15 @@ async function getPrintJobsColumns() {
   `);
   return new Set(q.rows.map(r => r.column_name));
 }
+app.get("/dashboard", (req, res) => {
+  const key = req.query.key;
+
+  if (!key || key !== process.env.DASHBOARD_KEY) {
+    return res.status(403).send("Access denied");
+  }
+
+  res.sendFile(path.join(__dirname, "public", "index.html"));
+});
 
 /**
  * Main jobs API
