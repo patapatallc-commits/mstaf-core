@@ -1,21 +1,98 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Upload File</title>
+  <title>PATAPATA Print-O-Matic Upload</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <style>
+    body{
+      margin:0;
+      font-family: Arial, sans-serif;
+      background: linear-gradient(135deg,#020617,#0f172a,#1e3a8a);
+      color:white;
+      min-height:100vh;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+    }
+
+    .card{
+      width:100%;
+      max-width:600px;
+      background:rgba(255,255,255,0.08);
+      border:1px solid rgba(255,255,255,0.2);
+      border-radius:20px;
+      padding:30px;
+      backdrop-filter:blur(10px);
+      box-shadow:0 20px 60px rgba(0,0,0,0.5);
+    }
+
+    h2{
+      text-align:center;
+      margin-bottom:20px;
+    }
+
+    input, textarea{
+      width:100%;
+      padding:12px;
+      margin-top:10px;
+      border-radius:10px;
+      border:none;
+      outline:none;
+      font-size:14px;
+    }
+
+    textarea{
+      min-height:80px;
+    }
+
+    button{
+      width:100%;
+      padding:14px;
+      margin-top:20px;
+      border:none;
+      border-radius:12px;
+      background:linear-gradient(90deg,#22c55e,#16a34a);
+      color:white;
+      font-size:16px;
+      font-weight:bold;
+      cursor:pointer;
+    }
+
+    button:hover{
+      opacity:0.9;
+    }
+
+    .file-box{
+      border:2px dashed rgba(255,255,255,0.4);
+      padding:20px;
+      text-align:center;
+      border-radius:12px;
+      margin-top:10px;
+    }
+
+  </style>
 </head>
-<body style="font-family: Arial; padding: 40px;">
 
-  <h2>Upload File to Print-O-Matic</h2>
+<body>
 
-  <form action="/api/upload" method="POST" enctype="multipart/form-data">
-    <input type="file" name="file" required /><br><br>
+  <div class="card">
+    <h2>Upload File to Print-O-Matic</h2>
 
-    <input type="text" name="customer_phone" placeholder="Phone number" /><br><br>
+    <form action="/api/upload" method="POST" enctype="multipart/form-data">
 
-    <textarea name="instructions" placeholder="Instructions"></textarea><br><br>
+      <div class="file-box">
+        <input type="file" name="file" required>
+      </div>
 
-    <button type="submit">Upload</button>
-  </form>
+      <input type="text" name="customer_phone" placeholder="Phone number">
+
+      <textarea name="instructions" placeholder="Instructions"></textarea>
+
+      <button type="submit">Upload File</button>
+
+    </form>
+  </div>
 
 </body>
 </html>
