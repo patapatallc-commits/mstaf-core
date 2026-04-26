@@ -1320,6 +1320,10 @@ Our team will contact you shortly on WhatsApp.`
     }
 if (session.stage === "PRINT_PAYMENT_CHOICE" && type === "text") {
   if (lower === "1") {
+    if (session.lastServiceJobId) {
+      await attachTextToExistingJob(session.lastServiceJobId, "Payment choice: Shopify payment marked as paid by customer");
+    }
+
     session.stage = "DONE";
 
     await sendMessage(
@@ -1333,6 +1337,10 @@ Our team will contact you shortly on WhatsApp.`
   }
 
   if (lower === "2") {
+    if (session.lastServiceJobId) {
+      await attachTextToExistingJob(session.lastServiceJobId, "Payment choice: Africa Payment marked as paid by customer");
+    }
+
     session.stage = "DONE";
 
     await sendMessage(
@@ -1346,13 +1354,19 @@ Our team will contact you shortly on WhatsApp.`
   }
 
   if (lower === "3") {
+    if (session.lastServiceJobId) {
+      await attachTextToExistingJob(session.lastServiceJobId, "Payment choice: Continue with Agent");
+    }
+
     session.stage = "SERVICE_WAITING_EXTRA_NOTES";
 
     await sendMessage(
       from,
       `👨‍💼 Continue with Agent selected.
 
-Please send any additional instruction as text or voice note.`
+Please send any additional instruction as text or voice note.
+
+Our team will contact you shortly on WhatsApp.`
     );
 
     return res.sendStatus(200);
