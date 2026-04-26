@@ -1632,7 +1632,7 @@ app.get("/dashboard", (req, res) => {
     return res.status(403).send("Access denied");
   }
 
-  res.sendFile(path.join(__dirname, "public", "index.html"));
+  res.send(renderDashboardHtml());
 });
 
 /**
