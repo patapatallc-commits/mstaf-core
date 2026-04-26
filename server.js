@@ -104,7 +104,7 @@ require("dotenv").config();
 
 const app = express();
 const path = require("path");
-const fs = require("fs");
+
 
 const uploadsDir = path.join(__dirname, "uploads");
 fs.mkdirSync(uploadsDir, { recursive: true });
