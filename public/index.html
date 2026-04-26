@@ -3,7 +3,6 @@
 <head>
   <title>PATAPATA Print-O-Matic</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-
   <style>
     body {
       margin: 0;
@@ -25,9 +24,19 @@
       display: block;
     }
 
-    /* BUTTON BASE */
-    .btn {
+    .button-group {
       position: absolute;
+      top: 52%;
+      left: 0;
+      width: 100%;
+      display: flex;
+      justify-content: center;
+      gap: 20px;
+      flex-wrap: wrap;
+      z-index: 5;
+    }
+
+    .btn {
       padding: 16px 28px;
       border-radius: 12px;
       font-weight: bold;
@@ -36,45 +45,35 @@
       font-size: 16px;
       text-align: center;
       white-space: nowrap;
+      box-shadow: 0 10px 25px rgba(0,0,0,0.25);
     }
 
-    /* TOP HERO BUTTONS (ONLY ONES THAT REMAIN) */
     .upload-btn {
-      background: #2563eb;
-      top: 44%;
-      left: 32%;
+      background: linear-gradient(90deg,#2563eb,#1d4ed8);
     }
 
     .whatsapp-btn {
-      background: #22c55e;
-      top: 44%;
-      left: 52%;
+      background: linear-gradient(90deg,#22c55e,#16a34a);
     }
 
     .cv-btn {
-      background: #9333ea;
-      top: 44%;
-      left: 72%;
+      background: linear-gradient(90deg,#9333ea,#7e22ce);
     }
 
-    /* MOBILE */
+    .btn:hover {
+      transform: translateY(-2px);
+      opacity: 0.95;
+    }
+
     @media (max-width: 768px) {
-      .upload-btn {
+      .button-group {
         top: 50%;
-        left: 10%;
-        padding: 12px 16px;
+        gap: 10px;
       }
 
-      .whatsapp-btn {
-        top: 50%;
-        left: 40%;
-        padding: 12px 16px;
-      }
-
-      .cv-btn {
-        top: 50%;
-        left: 70%;
-        padding: 12px 16px;
+      .btn {
+        padding: 11px 14px;
+        font-size: 13px;
       }
     }
   </style>
@@ -83,25 +82,20 @@
 <body>
 
 <div class="container">
-
-  <!-- IMAGE -->
   <img src="/printomatic-landing.png" class="landing-img" />
 
-  <!-- ONLY THESE 3 BUTTONS EXIST NOW -->
+  <div class="button-group">
+    <a href="/upload.html" class="btn upload-btn">Upload & Print</a>
 
-  <a href="/upload.html" class="btn upload-btn">
-    Upload & Print
-  </a>
+    <a href="https://wa.me/18682372173" class="btn whatsapp-btn">
+      Chat on WhatsApp
+    </a>
 
-  <a href="https://wa.me/18682372173" class="btn whatsapp-btn">
-    Chat on WhatsApp
-  </a>
-
-  <a href="https://wa.me/18682372173?text=Hello%20I%20want%20to%20submit%20my%20CV"
-     class="btn cv-btn">
-    Submit CV
-  </a>
-
+    <a href="https://wa.me/18682372173?text=Hello%20I%20want%20to%20submit%20my%20CV"
+       class="btn cv-btn">
+      Submit CV
+    </a>
+  </div>
 </div>
 
 </body>
