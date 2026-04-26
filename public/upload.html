@@ -118,5 +118,42 @@
       }
     });
   </script>
+  <script>
+const dropZone = document.getElementById("dropZone");
+const fileInput = document.getElementById("fileInput");
+
+// CLICK to open file picker
+dropZone.addEventListener("click", () => {
+  fileInput.click();
+});
+
+// When file is selected manually
+fileInput.addEventListener("change", () => {
+  if (fileInput.files.length > 0) {
+    dropZone.innerHTML = "✅ " + fileInput.files[0].name;
+  }
+});
+
+// DRAG OVER
+dropZone.addEventListener("dragover", (e) => {
+  e.preventDefault();
+  dropZone.style.borderColor = "#22c55e";
+});
+
+// DRAG LEAVE
+dropZone.addEventListener("dragleave", () => {
+  dropZone.style.borderColor = "rgba(255,255,255,0.4)";
+});
+
+// DROP FILE
+dropZone.addEventListener("drop", (e) => {
+  e.preventDefault();
+  fileInput.files = e.dataTransfer.files;
+
+  if (fileInput.files.length > 0) {
+    dropZone.innerHTML = "📂 " + fileInput.files[0].name;
+  }
+});
+</script>
 </body>
 </html>
