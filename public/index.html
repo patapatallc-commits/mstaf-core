@@ -3,6 +3,7 @@
 <head>
   <title>PATAPATA Print-O-Matic</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
   <style>
     body {
       margin: 0;
@@ -24,7 +25,7 @@
       display: block;
     }
 
-    /* BUTTON OVERLAYS */
+    /* BUTTON BASE */
     .btn {
       position: absolute;
       padding: 16px 28px;
@@ -33,41 +34,52 @@
       text-decoration: none;
       color: white;
       font-size: 16px;
+      text-align: center;
+      white-space: nowrap;
     }
 
+    /* BUTTON POSITIONS */
     .upload-btn {
       background: #1e63ff;
       top: 52%;
-      left: 35%;
+      left: 28%;
     }
 
     .whatsapp-btn {
       background: #25D366;
       top: 52%;
-      left: 52%;
+      left: 48%;
     }
 
+    .cv-btn {
+      background: #9333ea;
+      top: 52%;
+      left: 70%;
+    }
+
+    /* MOBILE FIX */
     @media (max-width: 768px) {
       .upload-btn {
-        top: 55%;
-        left: 20%;
-        padding: 12px 18px;
+        top: 58%;
+        left: 10%;
+        padding: 12px 16px;
       }
 
       .whatsapp-btn {
-        top: 55%;
-        left: 55%;
-        padding: 12px 18px;
+        top: 58%;
+        left: 40%;
+        padding: 12px 16px;
+      }
+
+      .cv-btn {
+        top: 58%;
+        left: 70%;
+        padding: 12px 16px;
       }
     }
-    /* FORCE ALL BUTTONS TO BLUE */
-a,
-button,
-[class*="btn"] {
-  background: linear-gradient(90deg, #2563eb, #1d4ed8) !important;
-  color: #fff !important;
-  border: none !important;
-}
+
+    /* REMOVE GLOBAL FORCE (was breaking colors) */
+    /* DELETE old global blue override */
   </style>
 </head>
 
@@ -75,17 +87,21 @@ button,
 
 <div class="container">
 
-  <!-- EXACT IMAGE -->
+  <!-- LANDING IMAGE -->
   <img src="/printomatic-landing.png" class="landing-img" />
 
   <!-- BUTTONS -->
- <a href="/upload.html" class="btn upload-btn">
-  Upload & Print
-</a>
+  <a href="/upload.html" class="btn upload-btn">
+    Upload & Print
+  </a>
 
-  <a href="https://wa.me/18682372173"
-     class="btn whatsapp-btn">
-     Chat on WhatsApp
+  <a href="https://wa.me/18682372173" class="btn whatsapp-btn">
+    Chat on WhatsApp
+  </a>
+
+  <a href="https://wa.me/18682372173?text=Hello%20I%20want%20to%20submit%20my%20CV" 
+     class="btn cv-btn">
+    Submit CV
   </a>
 
 </div>
