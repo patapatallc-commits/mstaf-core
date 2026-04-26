@@ -11,11 +11,9 @@
       font-family: Arial, sans-serif;
       display: flex;
       justify-content: center;
-      align-items: flex-start;
     }
 
     .container {
-      position: relative;
       width: 100%;
       max-width: 1200px;
     }
@@ -24,90 +22,13 @@
       width: 100%;
       display: block;
     }
-
-    /* BUTTON ROW */
-    .button-group {
-      position: absolute;
-      top: 52%;
-      width: 100%;
-      display: flex;
-      justify-content: center;
-      gap: 20px;
-      z-index: 5;
-    }
-
-    .btn {
-      padding: 14px 26px;
-      border-radius: 12px;
-      font-weight: bold;
-      text-decoration: none;
-      color: white;
-      font-size: 15px;
-      box-shadow: 0 10px 25px rgba(0,0,0,0.3);
-      transition: 0.2s ease;
-    }
-
-    .btn:hover {
-      transform: translateY(-2px);
-      opacity: 0.95;
-    }
-
-    .upload-btn {
-      background: linear-gradient(90deg,#2563eb,#1d4ed8);
-    }
-
-    .whatsapp-btn {
-      background: linear-gradient(90deg,#22c55e,#16a34a);
-    }
-
-    .cv-btn {
-      background: linear-gradient(90deg,#9333ea,#7e22ce);
-    }
-
-    /* MOBILE */
-    @media (max-width: 768px) {
-      .button-group {
-        flex-direction: column;
-        align-items: center;
-        top: 58%;
-        gap: 12px;
-      }
-
-      .btn {
-        width: 70%;
-        text-align: center;
-        font-size: 14px;
-      }
-    }
-
   </style>
 </head>
 
 <body>
 
 <div class="container">
-
-  <!-- BACKGROUND IMAGE -->
   <img src="/printomatic-landing.png" class="landing-img" />
-
-  <!-- BUTTONS (NO DUPLICATES, PERFECT ALIGNMENT) -->
-  <div class="button-group">
-
-    <a href="/upload.html" class="btn upload-btn">
-      Upload & Print
-    </a>
-
-    <a href="https://wa.me/18682372173" class="btn whatsapp-btn">
-      Chat on WhatsApp
-    </a>
-
-    <a href="https://wa.me/18682372173?text=Hello%20I%20want%20to%20submit%20my%20CV"
-       class="btn cv-btn">
-      Submit CV
-    </a>
-
-  </div>
-
 </div>
 
 </body>
