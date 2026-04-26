@@ -80,10 +80,10 @@
     <h2>Upload File to Print-O-Matic</h2>
 
     <form action="/api/upload" method="POST" enctype="multipart/form-data">
-
-      <div class="file-box">
-        <input type="file" name="file" required>
-      </div>
+<div class="file-box" id="dropZone">
+  <p>📂 Drag & Drop file here or click to upload</p>
+  <input type="file" name="file" id="fileInput" required hidden>
+</div>
 
       <input type="text" name="customer_phone" placeholder="Phone number">
 
@@ -93,6 +93,26 @@
 
     </form>
   </div>
+<script>
+const dropZone = document.getElementById("dropZone");
+const fileInput = document.getElementById("fileInput");
 
+dropZone.addEventListener("click", () => fileInput.click());
+
+dropZone.addEventListener("dragover", (e) => {
+  e.preventDefault();
+  dropZone.style.borderColor = "#22c55e";
+});
+
+dropZone.addEventListener("dragleave", () => {
+  dropZone.style.borderColor = "rgba(255,255,255,0.4)";
+});
+
+dropZone.addEventListener("drop", (e) => {
+  e.preventDefault();
+  fileInput.files = e.dataTransfer.files;
+  dropZone.innerHTML = "✅ " + e.dataTransfer.files[0].name;
+});
+</script>
 </body>
 </html>
