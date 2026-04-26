@@ -103,6 +103,7 @@ const axios = require("axios");
 require("dotenv").config();
 
 const app = express();
+app.use(express.static("public"));
 app.use(express.json({ limit: "20mb" }));
 const cors = require("cors");
 
