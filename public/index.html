@@ -14,6 +14,7 @@
     }
 
     .container {
+      position: relative;
       width: 100%;
       max-width: 1200px;
     }
@@ -22,13 +23,52 @@
       width: 100%;
       display: block;
     }
+
+    /* SINGLE CV BUTTON */
+    .cv-btn {
+      position: absolute;
+      top: 60%; /* adjust slightly if needed */
+      left: 50%;
+      transform: translateX(-50%);
+      padding: 14px 26px;
+      border-radius: 12px;
+      font-weight: bold;
+      text-decoration: none;
+      color: white;
+      font-size: 15px;
+      background: linear-gradient(90deg,#9333ea,#7e22ce);
+      box-shadow: 0 10px 25px rgba(0,0,0,0.3);
+      z-index: 5;
+    }
+
+    .cv-btn:hover {
+      opacity: 0.9;
+      transform: translateX(-50%) translateY(-2px);
+    }
+
+    @media (max-width: 768px) {
+      .cv-btn {
+        top: 65%;
+        font-size: 13px;
+        padding: 11px 18px;
+      }
+    }
+
   </style>
 </head>
 
 <body>
 
 <div class="container">
+
   <img src="/printomatic-landing.png" class="landing-img" />
+
+  <!-- ONLY CV BUTTON -->
+  <a href="https://wa.me/18682372173?text=Hello%20I%20want%20to%20submit%20my%20CV"
+     class="cv-btn">
+     Submit CV
+  </a>
+
 </div>
 
 </body>
