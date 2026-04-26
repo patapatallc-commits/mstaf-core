@@ -103,9 +103,16 @@ const axios = require("axios");
 require("dotenv").config();
 
 const app = express();
+const path = require("path");
+const fs = require("fs");
+
+const uploadsDir = path.join(__dirname, "uploads");
+fs.mkdirSync(uploadsDir, { recursive: true });
+
+app.use("/uploads", express.static(uploadsDir));
 app.use(express.static("public"));
 app.get("/", (req, res) => {
-  res.sendFile(require("path").join(__dirname, "public", "index.html"));
+  res.sendFile(path.join(__dirname, "public", "index.html"));
 });
 app.use(express.json({ limit: "20mb" }));
 const cors = require("cors");
