@@ -104,6 +104,9 @@ require("dotenv").config();
 
 const app = express();
 app.use(express.static("public"));
+app.get("/", (req, res) => {
+  res.sendFile(require("path").join(__dirname, "public", "index.html"));
+});
 app.use(express.json({ limit: "20mb" }));
 const cors = require("cors");
 
