@@ -66,7 +66,7 @@ async function downloadWhatsAppMediaToUploads(mediaId, fallbackName, mimeType, r
 }
 
 const multer = require("multer");
-const path = require("path");
+// const path already exists above
 const fs = require("fs");
 const { Pool } = require("pg");
 
