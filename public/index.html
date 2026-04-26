@@ -14,7 +14,6 @@
     }
 
     .container {
-      position: relative;
       width: 100%;
       max-width: 1200px;
     }
@@ -23,80 +22,12 @@
       width: 100%;
       display: block;
     }
-
-    .button-group {
-      position: absolute;
-      top: 52%;
-      left: 0;
-      width: 100%;
-      display: flex;
-      justify-content: center;
-      gap: 20px;
-      flex-wrap: wrap;
-      z-index: 5;
-    }
-
-    .btn {
-      padding: 16px 28px;
-      border-radius: 12px;
-      font-weight: bold;
-      text-decoration: none;
-      color: white;
-      font-size: 16px;
-      text-align: center;
-      white-space: nowrap;
-      box-shadow: 0 10px 25px rgba(0,0,0,0.25);
-    }
-
-    .upload-btn {
-      background: linear-gradient(90deg,#2563eb,#1d4ed8);
-    }
-
-    .whatsapp-btn {
-      background: linear-gradient(90deg,#22c55e,#16a34a);
-    }
-
-    .cv-btn {
-      background: linear-gradient(90deg,#9333ea,#7e22ce);
-    }
-
-    .btn:hover {
-      transform: translateY(-2px);
-      opacity: 0.95;
-    }
-
-    @media (max-width: 768px) {
-      .button-group {
-        top: 50%;
-        gap: 10px;
-      }
-
-      .btn {
-        padding: 11px 14px;
-        font-size: 13px;
-      }
-    }
   </style>
 </head>
 
 <body>
-
-<div class="container">
-  <img src="/printomatic-landing.png" class="landing-img" />
-
-  <div class="button-group">
-    <a href="/upload.html" class="btn upload-btn">Upload & Print</a>
-
-    <a href="https://wa.me/18682372173" class="btn whatsapp-btn">
-      Chat on WhatsApp
-    </a>
-
-    <a href="https://wa.me/18682372173?text=Hello%20I%20want%20to%20submit%20my%20CV"
-       class="btn cv-btn">
-      Submit CV
-    </a>
+  <div class="container">
+    <img src="/printomatic-landing.png" class="landing-img" />
   </div>
-</div>
-
 </body>
 </html>
