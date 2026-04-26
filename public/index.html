@@ -4,177 +4,105 @@
   <title>PATAPATA Print-O-Matic</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <style>
-    * { box-sizing: border-box; }
-    body {
-      margin: 0;
-      font-family: Arial, sans-serif;
-      background: #f4f7fb;
-      color: #0f172a;
+    *{box-sizing:border-box}
+    body{margin:0;font-family:Arial,Helvetica,sans-serif;background:#f4f7fb;color:#0f172a}
+    .top{background:#0866ff;color:white;text-align:center;padding:14px;font-weight:900;font-size:18px}
+    .hero{background:radial-gradient(circle at center,#071833 0%,#020617 70%);color:white;text-align:center;padding:70px 20px 60px}
+    .brand{display:flex;align-items:center;justify-content:center;gap:35px;flex-wrap:wrap}
+    .p-logo{
+      width:260px;height:170px;border-radius:40px;
+      background:linear-gradient(135deg,#00d9ff,#1463ff,#ff22b8,#ffd400);
+      clip-path:polygon(12% 15%,78% 15%,93% 32%,85% 52%,58% 56%,44% 83%,12% 83%,31% 56%,5% 56%,5% 39%,38% 39%,38% 31%,12% 31%);
+      box-shadow:0 0 35px rgba(0,217,255,.5);
     }
-    .top-banner {
-      background: #0b63ff;
-      color: white;
-      text-align: center;
-      padding: 12px;
-      font-weight: 900;
-    }
-    .hero {
-      background: radial-gradient(circle at top, #10204a, #020617 70%);
-      color: white;
-      text-align: center;
-      padding: 55px 20px;
-    }
-    .logo {
-      font-size: 54px;
-      font-weight: 900;
-      line-height: 1.1;
-      letter-spacing: -1px;
-    }
-    .logo span {
-      color: #ffd400;
-    }
-    .sub {
-      max-width: 760px;
-      margin: 20px auto;
-      font-size: 18px;
-      line-height: 1.6;
-      color: #e5e7eb;
-    }
-    .btn {
-      display: inline-block;
-      padding: 15px 22px;
-      border-radius: 14px;
-      margin: 8px;
-      text-decoration: none;
-      font-weight: 900;
-      color: white;
-      background: #0b63ff;
-    }
-    .btn-whatsapp { background: #25D366; color: #071b0d; }
-    .section {
-      max-width: 1200px;
-      margin: auto;
-      padding: 35px 18px;
-    }
-    .grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-      gap: 18px;
-    }
-    .card {
-      background: white;
-      padding: 24px;
-      border-radius: 22px;
-      box-shadow: 0 12px 35px rgba(0,0,0,.08);
-      border: 1px solid #e5e7eb;
-    }
-    .card h3 { font-size: 22px; }
-    .card p { color: #475569; line-height: 1.6; }
-    .badge {
-      display: inline-block;
-      background: #eaf2ff;
-      color: #0b63ff;
-      padding: 7px 12px;
-      border-radius: 999px;
-      font-size: 12px;
-      font-weight: 900;
-    }
-    .contact {
-      background: #020617;
-      color: white;
-      text-align: center;
-      padding: 35px 20px;
-    }
-    .footer {
-      text-align: center;
-      padding: 18px;
-      color: #64748b;
+    .title{text-align:left}
+    .title .patapata{font-size:48px;font-weight:900;font-style:italic;line-height:.9}
+    .title .print{font-size:70px;font-weight:900;font-style:italic;line-height:.95}
+    .title .o{background:linear-gradient(90deg,#00d9ff,#ff22b8);-webkit-background-clip:text;color:transparent}
+    .title .matic{color:#ffd400}
+    .sub{max-width:850px;margin:25px auto 0;font-size:23px;line-height:1.5;color:#fff}
+    .actions{margin-top:35px}
+    .btn{display:inline-block;padding:22px 45px;border-radius:12px;text-decoration:none;font-size:24px;font-weight:900;margin:10px;color:white;background:#0866ff}
+    .btn-whatsapp{background:#10b84f}
+    .section{max-width:1350px;margin:auto;padding:38px 22px}
+    h2{font-size:36px;margin:0 0 25px}
+    .grid{display:grid;grid-template-columns:repeat(4,1fr);gap:28px}
+    .card{background:white;border-radius:20px;padding:28px;box-shadow:0 10px 30px rgba(0,0,0,.08)}
+    .badge{display:inline-block;background:#eaf2ff;color:#0866ff;padding:8px 16px;border-radius:999px;font-weight:900;margin-bottom:20px}
+    .icon{font-size:45px;margin-bottom:10px}
+    .card h3{font-size:30px;margin:0 0 18px}
+    .card p{font-size:22px;line-height:1.35;color:#334155}
+    .card .btn{font-size:22px;padding:16px 34px;margin-top:15px}
+    @media(max-width:900px){
+      .grid{grid-template-columns:1fr}
+      .title{text-align:center}
+      .title .print{font-size:48px}
+      .title .patapata{font-size:36px}
+      .p-logo{width:190px;height:125px}
     }
   </style>
 </head>
-
 <body>
 
-<div class="top-banner">
-  🇺🇸 MADE & SHIPPED FROM THE USA — Powered by PATAPATA
-</div>
+<div class="top">🇺🇸 MADE & SHIPPED FROM THE USA — Powered by PATAPATA</div>
 
-<div class="hero">
-  <div class="logo">
-    PATAPATA<br>
-    PRINT-<span>O-MATIC</span>
+<section class="hero">
+  <div class="brand">
+    <div class="p-logo"></div>
+    <div class="title">
+      <div class="patapata">PATAPATA</div>
+      <div class="print">PRINT-<span class="o">O</span>-<span class="matic">MATIC</span></div>
+    </div>
   </div>
 
   <div class="sub">
-    Upload, print, laminate, create flyers, banners, ID cards, edit images and videos,
-    submit CVs, and connect with trusted service agents — all from one global print network.
+    Upload, print, laminate, edit images and videos, submit CVs,<br>
+    and connect with trusted service agents — all from one global print network.
   </div>
 
-  <a class="btn" href="https://www.patapata.us/pages/print-documents-images">📄 Upload & Print</a>
-  <a class="btn btn-whatsapp" href="https://wa.me/18628372173?text=Hello%20PATAPATA%2C%20I%20need%20help%20with%20Print-O-Matic">💬 WhatsApp</a>
-</div>
+  <div class="actions">
+    <a class="btn" href="https://www.patapata.us/pages/print-documents-images">📄 Upload & Print</a>
+    <a class="btn btn-whatsapp" href="https://wa.me/18628372173?text=Hello%20PATAPATA%2C%20I%20need%20help%20with%20Print-O-Matic">💬 Chat on WhatsApp</a>
+  </div>
+</section>
 
-<div class="section">
+<section class="section">
   <h2>Our Services</h2>
 
   <div class="grid">
-
     <div class="card">
       <span class="badge">Instant Upload</span>
-      <h3>📄 Print Documents</h3>
+      <div class="icon">🖨️</div>
+      <h3>Print Documents</h3>
       <p>Upload PDFs, documents, and images for fast printing.</p>
       <a class="btn" href="https://www.patapata.us/pages/print-documents-images">Upload & Print</a>
     </div>
 
     <div class="card">
-      <span class="badge">Promotion</span>
-      <h3>📰 Flyers & Banners</h3>
-      <p>Create promotional flyers, banners, posters, burial flyers, business ads, and event graphics.</p>
-      <a class="btn btn-whatsapp" href="https://wa.me/18628372173?text=I%20need%20flyers%20or%20banners%20for%20promotion">Order Now</a>
-    </div>
-
-    <div class="card">
-      <span class="badge">ID Service</span>
-      <h3>🪪 ID Card Printing</h3>
-      <p>Design and print ID cards for workers, students, events, churches, schools, and businesses.</p>
-      <a class="btn btn-whatsapp" href="https://wa.me/18628372173?text=I%20need%20ID%20card%20printing">Order ID Card</a>
-    </div>
-
-    <div class="card">
       <span class="badge">Protect Documents</span>
-      <h3>📑 Laminate</h3>
+      <div class="icon">🖨️</div>
+      <h3>Laminate</h3>
       <p>Laminate certificates, IDs, flyers, signs, and business documents.</p>
       <a class="btn btn-whatsapp" href="https://wa.me/18628372173?text=I%20want%20to%20laminate%20a%20document">Order via WhatsApp</a>
     </div>
 
     <div class="card">
       <span class="badge">Creative Service</span>
-      <h3>🖼 Image Editing</h3>
+      <div class="icon">🎨</div>
+      <h3>Image Editing</h3>
       <p>Background removal, product photo cleanup, flyers, and professional edits.</p>
       <a class="btn btn-whatsapp" href="https://wa.me/18628372173?text=I%20need%20image%20editing">Start Editing</a>
     </div>
 
     <div class="card">
       <span class="badge">Video Service</span>
-      <h3>🎬 Video Editing</h3>
+      <div class="icon">🎬</div>
+      <h3>Video Editing</h3>
       <p>Short videos, social media edits, business promos, and event clips.</p>
       <a class="btn btn-whatsapp" href="https://wa.me/18628372173?text=I%20need%20video%20editing">Start Video Edit</a>
     </div>
-
   </div>
-</div>
-
-<div class="contact">
-  <h2>Contact PATAPATA Print-O-Matic</h2>
-  <p><strong>Phone / WhatsApp:</strong> 1-862-837-2173</p>
-  <p><strong>Website:</strong> https://www.patapata.us</p>
-  <p><strong>WhatsApp:</strong> https://wa.me/18628372173</p>
-  <p><strong>Mobile App:</strong> Coming Soon for Android & iOS</p>
-</div>
-
-<div class="footer">
-  © PATAPATA PRINT-O-MATIC — Powered by PATAPATA Global Print Network
-</div>
+</section>
 
 </body>
 </html>
