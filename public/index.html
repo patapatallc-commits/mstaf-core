@@ -93,23 +93,43 @@ body {
     height: auto;
   }
 
+@media (max-width: 700px) {
+  html, body {
+    background: #000;
+    height: 100%;
+    overflow: hidden;
+  }
+
+  .container {
+    width: 100vw;
+    height: 100vh;
+    max-width: none;
+    overflow: hidden;
+    background: #000;
+  }
+
+  .landing-img {
+    width: 100vw;
+    height: 100vh;
+    object-fit: cover;
+    object-position: top center;
+  }
+
   .cv-flash {
-    top: 55%;
+    top: 54%;
     font-size: 13px;
     padding: 12px 20px;
     max-width: 85vw;
     text-align: center;
   }
 
-  /* Adjust clickable zones for mobile */
   .top-upload { left: 30%; top: 35.5%; width: 19%; height: 6%; }
   .top-whatsapp { left: 49%; top: 35.5%; width: 22%; height: 6%; }
 
-  .card-upload { left: 9%; top: 83%; width: 14%; height: 5%; }
-  .card-laminate { left: 31%; top: 83%; width: 15%; height: 5%; }
-  .card-image { left: 52%; top: 83%; width: 15%; height: 5%; }
-  .card-video { left: 74%; top: 83%; width: 15%; height: 5%; }
-
+  .card-upload { left: 9%; top: 82%; width: 14%; height: 5%; }
+  .card-laminate { left: 31%; top: 82%; width: 15%; height: 5%; }
+  .card-image { left: 52%; top: 82%; width: 15%; height: 5%; }
+  .card-video { left: 74%; top: 82%; width: 15%; height: 5%; }
 }
   </style>
 </head>
