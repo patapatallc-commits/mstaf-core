@@ -71,8 +71,27 @@
   display: none !important;
 }
 
-.cv-btn {
-  display: none !important;
+.cv-flash {
+  position: absolute;
+  top: 56%;
+  left: 50%;
+  transform: translateX(-50%);
+  background: linear-gradient(90deg, #9333ea, #7e22ce);
+  color: #fff;
+  padding: 14px 28px;
+  border-radius: 999px;
+  font-weight: 800;
+  text-decoration: none;
+  font-size: 16px;
+  box-shadow: 0 0 25px rgba(147, 51, 234, 0.8);
+  animation: flashPulse 1.2s infinite;
+  z-index: 20;
+}
+
+@keyframes flashPulse {
+  0% { opacity: 1; transform: translateX(-50%) scale(1); }
+  50% { opacity: 0.65; transform: translateX(-50%) scale(1.06); }
+  100% { opacity: 1; transform: translateX(-50%) scale(1); }
 }
   </style>
 </head>
@@ -82,6 +101,10 @@
 <div class="container">
 
   <img src="/printomatic-landing.png" class="landing-img" />
+  <a href="https://wa.me/18682372173?text=Hello%20I%20want%20to%20submit%20my%20CV%20for%20employment"
+   class="cv-flash">
+  💼 Submit CV for Employment
+</a>
  
 
  
