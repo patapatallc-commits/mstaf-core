@@ -24,18 +24,31 @@
       display: block;
     }
 
-    /* SINGLE CV BUTTON */
-    
+ .hero-buttons {
+  position: absolute;
+  top: 60%;              /* move slightly down */
+  left: 50%;
+  transform: translateX(-50%);   /* ONLY horizontal centering */
+  display: flex;
+    flex-direction: row;      /* ADD */
+  justify-content: center;  /* ADD */
+  align-items: center;      /* ADD */
+  gap: 15px;
+  z-index: 10;
+}
 
-   
+.btn {
+  padding: 14px 22px;
+  border-radius: 12px;
+  font-weight: bold;
+  text-decoration: none;
+  color: white;
+  font-size: 15px;
+}
 
-    @media (max-width: 768px) {
-      .cv-btn {
-        top: 65%;
-        font-size: 13px;
-        padding: 11px 18px;
-      }
-    }
+.upload-btn { background: #1e63ff; }
+.whatsapp-btn { background: #25D366; }
+.cv-btn { background: linear-gradient(90deg,#9333ea,#7e22ce); }
 
   </style>
 </head>
@@ -45,6 +58,18 @@
 <div class="container">
 
   <img src="/printomatic-landing.png" class="landing-img" />
+  <div class="hero-buttons">
+  <a href="/upload.html" class="btn upload-btn">Upload & Print</a>
+
+  <a href="https://wa.me/18682372173" class="btn whatsapp-btn">
+    Chat on WhatsApp
+  </a>
+
+  <a href="https://wa.me/18682372173?text=Hello%20I%20want%20to%20submit%20my%20CV"
+     class="btn cv-btn">
+     Submit CV
+  </a>
+</div>
 
  
 
