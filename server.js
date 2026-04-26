@@ -104,7 +104,7 @@ require("dotenv").config();
 
 const app = express();
 const path = require("path");
-const uploadsDir = path.resolve("uploads");
+
 
 app.use("/uploads", express.static(uploadsDir));
 
