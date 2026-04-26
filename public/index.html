@@ -2,108 +2,86 @@
 <html>
 <head>
   <title>PATAPATA Print-O-Matic</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <style>
-    *{box-sizing:border-box}
-    body{margin:0;font-family:Arial,Helvetica,sans-serif;background:#f4f8fd;color:#07111f}
-    .top{height:58px;background:#0767ff;color:#fff;display:flex;align-items:center;justify-content:center;font-size:20px;font-weight:900}
-    .hero{background:radial-gradient(circle at center,#071a3a 0%,#020817 70%);color:#fff;text-align:center;padding:62px 20px 52px}
-    .brand{display:flex;align-items:center;justify-content:center;gap:38px;flex-wrap:wrap}
-    .pmark{width:270px;height:175px;position:relative;filter:drop-shadow(0 0 24px rgba(0,180,255,.5))}
-    .pmark:before{content:"";position:absolute;inset:0;background:linear-gradient(135deg,#00e6ff 5%,#1268ff 35%,#ff23b8 62%,#ffd21c 92%);clip-path:polygon(10% 16%,74% 16%,90% 30%,84% 48%,59% 53%,44% 82%,13% 82%,30% 54%,2% 54%,2% 40%,39% 40%,39% 31%,10% 31%)}
-    .pmark:after{content:"";position:absolute;left:-22px;top:58px;width:120px;height:18px;background:linear-gradient(90deg,#ff5c1a,#ff25c8,#0d6cff);border-radius:20px;box-shadow:0 34px 0 -3px #ffd21c,28px -36px 0 -6px #0d6cff}
-    .title{text-align:left;font-style:italic;font-weight:900;line-height:.9}
-    .patapata{font-size:48px;color:#fff}
-    .print{font-size:70px;color:#fff}
-    .o{background:linear-gradient(90deg,#00e6ff,#ff25c8);-webkit-background-clip:text;color:transparent}
-    .matic{color:#ffd21c}
-    .sub{font-size:24px;line-height:1.45;max-width:900px;margin:28px auto 0;color:#f8fafc;text-shadow:0 2px 8px #000}
-    .actions{margin-top:34px}
-    .btn{display:inline-block;text-decoration:none;color:#fff;background:#0767ff;padding:20px 42px;border-radius:10px;font-size:25px;font-weight:900;margin:10px;box-shadow:0 6px 0 rgba(0,0,0,.18)}
-    .btn-whatsapp{background:#12b94f}
-    .section{max-width:1400px;margin:auto;padding:34px 24px 55px}
-    h2{font-size:36px;margin:0 0 25px}
-    .grid{display:grid;grid-template-columns:repeat(4,1fr);gap:28px}
-    .card{background:white;border-radius:18px;padding:28px;min-height:320px;box-shadow:0 12px 35px rgba(15,23,42,.08)}
-    .badge{display:inline-block;background:#eaf2ff;color:#0767ff;padding:8px 16px;border-radius:999px;font-size:17px;font-weight:900;margin-bottom:20px}
-    .icon{font-size:42px;margin-bottom:8px}
-    .card h3{font-size:29px;margin:0 0 16px}
-    .card p{font-size:22px;line-height:1.35;color:#334155;margin-bottom:28px}
-    .card .btn{font-size:22px;padding:16px 34px;margin:0}
-    @media(max-width:900px){
-      .grid{grid-template-columns:1fr}
-      .brand{gap:18px}
-      .title{text-align:center}
-      .pmark{width:210px;height:135px}
-      .patapata{font-size:36px}
-      .print{font-size:46px}
-      .sub{font-size:18px}
-      .btn{font-size:18px;padding:15px 22px}
+    body {
+      margin: 0;
+      background: #000;
+      font-family: Arial, sans-serif;
+      display: flex;
+      justify-content: center;
+      align-items: flex-start;
+    }
+
+    .container {
+      position: relative;
+      width: 100%;
+      max-width: 1200px;
+    }
+
+    .landing-img {
+      width: 100%;
+      display: block;
+    }
+
+    /* BUTTON OVERLAYS */
+    .btn {
+      position: absolute;
+      padding: 16px 28px;
+      border-radius: 12px;
+      font-weight: bold;
+      text-decoration: none;
+      color: white;
+      font-size: 16px;
+    }
+
+    .upload-btn {
+      background: #1e63ff;
+      top: 52%;
+      left: 35%;
+    }
+
+    .whatsapp-btn {
+      background: #25D366;
+      top: 52%;
+      left: 52%;
+    }
+
+    @media (max-width: 768px) {
+      .upload-btn {
+        top: 55%;
+        left: 20%;
+        padding: 12px 18px;
+      }
+
+      .whatsapp-btn {
+        top: 55%;
+        left: 55%;
+        padding: 12px 18px;
+      }
     }
   </style>
 </head>
+
 <body>
 
-<div class="top">🇺🇸 MADE & SHIPPED FROM THE USA — Powered by PATAPATA</div>
+<div class="container">
 
-<section class="hero">
-  <div class="brand">
-    <img src="/printomatic-logo.png" 
-     style="height:120px; display:block; margin:0 auto 20px;" />
-    <div class="title">
-      <div class="patapata">PATAPATA</div>
-      <div class="print">PRINT-<span class="o">O</span>-<span class="matic">MATIC</span></div>
-    </div>
-  </div>
+  <!-- EXACT IMAGE -->
+  <img src="/printomatic-landing.png" class="landing-img" />
 
-  <div class="sub">
-    Upload, print, laminate, edit images and videos, submit CVs,<br>
-    and connect with trusted service agents — all from one global print network.
-  </div>
+  <!-- BUTTONS -->
+  <a href="https://www.patapata.us/pages/print-documents-images"
+     class="btn upload-btn">
+     Upload & Print
+  </a>
 
-  <div class="actions">
-    <a class="btn" href="https://www.patapata.us/pages/print-documents-images">📄 Upload & Print</a>
-    <a class="btn btn-whatsapp" href="https://wa.me/18628372173?text=Hello%20PATAPATA%2C%20I%20need%20help%20with%20Print-O-Matic">☏ Chat on WhatsApp</a>
-  </div>
-</section>
+  <a href="https://wa.me/18682372173"
+     class="btn whatsapp-btn">
+     Chat on WhatsApp
+  </a>
 
-<section class="section">
-  <h2>Our Services</h2>
-
-  <div class="grid">
-    <div class="card">
-      <span class="badge">Instant Upload</span>
-      <div class="icon">🖨️</div>
-      <h3>Print Documents</h3>
-      <p>Upload PDFs, documents, and images for fast printing.</p>
-      <a class="btn" href="https://www.patapata.us/pages/print-documents-images">Upload & Print</a>
-    </div>
-
-    <div class="card">
-      <span class="badge">Protect Documents</span>
-      <div class="icon">📠</div>
-      <h3>Laminate</h3>
-      <p>Laminate certificates, IDs, flyers, signs, and business documents.</p>
-      <a class="btn btn-whatsapp" href="https://wa.me/18628372173?text=I%20want%20to%20laminate%20a%20document">Order via WhatsApp</a>
-    </div>
-
-    <div class="card">
-      <span class="badge">Creative Service</span>
-      <div class="icon">🎨</div>
-      <h3>Image Editing</h3>
-      <p>Background removal, product photo cleanup, flyers, and professional edits.</p>
-      <a class="btn btn-whatsapp" href="https://wa.me/18628372173?text=I%20need%20image%20editing">Start Editing</a>
-    </div>
-
-    <div class="card">
-      <span class="badge">Video Service</span>
-      <div class="icon">🎬</div>
-      <h3>Video Editing</h3>
-      <p>Short videos, social media edits, business promos, and event clips.</p>
-      <a class="btn btn-whatsapp" href="https://wa.me/18628372173?text=I%20need%20video%20editing">Start Video Edit</a>
-    </div>
-  </div>
-</section>
+</div>
 
 </body>
 </html>
