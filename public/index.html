@@ -19,26 +19,23 @@
       width: 100%;
       max-width: 1200px;
       margin: 0 auto;
-      background: #fff;
     }
 
     .landing-img {
       display: block;
       width: 100%;
       height: auto;
-      position: relative;
-      z-index: 1;
     }
 
     .hotspot {
       position: absolute;
       z-index: 9999;
       display: block;
-      background: rgba(255,255,255,0);
+      background: transparent;
       cursor: pointer;
     }
 
-    /* Desktop zones */
+    /* Desktop */
     .top-upload { left: 31%; top: 41.5%; width: 18%; height: 8%; }
     .top-whatsapp { left: 49.5%; top: 41.5%; width: 21%; height: 8%; }
 
@@ -71,7 +68,7 @@
       100% { opacity: 1; transform: translateX(-50%) scale(1); }
     }
 
-    /* Mobile */
+    /* MOBILE */
     @media (max-width: 700px) {
       .container {
         width: 100%;
@@ -106,36 +103,42 @@
   <div class="container">
     <img src="/printomatic-landing.png" class="landing-img" />
 
-    <!-- WHATSAPP AUTO MESSAGE -->
+    <!-- DIRECT SERVICE LINKS (FIXED) -->
+
+    <!-- Upload & Print -->
     <a class="hotspot top-upload"
-       href="https://wa.me/18628372173?text=Hello%20PATAPATA%20Print-O-Matic%20%F0%9F%91%8B%0A%0APlease%20reply%20with%20a%20number%3A%0A1%20-%20Upload%20%26%20Print%0A2%20-%20Lamination%0A3%20-%20ID%20Photo%0A4%20-%20Image%20Editing%0A5%20-%20Video%20Editing%0A13%20-%20Submit%20CV"
+       href="https://wa.me/18628372173?text=Hello%20I%20want%20to%20upload%20and%20print%20my%20document"
        target="_blank"></a>
 
+    <!-- Chat -->
     <a class="hotspot top-whatsapp"
-       href="https://wa.me/18628372173?text=Hello%20PATAPATA%20Print-O-Matic%20%F0%9F%91%8B%0A%0APlease%20reply%20with%20a%20number%3A%0A1%20-%20Upload%20%26%20Print%0A2%20-%20Lamination%0A3%20-%20ID%20Photo%0A4%20-%20Image%20Editing%0A5%20-%20Video%20Editing%0A13%20-%20Submit%20CV"
+       href="https://wa.me/18628372173?text=Hello%20PATAPATA%20Print-O-Matic"
        target="_blank"></a>
 
+    <!-- Cards -->
     <a class="hotspot card-upload"
-       href="https://wa.me/18628372173?text=Hello%20PATAPATA%20Print-O-Matic%20%F0%9F%91%8B%0A%0APlease%20reply%20with%20a%20number%3A%0A1%20-%20Upload%20%26%20Print%0A2%20-%20Lamination%0A3%20-%20ID%20Photo%0A4%20-%20Image%20Editing%0A5%20-%20Video%20Editing%0A13%20-%20Submit%20CV"
+       href="https://wa.me/18628372173?text=Hello%20I%20want%20to%20upload%20and%20print%20my%20document"
        target="_blank"></a>
 
     <a class="hotspot card-laminate"
-       href="https://wa.me/18628372173?text=Hello%20PATAPATA%20Print-O-Matic%20%F0%9F%91%8B%0A%0APlease%20reply%20with%20a%20number%3A%0A1%20-%20Upload%20%26%20Print%0A2%20-%20Lamination%0A3%20-%20ID%20Photo%0A4%20-%20Image%20Editing%0A5%20-%20Video%20Editing%0A13%20-%20Submit%20CV"
+       href="https://wa.me/18628372173?text=Hello%20I%20want%20lamination%20service"
        target="_blank"></a>
 
     <a class="hotspot card-image"
-       href="https://wa.me/18628372173?text=Hello%20PATAPATA%20Print-O-Matic%20%F0%9F%91%8B%0A%0APlease%20reply%20with%20a%20number%3A%0A1%20-%20Upload%20%26%20Print%0A2%20-%20Lamination%0A3%20-%20ID%20Photo%0A4%20-%20Image%20Editing%0A5%20-%20Video%20Editing%0A13%20-%20Submit%20CV"
+       href="https://wa.me/18628372173?text=Hello%20I%20need%20image%20editing%20service"
        target="_blank"></a>
 
     <a class="hotspot card-video"
-       href="https://wa.me/18628372173?text=Hello%20PATAPATA%20Print-O-Matic%20%F0%9F%91%8B%0A%0APlease%20reply%20with%20a%20number%3A%0A1%20-%20Upload%20%26%20Print%0A2%20-%20Lamination%0A3%20-%20ID%20Photo%0A4%20-%20Image%20Editing%0A5%20-%20Video%20Editing%0A13%20-%20Submit%20CV"
+       href="https://wa.me/18628372173?text=Hello%20I%20need%20video%20editing%20service"
        target="_blank"></a>
 
-    <a href="https://wa.me/18628372173?text=Hello%20PATAPATA%20Print-O-Matic%20%F0%9F%91%8B%0A%0APlease%20reply%20with%20a%20number%3A%0A1%20-%20Upload%20%26%20Print%0A2%20-%20Lamination%0A3%20-%20ID%20Photo%0A4%20-%20Image%20Editing%0A5%20-%20Video%20Editing%0A13%20-%20Submit%20CV"
+    <!-- CV -->
+    <a href="https://wa.me/18628372173?text=Hello%20I%20want%20to%20submit%20my%20CV"
        target="_blank"
        class="cv-flash">
       💼 Submit CV for Employment
     </a>
+
   </div>
 </body>
 </html>
