@@ -19,11 +19,10 @@
   text-align: center;
 }
 
- .landing-img {
-  width: 60vw;        /* 👈 reduced to 60% */
-  height: auto;
+.landing-img {
   display: block;
-  margin: 0 auto;     /* center it */
+  width: 100%;
+  height: auto;
 }
 
     .hotspot {
@@ -67,38 +66,49 @@
     }
 
     /* MOBILE FIX (clean + no overflow) */
-    @media (max-width: 700px) {
-    .container {
-  width: 100vw;
-  height: 100vh;
-  max-width: none;
-  overflow: hidden;
+@media (max-width: 700px) {
+  html, body {
+    margin: 0;
+    padding: 0;
+    background: #fff;
+    width: 100%;
+    overflow-x: hidden;
+  }
+
+  .container {
+    width: 100%;
+    max-width: none;
+    margin: 0;
+    padding: 0;
+    overflow: visible;
+    background: #fff;
+  }
+
+  .landing-img {
+    display: block;
+    width: 100%;
+    max-width: 100%;
+    height: auto;
+    object-fit: contain;
+  }
+
+  .cv-flash {
+    top: 55%;
+    font-size: 12px;
+    padding: 10px 16px;
+    max-width: 85%;
+    text-align: center;
+    white-space: nowrap;
+  }
+
+  .top-upload { left: 30%; top: 35.5%; width: 19%; height: 6%; }
+  .top-whatsapp { left: 49%; top: 35.5%; width: 22%; height: 6%; }
+
+  .card-upload { left: 9%; top: 83%; width: 14%; height: 5%; }
+  .card-laminate { left: 31%; top: 83%; width: 15%; height: 5%; }
+  .card-image { left: 52%; top: 83%; width: 15%; height: 5%; }
+  .card-video { left: 74%; top: 83%; width: 15%; height: 5%; }
 }
-
-    .landing-img {
-  width: 100vw;
-  height: 100vh;
-  object-fit: cover;
-  object-position: top center;
-}
-
-      .cv-flash {
-        top: 55%;
-        font-size: 12px;
-        padding: 10px 16px;
-        max-width: 85%;
-        text-align: center;
-      }
-
-      /* Adjusted click zones for mobile */
-      .top-upload { left: 30%; top: 35%; width: 20%; height: 6%; }
-      .top-whatsapp { left: 50%; top: 35%; width: 22%; height: 6%; }
-
-      .card-upload { left: 9%; top: 83%; width: 15%; height: 5%; }
-      .card-laminate { left: 31%; top: 83%; width: 15%; height: 5%; }
-      .card-image { left: 52%; top: 83%; width: 15%; height: 5%; }
-      .card-video { left: 74%; top: 83%; width: 15%; height: 5%; }
-    }
   </style>
 </head>
 
