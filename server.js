@@ -439,7 +439,60 @@ app.post("/webhook", async (req, res) => {
     let text = "";
     if (type === "text") text = message.text?.body || "";
     const lower = text.toLowerCase().trim();
+// ===== LANDING PAGE WHATSAPP REQUESTS → WORKER DASHBOARD =====
+if (
+  lower.includes("upload and print") ||
+  lower.includes("print-o-matic") ||
+  lower.includes("lamination") ||
+  lower.includes("image editing") ||
+  lower.includes("video editing") ||
+  lower.includes("submit cv")
+) {
+  let serviceType = "WHATSAPP_REQUEST";
 
+  if (lower.includes("upload") || lower.includes("print")) {
+    serviceType = "PRINT";
+  } else if (lower.includes("lamination")) {
+    serviceType = "LAMINATING";
+  } else if (lower.includes("image editing")) {
+    serviceType = "IMAGE_EDITING";
+  } else if (lower.includes("video editing")) {
+    serviceType = "VIDEO_EDITING";
+  } else if (lower.includes("submit cv")) {
+    serviceType = "JOB_APPLICATION";
+  }
+
+  await pool.query(
+    `INSERT INTO print_jobs
+      (status, printer_id, service_type, instructions, customer_phone, original_name, copies, pages, total_cost, created_at)
+     VALUES
+      ($1,$2,$3,$4,$5,$6,$7,$8,$9,NOW())`,
+    [
+      "pending",
+      serviceType === "PRINT" ? DEFAULT_PRINTER_ID : AGENT_QUEUE_ID,
+      serviceType,
+      text,
+      from,
+      "WhatsApp Landing Request",
+      1,
+      1,
+      0
+    ]
+  );
+
+  await sendMessage(
+    from,
+    `✅ Your request has been received by PATAPATA Print-O-Matic.
+
+Service: ${serviceType.replaceAll("_", " ")}
+
+A worker will review it and reply to you shortly here on WhatsApp.
+
+You may now send your file, photo, video, document, or voice instruction.`
+  );
+
+  return res.sendStatus(200);
+}
     const tableColumns = await getPrintJobsColumns().catch(() => new Set());
 
     async function createJobFromMedia({
