@@ -19,9 +19,7 @@
       width: 100%;
       max-width: 1200px;
       margin: 0 auto;
-      padding: 0;
       background: #fff;
-      overflow: visible;
     }
 
     .landing-img {
@@ -36,13 +34,11 @@
       position: absolute;
       z-index: 9999;
       display: block;
-      text-decoration: none;
       background: rgba(255,255,255,0);
       cursor: pointer;
-      pointer-events: auto;
     }
 
-    /* Desktop clickable zones */
+    /* Desktop zones */
     .top-upload { left: 31%; top: 41.5%; width: 18%; height: 8%; }
     .top-whatsapp { left: 49.5%; top: 41.5%; width: 21%; height: 8%; }
 
@@ -67,7 +63,6 @@
       animation: flashPulse 1.2s infinite;
       z-index: 10000;
       white-space: nowrap;
-      pointer-events: auto;
     }
 
     @keyframes flashPulse {
@@ -76,32 +71,16 @@
       100% { opacity: 1; transform: translateX(-50%) scale(1); }
     }
 
-    /* Mobile optimization */
+    /* Mobile */
     @media (max-width: 700px) {
-      html, body {
-        margin: 0;
-        padding: 0;
-        background: #fff;
-        width: 100%;
-        overflow-x: hidden;
-      }
-
       .container {
-        position: relative;
         width: 100%;
         max-width: none;
-        margin: 0;
-        padding: 0;
-        background: #fff;
-        overflow: visible;
       }
 
       .landing-img {
-        display: block;
         width: 100%;
-        max-width: 100%;
         height: auto;
-        object-fit: contain;
       }
 
       .cv-flash {
@@ -110,38 +89,51 @@
         padding: 10px 16px;
         max-width: 85%;
         text-align: center;
-        white-space: nowrap;
       }
 
-      .top-upload { left: 30%; top: 35.5%; width: 20%; height: 6.5%; }
-      .top-whatsapp { left: 49%; top: 35.5%; width: 23%; height: 6.5%; }
+      .top-upload { left: 30%; top: 35.5%; width: 20%; height: 6%; }
+      .top-whatsapp { left: 49%; top: 35.5%; width: 22%; height: 6%; }
 
-      .card-upload { left: 8%; top: 83%; width: 15%; height: 6%; }
-      .card-laminate { left: 30%; top: 83%; width: 16%; height: 6%; }
-      .card-image { left: 51%; top: 83%; width: 16%; height: 6%; }
-      .card-video { left: 73%; top: 83%; width: 17%; height: 6%; }
+      .card-upload { left: 8%; top: 83%; width: 15%; height: 5%; }
+      .card-laminate { left: 30%; top: 83%; width: 16%; height: 5%; }
+      .card-image { left: 51%; top: 83%; width: 16%; height: 5%; }
+      .card-video { left: 73%; top: 83%; width: 17%; height: 5%; }
     }
   </style>
 </head>
 
 <body>
   <div class="container">
-    <img src="/printomatic-landing.png" class="landing-img" alt="PATAPATA Print-O-Matic" />
+    <img src="/printomatic-landing.png" class="landing-img" />
 
-    <!-- ALL BUTTONS → WHATSAPP -->
-    <a class="hotspot top-upload" href="https://wa.me/18628372173?text=Hello%20PATAPATA%20Print-O-Matic" target="_blank" rel="noopener" aria-label="Upload and Print"></a>
-    <a class="hotspot top-whatsapp" href="https://wa.me/18628372173?text=Hello%20PATAPATA%20Print-O-Matic" target="_blank" rel="noopener" aria-label="Chat on WhatsApp"></a>
+    <!-- WHATSAPP AUTO MESSAGE -->
+    <a class="hotspot top-upload"
+       href="https://wa.me/18628372173?text=Hello%20PATAPATA%20Print-O-Matic%20%F0%9F%91%8B%0A%0APlease%20reply%20with%20a%20number%3A%0A1%20-%20Upload%20%26%20Print%0A2%20-%20Lamination%0A3%20-%20ID%20Photo%0A4%20-%20Image%20Editing%0A5%20-%20Video%20Editing%0A13%20-%20Submit%20CV"
+       target="_blank"></a>
 
-    <a class="hotspot card-upload" href="https://wa.me/18628372173?text=Hello%20PATAPATA%20Print-O-Matic" target="_blank" rel="noopener" aria-label="Print Documents"></a>
-    <a class="hotspot card-laminate" href="https://wa.me/18628372173?text=Hello%20PATAPATA%20Print-O-Matic" target="_blank" rel="noopener" aria-label="Laminate"></a>
-    <a class="hotspot card-image" href="https://wa.me/18628372173?text=Hello%20PATAPATA%20Print-O-Matic" target="_blank" rel="noopener" aria-label="Image Editing"></a>
-    <a class="hotspot card-video" href="https://wa.me/18628372173?text=Hello%20PATAPATA%20Print-O-Matic" target="_blank" rel="noopener" aria-label="Video Editing"></a>
+    <a class="hotspot top-whatsapp"
+       href="https://wa.me/18628372173?text=Hello%20PATAPATA%20Print-O-Matic%20%F0%9F%91%8B%0A%0APlease%20reply%20with%20a%20number%3A%0A1%20-%20Upload%20%26%20Print%0A2%20-%20Lamination%0A3%20-%20ID%20Photo%0A4%20-%20Image%20Editing%0A5%20-%20Video%20Editing%0A13%20-%20Submit%20CV"
+       target="_blank"></a>
 
-    <a href="https://wa.me/18628372173?text=Hello%20PATAPATA%20Print-O-Matic"
+    <a class="hotspot card-upload"
+       href="https://wa.me/18628372173?text=Hello%20PATAPATA%20Print-O-Matic%20%F0%9F%91%8B%0A%0APlease%20reply%20with%20a%20number%3A%0A1%20-%20Upload%20%26%20Print%0A2%20-%20Lamination%0A3%20-%20ID%20Photo%0A4%20-%20Image%20Editing%0A5%20-%20Video%20Editing%0A13%20-%20Submit%20CV"
+       target="_blank"></a>
+
+    <a class="hotspot card-laminate"
+       href="https://wa.me/18628372173?text=Hello%20PATAPATA%20Print-O-Matic%20%F0%9F%91%8B%0A%0APlease%20reply%20with%20a%20number%3A%0A1%20-%20Upload%20%26%20Print%0A2%20-%20Lamination%0A3%20-%20ID%20Photo%0A4%20-%20Image%20Editing%0A5%20-%20Video%20Editing%0A13%20-%20Submit%20CV"
+       target="_blank"></a>
+
+    <a class="hotspot card-image"
+       href="https://wa.me/18628372173?text=Hello%20PATAPATA%20Print-O-Matic%20%F0%9F%91%8B%0A%0APlease%20reply%20with%20a%20number%3A%0A1%20-%20Upload%20%26%20Print%0A2%20-%20Lamination%0A3%20-%20ID%20Photo%0A4%20-%20Image%20Editing%0A5%20-%20Video%20Editing%0A13%20-%20Submit%20CV"
+       target="_blank"></a>
+
+    <a class="hotspot card-video"
+       href="https://wa.me/18628372173?text=Hello%20PATAPATA%20Print-O-Matic%20%F0%9F%91%8B%0A%0APlease%20reply%20with%20a%20number%3A%0A1%20-%20Upload%20%26%20Print%0A2%20-%20Lamination%0A3%20-%20ID%20Photo%0A4%20-%20Image%20Editing%0A5%20-%20Video%20Editing%0A13%20-%20Submit%20CV"
+       target="_blank"></a>
+
+    <a href="https://wa.me/18628372173?text=Hello%20PATAPATA%20Print-O-Matic%20%F0%9F%91%8B%0A%0APlease%20reply%20with%20a%20number%3A%0A1%20-%20Upload%20%26%20Print%0A2%20-%20Lamination%0A3%20-%20ID%20Photo%0A4%20-%20Image%20Editing%0A5%20-%20Video%20Editing%0A13%20-%20Submit%20CV"
        target="_blank"
-       rel="noopener"
-       class="cv-flash"
-       aria-label="Submit CV for Employment">
+       class="cv-flash">
       💼 Submit CV for Employment
     </a>
   </div>
