@@ -69,15 +69,19 @@
 
     /* MOBILE FIX (clean + no overflow) */
     @media (max-width: 700px) {
-      .container {
-        width: 100%;
-        max-width: none;
-      }
+    .container {
+  width: 100vw;
+  height: 100vh;
+  max-width: none;
+  overflow: hidden;
+}
 
-      .landing-img {
-        width: 100%;
-        height: auto;
-      }
+    .landing-img {
+  width: 100vw;
+  height: 100vh;
+  object-fit: cover;
+  object-position: top center;
+}
 
       .cv-flash {
         top: 55%;
