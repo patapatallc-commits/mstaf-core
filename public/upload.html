@@ -3,6 +3,7 @@
 <head>
   <title>PATAPATA Print-O-Matic Upload</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
+
   <style>
     body{
       margin:0;
@@ -13,7 +14,10 @@
       display:flex;
       align-items:center;
       justify-content:center;
+      padding:16px;
+      box-sizing:border-box;
     }
+
     .card{
       width:100%;
       max-width:600px;
@@ -24,7 +28,12 @@
       backdrop-filter:blur(10px);
       box-shadow:0 20px 60px rgba(0,0,0,0.5);
     }
-    h2{text-align:center;margin-bottom:20px;}
+
+    h2{
+      text-align:center;
+      margin-bottom:20px;
+    }
+
     input, textarea{
       width:100%;
       padding:12px;
@@ -35,7 +44,11 @@
       font-size:14px;
       box-sizing:border-box;
     }
-    textarea{min-height:90px;}
+
+    textarea{
+      min-height:90px;
+    }
+
     button{
       width:100%;
       padding:14px;
@@ -48,7 +61,11 @@
       font-weight:bold;
       cursor:pointer;
     }
-    button:hover{opacity:0.9;}
+
+    button:hover{
+      opacity:0.9;
+    }
+
     .file-box{
       border:2px dashed rgba(255,255,255,0.4);
       padding:28px;
@@ -57,8 +74,19 @@
       margin-top:10px;
       cursor:pointer;
       transition:0.2s;
+      background:rgba(255,255,255,0.05);
     }
-    .file-box:hover{border-color:#22c55e;}
+
+    .file-box:hover{
+      border-color:#22c55e;
+    }
+
+    .hint{
+      font-size:12px;
+      opacity:0.85;
+      margin-top:8px;
+      line-height:1.5;
+    }
   </style>
 </head>
 
@@ -68,12 +96,32 @@
 
     <form action="/api/upload" method="POST" enctype="multipart/form-data">
       <div class="file-box" id="dropZone">
-        <p id="fileText">📂 Drag & Drop file here or click to upload</p>
-        <input type="file" name="file" id="fileInput" required hidden>
+        <p id="fileText">📂 Tap here to choose PDF, document, or image</p>
+        <div class="hint">
+          Accepted: PDF, DOC, DOCX, PNG, JPG, JPEG, WEBP, TXT, PPT, PPTX, XLS, XLSX
+        </div>
+
+        <input
+          type="file"
+          name="file"
+          id="fileInput"
+          accept=".pdf,.doc,.docx,.png,.jpg,.jpeg,.webp,.txt,.ppt,.pptx,.xls,.xlsx,application/pdf,image/*"
+          required
+          hidden
+        >
       </div>
 
-      <input type="text" name="customer_phone" placeholder="Phone number">
-      <textarea name="instructions" placeholder="Instructions"></textarea>
+      <input
+        type="text"
+        name="customer_phone"
+        placeholder="Phone number"
+      >
+
+      <textarea
+        name="instructions"
+        placeholder="Instructions"
+      ></textarea>
+
       <button type="submit">Upload File</button>
     </form>
   </div>
@@ -85,10 +133,12 @@
 
     function showFileName(file) {
       if (!file) return;
-      fileText.textContent = "✅ " + file.name;
+      fileText.textContent = "✅ Selected: " + file.name;
     }
 
-    dropZone.addEventListener("click", () => fileInput.click());
+    dropZone.addEventListener("click", () => {
+      fileInput.click();
+    });
 
     fileInput.addEventListener("change", () => {
       showFileName(fileInput.files[0]);
@@ -111,49 +161,16 @@
     });
 
     dropZone.addEventListener("drop", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+
       const files = e.dataTransfer.files;
+
       if (files && files.length > 0) {
         fileInput.files = files;
         showFileName(files[0]);
       }
     });
   </script>
-  <script>
-const dropZone = document.getElementById("dropZone");
-const fileInput = document.getElementById("fileInput");
-
-// CLICK to open file picker
-dropZone.addEventListener("click", () => {
-  fileInput.click();
-});
-
-// When file is selected manually
-fileInput.addEventListener("change", () => {
-  if (fileInput.files.length > 0) {
-    dropZone.innerHTML = "✅ " + fileInput.files[0].name;
-  }
-});
-
-// DRAG OVER
-dropZone.addEventListener("dragover", (e) => {
-  e.preventDefault();
-  dropZone.style.borderColor = "#22c55e";
-});
-
-// DRAG LEAVE
-dropZone.addEventListener("dragleave", () => {
-  dropZone.style.borderColor = "rgba(255,255,255,0.4)";
-});
-
-// DROP FILE
-dropZone.addEventListener("drop", (e) => {
-  e.preventDefault();
-  fileInput.files = e.dataTransfer.files;
-
-  if (fileInput.files.length > 0) {
-    dropZone.innerHTML = "📂 " + fileInput.files[0].name;
-  }
-});
-</script>
 </body>
 </html>
