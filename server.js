@@ -1341,7 +1341,7 @@ Our team will contact you shortly on WhatsApp.`
           : type === "audio"
           ? message.audio
           : message.video;
-      if (session.stage === "COMMUNITY_ALERT_WAITING" && (type === "image" ||(type === "image" || type === "video" || type === "document" || type === "audio")) {
+      if (session.stage === "COMMUNITY_ALERT_WAITING" && (type === "image" || type === "video" || type === "document" || type === "audio")) {
   const job = await createJobFromMedia({
     printerId: AGENT_QUEUE_ID,
     queueType: "AGENT",
