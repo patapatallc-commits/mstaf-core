@@ -1341,6 +1341,34 @@ Our team will contact you shortly on WhatsApp.`
           : type === "audio"
           ? message.audio
           : message.video;
+      if (session.stage === "COMMUNITY_ALERT_WAITING" && (type === "image" || type === "video" || type === "document")) {
+  const job = await createJobFromMedia({
+    printerId: AGENT_QUEUE_ID,
+    queueType: "AGENT",
+    serviceType: "COMMUNITY_ALERT",
+    mediaId: mediaObj?.id,
+    originalName: mediaObj?.filename || "community_alert_upload",
+    mimeType: mediaObj?.mime_type || "",
+    instructions: "Community alert media submitted for moderation review"
+  });
+
+  session.lastServiceJobId = job?.id || null;
+  session.stage = "SERVICE_WAITING_EXTRA_NOTES";
+
+  await sendMessage(
+    from,
+    `🚨 Community alert media received.
+
+Please now send:
+• What happened
+• Location
+• Time/date if known
+
+Our moderation team will review everything before any community broadcast.`
+  );
+
+  return res.sendStatus(200);
+}
       if (session.stage === "PRINT_WAITING_UPLOAD") {
   const paperSize = session.printSpec?.paper_size || "A4";
   const colorMode = session.printSpec?.color_mode || "BW";
