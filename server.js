@@ -1018,6 +1018,53 @@ Thank you for helping keep the community safe.`
 
   return res.sendStatus(200);
 }
+    if (session.stage === "SUPPLIER_CATEGORY" && type === "text") {
+  const supplierMap = {
+    "1": "Printing Materials",
+    "2": "Electrical Materials",
+    "3": "Building Materials",
+    "4": "Fashion Materials",
+    "5": "Computer Accessories"
+  };
+
+  const selectedCategory = supplierMap[lower];
+
+  if (!selectedCategory) {
+    await sendMessage(
+      from,
+      `Please choose a valid supplier category:
+
+1 - Printing Materials
+2 - Electrical Materials
+3 - Building Materials
+4 - Fashion Materials
+5 - Computer Accessories`
+    );
+
+    return res.sendStatus(200);
+  }
+
+  const job = await createTextOnlyServiceJob(
+    "TRUSTED_SUPPLIERS",
+    `Supplier category requested: ${selectedCategory}`
+  );
+
+  session.lastServiceJobId = job?.id || null;
+  session.stage = "MENU";
+
+  await sendMessage(
+    from,
+    `🏪 Trusted Suppliers
+
+Category selected: ${selectedCategory}
+
+Our team will send you verified supplier recommendations shortly.
+
+We are also setting up referral tracking so workmen can buy materials from trusted companies with proper monitoring.`
+  );
+
+  return res.sendStatus(200);
+}
    if (session.stage === "PRINT_SELECT_SIZE" && type === "text") {
   const sizeMap = {
     "1": "A4",
