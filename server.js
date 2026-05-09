@@ -995,6 +995,29 @@ Thank you for helping keep the community safe.`
 
   return res.sendStatus(200);
 }
+    if (session.stage === "COMMUNITY_ALERT_WAITING_DETAILS" && type === "audio") {
+
+  if (session.lastServiceJobId && message.audio?.id) {
+    await attachAudioToExistingJob(
+      session.lastServiceJobId,
+      message.audio.id,
+      message.audio.mime_type || "audio/ogg"
+    );
+  }
+
+  session.stage = "MENU";
+
+  await sendMessage(
+    from,
+    `✅ Community alert voice note received.
+
+Our moderation team will review the media and voice details before any community broadcast.
+
+Thank you for helping keep the community safe.`
+  );
+
+  return res.sendStatus(200);
+}
    if (session.stage === "PRINT_SELECT_SIZE" && type === "text") {
   const sizeMap = {
     "1": "A4",
