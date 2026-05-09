@@ -949,6 +949,7 @@ Our recruitment team will contact you shortly on WhatsApp with available opportu
 
   return res.sendStatus(200);
 }
+    
     if (session.stage === "COMMUNITY_ALERT_WAITING" && type === "text") {
   const alertText = text.trim();
 
@@ -965,6 +966,29 @@ Our recruitment team will contact you shortly on WhatsApp with available opportu
     `🚨 Community alert received.
 
 Our moderation team will review the report before broadcasting it to the community.
+
+Thank you for helping keep the community safe.`
+  );
+
+  return res.sendStatus(200);
+}
+    if (session.stage === "COMMUNITY_ALERT_WAITING_DETAILS" && type === "text") {
+  const alertDetails = text.trim();
+
+  if (session.lastServiceJobId) {
+    await attachTextToExistingJob(
+      session.lastServiceJobId,
+      `Community alert details: ${alertDetails}`
+    );
+  }
+
+  session.stage = "MENU";
+
+  await sendMessage(
+    from,
+    `✅ Community alert details received.
+
+Our moderation team will review the media and details before any community broadcast.
 
 Thank you for helping keep the community safe.`
   );
@@ -1353,7 +1377,7 @@ Our team will contact you shortly on WhatsApp.`
   });
 
   session.lastServiceJobId = job?.id || null;
-  session.stage = "SERVICE_WAITING_EXTRA_NOTES";
+  session.stage = "COMMUNITY_ALERT_WAITING_DETAILS";
 
   await sendMessage(
     from,
