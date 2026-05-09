@@ -949,6 +949,28 @@ Our recruitment team will contact you shortly on WhatsApp with available opportu
 
   return res.sendStatus(200);
 }
+    if (session.stage === "COMMUNITY_ALERT_WAITING" && type === "text") {
+  const alertText = text.trim();
+
+  const job = await createTextOnlyServiceJob(
+    "COMMUNITY_ALERT",
+    `Community Alert: ${alertText}`
+  );
+
+  session.lastServiceJobId = job?.id || null;
+  session.stage = "MENU";
+
+  await sendMessage(
+    from,
+    `🚨 Community alert received.
+
+Our moderation team will review the report before broadcasting it to the community.
+
+Thank you for helping keep the community safe.`
+  );
+
+  return res.sendStatus(200);
+}
    if (session.stage === "PRINT_SELECT_SIZE" && type === "text") {
   const sizeMap = {
     "1": "A4",
