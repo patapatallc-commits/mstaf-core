@@ -203,11 +203,11 @@ function serviceMenu() {
 10 - Shared Apartment / Rent
 11 - Need Indoor or Outdoor Helper
 12 - Custom T-Shirt Print
-13 - Job Search / Submit CV`;
+13 - Job Search / Submit CV
 14 - Job Opportunities
 15 - Hire a Worker
 16 - Community Alert
-17 - Trusted Suppliers
+17 - Trusted Suppliers`;
 }
 
 function printSizeMenuText() {
