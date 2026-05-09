@@ -1381,12 +1381,18 @@ Our team will contact you shortly on WhatsApp.`
 
   await sendMessage(
     from,
-    `🚨 Community alert file/voice note received.
+    
 
-Please now send:
+`🚨 Community alert media received.
+
+Please now send ANY of the following:
+
 • What happened
 • Location
 • Time/date if known
+• Voice note explanation
+
+You may send text, voice note, or both.
 
 Our moderation team will review everything before any community broadcast.`
   );
