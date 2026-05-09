@@ -882,6 +882,28 @@ Reply with a number.`
   await sendMessage(from, serviceMenu());
   return res.sendStatus(200);
 }
+    if (session.stage === "HIRE_WORKER_MENU" && type === "text") {
+  const workerRequest = text.trim();
+
+  const job = await createTextOnlyServiceJob(
+    "HIRE_WORKER",
+    `Worker needed: ${workerRequest}`
+  );
+
+  session.lastServiceJobId = job?.id || null;
+  session.stage = "MENU";
+
+  await sendMessage(
+    from,
+    `✅ Your worker request has been received.
+
+Worker needed: ${workerRequest}
+
+Our team will review available workers and contact you shortly on WhatsApp.`
+  );
+
+  return res.sendStatus(200);
+}
    if (session.stage === "PRINT_SELECT_SIZE" && type === "text") {
   const sizeMap = {
     "1": "A4",
