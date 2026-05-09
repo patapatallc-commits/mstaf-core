@@ -204,6 +204,10 @@ function serviceMenu() {
 11 - Need Indoor or Outdoor Helper
 12 - Custom T-Shirt Print
 13 - Job Search / Submit CV`;
+14 - Job Opportunities
+15 - Hire a Worker
+16 - Community Alert
+17 - Trusted Suppliers
 }
 
 function printSizeMenuText() {
@@ -789,7 +793,92 @@ Reply with 1, 2, 3, 4, or 5.`
 
   return res.sendStatus(200);
 }
+if (lower === "14") {
+  session.selectedService = "JOB_OPPORTUNITIES";
+  session.stage = "JOB_OPPORTUNITIES_MENU";
 
+  await sendMessage(
+    from,
+    `💼 JOB OPPORTUNITIES
+
+Please choose your profession:
+
+1 - Graphic Designer
+2 - Print Operator
+3 - Delivery Driver
+4 - Video Editor
+5 - Customer Support
+
+Reply with a number.`
+  );
+
+  return res.sendStatus(200);
+}
+
+if (lower === "15") {
+  session.selectedService = "HIRE_WORKER";
+  session.stage = "HIRE_WORKER_MENU";
+
+  await sendMessage(
+    from,
+    `👷 HIRE A WORKER
+
+Please describe the worker you need.
+
+Examples:
+- Graphic designer
+- Electrician
+- Plumber
+- Video editor
+- Carpenter
+
+You can also send voice note.`
+  );
+
+  return res.sendStatus(200);
+}
+
+if (lower === "16") {
+  session.selectedService = "COMMUNITY_ALERT";
+  session.stage = "COMMUNITY_ALERT_WAITING";
+
+  await sendMessage(
+    from,
+    `🚨 COMMUNITY ALERT
+
+Please send:
+
+• Picture/video of incident
+• Description
+• Location
+
+This information will be reviewed before broadcasting.`
+  );
+
+  return res.sendStatus(200);
+}
+
+if (lower === "17") {
+  session.selectedService = "TRUSTED_SUPPLIERS";
+  session.stage = "SUPPLIER_CATEGORY";
+
+  await sendMessage(
+    from,
+    `🏪 TRUSTED SUPPLIERS
+
+Choose category:
+
+1 - Printing Materials
+2 - Electrical Materials
+3 - Building Materials
+4 - Fashion Materials
+5 - Computer Accessories
+
+Reply with a number.`
+  );
+
+  return res.sendStatus(200);
+}
   await sendMessage(from, serviceMenu());
   return res.sendStatus(200);
 }
