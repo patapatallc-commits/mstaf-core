@@ -904,6 +904,51 @@ Our team will review available workers and contact you shortly on WhatsApp.`
 
   return res.sendStatus(200);
 }
+    if (session.stage === "JOB_OPPORTUNITIES_MENU" && type === "text") {
+  const roleMap = {
+    "1": "Graphic Designer",
+    "2": "Print Operator",
+    "3": "Delivery Driver",
+    "4": "Video Editor",
+    "5": "Customer Support"
+  };
+
+  const selectedRole = roleMap[lower];
+
+  if (!selectedRole) {
+    await sendMessage(
+      from,
+      `Please choose a valid role:
+
+1 - Graphic Designer
+2 - Print Operator
+3 - Delivery Driver
+4 - Video Editor
+5 - Customer Support`
+    );
+
+    return res.sendStatus(200);
+  }
+
+  const job = await createTextOnlyServiceJob(
+    "JOB_OPPORTUNITIES",
+    `Job application for: ${selectedRole}`
+  );
+
+  session.lastServiceJobId = job?.id || null;
+  session.stage = "MENU";
+
+  await sendMessage(
+    from,
+    `✅ Your job interest has been received.
+
+Selected Role: ${selectedRole}
+
+Our recruitment team will contact you shortly on WhatsApp with available opportunities.`
+  );
+
+  return res.sendStatus(200);
+}
    if (session.stage === "PRINT_SELECT_SIZE" && type === "text") {
   const sizeMap = {
     "1": "A4",
