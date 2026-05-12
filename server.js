@@ -208,6 +208,9 @@ function serviceMenu() {
 15 - Hire a Worker
 16 - Community Alert
 17 - Trusted Suppliers`;
+  18 - Buy Land for Use or Resell
+19 - Currency Exchange
+20 - Social Media Creator
 }
 
 function printSizeMenuText() {
@@ -793,6 +796,7 @@ Reply with 1, 2, 3, 4, or 5.`
 
   return res.sendStatus(200);
 }
+  
 if (lower === "14") {
   session.selectedService = "JOB_OPPORTUNITIES";
   session.stage = "JOB_OPPORTUNITIES_MENU";
@@ -858,7 +862,7 @@ This information will be reviewed before broadcasting.`
   return res.sendStatus(200);
 }
 
-if (lower === "17") {
+if (lower === "20")
   session.selectedService = "TRUSTED_SUPPLIERS";
   session.stage = "SUPPLIER_CATEGORY";
 
@@ -879,6 +883,67 @@ Reply with a number.`
 
   return res.sendStatus(200);
 }
+  if (lower === "17") {
+  session.selectedService = "BUY_LAND";
+  session.stage = "BUY_LAND_DETAILS";
+
+  await sendMessage(
+    from,
+    `🏡 Buy Land for Use or Resell
+
+Please send:
+- Preferred location
+- Budget
+- Land size
+- Intended use
+
+You can also send voice notes or pictures.`
+  );
+
+  return res.sendStatus(200);
+}
+
+if (lower === "19")
+  session.selectedService = "CURRENCY_EXCHANGE";
+  session.stage = "CURRENCY_EXCHANGE_DETAILS";
+
+  await sendMessage(
+    from,
+    `💱 Currency Exchange
+
+Please send:
+1 - Currency you have
+2 - Currency you want
+3 - Amount
+4 - Your location`
+  );
+
+  return res.sendStatus(200);
+}
+
+if (lower === "20")
+  session.selectedService = "SOCIAL_MEDIA_CREATOR";
+  session.stage = "SOCIAL_MEDIA_CREATOR_DETAILS";
+
+  await sendMessage(
+    from,
+    `📱 Social Media Creator
+
+Please tell us what you need:
+
+1 - Flyer/post design
+2 - Video advert
+3 - Social media management
+4 - Business promotion
+5 - Event promotion
+
+Send details, pictures, video, or voice note.`
+  );
+
+  return res.sendStatus(200);
+}
+  
+  
   await sendMessage(from, serviceMenu());
   return res.sendStatus(200);
 }
@@ -1761,6 +1826,65 @@ ${serviceMenu()}`
 
   return res.sendStatus(200);
 }
+
+    ```js
+if (session.stage === "BUY_LAND_DETAILS" && type === "text") {
+  const landRequest = text.trim();
+
+  const job = await createTextOnlyServiceJob(
+    "BUY_LAND",
+    `🏡 Land Request:\n${landRequest}`,
+    from
+  );
+
+  await sendMessage(
+    from,
+    `✅ Your land request has been received.
+
+Our team will contact you shortly with available options and pricing.`
+  );
+
+  return res.sendStatus(200);
+}
+
+if (session.stage === "CURRENCY_EXCHANGE_DETAILS" && type === "text") {
+  const exchangeRequest = text.trim();
+
+  const job = await createTextOnlyServiceJob(
+    "CURRENCY_EXCHANGE",
+    `💱 Currency Exchange Request:\n${exchangeRequest}`,
+    from
+  );
+
+  await sendMessage(
+    from,
+    `✅ Your currency exchange request has been received.
+
+Our exchange team will contact you shortly.`
+  );
+
+  return res.sendStatus(200);
+}
+
+if (session.stage === "SOCIAL_MEDIA_CREATOR_DETAILS" && type === "text") {
+  const socialRequest = text.trim();
+
+  const job = await createTextOnlyServiceJob(
+    "SOCIAL_MEDIA_CREATOR",
+    `📱 Social Media Creator Request:\n${socialRequest}`,
+    from
+  );
+
+  await sendMessage(
+    from,
+    `✅ Your social media creator request has been received.
+
+Our creative team will contact you shortly.`
+  );
+
+  return res.sendStatus(200);
+}
+```
 
 // Otherwise do nothing (prevent override)
 return res.sendStatus(200);
