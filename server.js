@@ -213,6 +213,7 @@ function serviceMenu() {
 20 - Social Media Creator`;
 }
 
+
 function printSizeMenuText() {
   return `Print selected.
 
@@ -926,8 +927,8 @@ if (lower === "20")
   session.stage = "SOCIAL_MEDIA_CREATOR_DETAILS";
 
   await sendMessage(
-    from,
-    `📱 Social Media Creator
+  from,
+  `📱 Social Media Creator
 
 Please tell us what you need:
 
@@ -938,7 +939,7 @@ Please tell us what you need:
 5 - Event promotion
 
 Send details, pictures, video, or voice note.`
-  );
+);
 
   return res.sendStatus(200);
 }
@@ -1884,7 +1885,7 @@ Our creative team will contact you shortly.`
 
   return res.sendStatus(200);
 }
-```
+
 
 // Otherwise do nothing (prevent override)
 return res.sendStatus(200);
