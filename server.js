@@ -207,10 +207,10 @@ function serviceMenu() {
 14 - Job Opportunities
 15 - Hire a Worker
 16 - Community Alert
-17 - Trusted Suppliers`;
-  18 - Buy Land for Use or Resell
+17 - Trusted Suppliers
+18 - Buy Land for Use or Resell
 19 - Currency Exchange
-20 - Social Media Creator
+20 - Social Media Creator`;
 }
 
 function printSizeMenuText() {
