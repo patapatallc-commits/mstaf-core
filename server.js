@@ -904,7 +904,7 @@ You can also send voice notes or pictures.`
   return res.sendStatus(200);
 }
 
-if (lower === "19")
+if (lower === "19") {
   session.selectedService = "CURRENCY_EXCHANGE";
   session.stage = "CURRENCY_EXCHANGE_DETAILS";
 
@@ -913,22 +913,25 @@ if (lower === "19")
     `💱 Currency Exchange
 
 Please send:
+
 1 - Currency you have
-2 - Currency you want
+2 - Currency you need
 3 - Amount
 4 - Your location`
   );
 
   return res.sendStatus(200);
 }
+  return res.sendStatus(200);
+}
 
-if (lower === "20")
+if (lower === "20") {
   session.selectedService = "SOCIAL_MEDIA_CREATOR";
   session.stage = "SOCIAL_MEDIA_CREATOR_DETAILS";
 
   await sendMessage(
-  from,
-  `📱 Social Media Creator
+    from,
+    `📱 Social Media Creator
 
 Please tell us what you need:
 
@@ -939,7 +942,7 @@ Please tell us what you need:
 5 - Event promotion
 
 Send details, pictures, video, or voice note.`
-);
+  );
 
   return res.sendStatus(200);
 }
