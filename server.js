@@ -207,7 +207,11 @@ function serviceMenu() {
 14 - Job Opportunities
 15 - Hire a Worker
 16 - Community Alert
-17 - Trusted Suppliers`;
+17 - Trusted Suppliers
+18 - Buy Land for Use or Resell
+19 - Currency Exchange
+20 - Social Media Creator
+21 - Buy & Resell Auto`;
 }
 
 function printSizeMenuText() {
@@ -875,6 +879,86 @@ Choose category:
 5 - Computer Accessories
 
 Reply with a number.`
+  );
+
+  return res.sendStatus(200);
+}
+  if (lower === "18") {
+  session.selectedService = "BUY_LAND_RESELL";
+  session.stage = "SERVICE_WAITING_EXTRA_NOTES";
+
+  await sendMessage(
+    from,
+    `🏞️ Buy Land for Use or Resell selected.
+
+Please send:
+1. Country/state/location
+2. Your budget
+3. Land purpose: use, build, farm, or resell
+4. How soon you want it
+
+Our team will contact you shortly on WhatsApp.`
+  );
+
+  return res.sendStatus(200);
+}
+
+if (lower === "19") {
+  session.selectedService = "CURRENCY_EXCHANGE";
+  session.stage = "SERVICE_WAITING_EXTRA_NOTES";
+
+  await sendMessage(
+    from,
+    `💱 Currency Exchange selected.
+
+Please send:
+1. Currency you have
+2. Currency you need
+3. Amount
+4. Country/location
+
+Our team will contact you shortly on WhatsApp.`
+  );
+
+  return res.sendStatus(200);
+}
+
+if (lower === "20") {
+  session.selectedService = "SOCIAL_MEDIA_CREATOR";
+  session.stage = "SERVICE_WAITING_EXTRA_NOTES";
+
+  await sendMessage(
+    from,
+    `📱 Social Media Creator selected.
+
+Please send:
+1. Type of content you need
+2. Platform: TikTok, Instagram, Facebook, YouTube, etc.
+3. Topic/product/business name
+4. Any sample or idea
+
+You can also send photo, video, text, or voice note.`
+  );
+
+  return res.sendStatus(200);
+}
+
+if (lower === "21") {
+  session.selectedService = "BUY_RESELL_AUTO";
+  session.stage = "SERVICE_WAITING_EXTRA_NOTES";
+
+  await sendMessage(
+    from,
+    `🚘 Buy & Resell Auto selected.
+
+Please send:
+1. Vehicle type/model
+2. Buy, sell, or resell
+3. Budget or asking price
+4. Location
+5. Any vehicle photos/details if available
+
+Our team will contact you shortly on WhatsApp.`
   );
 
   return res.sendStatus(200);
