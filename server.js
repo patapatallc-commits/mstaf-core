@@ -1450,31 +1450,7 @@ if (session.stage === "SERVICE_WAITING_EXTRA_NOTES") {
       );
       session.lastServiceJobId = job?.id || null;
     }
-if (type === "audio" && message.audio?.id) {
-  if (!session.lastServiceJobId) {
-    const job = await createTextOnlyServiceJob(
-      session.selectedService || "AGENT_REQUEST",
-      "Voice instruction"
-    );
-    session.lastServiceJobId = job?.id || null;
-  }
 
-  await attachAudioToExistingJob(
-    session.lastServiceJobId,
-    message.audio.id,
-    message.audio?.mime_type || "audio/ogg"
-  );
-
-  await sendMessage(
-    from,
-    `✅ Your voice instruction has been received.
-
-Our team will contact you shortly on WhatsApp.`
-  );
-
-  session.stage = "MENU";
-  return res.sendStatus(200);
-}
     await sendMessage(
       from,
       `✅ Your request has been received.
@@ -1487,13 +1463,19 @@ Our team will contact you shortly on WhatsApp.`
   }
 
   if (type === "audio" && message.audio?.id) {
-    if (session.lastServiceJobId) {
-      await attachAudioToExistingJob(
-        session.lastServiceJobId,
-        message.audio.id,
-        message.audio?.mime_type || "audio/ogg"
+    if (!session.lastServiceJobId) {
+      const job = await createTextOnlyServiceJob(
+        session.selectedService || "AGENT_REQUEST",
+        "Voice instruction"
       );
+      session.lastServiceJobId = job?.id || null;
     }
+
+    await attachAudioToExistingJob(
+      session.lastServiceJobId,
+      message.audio.id,
+      message.audio?.mime_type || "audio/ogg"
+    );
 
     await sendMessage(
       from,
@@ -1506,7 +1488,40 @@ Our team will contact you shortly on WhatsApp.`
     return res.sendStatus(200);
   }
 
-  await sendMessage(from, "Please send your request as text or voice note.");
+  if (type === "image" || type === "document" || type === "video") {
+    const mediaObj =
+      type === "image"
+        ? message.image
+        : type === "document"
+        ? message.document
+        : message.video;
+
+    const job = await createJobFromMedia({
+      printerId: AGENT_QUEUE_ID,
+      queueType: "AGENT",
+      serviceType: session.selectedService || "AGENT_REQUEST",
+      mediaId: mediaObj?.id,
+      originalName:
+        mediaObj?.filename ||
+        `${session.selectedService || "service"}_${type}_upload`,
+      mimeType: mediaObj?.mime_type || "",
+      instructions: `Customer uploaded ${type} for ${session.selectedService || "service request"}`
+    });
+
+    session.lastServiceJobId = job?.id || null;
+
+    await sendMessage(
+      from,
+      `✅ Your ${type} has been received.
+
+Our team will contact you shortly on WhatsApp.`
+    );
+
+    session.stage = "MENU";
+    return res.sendStatus(200);
+  }
+
+  await sendMessage(from, "Please send your request as text, voice note, photo, video, or document.");
   return res.sendStatus(200);
 }
 
