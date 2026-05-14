@@ -982,7 +982,7 @@ Please send:
 2. Buy, sell, or resell
 3. Budget or asking price
 4. Location
-5. Any vehicle photos/details if available
+
 
 Our team will contact you shortly on WhatsApp.`
   );
