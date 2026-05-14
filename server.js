@@ -1477,14 +1477,8 @@ if (session.stage === "SERVICE_WAITING_EXTRA_NOTES") {
       session.lastServiceJobId = job?.id || null;
     }
 
-    await sendMessage(
-      from,
-      `✅ Your request has been received.
-
-Our team will contact you shortly on WhatsApp.`
-    );
-
-    session.stage = "MENU";
+    await sendMessage(from, `✅ Text instruction received. You can also send photo, document, video, or voice note.`);
+    session.stage = "SERVICE_WAITING_EXTRA_NOTES";
     return res.sendStatus(200);
   }
 
@@ -1503,56 +1497,47 @@ Our team will contact you shortly on WhatsApp.`
       message.audio?.mime_type || "audio/ogg"
     );
 
-    await sendMessage(
-      from,
-      `✅ Your voice instruction has been received.
-
-Our team will contact you shortly on WhatsApp.`
-    );
-
-    session.stage = "MENU";
+    await sendMessage(from, `✅ Voice note received. You can also send photo, document, video, or text instruction.`);
+    session.stage = "SERVICE_WAITING_EXTRA_NOTES";
     return res.sendStatus(200);
   }
-if (type === "image" || type === "document" || type === "video") {
-  const mediaObj =
-    type === "image"
-      ? message.image
-      : type === "document"
-      ? message.document
-      : message.video;
 
-  if (session.lastServiceJobId) {
-    await attachMediaToExistingJob(
-      session.lastServiceJobId,
-      mediaObj?.id,
-      mediaObj?.filename || `${session.selectedService || "service"}_${type}_upload`,
-      mediaObj?.mime_type || ""
-    );
-  } else {
-    const job = await createJobFromMedia({
-      printerId: AGENT_QUEUE_ID,
-      queueType: "AGENT",
-      serviceType: session.selectedService || "AGENT_REQUEST",
-      mediaId: mediaObj?.id,
-      originalName:
-        mediaObj?.filename ||
-        `${session.selectedService || "service"}_${type}_upload`,
-      mimeType: mediaObj?.mime_type || "",
-      instructions: `Customer uploaded ${type} for ${session.selectedService || "service request"}`
-    });
+  if (type === "image" || type === "document" || type === "video") {
+    const mediaObj =
+      type === "image"
+        ? message.image
+        : type === "document"
+        ? message.document
+        : message.video;
 
-    session.lastServiceJobId = job?.id || null;
+    if (session.lastServiceJobId) {
+      await attachMediaToExistingJob(
+        session.lastServiceJobId,
+        mediaObj?.id,
+        mediaObj?.filename || `${session.selectedService || "service"}_${type}_upload`,
+        mediaObj?.mime_type || ""
+      );
+    } else {
+      const job = await createJobFromMedia({
+        printerId: AGENT_QUEUE_ID,
+        queueType: "AGENT",
+        serviceType: session.selectedService || "AGENT_REQUEST",
+        mediaId: mediaObj?.id,
+        originalName: mediaObj?.filename || `${session.selectedService || "service"}_${type}_upload`,
+        mimeType: mediaObj?.mime_type || "",
+        instructions: `Customer uploaded ${type} for ${session.selectedService || "service request"}`
+      });
+
+      session.lastServiceJobId = job?.id || null;
+    }
+
+    await sendMessage(from, `✅ ${type} received. You can also send text instruction or voice note.`);
+    session.stage = "SERVICE_WAITING_EXTRA_NOTES";
+    return res.sendStatus(200);
   }
 
-  await sendMessage(
-    from,
-    `✅ Your ${type} has been received.
-
-You can now send text instruction or voice note, and it will appear together with this upload on the worker dashboard.`
-  );
-
-session.stage = "SERVICE_WAITING_EXTRA_NOTES";
-return res.sendStatus(200);
+  await sendMessage(from, "Please send text, voice note, photo, video, or document.");
+  return res.sendStatus(200);
 }
 
     if (type === "image" || type === "document" || type === "video" || type === "audio") {
