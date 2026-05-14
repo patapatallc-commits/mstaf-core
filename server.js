@@ -606,7 +606,33 @@ You may now send your file, photo, video, document, or voice instruction.`
 
       return result.rows[0] || null;
     }
+async function attachMediaToExistingJob(jobId, mediaId, originalName, mimeType) {
+  if (!jobId || !mediaId) return null;
 
+  const fileUrl = await downloadWhatsAppMediaToUploads(
+    mediaId,
+    originalName || `media_${jobId}`,
+    mimeType || "",
+    req
+  );
+
+  if (!fileUrl) return null;
+
+  const result = await pool.query(
+    `
+    UPDATE print_jobs
+    SET file_url = $1,
+        original_name = $2,
+        mime_type = $3,
+        updated_at = NOW()
+    WHERE id = $4
+    RETURNING *
+    `,
+    [fileUrl, originalName || "customer_upload", mimeType || "", jobId]
+  );
+
+  return result.rows[0] || null;
+}
     async function createTextOnlyServiceJob(serviceType, instructionsText) {
       const result = await pool.query(
         `
@@ -1487,15 +1513,22 @@ Our team will contact you shortly on WhatsApp.`
     session.stage = "MENU";
     return res.sendStatus(200);
   }
+if (type === "image" || type === "document" || type === "video") {
+  const mediaObj =
+    type === "image"
+      ? message.image
+      : type === "document"
+      ? message.document
+      : message.video;
 
-  if (type === "image" || type === "document" || type === "video") {
-    const mediaObj =
-      type === "image"
-        ? message.image
-        : type === "document"
-        ? message.document
-        : message.video;
-
+  if (session.lastServiceJobId) {
+    await attachMediaToExistingJob(
+      session.lastServiceJobId,
+      mediaObj?.id,
+      mediaObj?.filename || `${session.selectedService || "service"}_${type}_upload`,
+      mediaObj?.mime_type || ""
+    );
+  } else {
     const job = await createJobFromMedia({
       printerId: AGENT_QUEUE_ID,
       queueType: "AGENT",
@@ -1509,20 +1542,17 @@ Our team will contact you shortly on WhatsApp.`
     });
 
     session.lastServiceJobId = job?.id || null;
-
-    await sendMessage(
-      from,
-      `✅ Your ${type} has been received.
-
-Our team will contact you shortly on WhatsApp.`
-    );
-
-    session.stage = "MENU";
-    return res.sendStatus(200);
   }
 
-  await sendMessage(from, "Please send your request as text, voice note, photo, video, or document.");
-  return res.sendStatus(200);
+  await sendMessage(
+    from,
+    `✅ Your ${type} has been received.
+
+You can now send text instruction or voice note, and it will appear together with this upload on the worker dashboard.`
+  );
+
+session.stage = "SERVICE_WAITING_EXTRA_NOTES";
+return res.sendStatus(200);
 }
 
     if (type === "image" || type === "document" || type === "video" || type === "audio") {
