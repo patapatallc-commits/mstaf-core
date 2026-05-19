@@ -658,14 +658,20 @@ async function attachMediaToExistingJob(jobId, mediaId, originalName, mimeType) 
     if (type === "text" && ["hi", "hello", "hey", "menu", "start"].includes(lower)) {
       resetSession(from);
       const freshSession = getSession(from);
-      freshSession.stage = "MENU";
+freshSession.stage = "LANGUAGE_SELECTION";
 
-      await sendMessage(
-        from,
-        `Hello 👋 Welcome to PATAPATA Print-O-Matic
+await sendMessage(
+  from,
+  `🌍 Welcome to PATAPATA Print-O-Matic
 
-${serviceMenu()}`
-      );
+Please choose your language:
+
+1️⃣ English
+2️⃣ Français
+3️⃣ Español
+
+Reply with the number of your language.`
+);
       return res.sendStatus(200);
     }
 if (session.stage === "MENU") {
