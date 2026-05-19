@@ -700,7 +700,7 @@ Please choose your language:
 3️⃣ Español
 4️⃣ العربية
 
-Reply with 1, 2, 3, or 4.
+Reply with 1, 2, 3, or 4.`
 );
       return res.sendStatus(200);
     }
