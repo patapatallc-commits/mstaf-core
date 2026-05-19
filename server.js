@@ -213,7 +213,36 @@ function serviceMenu() {
 20 - Social Media Creator
 21 - Buy & Resell Auto`;
 }
+function arabicServiceMenu() {
+  return `
+🇸🇦 مرحبًا بك في PATAPATA Print-O-Matic
 
+اختر الخدمة:
+
+1 - الطباعة ورفع الملفات
+2 - التغليف الحراري
+3 - صور الهوية
+4 - تعديل الصور
+5 - تعديل الفيديو
+6 - الدروس / الواجبات
+7 - التحدث إلى وكيل
+8 - البحث عن ميكانيكي سيارات
+9 - أحتاج إلى توصيلة للعمل
+10 - شقة مشتركة / إيجار
+11 - أحتاج إلى عامل داخلي أو خارجي
+12 - طباعة تيشيرت مخصص
+13 - البحث عن وظيفة / إرسال السيرة الذاتية
+14 - فرص عمل
+15 - توظيف عامل
+16 - تنبيه مجتمعي
+17 - موردون موثوقون
+18 - شراء أرض للاستخدام أو إعادة البيع
+19 - صرف العملات
+20 - منشئ محتوى وسائل التواصل الاجتماعي
+
+الرجاء الرد برقم الخدمة.
+`;
+}
 function printSizeMenuText() {
   return `Print selected.
 
@@ -669,11 +698,57 @@ Please choose your language:
 1️⃣ English
 2️⃣ Français
 3️⃣ Español
+4️⃣ العربية
 
-Reply with the number of your language.`
+Reply with 1, 2, 3, or 4.
 );
       return res.sendStatus(200);
     }
+    if (session.stage === "LANGUAGE_SELECTION" && type === "text") {
+
+  if (lower === "1") {
+    session.language = "EN";
+    session.stage = "MENU";
+
+    await sendMessage(from, serviceMenu());
+
+    return res.sendStatus(200);
+  }
+
+  if (lower === "2") {
+    session.language = "FR";
+    session.stage = "MENU";
+
+    await sendMessage(from, frenchServiceMenu());
+
+    return res.sendStatus(200);
+  }
+
+  if (lower === "3") {
+    session.language = "ES";
+    session.stage = "MENU";
+
+    await sendMessage(from, spanishServiceMenu());
+
+    return res.sendStatus(200);
+  }
+
+  if (lower === "4") {
+    session.language = "AR";
+    session.stage = "MENU";
+
+    await sendMessage(from, arabicServiceMenu());
+
+    return res.sendStatus(200);
+  }
+
+  await sendMessage(
+    from,
+    "Please reply with 1, 2, 3, or 4."
+  );
+
+  return res.sendStatus(200);
+}
 if (session.stage === "MENU") {
   if (lower === "1") {
     session.selectedService = "PRINT";
