@@ -190,8 +190,9 @@ function resetSession(from) {
 // =========================
 // MENUS
 // =========================
-function serviceMenu() {
-  return `1 - Print
+function serviceMenu(language = "en") {
+  const menus = {
+    en: `1 - Print
 2 - Laminate
 3 - ID Photo
 4 - Image Editing
@@ -211,7 +212,76 @@ function serviceMenu() {
 18 - Buy Land for Use or Resell
 19 - Currency Exchange
 20 - Social Media Creator
-21 - Buy & Resell Auto`;
+21 - Buy & Resell Auto`,
+
+    es: `1 - Imprimir
+2 - Laminar
+3 - Foto de identificación
+4 - Edición de imagen
+5 - Edición de video
+6 - Lección / Tarea
+7 - Hablar con un agente
+8 - Buscar mecánico de autos
+9 - Necesito transporte al trabajo
+10 - Apartamento compartido / Renta
+11 - Necesito ayudante interior o exterior
+12 - Camiseta personalizada
+13 - Buscar trabajo / Enviar CV
+14 - Oportunidades de trabajo
+15 - Contratar trabajador
+16 - Alerta comunitaria
+17 - Proveedores confiables
+18 - Comprar terreno para usar o revender
+19 - Cambio de moneda
+20 - Creador de redes sociales
+21 - Comprar y revender autos`,
+
+    fr: `1 - Imprimer
+2 - Plastifier
+3 - Photo d'identité
+4 - Retouche d'image
+5 - Montage vidéo
+6 - Leçon / Devoirs
+7 - Parler à un agent
+8 - Trouver un mécanicien auto
+9 - Besoin d'un trajet au travail
+10 - Appartement partagé / Location
+11 - Besoin d'aide intérieure ou extérieure
+12 - Impression de t-shirt personnalisé
+13 - Recherche d'emploi / Envoyer CV
+14 - Offres d'emploi
+15 - Embaucher un travailleur
+16 - Alerte communautaire
+17 - Fournisseurs fiables
+18 - Acheter un terrain pour utiliser ou revendre
+19 - Change de monnaie
+20 - Créateur de réseaux sociaux
+21 - Acheter et revendre des autos`,
+
+    de: `1 - Drucken
+2 - Laminieren
+3 - Passfoto
+4 - Bildbearbeitung
+5 - Videobearbeitung
+6 - Unterricht / Hausaufgaben
+7 - Mit Agent sprechen
+8 - Automechaniker finden
+9 - Fahrt zur Arbeit benötigt
+10 - WG / Miete
+11 - Innen- oder Außenhilfe benötigt
+12 - Individueller T-Shirt-Druck
+13 - Jobsuche / Lebenslauf senden
+14 - Jobangebote
+15 - Arbeiter einstellen
+16 - Gemeinschaftsalarm
+17 - Vertrauenswürdige Lieferanten
+18 - Land kaufen zur Nutzung oder zum Wiederverkauf
+19 - Geldwechsel
+20 - Social-Media-Ersteller
+21 - Autos kaufen und weiterverkaufen`,
+  };
+
+  return menus[language] || menus.en;
 }
 
 function printSizeMenuText() {
@@ -662,9 +732,17 @@ async function attachMediaToExistingJob(jobId, mediaId, originalName, mimeType) 
 
       await sendMessage(
         from,
-        `Hello 👋 Welcome to PATAPATA Print-O-Matic
+     `${lower === "hola" ? "Hola" : lower === "bonjour" ? "Bonjour" : lower === "hallo" ? "Hallo" : "Hello"} 👋 Welcome to PATAPATA Print-O-Matic
 
-${serviceMenu()}`
+${serviceMenu(
+  lower === "hola"
+    ? "es"
+    : lower === "bonjour"
+    ? "fr"
+    : lower === "hallo"
+    ? "de"
+    : "en"
+)}
       );
       return res.sendStatus(200);
     }
