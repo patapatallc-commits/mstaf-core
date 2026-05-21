@@ -729,10 +729,15 @@ async function attachMediaToExistingJob(jobId, mediaId, originalName, mimeType) 
       resetSession(from);
       const freshSession = getSession(from);
       freshSession.stage = "MENU";
-
-      await sendMessage(
-        from,
-     `${lower === "hola" ? "Hola" : lower === "bonjour" ? "Bonjour" : lower === "hallo" ? "Hallo" : "Hello"} 👋 Welcome to PATAPATA Print-O-Matic
+await sendMessage(
+  from,
+  `${lower === "hola"
+    ? "Hola"
+    : lower === "bonjour"
+    ? "Bonjour"
+    : lower === "hallo"
+    ? "Hallo"
+    : "Hello"} 👋 Welcome to PATAPATA Print-O-Matic
 
 ${serviceMenu(
   lower === "hola"
@@ -742,10 +747,10 @@ ${serviceMenu(
     : lower === "hallo"
     ? "de"
     : "en"
-)}
-      );
-      return res.sendStatus(200);
-    }
+)}`
+);
+
+return res.sendStatus(200);
 if (session.stage === "MENU") {
   if (lower === "1") {
     session.selectedService = "PRINT";
