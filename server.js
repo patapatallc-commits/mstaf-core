@@ -1928,42 +1928,46 @@ Our team will contact you shortly on WhatsApp.`
 
     return res.sendStatus(200);
   }
+if (lower === "3") {
+  if (session.lastServiceJobId) {
+    await attachTextToExistingJob(
+      session.lastServiceJobId,
+      "Payment choice: Continue with Agent"
+    );
+  }
 
-  if (lower === "3") {
-    if (session.lastServiceJobId) {
-      await attachTextToExistingJob(session.lastServiceJobId, "Payment choice: Continue with Agent");
-    }
+  session.stage = "SERVICE_WAITING_EXTRA_NOTES";
 
-    session.stage = "SERVICE_WAITING_EXTRA_NOTES";
-
-    await sendMessage(
-      from,
-      `👨‍💼 Continue with Agent selected.
+  await sendMessage(
+    from,
+    `👨‍💼 Continue with Agent selected.
 
 Please send any additional instruction as text or voice note.
 
 Our team will contact you shortly on WhatsApp.`
-    );
-
-    return res.sendStatus(200);
-  }
-
-  await sendMessage(
-    from,
-    `Please choose:
-
-1 - I paid with Shopify
-2 - I paid with Africa Payment
-3 - Continue with Agent`
   );
 
   return res.sendStatus(200);
 }
-  // Only show menu if already in MENU stage
+
+await sendMessage(
+  from,
+  `Please choose:
+
+1 - I paid with Shopify
+2 - I paid with Africa Payment
+3 - Continue with Agent`
+);
+
+return res.sendStatus(200);
+}
+
+// Only show menu if already in MENU stage
 else if (session.stage === "MENU") {
+
   await sendMessage(
     from,
-    Please reply with one of the options below:
+    `Please reply with one of the options below:
 
 ${serviceMenu()}`
   );
@@ -1974,19 +1978,10 @@ ${serviceMenu()}`
 // Otherwise do nothing (prevent override)
 return res.sendStatus(200);
 
-  } catch (err) {
-    console.error("Webhook error:", err.response?.data || err.message || err);
-    return res.sendStatus(200);
-  }
-});
-// ========================
-// HEALTH
-// ========================
-
-app.get("/health", (_req, res) => {
-  res.json({ ok: true });
-});
-
+} catch (err) {
+  console.error("Webhook error:", err.response?.data || err.message || err);
+  return res.sendStatus(200);
+}
 
 
 
