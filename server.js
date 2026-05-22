@@ -1963,7 +1963,7 @@ Our team will contact you shortly on WhatsApp.`
 else if (session.stage === "MENU") {
   await sendMessage(
     from,
-    `Please reply with one of the options below:
+    Please reply with one of the options below:
 
 ${serviceMenu()}`
   );
