@@ -518,6 +518,47 @@ app.post("/webhook", async (req, res) => {
     let text = "";
     if (type === "text") text = message.text?.body || "";
     const lower = text.toLowerCase().trim();
+    if (type === "text" && lower.startsWith("hola")) {
+  resetSession(from);
+  const session = getSession(from);
+  session.language = "es";
+  session.stage = "MENU";
+
+  await sendMessage(
+    from,
+    "Hola 👋 Bienvenido a PATAPATA Print-O-Matic\n\n" + serviceMenu("es")
+  );
+
+  return res.sendStatus(200);
+}
+
+if (type === "text" && lower.startsWith("bonjour")) {
+  resetSession(from);
+  const session = getSession(from);
+  session.language = "fr";
+  session.stage = "MENU";
+
+  await sendMessage(
+    from,
+    "Bonjour 👋 Bienvenue sur PATAPATA Print-O-Matic\n\n" + serviceMenu("fr")
+  );
+
+  return res.sendStatus(200);
+}
+
+if (type === "text" && lower.startsWith("hallo")) {
+  resetSession(from);
+  const session = getSession(from);
+  session.language = "de";
+  session.stage = "MENU";
+
+  await sendMessage(
+    from,
+    "Hallo 👋 Willkommen bei PATAPATA Print-O-Matic\n\n" + serviceMenu("de")
+  );
+
+  return res.sendStatus(200);
+}
 // ===== LANDING PAGE WHATSAPP REQUESTS → WORKER DASHBOARD =====
 if (
   lower.includes("upload and print") ||
