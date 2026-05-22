@@ -168,6 +168,7 @@ const sessions = new Map();
 function createSession() {
   return {
     stage: "MENU",
+    language: "en",
     selectedService: null,
     printSpec: {},
     laminateSpec: {},
@@ -741,6 +742,14 @@ async function attachMediaToExistingJob(jobId, mediaId, originalName, mimeType) 
       resetSession(from);
       const freshSession = getSession(from);
       freshSession.stage = "MENU";
+      freshSession.language =
+  lower === "hola"
+    ? "es"
+    : lower === "bonjour"
+    ? "fr"
+    : lower === "hallo"
+    ? "de"
+    : "en";
 await sendMessage(
   from,
   `${lower === "hola"
@@ -751,15 +760,7 @@ await sendMessage(
     ? "Hallo"
     : "Hello"} 👋 Welcome to PATAPATA Print-O-Matic
 
-${serviceMenu(
-  lower === "hola"
-    ? "es"
-    : lower === "bonjour"
-    ? "fr"
-    : lower === "hallo"
-    ? "de"
-    : "en"
-)}`
+${serviceMenu(freshSession.language)}
 );
 
 return res.sendStatus(200);
@@ -1969,7 +1970,7 @@ else if (session.stage === "MENU") {
     from,
     `Please reply with one of the options below:
 
-${serviceMenu()}`
+${serviceMenu(session.language || "en")}`
   );
 
   return res.sendStatus(200);
