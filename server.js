@@ -767,51 +767,7 @@ async function attachMediaToExistingJob(jobId, mediaId, originalName, mimeType) 
       return result.rows[0] || null;
     }
 
-const isGreeting =
-  type === "text" &&
-  (
-    lower === "hi" ||
-    lower === "hello" ||
-    lower === "hey" ||
-    lower === "menu" ||
-    lower === "start" ||
-    lower.startsWith("hola") ||
-    lower.startsWith("bonjour") ||
-    lower.startsWith("hallo")
-  );
 
-if (isGreeting) {
-      resetSession(from);
-      const freshSession = getSession(from);
-      freshSession.stage = "MENU";
-      freshSession.language =
-  lower === "hola"
-    ? "es"
-    : lower === "bonjour"
-    ? "fr"
-    : lower === "hallo"
-    ? "de"
-    : "en";
-
-
-
-const welcomeText =
-  freshSession.language === "es"
-    ? "Hola"
-    : freshSession.language === "fr"
-    ? "Bonjour"
-    : freshSession.language === "de"
-    ? "Hallo"
-    : "Hello";
-
-await sendMessage(
-  from,
-  welcomeText +
-    " 👋 Welcome to PATAPATA Print-O-Matic\n\n" +
-    serviceMenu(freshSession.language)
-);
-
-return res.sendStatus(200);
 if (session.stage === "MENU") {
   if (lower === "1") {
     session.selectedService = "PRINT";
