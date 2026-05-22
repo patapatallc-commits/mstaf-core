@@ -761,7 +761,20 @@ await sendMessage(
     ? "Hallo"
     : "Hello"} 👋 Welcome to PATAPATA Print-O-Matic
 
-${serviceMenu(freshSession.language)}
+const welcomeText =
+  freshSession.language === "es"
+    ? "Hola"
+    : freshSession.language === "fr"
+    ? "Bonjour"
+    : freshSession.language === "de"
+    ? "Hallo"
+    : "Hello";
+
+await sendMessage(
+  from,
+  welcomeText +
+    " 👋 Welcome to PATAPATA Print-O-Matic\n\n" +
+    serviceMenu(freshSession.language)
 );
 
 return res.sendStatus(200);
