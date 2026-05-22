@@ -518,6 +518,35 @@ app.post("/webhook", async (req, res) => {
     let text = "";
     if (type === "text") text = message.text?.body || "";
     const lower = text.toLowerCase().trim();
+    if (type === "text" && lower === "hola") {
+  await sendMessage(
+    from,
+    `Hola 👋 Bienvenido a PATAPATA Print-O-Matic
+
+${serviceMenu("es")}`
+  );
+  return res.sendStatus(200);
+}
+
+if (type === "text" && lower === "bonjour") {
+  await sendMessage(
+    from,
+    `Bonjour 👋 Bienvenue sur PATAPATA Print-O-Matic
+
+${serviceMenu("fr")}`
+  );
+  return res.sendStatus(200);
+}
+
+if (type === "text" && lower === "hallo") {
+  await sendMessage(
+    from,
+    `Hallo 👋 Willkommen bei PATAPATA Print-O-Matic
+
+${serviceMenu("de")}`
+  );
+  return res.sendStatus(200);
+}
     if (type === "text" && lower.startsWith("hola")) {
   resetSession(from);
   const session = getSession(from);
