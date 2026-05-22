@@ -751,15 +751,8 @@ if (isGreeting) {
     : lower === "hallo"
     ? "de"
     : "en";
-await sendMessage(
-  from,
-  `${lower === "hola"
-    ? "Hola"
-    : lower === "bonjour"
-    ? "Bonjour"
-    : lower === "hallo"
-    ? "Hallo"
-    : "Hello"} 👋 Welcome to PATAPATA Print-O-Matic
+
+
 
 const welcomeText =
   freshSession.language === "es"
