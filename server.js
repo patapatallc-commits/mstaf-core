@@ -725,7 +725,19 @@ async function attachMediaToExistingJob(jobId, mediaId, originalName, mimeType) 
       return result.rows[0] || null;
     }
 
-    if (type === "text" && ["hi", "hello", "hey", "menu", "start"].includes(lower)) {
+    if (
+  type === "text" &&
+  [
+    "hi",
+    "hello",
+    "hey",
+    "menu",
+    "start",
+    "hola",
+    "bonjour",
+    "hallo"
+  ].includes(lower)
+) {
       resetSession(from);
       const freshSession = getSession(from);
       freshSession.stage = "MENU";
