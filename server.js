@@ -726,19 +726,20 @@ async function attachMediaToExistingJob(jobId, mediaId, originalName, mimeType) 
       return result.rows[0] || null;
     }
 
-    if (
+const isGreeting =
   type === "text" &&
-  [
-    "hi",
-    "hello",
-    "hey",
-    "menu",
-    "start",
-    "hola",
-    "bonjour",
-    "hallo"
-  ].includes(lower)
-) {
+  (
+    lower === "hi" ||
+    lower === "hello" ||
+    lower === "hey" ||
+    lower === "menu" ||
+    lower === "start" ||
+    lower.startsWith("hola") ||
+    lower.startsWith("bonjour") ||
+    lower.startsWith("hallo")
+  );
+
+if (isGreeting) {
       resetSession(from);
       const freshSession = getSession(from);
       freshSession.stage = "MENU";
