@@ -168,6 +168,7 @@ const sessions = new Map();
 function createSession() {
   return {
     stage: "MENU",
+     language: "en",
     selectedService: null,
     printSpec: {},
     laminateSpec: {},
@@ -190,8 +191,9 @@ function resetSession(from) {
 // =========================
 // MENUS
 // =========================
-function serviceMenu() {
-  return `1 - Print
+function serviceMenu(language = "en") {
+  const menus = {
+    en: `1 - Print
 2 - Laminate
 3 - ID Photo
 4 - Image Editing
@@ -211,41 +213,120 @@ function serviceMenu() {
 18 - Buy Land for Use or Resell
 19 - Currency Exchange
 20 - Social Media Creator
-21 - Buy & Resell Auto`;
-}
+21 - Buy & Resell Auto`,
 
-function printSizeMenuText() {
-  return `Print selected.
+    es: `1 - Imprimir
+2 - Laminar
+3 - Foto de identificación
+4 - Edición de imagen
+5 - Edición de video
+6 - Lección / Tarea
+7 - Hablar con un agente
+8 - Buscar mecánico
+9 - Transporte al trabajo
+10 - Apartamento compartido / Renta
+11 - Ayudante interior o exterior
+12 - Camiseta personalizada
+13 - Buscar trabajo / Enviar CV
+14 - Oportunidades de trabajo
+15 - Contratar trabajador
+16 - Alerta comunitaria
+17 - Proveedores confiables
+18 - Comprar terreno
+19 - Cambio de moneda
+20 - Creador de redes sociales
+21 - Comprar y revender autos`,
 
-Choose paper size:
-1 - A4
-2 - A3
-3 - Letter
-4 - Legal
-5 - Tabloid
-6 - Card`;
-}
+    fr: `1 - Imprimer
+2 - Plastifier
+3 - Photo d'identité
+4 - Retouche d'image
+5 - Montage vidéo
+6 - Leçon / Devoirs
+7 - Parler à un agent
+8 - Trouver un mécanicien
+9 - Trajet au travail
+10 - Appartement partagé / Location
+11 - Aide intérieure ou extérieure
+12 - T-shirt personnalisé
+13 - Recherche d'emploi / Envoyer CV
+14 - Offres d'emploi
+15 - Embaucher un travailleur
+16 - Alerte communautaire
+17 - Fournisseurs fiables
+18 - Acheter un terrain
+19 - Change de monnaie
+20 - Créateur de réseaux sociaux
+21 - Acheter et revendre des autos`,
 
-function printColorMenuText() {
-  return `Choose color:
-1 - Black & White
-2 - Color`;
-}
+    de: `1 - Drucken
+2 - Laminieren
+3 - Passfoto
+4 - Bildbearbeitung
+5 - Videobearbeitung
+6 - Unterricht / Hausaufgaben
+7 - Mit Agent sprechen
+8 - Automechaniker finden
+9 - Fahrt zur Arbeit
+10 - WG / Miete
+11 - Innen- oder Außenhilfe
+12 - T-Shirt-Druck
+13 - Jobsuche / Lebenslauf senden
+14 - Jobangebote
+15 - Arbeiter einstellen
+16 - Gemeinschaftsalarm
+17 - Vertrauenswürdige Lieferanten
+18 - Land kaufen
+19 - Geldwechsel
+20 - Social-Media-Ersteller
+21 - Autos kaufen und weiterverkaufen`,
 
-function laminateSizeMenuText() {
-  return `Laminate selected.
+    pt: `1 - Imprimir
+2 - Laminar
+3 - Foto de identificação
+4 - Edição de imagem
+5 - Edição de vídeo
+6 - Aula / Tarefa
+7 - Falar com agente
+8 - Encontrar mecânico
+9 - Transporte para trabalho
+10 - Apartamento compartilhado / Aluguel
+11 - Ajudante interno ou externo
+12 - Camiseta personalizada
+13 - Procurar emprego / Enviar CV
+14 - Oportunidades de emprego
+15 - Contratar trabalhador
+16 - Alerta comunitário
+17 - Fornecedores confiáveis
+18 - Comprar terreno
+19 - Câmbio
+20 - Criador de mídia social
+21 - Comprar e revender carros`,
 
-Choose laminate size:
-1 - A4
-2 - Letter
-3 - Legal
-4 - Tabloid
+    ar: `1 - طباعة
+2 - تغليف حراري
+3 - صورة هوية
+4 - تعديل الصور
+5 - تعديل الفيديو
+6 - درس / واجب
+7 - التحدث مع موظف
+8 - البحث عن ميكانيكي
+9 - مواصلة إلى العمل
+10 - سكن مشترك / إيجار
+11 - مساعد داخلي أو خارجي
+12 - طباعة تيشيرت
+13 - البحث عن عمل / إرسال السيرة الذاتية
+14 - فرص عمل
+15 - توظيف عامل
+16 - تنبيه مجتمعي
+17 - موردون موثوقون
+18 - شراء أرض
+19 - تحويل العملات
+20 - منشئ محتوى
+21 - شراء وإعادة بيع السيارات`
+  };
 
-Africa Laminating Prices:
-• A4: ₦300
-• Letter: ₦300
-• Legal: ₦300
-• Tabloid: ₦500`;
+  return menus[language] || menus.en;
 }
 
 // =========================
@@ -447,6 +528,21 @@ app.post("/webhook", async (req, res) => {
     let text = "";
     if (type === "text") text = message.text?.body || "";
     const lower = text.toLowerCase().trim();
+    const langMatch = lower.match(/lang=(en|es|fr|de|pt|ar)/);
+
+if (langMatch) {
+  session.language = langMatch[1];
+  session.stage = "MENU";
+
+  await sendMessage(
+    from,
+    `Hello 👋 Welcome to PATAPATA Print-O-Matic
+
+${serviceMenu(session.language)}`
+  );
+
+  return res.sendStatus(200);
+}
 // ===== LANDING PAGE WHATSAPP REQUESTS → WORKER DASHBOARD =====
 if (
   lower.includes("upload and print") ||
@@ -664,7 +760,7 @@ async function attachMediaToExistingJob(jobId, mediaId, originalName, mimeType) 
         from,
         `Hello 👋 Welcome to PATAPATA Print-O-Matic
 
-${serviceMenu()}`
+${serviceMenu(session.language)}
       );
       return res.sendStatus(200);
     }
@@ -989,7 +1085,7 @@ Our team will contact you shortly on WhatsApp.`
 
   return res.sendStatus(200);
 }
-  await sendMessage(from, serviceMenu());
+  await sendMessage(from, );
   return res.sendStatus(200);
 }
     if (session.stage === "HIRE_WORKER_MENU" && type === "text") {
@@ -1870,7 +1966,7 @@ else if (session.stage === "MENU") {
     from,
     `Please reply with one of the options below:
 
-${serviceMenu()}`
+${}`
   );
 
   return res.sendStatus(200);
