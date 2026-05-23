@@ -514,6 +514,414 @@ Preços de laminação na África:
   return texts[language] || texts.en;
 }
 
+
+// =========================
+// MULTILINGUAL MESSAGE HELPERS
+// =========================
+function pickText(language = "en", texts = {}) {
+  const lang = language || "en";
+  return texts[lang] || texts.en || "";
+}
+
+function welcomeText(language = "en") {
+  return pickText(language, {
+    en: "Hello 👋 Welcome to PATAPATA Print-O-Matic",
+    es: "Hola 👋 Bienvenido a PATAPATA Print-O-Matic",
+    fr: "Bonjour 👋 Bienvenue chez PATAPATA Print-O-Matic",
+    de: "Hallo 👋 Willkommen bei PATAPATA Print-O-Matic",
+    pt: "Olá 👋 Bem-vindo ao PATAPATA Print-O-Matic",
+    ar: "مرحبًا 👋 أهلاً بك في PATAPATA Print-O-Matic"
+  });
+}
+
+function selectedText(language = "en", serviceName = "") {
+  return pickText(language, {
+    en: `✅ Selected: ${serviceName}`,
+    es: `✅ Seleccionado: ${serviceName}`,
+    fr: `✅ Sélectionné : ${serviceName}`,
+    de: `✅ Ausgewählt: ${serviceName}`,
+    pt: `✅ Selecionado: ${serviceName}`,
+    ar: `✅ تم الاختيار: ${serviceName}`
+  });
+}
+
+function printSetupCompleteText(language = "en", spec = {}) {
+  const colorText = spec.color_mode === "COLOR"
+    ? pickText(language, { en: "Color", es: "Color", fr: "Couleur", de: "Farbe", pt: "Colorido", ar: "ملون" })
+    : pickText(language, { en: "Black & White", es: "Blanco y negro", fr: "Noir et blanc", de: "Schwarzweiß", pt: "Preto e branco", ar: "أبيض وأسود" });
+
+  return pickText(language, {
+    en: `✅ Print setup complete.
+
+Paper: ${spec.paper_size}
+Color: ${colorText}
+Copies: ${spec.copies}
+Pages: ${spec.pages}
+
+Please upload your PDF, image, or document now.`,
+
+    es: `✅ Configuración de impresión completada.
+
+Papel: ${spec.paper_size}
+Color: ${colorText}
+Copias: ${spec.copies}
+Páginas: ${spec.pages}
+
+Por favor sube tu PDF, imagen o documento ahora.`,
+
+    fr: `✅ Configuration d'impression terminée.
+
+Papier : ${spec.paper_size}
+Couleur : ${colorText}
+Copies : ${spec.copies}
+Pages : ${spec.pages}
+
+Veuillez télécharger votre PDF, image ou document maintenant.`,
+
+    de: `✅ Druckeinrichtung abgeschlossen.
+
+Papier: ${spec.paper_size}
+Farbe: ${colorText}
+Kopien: ${spec.copies}
+Seiten: ${spec.pages}
+
+Bitte laden Sie jetzt Ihre PDF-Datei, Ihr Bild oder Ihr Dokument hoch.`,
+
+    pt: `✅ Configuração de impressão concluída.
+
+Papel: ${spec.paper_size}
+Cor: ${colorText}
+Cópias: ${spec.copies}
+Páginas: ${spec.pages}
+
+Envie agora seu PDF, imagem ou documento.`,
+
+    ar: `✅ اكتمل إعداد الطباعة.
+
+الورق: ${spec.paper_size}
+اللون: ${colorText}
+النسخ: ${spec.copies}
+الصفحات: ${spec.pages}
+
+يرجى رفع ملف PDF أو صورة أو مستند الآن.`
+  });
+}
+
+function laminateSetupCompleteText(language = "en", spec = {}) {
+  return pickText(language, {
+    en: `✅ Laminate setup complete.
+
+Size: ${spec.size}
+Quantity: ${spec.quantity}
+
+Please upload your file/image now.`,
+
+    es: `✅ Configuración de laminado completada.
+
+Tamaño: ${spec.size}
+Cantidad: ${spec.quantity}
+
+Por favor sube tu archivo/imagen ahora.`,
+
+    fr: `✅ Configuration de plastification terminée.
+
+Format : ${spec.size}
+Quantité : ${spec.quantity}
+
+Veuillez télécharger votre fichier/image maintenant.`,
+
+    de: `✅ Laminiereinrichtung abgeschlossen.
+
+Größe: ${spec.size}
+Menge: ${spec.quantity}
+
+Bitte laden Sie jetzt Ihre Datei/Ihr Bild hoch.`,
+
+    pt: `✅ Configuração de laminação concluída.
+
+Tamanho: ${spec.size}
+Quantidade: ${spec.quantity}
+
+Envie agora seu arquivo/imagem.`,
+
+    ar: `✅ اكتمل إعداد التغليف الحراري.
+
+الحجم: ${spec.size}
+الكمية: ${spec.quantity}
+
+يرجى رفع الملف/الصورة الآن.`
+  });
+}
+
+function printFileReceivedText(language = "en", details = {}) {
+  const colorText = details.colorMode === "COLOR"
+    ? pickText(language, { en: "Color", es: "Color", fr: "Couleur", de: "Farbe", pt: "Colorido", ar: "ملون" })
+    : pickText(language, { en: "Black & White", es: "Blanco y negro", fr: "Noir et blanc", de: "Schwarzweiß", pt: "Preto e branco", ar: "أبيض وأسود" });
+
+  const checkout = details.checkoutUrl || pickText(language, {
+    en: "Checkout link not available for this paper/color yet.",
+    es: "El enlace de pago aún no está disponible para este papel/color.",
+    fr: "Le lien de paiement n'est pas encore disponible pour ce papier/couleur.",
+    de: "Der Checkout-Link ist für dieses Papier/diese Farbe noch nicht verfügbar.",
+    pt: "O link de pagamento ainda não está disponível para este papel/cor.",
+    ar: "رابط الدفع غير متاح بعد لهذا الورق/اللون."
+  });
+
+  return pickText(language, {
+    en: `✅ File received and added to print queue.
+
+Paper: ${details.paperSize}
+Color: ${colorText}
+Copies: ${details.copies}
+Pages: ${details.pages}
+
+Shopify Checkout:
+${checkout}
+
+Africa Payment:
+https://www.patapata.us/pages/africa-payment
+
+Reply:
+1 - I paid with Shopify
+2 - I paid with Africa Payment
+3 - Continue with Agent`,
+
+    es: `✅ Archivo recibido y agregado a la cola de impresión.
+
+Papel: ${details.paperSize}
+Color: ${colorText}
+Copias: ${details.copies}
+Páginas: ${details.pages}
+
+Pago Shopify:
+${checkout}
+
+Pago África:
+https://www.patapata.us/pages/africa-payment
+
+Responde:
+1 - Pagué con Shopify
+2 - Pagué con Pago África
+3 - Continuar con agente`,
+
+    fr: `✅ Fichier reçu et ajouté à la file d'impression.
+
+Papier : ${details.paperSize}
+Couleur : ${colorText}
+Copies : ${details.copies}
+Pages : ${details.pages}
+
+Paiement Shopify :
+${checkout}
+
+Paiement Afrique :
+https://www.patapata.us/pages/africa-payment
+
+Répondez :
+1 - J'ai payé avec Shopify
+2 - J'ai payé avec Paiement Afrique
+3 - Continuer avec un agent`,
+
+    de: `✅ Datei erhalten und zur Druckwarteschlange hinzugefügt.
+
+Papier: ${details.paperSize}
+Farbe: ${colorText}
+Kopien: ${details.copies}
+Seiten: ${details.pages}
+
+Shopify-Zahlung:
+${checkout}
+
+Afrika-Zahlung:
+https://www.patapata.us/pages/africa-payment
+
+Antworten:
+1 - Ich habe mit Shopify bezahlt
+2 - Ich habe mit Afrika-Zahlung bezahlt
+3 - Mit Agent fortfahren`,
+
+    pt: `✅ Arquivo recebido e adicionado à fila de impressão.
+
+Papel: ${details.paperSize}
+Cor: ${colorText}
+Cópias: ${details.copies}
+Páginas: ${details.pages}
+
+Pagamento Shopify:
+${checkout}
+
+Pagamento África:
+https://www.patapata.us/pages/africa-payment
+
+Responda:
+1 - Paguei com Shopify
+2 - Paguei com Pagamento África
+3 - Continuar com agente`,
+
+    ar: `✅ تم استلام الملف وإضافته إلى قائمة الطباعة.
+
+الورق: ${details.paperSize}
+اللون: ${colorText}
+النسخ: ${details.copies}
+الصفحات: ${details.pages}
+
+دفع Shopify:
+${checkout}
+
+دفع أفريقيا:
+https://www.patapata.us/pages/africa-payment
+
+رد:
+1 - دفعت عبر Shopify
+2 - دفعت عبر دفع أفريقيا
+3 - المتابعة مع موظف`
+  });
+}
+
+function laminateFileReceivedText(language = "en", details = {}) {
+  const checkout = details.checkoutUrl || pickText(language, {
+    en: "Checkout link not available for this laminate size yet.",
+    es: "El enlace de pago aún no está disponible para este tamaño de laminado.",
+    fr: "Le lien de paiement n'est pas encore disponible pour ce format de plastification.",
+    de: "Der Checkout-Link ist für diese Laminiergröße noch nicht verfügbar.",
+    pt: "O link de pagamento ainda não está disponível para este tamanho de laminação.",
+    ar: "رابط الدفع غير متاح بعد لحجم التغليف هذا."
+  });
+
+  return pickText(language, {
+    en: `✅ Laminate file received.
+
+Size: ${details.size}
+Quantity: ${details.quantity}
+
+Shopify Checkout:
+${checkout}
+
+Africa Payment:
+https://www.patapata.us/pages/africa-payment
+
+Reply:
+1 - I paid with Shopify
+2 - I paid with Africa Payment
+3 - Continue with Agent`,
+
+    es: `✅ Archivo de laminado recibido.
+
+Tamaño: ${details.size}
+Cantidad: ${details.quantity}
+
+Pago Shopify:
+${checkout}
+
+Pago África:
+https://www.patapata.us/pages/africa-payment
+
+Responde:
+1 - Pagué con Shopify
+2 - Pagué con Pago África
+3 - Continuar con agente`,
+
+    fr: `✅ Fichier de plastification reçu.
+
+Format : ${details.size}
+Quantité : ${details.quantity}
+
+Paiement Shopify :
+${checkout}
+
+Paiement Afrique :
+https://www.patapata.us/pages/africa-payment
+
+Répondez :
+1 - J'ai payé avec Shopify
+2 - J'ai payé avec Paiement Afrique
+3 - Continuer avec un agent`,
+
+    de: `✅ Laminierdatei erhalten.
+
+Größe: ${details.size}
+Menge: ${details.quantity}
+
+Shopify-Zahlung:
+${checkout}
+
+Afrika-Zahlung:
+https://www.patapata.us/pages/africa-payment
+
+Antworten:
+1 - Ich habe mit Shopify bezahlt
+2 - Ich habe mit Afrika-Zahlung bezahlt
+3 - Mit Agent fortfahren`,
+
+    pt: `✅ Arquivo de laminação recebido.
+
+Tamanho: ${details.size}
+Quantidade: ${details.quantity}
+
+Pagamento Shopify:
+${checkout}
+
+Pagamento África:
+https://www.patapata.us/pages/africa-payment
+
+Responda:
+1 - Paguei com Shopify
+2 - Paguei com Pagamento África
+3 - Continuar com agente`,
+
+    ar: `✅ تم استلام ملف التغليف.
+
+الحجم: ${details.size}
+الكمية: ${details.quantity}
+
+دفع Shopify:
+${checkout}
+
+دفع أفريقيا:
+https://www.patapata.us/pages/africa-payment
+
+رد:
+1 - دفعت عبر Shopify
+2 - دفعت عبر دفع أفريقيا
+3 - المتابعة مع موظف`
+  });
+}
+
+function paymentChoiceInvalidText(language = "en") {
+  return pickText(language, {
+    en: `Please choose:
+
+1 - I paid with Shopify
+2 - I paid with Africa Payment
+3 - Continue with Agent`,
+    es: `Por favor elige:
+
+1 - Pagué con Shopify
+2 - Pagué con Pago África
+3 - Continuar con agente`,
+    fr: `Veuillez choisir :
+
+1 - J'ai payé avec Shopify
+2 - J'ai payé avec Paiement Afrique
+3 - Continuer avec un agent`,
+    de: `Bitte wählen Sie:
+
+1 - Ich habe mit Shopify bezahlt
+2 - Ich habe mit Afrika-Zahlung bezahlt
+3 - Mit Agent fortfahren`,
+    pt: `Escolha:
+
+1 - Paguei com Shopify
+2 - Paguei com Pagamento África
+3 - Continuar com agente`,
+    ar: `يرجى الاختيار:
+
+1 - دفعت عبر Shopify
+2 - دفعت عبر دفع أفريقيا
+3 - المتابعة مع موظف`
+  });
+}
+
 // =========================
 // SHOPIFY VARIANT HELPERS
 // =========================
@@ -721,7 +1129,7 @@ if (langMatch) {
 
  await sendMessage(
   from,
-  `Hello 👋 Welcome to PATAPATA Print-O-Matic
+  `${welcomeText(session.language)}
 
 ${serviceMenu(session.language)}`
 );
@@ -937,15 +1345,17 @@ async function attachMediaToExistingJob(jobId, mediaId, originalName, mimeType) 
     }
 
     if (type === "text" && ["hi", "hello", "hey", "menu", "start"].includes(lower)) {
+      const previousLanguage = session.language || "en";
       resetSession(from);
       const freshSession = getSession(from);
+      freshSession.language = previousLanguage;
       freshSession.stage = "MENU";
 
       await sendMessage(
         from,
-        `Hello 👋 Welcome to PATAPATA Print-O-Matic
+        `${welcomeText(freshSession.language)}
 
-${serviceMenu(session.language)}`
+${serviceMenu(freshSession.language)}`
       );
       return res.sendStatus(200);
     }
@@ -1027,7 +1437,14 @@ Reply with 1, 2, 3, or 4.`
   if (lower === "7") {
     session.selectedService = "TALK_TO_AGENT";
     session.stage = "SERVICE_WAITING_EXTRA_NOTES";
-    await sendMessage(from, "👨‍💼 Talk to Agent selected. Please type your request now.");
+    await sendMessage(from, pickText(session.language, {
+      en: "👨‍💼 Talk to Agent selected. Please type your request now.",
+      es: "👨‍💼 Hablar con un agente seleccionado. Escriba su solicitud ahora.",
+      fr: "👨‍💼 Parler à un agent sélectionné. Veuillez écrire votre demande maintenant.",
+      de: "👨‍💼 Mit Agent sprechen ausgewählt. Bitte schreiben Sie jetzt Ihre Anfrage.",
+      pt: "👨‍💼 Falar com agente selecionado. Digite sua solicitação agora.",
+      ar: "👨‍💼 تم اختيار التحدث مع موظف. يرجى كتابة طلبك الآن."
+    }));
     return res.sendStatus(200);
   }
 
@@ -1062,16 +1479,22 @@ Reply with 1, 2, 3, or 4.`
   if (lower === "10") {
     session.selectedService = "SHARED_APARTMENT_RENT";
     session.stage = "SERVICE_WAITING_EXTRA_NOTES";
-    await sendMessage(from, "🏠 Please send preferred location, budget, and move-in date.");
+    await sendMessage(from, pickText(session.language, {
+      en: "🏠 Please send preferred location, budget, and move-in date.",
+      es: "🏠 Envíe la ubicación preferida, presupuesto y fecha de mudanza.",
+      fr: "🏠 Veuillez envoyer le lieu préféré, le budget et la date d'emménagement.",
+      de: "🏠 Bitte senden Sie den bevorzugten Standort, das Budget und das Einzugsdatum.",
+      pt: "🏠 Envie a localização preferida, orçamento e data de mudança.",
+      ar: "🏠 يرجى إرسال الموقع المفضل والميزانية وتاريخ الانتقال."
+    }));
     return res.sendStatus(200);
   }
 
   if (lower === "11") {
     session.selectedService = "INDOOR_OUTDOOR_HELPER";
     session.stage = "SERVICE_WAITING_EXTRA_NOTES";
-    await sendMessage(
-      from,
-      `🧰 Indoor / Outdoor Helper selected.
+    await sendMessage(from, pickText(session.language, {
+      en: `🧰 Indoor / Outdoor Helper selected.
 
 Please send:
 1. Type of helper needed
@@ -1079,8 +1502,53 @@ Please send:
 3. Your location
 4. Date and time needed
 
-Our team will contact you shortly on WhatsApp.`
-    );
+Our team will contact you shortly on WhatsApp.`,
+      es: `🧰 Ayudante interior / exterior seleccionado.
+
+Envíe:
+1. Tipo de ayudante necesario
+2. Trabajo interior o exterior
+3. Su ubicación
+4. Fecha y hora necesarias
+
+Nuestro equipo se comunicará con usted pronto por WhatsApp.`,
+      fr: `🧰 Aide intérieure / extérieure sélectionnée.
+
+Veuillez envoyer :
+1. Type d'aide nécessaire
+2. Travail intérieur ou extérieur
+3. Votre position
+4. Date et heure souhaitées
+
+Notre équipe vous contactera bientôt sur WhatsApp.`,
+      de: `🧰 Innen- / Außenhilfe ausgewählt.
+
+Bitte senden Sie:
+1. Art der benötigten Hilfe
+2. Innen- oder Außenarbeit
+3. Ihren Standort
+4. Benötigtes Datum und Uhrzeit
+
+Unser Team wird Sie in Kürze per WhatsApp kontaktieren.`,
+      pt: `🧰 Ajudante interno / externo selecionado.
+
+Envie:
+1. Tipo de ajudante necessário
+2. Trabalho interno ou externo
+3. Sua localização
+4. Data e horário necessários
+
+Nossa equipe entrará em contato em breve pelo WhatsApp.`,
+      ar: `🧰 تم اختيار مساعد داخلي / خارجي.
+
+يرجى إرسال:
+1. نوع المساعد المطلوب
+2. عمل داخلي أو خارجي
+3. موقعك
+4. التاريخ والوقت المطلوبان
+
+سيتواصل معك فريقنا قريبًا عبر واتساب.`
+    }));
     return res.sendStatus(200);
   }
 
@@ -1088,9 +1556,8 @@ Our team will contact you shortly on WhatsApp.`
     session.selectedService = "TSHIRT_PRINT";
     session.stage = "TSHIRT_SELECT_SIZE";
 
-    await sendMessage(
-      from,
-      `👕 Custom T-Shirt Printing selected.
+    await sendMessage(from, pickText(session.language, {
+      en: `👕 Custom T-Shirt Printing selected.
 
 Please choose a T-shirt size:
 
@@ -1100,8 +1567,63 @@ L - Large
 XL - Extra Large
 XXL - Double XL
 
-Reply with S, M, L, XL, or XXL.`
-    );
+Reply with S, M, L, XL, or XXL.`,
+      es: `👕 Camiseta personalizada seleccionada.
+
+Elija una talla:
+
+S - Pequeña
+M - Mediana
+L - Grande
+XL - Extra grande
+XXL - Doble XL
+
+Responda con S, M, L, XL o XXL.`,
+      fr: `👕 Impression de T-shirt personnalisée sélectionnée.
+
+Choisissez une taille :
+
+S - Petit
+M - Moyen
+L - Grand
+XL - Très grand
+XXL - Double XL
+
+Répondez avec S, M, L, XL ou XXL.`,
+      de: `👕 Benutzerdefinierter T-Shirt-Druck ausgewählt.
+
+Bitte wählen Sie eine T-Shirt-Größe:
+
+S - Klein
+M - Mittel
+L - Groß
+XL - Extra groß
+XXL - Doppel XL
+
+Antworten Sie mit S, M, L, XL oder XXL.`,
+      pt: `👕 Camiseta personalizada selecionada.
+
+Escolha um tamanho:
+
+S - Pequeno
+M - Médio
+L - Grande
+XL - Extra grande
+XXL - Duplo XL
+
+Responda com S, M, L, XL ou XXL.`,
+      ar: `👕 تم اختيار طباعة تيشيرت مخصص.
+
+اختر مقاس التيشيرت:
+
+S - صغير
+M - متوسط
+L - كبير
+XL - كبير جدًا
+XXL - كبير جدًا مزدوج
+
+رد بـ S أو M أو L أو XL أو XXL.`
+    }));
     return res.sendStatus(200);
   }
   if (lower === "13") {
@@ -1532,7 +2054,14 @@ if (session.stage === "PRINT_WAITING_COPIES" && type === "text") {
   const copies = parseInt(lower, 10);
 
   if (!copies || copies < 1) {
-    await sendMessage(from, "Please type a valid number of copies, for example: 1, 2, 5, or 10.");
+    await sendMessage(from, pickText(session.language, {
+      en: "Please type a valid number of copies, for example: 1, 2, 5, or 10.",
+      es: "Por favor escriba un número válido de copias, por ejemplo: 1, 2, 5 o 10.",
+      fr: "Veuillez saisir un nombre valide de copies, par exemple : 1, 2, 5 ou 10.",
+      de: "Bitte geben Sie eine gültige Anzahl von Kopien ein, zum Beispiel: 1, 2, 5 oder 10.",
+      pt: "Digite um número válido de cópias, por exemplo: 1, 2, 5 ou 10.",
+      ar: "يرجى إدخال عدد صحيح من النسخ، مثل: 1 أو 2 أو 5 أو 10."
+    }));
     return res.sendStatus(200);
   }
 
@@ -1568,17 +2097,7 @@ if (session.stage === "PRINT_WAITING_PAGES" && type === "text") {
   session.printSpec.pages = pages;
   session.stage = "PRINT_WAITING_UPLOAD";
 
-  await sendMessage(
-    from,
-    `✅ Print setup complete.
-
-Paper: ${session.printSpec.paper_size}
-Color: ${session.printSpec.color_mode === "COLOR" ? "Color" : "Black & White"}
-Copies: ${session.printSpec.copies}
-Pages: ${session.printSpec.pages}
-
-Please upload your PDF, image, or document now.`
-  );
+  await sendMessage(from, printSetupCompleteText(session.language, session.printSpec));
 
   return res.sendStatus(200);
 } 
@@ -1629,15 +2148,7 @@ if (session.stage === "LAMINATE_WAITING_QUANTITY" && type === "text") {
   session.laminateSpec.quantity = quantity;
   session.stage = "LAMINATE_WAITING_FILE";
 
-  await sendMessage(
-    from,
-    `✅ Laminate setup complete.
-
-Size: ${session.laminateSpec.size}
-Quantity: ${session.laminateSpec.quantity}
-
-Please upload your file/image now.`
-  );
+  await sendMessage(from, laminateSetupCompleteText(session.language, session.laminateSpec));
 
   return res.sendStatus(200);
 }
@@ -1653,7 +2164,14 @@ if (session.stage === "JOB_SELECT_ROLE" && type === "text") {
   const role = roleMap[lower];
 
   if (!role) {
-    await sendMessage(from, "Please reply with 1, 2, 3, 4, or 5.");
+    await sendMessage(from, pickText(session.language, {
+    en: "Please reply with 1, 2, 3, 4, or 5.",
+    es: "Por favor responda con 1, 2, 3, 4 o 5.",
+    fr: "Veuillez répondre avec 1, 2, 3, 4 ou 5.",
+    de: "Bitte antworten Sie mit 1, 2, 3, 4 oder 5.",
+    pt: "Responda com 1, 2, 3, 4 ou 5.",
+    ar: "يرجى الرد بـ 1 أو 2 أو 3 أو 4 أو 5."
+  }));
     return res.sendStatus(200);
   }
 
@@ -1681,7 +2199,14 @@ if (session.stage === "IMAGE_EDIT_SELECT_TYPE" && type === "text") {
 
   const selected = imageMap[lower];
   if (!selected) {
-    await sendMessage(from, "Reply 1, 2, 3, or 4.");
+    await sendMessage(from, pickText(session.language, {
+    en: "Reply 1, 2, 3, or 4.",
+    es: "Responda 1, 2, 3 o 4.",
+    fr: "Répondez 1, 2, 3 ou 4.",
+    de: "Antworten Sie mit 1, 2, 3 oder 4.",
+    pt: "Responda 1, 2, 3 ou 4.",
+    ar: "رد بـ 1 أو 2 أو 3 أو 4."
+  }));
     return res.sendStatus(200);
   }
 
@@ -1713,7 +2238,14 @@ if (session.stage === "VIDEO_EDIT_SELECT_TYPE" && type === "text") {
 
   const selected = videoMap[lower];
   if (!selected) {
-    await sendMessage(from, "Reply 1, 2, 3, or 4.");
+    await sendMessage(from, pickText(session.language, {
+    en: "Reply 1, 2, 3, or 4.",
+    es: "Responda 1, 2, 3 o 4.",
+    fr: "Répondez 1, 2, 3 ou 4.",
+    de: "Antworten Sie mit 1, 2, 3 oder 4.",
+    pt: "Responda 1, 2, 3 ou 4.",
+    ar: "رد بـ 1 أو 2 أو 3 أو 4."
+  }));
     return res.sendStatus(200);
   }
 
@@ -1755,7 +2287,14 @@ if (session.stage === "TSHIRT_SELECT_SIZE" && type === "text") {
   const size = sizeMap[rawSize];
 
   if (!size) {
-    await sendMessage(from, "Please reply with Small, Medium, Large, XL, or XXL.");
+    await sendMessage(from, pickText(session.language, {
+    en: "Please reply with Small, Medium, Large, XL, or XXL.",
+    es: "Responda con Small, Medium, Large, XL o XXL.",
+    fr: "Répondez avec Small, Medium, Large, XL ou XXL.",
+    de: "Bitte antworten Sie mit Small, Medium, Large, XL oder XXL.",
+    pt: "Responda com Small, Medium, Large, XL ou XXL.",
+    ar: "يرجى الرد بـ Small أو Medium أو Large أو XL أو XXL."
+  }));
     return res.sendStatus(200);
   }
 
@@ -1814,7 +2353,14 @@ if (session.stage === "SERVICE_WAITING_EXTRA_NOTES") {
       session.lastServiceJobId = job?.id || null;
     }
 
-    await sendMessage(from, `✅ Text instruction received. You can also send photo, document, video, or voice note.`);
+    await sendMessage(from, pickText(session.language, {
+      en: "✅ Text instruction received. You can also send photo, document, video, or voice note.",
+      es: "✅ Instrucción de texto recibida. También puede enviar foto, documento, video o nota de voz.",
+      fr: "✅ Instruction texte reçue. Vous pouvez aussi envoyer une photo, un document, une vidéo ou une note vocale.",
+      de: "✅ Textanweisung erhalten. Sie können auch Foto, Dokument, Video oder Sprachnachricht senden.",
+      pt: "✅ Instrução de texto recebida. Você também pode enviar foto, documento, vídeo ou nota de voz.",
+      ar: "✅ تم استلام التعليمات النصية. يمكنك أيضًا إرسال صورة أو مستند أو فيديو أو رسالة صوتية."
+    }));
     session.stage = "SERVICE_WAITING_EXTRA_NOTES";
     return res.sendStatus(200);
   }
@@ -1834,7 +2380,14 @@ if (session.stage === "SERVICE_WAITING_EXTRA_NOTES") {
       message.audio?.mime_type || "audio/ogg"
     );
 
-    await sendMessage(from, `✅ Voice note received. You can also send photo, document, video, or text instruction.`);
+    await sendMessage(from, pickText(session.language, {
+      en: "✅ Voice note received. You can also send photo, document, video, or text instruction.",
+      es: "✅ Nota de voz recibida. También puede enviar foto, documento, video o instrucción de texto.",
+      fr: "✅ Note vocale reçue. Vous pouvez aussi envoyer une photo, un document, une vidéo ou une instruction texte.",
+      de: "✅ Sprachnachricht erhalten. Sie können auch Foto, Dokument, Video oder Textanweisung senden.",
+      pt: "✅ Nota de voz recebida. Você também pode enviar foto, documento, vídeo ou instrução de texto.",
+      ar: "✅ تم استلام الرسالة الصوتية. يمكنك أيضًا إرسال صورة أو مستند أو فيديو أو تعليمات نصية."
+    }));
     session.stage = "SERVICE_WAITING_EXTRA_NOTES";
     return res.sendStatus(200);
   }
@@ -1868,12 +2421,26 @@ if (session.stage === "SERVICE_WAITING_EXTRA_NOTES") {
       session.lastServiceJobId = job?.id || null;
     }
 
-    await sendMessage(from, `✅ ${type} received. You can also send text instruction or voice note.`);
+    await sendMessage(from, pickText(session.language, {
+      en: `✅ ${type} received. You can also send text instruction or voice note.`,
+      es: `✅ ${type} recibido. También puede enviar instrucciones de texto o nota de voz.`,
+      fr: `✅ ${type} reçu. Vous pouvez aussi envoyer une instruction texte ou une note vocale.`,
+      de: `✅ ${type} erhalten. Sie können auch Textanweisungen oder eine Sprachnachricht senden.`,
+      pt: `✅ ${type} recebido. Você também pode enviar instrução de texto ou nota de voz.`,
+      ar: `✅ تم استلام ${type}. يمكنك أيضًا إرسال تعليمات نصية أو رسالة صوتية.`
+    }));
     session.stage = "SERVICE_WAITING_EXTRA_NOTES";
     return res.sendStatus(200);
   }
 
-  await sendMessage(from, "Please send text, voice note, photo, video, or document.");
+  await sendMessage(from, pickText(session.language, {
+    en: "Please send text, voice note, photo, video, or document.",
+    es: "Envíe texto, nota de voz, foto, video o documento.",
+    fr: "Veuillez envoyer un texte, une note vocale, une photo, une vidéo ou un document.",
+    de: "Bitte senden Sie Text, Sprachnachricht, Foto, Video oder Dokument.",
+    pt: "Envie texto, nota de voz, foto, vídeo ou documento.",
+    ar: "يرجى إرسال نص أو رسالة صوتية أو صورة أو فيديو أو مستند."
+  }));
   return res.sendStatus(200);
 }
 
@@ -1947,23 +2514,7 @@ Our moderation team will review everything before any community broadcast.`
 
   await sendMessage(
     from,
-    `✅ File received and added to print queue.
-
-Paper: ${paperSize}
-Color: ${colorMode === "COLOR" ? "Color" : "Black & White"}
-Copies: ${copies}
-Pages: ${pages}
-
-Shopify Checkout:
-${checkoutUrl || "Checkout link not available for this paper/color yet."}
-
-Africa Payment:
-https://www.patapata.us/pages/africa-payment
-
-Reply:
-1 - I paid with Shopify
-2 - I paid with Africa Payment
-3 - Continue with Agent`
+    printFileReceivedText(session.language, { paperSize, colorMode, copies, pages, checkoutUrl })
   );
 
   return res.sendStatus(200);
@@ -1993,21 +2544,7 @@ if (session.stage === "LAMINATE_WAITING_FILE") {
 
   await sendMessage(
     from,
-    `✅ Laminate file received.
-
-Size: ${size}
-Quantity: ${quantity}
-
-Shopify Checkout:
-${checkoutUrl || "Checkout link not available for this laminate size yet."}
-
-Africa Payment:
-https://www.patapata.us/pages/africa-payment
-
-Reply:
-1 - I paid with Shopify
-2 - I paid with Africa Payment
-3 - Continue with Agent`
+    laminateFileReceivedText(session.language, { size, quantity, checkoutUrl })
   );
 
   return res.sendStatus(200);
@@ -2144,12 +2681,26 @@ if (session.stage === "PRINT_PAYMENT_CHOICE" && type === "text") {
 
     session.stage = "DONE";
 
-    await sendMessage(
-      from,
-      `✅ Shopify payment noted.
+    await sendMessage(from, pickText(session.language, {
+      en: `✅ Shopify payment noted.
 
-Our team will contact you shortly on WhatsApp.`
-    );
+Our team will contact you shortly on WhatsApp.`,
+      es: `✅ Pago de Shopify registrado.
+
+Nuestro equipo se comunicará con usted pronto por WhatsApp.`,
+      fr: `✅ Paiement Shopify noté.
+
+Notre équipe vous contactera bientôt sur WhatsApp.`,
+      de: `✅ Shopify-Zahlung notiert.
+
+Unser Team wird Sie in Kürze per WhatsApp kontaktieren.`,
+      pt: `✅ Pagamento Shopify registrado.
+
+Nossa equipe entrará em contato em breve pelo WhatsApp.`,
+      ar: `✅ تم تسجيل دفع Shopify.
+
+سيتواصل معك فريقنا قريبًا عبر واتساب.`
+    }));
 
     return res.sendStatus(200);
   }
@@ -2161,12 +2712,26 @@ Our team will contact you shortly on WhatsApp.`
 
     session.stage = "DONE";
 
-    await sendMessage(
-      from,
-      `✅ Africa Payment noted.
+    await sendMessage(from, pickText(session.language, {
+      en: `✅ Africa Payment noted.
 
-Our team will contact you shortly on WhatsApp.`
-    );
+Our team will contact you shortly on WhatsApp.`,
+      es: `✅ Pago África registrado.
+
+Nuestro equipo se comunicará con usted pronto por WhatsApp.`,
+      fr: `✅ Paiement Afrique noté.
+
+Notre équipe vous contactera bientôt sur WhatsApp.`,
+      de: `✅ Afrika-Zahlung notiert.
+
+Unser Team wird Sie in Kürze per WhatsApp kontaktieren.`,
+      pt: `✅ Pagamento África registrado.
+
+Nossa equipe entrará em contato em breve pelo WhatsApp.`,
+      ar: `✅ تم تسجيل دفع أفريقيا.
+
+سيتواصل معك فريقنا قريبًا عبر واتساب.`
+    }));
 
     return res.sendStatus(200);
   }
@@ -2178,26 +2743,43 @@ Our team will contact you shortly on WhatsApp.`
 
     session.stage = "SERVICE_WAITING_EXTRA_NOTES";
 
-    await sendMessage(
-      from,
-      `👨‍💼 Continue with Agent selected.
+    await sendMessage(from, pickText(session.language, {
+      en: `👨‍💼 Continue with Agent selected.
 
 Please send any additional instruction as text or voice note.
 
-Our team will contact you shortly on WhatsApp.`
-    );
+Our team will contact you shortly on WhatsApp.`,
+      es: `👨‍💼 Continuar con agente seleccionado.
+
+Envíe cualquier instrucción adicional como texto o nota de voz.
+
+Nuestro equipo se comunicará con usted pronto por WhatsApp.`,
+      fr: `👨‍💼 Continuer avec un agent sélectionné.
+
+Veuillez envoyer toute instruction supplémentaire par texte ou note vocale.
+
+Notre équipe vous contactera bientôt sur WhatsApp.`,
+      de: `👨‍💼 Mit Agent fortfahren ausgewählt.
+
+Bitte senden Sie zusätzliche Anweisungen als Text oder Sprachnachricht.
+
+Unser Team wird Sie in Kürze per WhatsApp kontaktieren.`,
+      pt: `👨‍💼 Continuar com agente selecionado.
+
+Envie qualquer instrução adicional por texto ou nota de voz.
+
+Nossa equipe entrará em contato em breve pelo WhatsApp.`,
+      ar: `👨‍💼 تم اختيار المتابعة مع موظف.
+
+يرجى إرسال أي تعليمات إضافية كنص أو رسالة صوتية.
+
+سيتواصل معك فريقنا قريبًا عبر واتساب.`
+    }));
 
     return res.sendStatus(200);
   }
 
-  await sendMessage(
-    from,
-    `Please choose:
-
-1 - I paid with Shopify
-2 - I paid with Africa Payment
-3 - Continue with Agent`
-  );
+  await sendMessage(from, paymentChoiceInvalidText(session.language));
 
   return res.sendStatus(200);
 }
