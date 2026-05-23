@@ -328,6 +328,191 @@ function serviceMenu(language = "en") {
 
   return menus[language] || menus.en;
 }
+function printSizeMenuText(language = "en") {
+  const texts = {
+    en: `Print selected.
+
+Choose paper size:
+1 - A4
+2 - A3
+3 - Letter
+4 - Legal
+5 - Tabloid
+6 - Card`,
+
+    de: `Drucken ausgewählt.
+
+Wählen Sie die Papiergröße:
+1 - A4
+2 - A3
+3 - Letter
+4 - Legal
+5 - Tabloid
+6 - Karte`,
+
+    es: `Impresión seleccionada.
+
+Elige el tamaño de papel:
+1 - A4
+2 - A3
+3 - Carta
+4 - Legal
+5 - Tabloide
+6 - Tarjeta`,
+
+    fr: `Impression sélectionnée.
+
+Choisissez le format papier :
+1 - A4
+2 - A3
+3 - Lettre
+4 - Legal
+5 - Tabloïd
+6 - Carte`,
+
+    pt: `Impressão selecionada.
+
+Escolha o tamanho do papel:
+1 - A4
+2 - A3
+3 - Carta
+4 - Legal
+5 - Tabloide
+6 - Cartão`,
+
+    ar: `تم اختيار الطباعة.
+
+اختر حجم الورق:
+1 - A4
+2 - A3
+3 - Letter
+4 - Legal
+5 - Tabloid
+6 - Card`
+  };
+
+  return texts[language] || texts.en;
+}
+
+function printColorMenuText(language = "en") {
+  const texts = {
+    en: `Choose color:
+1 - Black & White
+2 - Color`,
+
+    de: `Farbe wählen:
+1 - Schwarzweiß
+2 - Farbe`,
+
+    es: `Elige color:
+1 - Blanco y negro
+2 - Color`,
+
+    fr: `Choisissez la couleur :
+1 - Noir et blanc
+2 - Couleur`,
+
+    pt: `Escolha a cor:
+1 - Preto e branco
+2 - Colorido`,
+
+    ar: `اختر اللون:
+1 - أبيض وأسود
+2 - ملون`
+  };
+
+  return texts[language] || texts.en;
+}
+
+function laminateSizeMenuText(language = "en") {
+  const texts = {
+    en: `Laminate selected.
+
+Choose laminate size:
+1 - A4
+2 - Letter
+3 - Legal
+4 - Tabloid
+
+Africa Laminating Prices:
+• A4: ₦300
+• Letter: ₦300
+• Legal: ₦300
+• Tabloid: ₦500`,
+
+    de: `Laminieren ausgewählt.
+
+Wählen Sie die Laminiergröße:
+1 - A4
+2 - Letter
+3 - Legal
+4 - Tabloid
+
+Afrika Laminierpreise:
+• A4: ₦300
+• Letter: ₦300
+• Legal: ₦300
+• Tabloid: ₦500`,
+
+    es: `Laminado seleccionado.
+
+Elige el tamaño de laminado:
+1 - A4
+2 - Carta
+3 - Legal
+4 - Tabloide
+
+Precios de laminado en África:
+• A4: ₦300
+• Carta: ₦300
+• Legal: ₦300
+• Tabloide: ₦500`,
+
+    fr: `Plastification sélectionnée.
+
+Choisissez le format :
+1 - A4
+2 - Lettre
+3 - Legal
+4 - Tabloïd
+
+Prix de plastification en Afrique :
+• A4 : ₦300
+• Lettre : ₦300
+• Legal : ₦300
+• Tabloïd : ₦500`,
+
+    pt: `Laminação selecionada.
+
+Escolha o tamanho:
+1 - A4
+2 - Carta
+3 - Legal
+4 - Tabloide
+
+Preços de laminação na África:
+• A4: ₦300
+• Carta: ₦300
+• Legal: ₦300
+• Tabloide: ₦500`,
+
+    ar: `تم اختيار التغليف الحراري.
+
+اختر حجم التغليف:
+1 - A4
+2 - Letter
+3 - Legal
+4 - Tabloid
+
+أسعار التغليف في أفريقيا:
+• A4: ₦300
+• Letter: ₦300
+• Legal: ₦300
+• Tabloid: ₦500`
+  };
+
+  return texts[language] || texts.en;
+}
 
 // =========================
 // SHOPIFY VARIANT HELPERS
@@ -768,7 +953,7 @@ if (session.stage === "MENU") {
   if (lower === "1") {
     session.selectedService = "PRINT";
     session.stage = "PRINT_SELECT_SIZE";
-    await sendMessage(from, printSizeMenuText());
+    await sendMessage(from, printSizeMenuText(session.language)
     return res.sendStatus(200);
   }
 
@@ -776,7 +961,7 @@ if (session.stage === "MENU") {
     session.selectedService = "LAMINATE";
     session.laminateSpec = {};
     session.stage = "LAMINATE_WAITING_SIZE";
-    await sendMessage(from, laminateSizeMenuText());
+    await sendMessage(from, laminateSizeMenuText(session.language)
     return res.sendStatus(200);
   }
 
@@ -1284,14 +1469,14 @@ We are also setting up referral tracking so workmen can buy materials from trust
   const selectedSize = sizeMap[lower];
 
   if (!selectedSize) {
-    await sendMessage(from, printSizeMenuText());
+    await sendMessage(from, printSizeMenuText(session.language)
     return res.sendStatus(200);
   }
 
   session.printSpec.paper_size = selectedSize;
   session.stage = "PRINT_SELECT_COLOR";
 
-  await sendMessage(from, printColorMenuText());
+  await sendMessage(from, printColorMenuText(session.language)
   return res.sendStatus(200);
 }
 
@@ -1304,7 +1489,7 @@ if (session.stage === "PRINT_SELECT_COLOR" && type === "text") {
   const selectedColor = colorMap[lower];
 
   if (!selectedColor) {
-    await sendMessage(from, printColorMenuText());
+    await sendMessage(from, printColorMenuText(session.language)
     return res.sendStatus(200);
   }
 
@@ -1366,7 +1551,7 @@ Please upload your PDF, image, or document now.`
   const selectedSize = sizeMap[lower];
 
   if (!selectedSize) {
-    await sendMessage(from, laminateSizeMenuText());
+    await sendMessage(from, laminateSizeMenuText(session.language)
     return res.sendStatus(200);
   }
 
