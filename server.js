@@ -534,12 +534,12 @@ if (langMatch) {
   session.language = langMatch[1];
   session.stage = "MENU";
 
-  await sendMessage(
-    from,
-    `Hello 👋 Welcome to PATAPATA Print-O-Matic
+ await sendMessage(
+  from,
+  `Hello 👋 Welcome to PATAPATA Print-O-Matic
 
 ${serviceMenu(session.language)}`
-  );
+);
 
   return res.sendStatus(200);
 }
