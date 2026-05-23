@@ -1,48 +1,46 @@
 {
   "expo": {
-    "name": "PATAPATA-Mobile-App",
+    "name": "PATAPATA Print-O-Matic",
     "slug": "PATAPATA-Mobile-App",
-    "version": "1.0.0",
+    "version": "1.0.3",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
-    "scheme": "patapatamobileapp",
+    "scheme": "patapata",
     "userInterfaceStyle": "automatic",
-    "newArchEnabled": true,
+
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.patapata.printomatic"
     },
+
     "android": {
+      "package": "com.patapata.printomatic",
+      "versionCode": 11,
       "adaptiveIcon": {
-        "backgroundColor": "#E6F4FE",
-        "foregroundImage": "./assets/images/android-icon-foreground.png",
-        "backgroundImage": "./assets/images/android-icon-background.png",
-        "monochromeImage": "./assets/images/android-icon-monochrome.png"
-      },
-      "edgeToEdgeEnabled": true,
-      "predictiveBackGestureEnabled": false
+        "foregroundImage": "./assets/images/adaptive-icon.png",
+        "backgroundColor": "#ffffff"
+      }
     },
+
     "web": {
-      "output": "static",
       "favicon": "./assets/images/favicon.png"
     },
+
     "plugins": [
-      "expo-router",
       [
         "expo-splash-screen",
         {
-          "image": "./assets/images/splash-icon.png",
-          "imageWidth": 200,
+          "image": "./assets/images/splash.png",
           "resizeMode": "contain",
-          "backgroundColor": "#ffffff",
-          "dark": {
-            "backgroundColor": "#000000"
-          }
+          "backgroundColor": "#ffffff"
         }
       ]
     ],
-    "experiments": {
-      "typedRoutes": true,
-      "reactCompiler": true
+
+    "extra": {
+      "eas": {
+        "projectId": "5a3f5b63-e4a8-4832-893d-d1ab738c4aa3"
+      }
     }
   }
 }
