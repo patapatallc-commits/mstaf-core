@@ -187,53 +187,122 @@ function serviceMenu(language = "en") {
 20 - Social-Media-Ersteller
 21 - Autos kaufen und weiterverkaufen`,
 
-    pt: `1 - Imprimir
-2 - Laminar
-3 - Foto de identificação
-4 - Edição de imagem
-5 - Edição de vídeo
-6 - Aula / Tarefa
-7 - Falar com um agente
-8 - Encontrar mecânico de automóveis
-9 - Preciso de transporte para o trabalho
-10 - Apartamento compartilhado / Aluguel
-11 - Preciso de ajudante interno ou externo
-12 - Impressão de camiseta personalizada
-13 - Procurar emprego / Enviar CV
-14 - Oportunidades de emprego
-15 - Contratar trabalhador
-16 - Alerta comunitário
-17 - Fornecedores confiáveis
-18 - Comprar terreno para usar ou revender
-19 - Câmbio de moeda
-20 - Criador de redes sociais
-21 - Comprar e revender automóveis`,
-
-    ar: `1 - طباعة
-2 - تغليف حراري
-3 - صورة هوية
-4 - تعديل الصور
-5 - تعديل الفيديو
-6 - درس / واجب
-7 - التحدث مع موظف
-8 - البحث عن ميكانيكي سيارات
-9 - أحتاج مواصلة إلى العمل
-10 - سكن مشترك / إيجار
-11 - أحتاج مساعدًا داخليًا أو خارجيًا
-12 - طباعة تيشيرت مخصص
-13 - البحث عن عمل / إرسال السيرة الذاتية
-14 - فرص عمل
-15 - توظيف عامل
-16 - تنبيه مجتمعي
-17 - موردون موثوقون
-18 - شراء أرض للاستخدام أو إعادة البيع
-19 - تحويل العملات
-20 - منشئ محتوى وسائل التواصل
-21 - شراء وإعادة بيع السيارات`,
-  };
-
   return menus[language] || menus.en;
-}    "13": {
+}
+
+function optionReply(language = "en", option = "") {
+
+  const replies = {
+
+    "1": {
+      en: "Print selected. Please upload your PDF, image, or document.",
+      es: "Impresión seleccionada. Por favor sube tu PDF, imagen o documento.",
+      fr: "Impression sélectionnée. Veuillez envoyer votre PDF, image ou document.",
+      de: "Drucken ausgewählt. Bitte lade dein PDF, Bild oder Dokument hoch.",
+      pt: "Impressão selecionada. Por favor envie seu PDF, imagem ou documento.",
+      ar: "تم اختيار الطباعة. يرجى رفع ملف PDF أو صورة أو مستند.",
+    },
+
+    "2": {
+      en: "Laminate selected. Please upload the document or image you want laminated.",
+      es: "Laminado seleccionado. Por favor sube el documento o imagen que deseas laminar.",
+      fr: "Plastification sélectionnée. Veuillez envoyer le document ou l’image à plastifier.",
+      de: "Laminieren ausgewählt. Bitte lade das Dokument oder Bild hoch.",
+      pt: "Laminação selecionada. Por favor envie o documento ou imagem.",
+      ar: "تم اختيار التغليف الحراري. يرجى رفع المستند أو الصورة.",
+    },
+
+    "3": {
+      en: "ID Photo selected. Please upload your photo.",
+      es: "Foto de identificación seleccionada. Por favor sube tu foto.",
+      fr: "Photo d'identité sélectionnée. Veuillez envoyer votre photo.",
+      de: "Passfoto ausgewählt. Bitte lade dein Foto hoch.",
+      pt: "Foto de identificação selecionada. Por favor envie sua foto.",
+      ar: "تم اختيار صورة الهوية. يرجى رفع صورتك.",
+    },
+
+    "4": {
+      en: "Image Editing selected. Please upload your image and describe what you want changed.",
+      es: "Edición de imagen seleccionada. Sube tu imagen y describe lo que quieres cambiar.",
+      fr: "Retouche d'image sélectionnée. Envoyez votre image et décrivez les changements souhaités.",
+      de: "Bildbearbeitung ausgewählt. Lade dein Bild hoch und beschreibe die gewünschten Änderungen.",
+      pt: "Edição de imagem selecionada. Envie sua imagem e descreva as alterações.",
+      ar: "تم اختيار تعديل الصور. يرجى رفع الصورة وشرح التعديلات المطلوبة.",
+    },
+
+    "5": {
+      en: "Video Editing selected. Please upload your video and instructions.",
+      es: "Edición de video seleccionada. Sube tu video e instrucciones.",
+      fr: "Montage vidéo sélectionné. Envoyez votre vidéo et vos instructions.",
+      de: "Videobearbeitung ausgewählt. Lade dein Video und deine Anweisungen hoch.",
+      pt: "Edição de vídeo selecionada. Envie seu vídeo e instruções.",
+      ar: "تم اختيار تعديل الفيديو. يرجى رفع الفيديو والتعليمات.",
+    },
+
+    "6": {
+      en: "Lesson / Homework selected. Please upload your file or type your question.",
+      es: "Lección / Tarea seleccionada. Sube tu archivo o escribe tu pregunta.",
+      fr: "Leçon / Devoirs sélectionné. Envoyez votre fichier ou écrivez votre question.",
+      de: "Unterricht / Hausaufgaben ausgewählt. Lade deine Datei hoch oder schreibe deine Frage.",
+      pt: "Aula / Tarefa selecionada. Envie seu arquivo ou escreva sua pergunta.",
+      ar: "تم اختيار الدرس / الواجب. يرجى رفع الملف أو كتابة سؤالك.",
+    },
+
+    "7": {
+      en: "Talk to Agent selected. Please type your request.",
+      es: "Hablar con un agente seleccionado. Escribe tu solicitud.",
+      fr: "Parler à un agent sélectionné. Veuillez écrire votre demande.",
+      de: "Mit Agent sprechen ausgewählt. Bitte schreibe deine Anfrage.",
+      pt: "Falar com agente selecionado. Por favor escreva sua solicitação.",
+      ar: "تم اختيار التحدث مع موظف. يرجى كتابة طلبك.",
+    },
+
+    "8": {
+      en: "Auto Mechanic selected. Please send your location, vehicle type, and the problem.",
+      es: "Mecánico de autos seleccionado. Envía tu ubicación, tipo de vehículo y el problema.",
+      fr: "Mécanicien auto sélectionné. Envoyez votre localisation, type de véhicule et problème.",
+      de: "Automechaniker ausgewählt. Sende Standort, Fahrzeugtyp und Problem.",
+      pt: "Mecânico selecionado. Envie localização, tipo de veículo e problema.",
+      ar: "تم اختيار ميكانيكي السيارات. يرجى إرسال الموقع ونوع السيارة والمشكلة.",
+    },
+
+    "9": {
+      en: "Ride to Work selected. Please send pickup location, destination, date, and time.",
+      es: "Transporte al trabajo seleccionado. Envía punto de recogida, destino, fecha y hora.",
+      fr: "Trajet au travail sélectionné. Envoyez le lieu de départ, destination, date et heure.",
+      de: "Fahrt zur Arbeit ausgewählt. Sende Abholort, Ziel, Datum und Uhrzeit.",
+      pt: "Transporte para o trabalho selecionado. Envie local, destino, data e hora.",
+      ar: "تم اختيار مواصلة للعمل. يرجى إرسال موقع الانطلاق والوجهة والتاريخ والوقت.",
+    },
+
+    "10": {
+      en: "Shared Apartment / Rent selected. Please send preferred location, budget, and move-in date.",
+      es: "Apartamento compartido / Renta seleccionado. Envía ubicación, presupuesto y fecha de mudanza.",
+      fr: "Appartement partagé / Location sélectionné. Envoyez lieu souhaité, budget et date d’emménagement.",
+      de: "WG / Miete ausgewählt. Sende gewünschten Ort, Budget und Einzugsdatum.",
+      pt: "Apartamento compartilhado selecionado. Envie localização, orçamento e data da mudança.",
+      ar: "تم اختيار السكن المشترك / الإيجار. يرجى إرسال الموقع والميزانية وتاريخ الانتقال.",
+    },
+
+    "11": {
+      en: "Helper selected. Please send the type of help needed, location, date, and time.",
+      es: "Ayudante seleccionado. Envía tipo de ayuda, ubicación, fecha y hora.",
+      fr: "Aide sélectionnée. Envoyez le type d’aide, lieu, date et heure.",
+      de: "Hilfe ausgewählt. Sende Art der Hilfe, Standort, Datum und Uhrzeit.",
+      pt: "Ajuda selecionada. Envie o tipo de ajuda, local, data e hora.",
+      ar: "تم اختيار المساعدة. يرجى إرسال نوع المساعدة والموقع والتاريخ والوقت.",
+    },
+
+    "12": {
+      en: "Custom T-Shirt Print selected. Please send shirt size, color, and design text/image.",
+      es: "Camiseta personalizada seleccionada. Envía talla, color y texto/imagen del diseño.",
+      fr: "T-shirt personnalisé sélectionné. Envoyez taille, couleur et texte/image du design.",
+      de: "Individueller T-Shirt-Druck ausgewählt. Sende Größe, Farbe und Designtext/Bild.",
+      pt: "Camiseta personalizada selecionada. Envie tamanho, cor e design.",
+      ar: "تم اختيار طباعة تيشيرت مخصص. يرجى إرسال المقاس واللون والتصميم.",
+    },
+
+    "13": {
       en: "Job Search / CV selected. Please upload your CV or type your job interest.",
       es: "Búsqueda de trabajo / CV seleccionado. Sube tu CV o escribe el trabajo que buscas.",
       fr: "Recherche d’emploi / CV sélectionnée. Envoyez votre CV ou écrivez le poste recherché.",
@@ -241,85 +310,6 @@ function serviceMenu(language = "en") {
       pt: "Procura de emprego / CV selecionado. Envie seu CV ou escreva o emprego desejado.",
       ar: "تم اختيار البحث عن عمل / السيرة الذاتية. يرجى رفع السيرة الذاتية أو كتابة الوظيفة المطلوبة.",
     },
-
-    "14": {
-      en: "Job Opportunities selected. Please type your profession or role.",
-      es: "Oportunidades de trabajo seleccionadas. Escribe tu profesión o puesto.",
-      fr: "Offres d’emploi sélectionnées. Écrivez votre profession ou rôle.",
-      de: "Jobangebote ausgewählt. Schreibe deinen Beruf oder deine Rolle.",
-      pt: "Oportunidades de emprego selecionadas. Escreva sua profissão ou função.",
-      ar: "تم اختيار فرص العمل. يرجى كتابة مهنتك أو وظيفتك.",
-    },
-
-    "15": {
-      en: "Hire a Worker selected. Please describe the worker you need.",
-      es: "Contratar trabajador seleccionado. Describe el trabajador que necesitas.",
-      fr: "Embaucher un travailleur sélectionné. Décrivez le travailleur dont vous avez besoin.",
-      de: "Arbeiter einstellen ausgewählt. Beschreibe, welche Arbeitskraft du brauchst.",
-      pt: "Contratar trabalhador selecionado. Descreva o trabalhador que você precisa.",
-      ar: "تم اختيار توظيف عامل. يرجى وصف العامل الذي تحتاجه.",
-    },
-
-    "16": {
-      en: "Community Alert selected. Please send description, location, photo, or video.",
-      es: "Alerta comunitaria seleccionada. Envía descripción, ubicación, foto o video.",
-      fr: "Alerte communautaire sélectionnée. Envoyez description, lieu, photo ou vidéo.",
-      de: "Gemeinschaftsalarm ausgewählt. Sende Beschreibung, Standort, Foto oder Video.",
-      pt: "Alerta comunitário selecionado. Envie descrição, localização, foto ou vídeo.",
-      ar: "تم اختيار التنبيه المجتمعي. يرجى إرسال الوصف والموقع والصورة أو الفيديو.",
-    },
-
-    "17": {
-      en: "Trusted Suppliers selected. Please send the supplier category you need.",
-      es: "Proveedores confiables seleccionado. Envía la categoría de proveedor que necesitas.",
-      fr: "Fournisseurs fiables sélectionné. Envoyez la catégorie de fournisseur souhaitée.",
-      de: "Vertrauenswürdige Lieferanten ausgewählt. Sende die gewünschte Lieferantenkategorie.",
-      pt: "Fornecedores confiáveis selecionados. Envie a categoria do fornecedor desejado.",
-      ar: "تم اختيار الموردين الموثوقين. يرجى إرسال فئة المورد المطلوبة.",
-    },
-
-    "18": {
-      en: "Land Purchase selected. Please send location, budget, and purpose.",
-      es: "Compra de terreno seleccionada. Envía ubicación, presupuesto y propósito.",
-      fr: "Achat de terrain sélectionné. Envoyez lieu, budget et objectif.",
-      de: "Landkauf ausgewählt. Sende Standort, Budget und Zweck.",
-      pt: "Compra de terreno selecionada. Envie localização, orçamento e objetivo.",
-      ar: "تم اختيار شراء الأرض. يرجى إرسال الموقع والميزانية والغرض.",
-    },
-
-    "19": {
-      en: "Currency Exchange selected. Please send currency, amount, and location.",
-      es: "Cambio de moneda seleccionado. Envía moneda, cantidad y ubicación.",
-      fr: "Change de monnaie sélectionné. Envoyez devise, montant et lieu.",
-      de: "Geldwechsel ausgewählt. Sende Währung, Betrag und Standort.",
-      pt: "Câmbio selecionado. Envie moeda, valor e localização.",
-      ar: "تم اختيار تحويل العملات. يرجى إرسال العملة والمبلغ والموقع.",
-    },
-
-    "20": {
-      en: "Social Media Creator selected. Please send platform, topic, and content idea.",
-      es: "Creador de redes sociales seleccionado. Envía plataforma, tema e idea de contenido.",
-      fr: "Créateur de réseaux sociaux sélectionné. Envoyez plateforme, sujet et idée de contenu.",
-      de: "Social-Media-Ersteller ausgewählt. Sende Plattform, Thema und Inhaltsidee.",
-      pt: "Criador de mídia social selecionado. Envie plataforma, tema e ideia de conteúdo.",
-      ar: "تم اختيار منشئ محتوى وسائل التواصل. يرجى إرسال المنصة والموضوع وفكرة المحتوى.",
-    },
-
-    "21": {
-      en: "Buy & Resell Auto selected. Please send vehicle type, budget, and location.",
-      es: "Comprar y revender autos seleccionado. Envía tipo de vehículo, presupuesto y ubicación.",
-      fr: "Acheter et revendre des autos sélectionné. Envoyez type de véhicule, budget et lieu.",
-      de: "Autos kaufen und weiterverkaufen ausgewählt. Sende Fahrzeugtyp, Budget und Standort.",
-      pt: "Comprar e revender automóveis selecionado. Envie tipo de veículo, orçamento e localização.",
-      ar: "تم اختيار شراء وإعادة بيع السيارات. يرجى إرسال نوع السيارة والميزانية والموقع.",
-    },
-  };
-
-  return replies[option]?.[language] || replies[option]?.en || null;
-}
-
-function unknownReply(language = "en") {
-  return {
     en: `Please reply with a number from the menu below:\n\n${serviceMenu("en")}`,
     es: `Por favor responde con un número del menú:\n\n${serviceMenu("es")}`,
     fr: `Veuillez répondre avec un numéro du menu :\n\n${serviceMenu("fr")}`,
