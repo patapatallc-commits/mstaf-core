@@ -760,7 +760,7 @@ async function attachMediaToExistingJob(jobId, mediaId, originalName, mimeType) 
         from,
         `Hello 👋 Welcome to PATAPATA Print-O-Matic
 
-${serviceMenu(session.language)}
+${serviceMenu(session.language)}`
       );
       return res.sendStatus(200);
     }
@@ -1085,7 +1085,7 @@ Our team will contact you shortly on WhatsApp.`
 
   return res.sendStatus(200);
 }
-  await sendMessage(from, );
+  await sendMessage(from, serviceMenu(session.language));
   return res.sendStatus(200);
 }
     if (session.stage === "HIRE_WORKER_MENU" && type === "text") {
@@ -1966,7 +1966,7 @@ else if (session.stage === "MENU") {
     from,
     `Please reply with one of the options below:
 
-${}`
+${serviceMenu(session.language)}`
   );
 
   return res.sendStatus(200);
