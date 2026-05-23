@@ -1469,7 +1469,7 @@ We are also setting up referral tracking so workmen can buy materials from trust
   const selectedSize = sizeMap[lower];
 
   if (!selectedSize) {
-    await sendMessage(from, printSizeMenuText(session.language)
+    await sendMessage(from, printSizeMenuText(session.language));
     return res.sendStatus(200);
   }
 
@@ -1551,7 +1551,7 @@ Please upload your PDF, image, or document now.`
   const selectedSize = sizeMap[lower];
 
   if (!selectedSize) {
-    await sendMessage(from, laminateSizeMenuText(session.language)
+    await sendMessage(from, laminateSizeMenuText(session.language));
     return res.sendStatus(200);
   }
 
