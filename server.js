@@ -922,6 +922,51 @@ function paymentChoiceInvalidText(language = "en") {
   });
 }
 
+
+function serviceReceivedByTeamText(language = "en", serviceType = "") {
+  return pickText(language, {
+    en: `✅ Your request has been received by PATAPATA Print-O-Matic.\n\nService: ${serviceType}\n\nA worker will review it and reply to you shortly here on WhatsApp.\n\nYou may now send your file, photo, video, document, or voice instruction.`,
+    es: `✅ Su solicitud ha sido recibida por PATAPATA Print-O-Matic.\n\nServicio: ${serviceType}\n\nUn trabajador la revisará y le responderá pronto aquí en WhatsApp.\n\nAhora puede enviar su archivo, foto, video, documento o instrucción de voz.`,
+    fr: `✅ Votre demande a été reçue par PATAPATA Print-O-Matic.\n\nService : ${serviceType}\n\nUn travailleur l'examinera et vous répondra bientôt ici sur WhatsApp.\n\nVous pouvez maintenant envoyer votre fichier, photo, vidéo, document ou instruction vocale.`,
+    de: `✅ Ihre Anfrage wurde von PATAPATA Print-O-Matic empfangen.\n\nService: ${serviceType}\n\nEin Mitarbeiter wird sie prüfen und Ihnen bald hier auf WhatsApp antworten.\n\nSie können jetzt Ihre Datei, Ihr Foto, Video, Dokument oder Ihre Sprachanweisung senden.`,
+    pt: `✅ Sua solicitação foi recebida pela PATAPATA Print-O-Matic.\n\nServiço: ${serviceType}\n\nUm trabalhador irá revisar e responder em breve aqui no WhatsApp.\n\nAgora você pode enviar seu arquivo, foto, vídeo, documento ou instrução de voz.`,
+    ar: `✅ تم استلام طلبك بواسطة PATAPATA Print-O-Matic.\n\nالخدمة: ${serviceType}\n\nسيقوم أحد العاملين بمراجعته والرد عليك قريبًا هنا على واتساب.\n\nيمكنك الآن إرسال ملف أو صورة أو فيديو أو مستند أو تعليمات صوتية.`
+  });
+}
+
+function uploadInstructionText(language = "en", item = "file") {
+  return pickText(language, {
+    en: `Please upload your ${item} now.`,
+    es: `Por favor suba su ${item} ahora.`,
+    fr: `Veuillez télécharger votre ${item} maintenant.`,
+    de: `Bitte laden Sie jetzt Ihre ${item} hoch.`,
+    pt: `Envie seu ${item} agora.`,
+    ar: `يرجى رفع ${item} الآن.`
+  });
+}
+
+function mediaInstructionReceivedText(language = "en", label = "file") {
+  return pickText(language, {
+    en: `✅ ${label} received.\n\nPlease send your instruction now as text or voice note.\n\nOur team will contact you shortly on WhatsApp.`,
+    es: `✅ ${label} recibido.\n\nEnvíe ahora sus instrucciones por texto o nota de voz.\n\nNuestro equipo se comunicará con usted pronto por WhatsApp.`,
+    fr: `✅ ${label} reçu.\n\nVeuillez envoyer vos instructions maintenant par texte ou note vocale.\n\nNotre équipe vous contactera bientôt sur WhatsApp.`,
+    de: `✅ ${label} erhalten.\n\nBitte senden Sie Ihre Anweisung jetzt als Text oder Sprachnachricht.\n\nUnser Team wird Sie in Kürze per WhatsApp kontaktieren.`,
+    pt: `✅ ${label} recebido.\n\nEnvie agora suas instruções por texto ou nota de voz.\n\nNossa equipe entrará em contato em breve pelo WhatsApp.`,
+    ar: `✅ تم استلام ${label}.\n\nيرجى إرسال تعليماتك الآن كنص أو رسالة صوتية.\n\nسيتواصل معك فريقنا قريبًا عبر واتساب.`
+  });
+}
+
+function contactSoonText(language = "en") {
+  return pickText(language, {
+    en: "Our team will contact you shortly on WhatsApp.",
+    es: "Nuestro equipo se comunicará con usted pronto por WhatsApp.",
+    fr: "Notre équipe vous contactera bientôt sur WhatsApp.",
+    de: "Unser Team wird Sie in Kürze per WhatsApp kontaktieren.",
+    pt: "Nossa equipe entrará em contato em breve pelo WhatsApp.",
+    ar: "سيتواصل معك فريقنا قريبًا عبر واتساب."
+  });
+}
+
 // =========================
 // SHOPIFY VARIANT HELPERS
 // =========================
@@ -1179,13 +1224,7 @@ if (
 
   await sendMessage(
     from,
-    `✅ Your request has been received by PATAPATA Print-O-Matic.
-
-Service: ${serviceType.replaceAll("_", " ")}
-
-A worker will review it and reply to you shortly here on WhatsApp.
-
-You may now send your file, photo, video, document, or voice instruction.`
+    serviceReceivedByTeamText(session.language, serviceType.replaceAll("_", " "))
   );
 
   return res.sendStatus(200);
@@ -1378,16 +1417,22 @@ if (session.stage === "MENU") {
   if (lower === "3") {
     session.selectedService = "ID_PHOTO";
     session.stage = "IDPHOTO_WAITING_UPLOAD";
-    await sendMessage(from, "📸 ID Photo selected. Please upload your photo now.");
+    await sendMessage(from, pickText(session.language, {
+      en: "📸 ID Photo selected. Please upload your photo now.",
+      es: "📸 Foto de identificación seleccionada. Por favor suba su foto ahora.",
+      fr: "📸 Photo d'identité sélectionnée. Veuillez télécharger votre photo maintenant.",
+      de: "📸 Passfoto ausgewählt. Bitte laden Sie jetzt Ihr Foto hoch.",
+      pt: "📸 Foto de identificação selecionada. Envie sua foto agora.",
+      ar: "📸 تم اختيار صورة الهوية. يرجى رفع صورتك الآن."
+    }));
     return res.sendStatus(200);
   }
 
   if (lower === "4") {
     session.selectedService = "IMAGE_EDIT";
     session.stage = "IMAGE_EDIT_SELECT_TYPE";
-    await sendMessage(
-      from,
-      `🖼️ Image Editing selected.
+    await sendMessage(from, pickText(session.language, {
+      en: `🖼️ Image Editing selected.
 
 Choose image editing type:
 
@@ -1396,17 +1441,66 @@ Choose image editing type:
 3 - Product Photo Enhancement
 4 - Advanced Image Editing
 
-Reply with 1, 2, 3, or 4.`
-    );
+Reply with 1, 2, 3, or 4.`,
+      es: `🖼️ Edición de imagen seleccionada.
+
+Elija el tipo de edición:
+
+1 - Edición básica
+2 - Eliminación de fondo
+3 - Mejora de foto de producto
+4 - Edición avanzada
+
+Responda con 1, 2, 3 o 4.`,
+      fr: `🖼️ Retouche d'image sélectionnée.
+
+Choisissez le type de retouche :
+
+1 - Retouche basique
+2 - Suppression de l'arrière-plan
+3 - Amélioration photo produit
+4 - Retouche avancée
+
+Répondez avec 1, 2, 3 ou 4.`,
+      de: `🖼️ Bildbearbeitung ausgewählt.
+
+Wählen Sie die Art der Bildbearbeitung:
+
+1 - Einfache Bildbearbeitung
+2 - Hintergrund entfernen
+3 - Produktfoto verbessern
+4 - Erweiterte Bildbearbeitung
+
+Antworten Sie mit 1, 2, 3 oder 4.`,
+      pt: `🖼️ Edição de imagem selecionada.
+
+Escolha o tipo de edição:
+
+1 - Edição básica
+2 - Remoção de fundo
+3 - Melhoria de foto de produto
+4 - Edição avançada
+
+Responda com 1, 2, 3 ou 4.`,
+      ar: `🖼️ تم اختيار تعديل الصور.
+
+اختر نوع تعديل الصورة:
+
+1 - تعديل أساسي
+2 - إزالة الخلفية
+3 - تحسين صورة المنتج
+4 - تعديل متقدم
+
+رد بـ 1 أو 2 أو 3 أو 4.`
+    }));
     return res.sendStatus(200);
   }
 
   if (lower === "5") {
     session.selectedService = "VIDEO_EDIT";
     session.stage = "VIDEO_EDIT_SELECT_TYPE";
-    await sendMessage(
-      from,
-      `🎬 Video Editing selected.
+    await sendMessage(from, pickText(session.language, {
+      en: `🎬 Video Editing selected.
 
 Choose video editing type:
 
@@ -1415,8 +1509,58 @@ Choose video editing type:
 3 - Standard Video Edit
 4 - Advanced Video Edit
 
-Reply with 1, 2, 3, or 4.`
-    );
+Reply with 1, 2, 3, or 4.`,
+      es: `🎬 Edición de video seleccionada.
+
+Elija el tipo de edición:
+
+1 - Video corto
+2 - Video para redes sociales
+3 - Edición estándar
+4 - Edición avanzada
+
+Responda con 1, 2, 3 o 4.`,
+      fr: `🎬 Montage vidéo sélectionné.
+
+Choisissez le type de montage :
+
+1 - Vidéo courte
+2 - Vidéo réseaux sociaux
+3 - Montage standard
+4 - Montage avancé
+
+Répondez avec 1, 2, 3 ou 4.`,
+      de: `🎬 Videobearbeitung ausgewählt.
+
+Wählen Sie die Art der Videobearbeitung:
+
+1 - Kurzvideo
+2 - Social-Media-Video
+3 - Standardbearbeitung
+4 - Erweiterte Bearbeitung
+
+Antworten Sie mit 1, 2, 3 oder 4.`,
+      pt: `🎬 Edição de vídeo selecionada.
+
+Escolha o tipo de edição:
+
+1 - Vídeo curto
+2 - Vídeo para redes sociais
+3 - Edição padrão
+4 - Edição avançada
+
+Responda com 1, 2, 3 ou 4.`,
+      ar: `🎬 تم اختيار تعديل الفيديو.
+
+اختر نوع تعديل الفيديو:
+
+1 - فيديو قصير
+2 - فيديو للوسائط الاجتماعية
+3 - تعديل عادي
+4 - تعديل متقدم
+
+رد بـ 1 أو 2 أو 3 أو 4.`
+    }));
     return res.sendStatus(200);
   }
 
@@ -1630,9 +1774,8 @@ XXL - كبير جدًا مزدوج
   session.selectedService = "JOB_APPLICATION";
   session.stage = "JOB_SELECT_ROLE";
 
-  await sendMessage(
-    from,
-    `💼 Job Application / CV Submission
+  await sendMessage(from, pickText(session.language, {
+    en: `💼 Job Application / CV Submission
 
 Please choose the role you are applying for:
 
@@ -1642,8 +1785,63 @@ Please choose the role you are applying for:
 4 - Delivery Driver
 5 - Video Editor
 
-Reply with 1, 2, 3, 4, or 5.`
-  );
+Reply with 1, 2, 3, 4, or 5.`,
+    es: `💼 Solicitud de empleo / Envío de CV
+
+Elija el puesto al que aplica:
+
+1 - Diseñador gráfico
+2 - Operador de impresión
+3 - Agente de atención al cliente
+4 - Conductor de reparto
+5 - Editor de video
+
+Responda con 1, 2, 3, 4 o 5.`,
+    fr: `💼 Candidature / Envoi de CV
+
+Choisissez le poste souhaité :
+
+1 - Graphiste
+2 - Opérateur d'impression
+3 - Agent support client
+4 - Chauffeur livreur
+5 - Monteur vidéo
+
+Répondez avec 1, 2, 3, 4 ou 5.`,
+    de: `💼 Bewerbung / Lebenslauf einreichen
+
+Wählen Sie die Stelle, für die Sie sich bewerben:
+
+1 - Grafikdesigner
+2 - Druckmaschinenbediener
+3 - Kundendienstmitarbeiter
+4 - Lieferfahrer
+5 - Videoeditor
+
+Antworten Sie mit 1, 2, 3, 4 oder 5.`,
+    pt: `💼 Candidatura / Envio de CV
+
+Escolha a vaga para a qual deseja se candidatar:
+
+1 - Designer gráfico
+2 - Operador de impressão
+3 - Atendimento ao cliente
+4 - Motorista de entrega
+5 - Editor de vídeo
+
+Responda com 1, 2, 3, 4 ou 5.`,
+    ar: `💼 طلب وظيفة / إرسال السيرة الذاتية
+
+اختر الوظيفة التي تتقدم لها:
+
+1 - مصمم جرافيك
+2 - مشغل آلة طباعة
+3 - موظف دعم العملاء
+4 - سائق توصيل
+5 - محرر فيديو
+
+رد بـ 1 أو 2 أو 3 أو 4 أو 5.`
+  }));
 
   return res.sendStatus(200);
 }
@@ -1651,9 +1849,8 @@ if (lower === "14") {
   session.selectedService = "JOB_OPPORTUNITIES";
   session.stage = "JOB_OPPORTUNITIES_MENU";
 
-  await sendMessage(
-    from,
-    `💼 JOB OPPORTUNITIES
+  await sendMessage(from, pickText(session.language, {
+    en: `💼 JOB OPPORTUNITIES
 
 Please choose your profession:
 
@@ -1663,8 +1860,63 @@ Please choose your profession:
 4 - Video Editor
 5 - Customer Support
 
-Reply with a number.`
-  );
+Reply with a number.`,
+    es: `💼 OPORTUNIDADES DE TRABAJO
+
+Elija su profesión:
+
+1 - Diseñador gráfico
+2 - Operador de impresión
+3 - Conductor de reparto
+4 - Editor de video
+5 - Atención al cliente
+
+Responda con un número.`,
+    fr: `💼 OFFRES D'EMPLOI
+
+Choisissez votre profession :
+
+1 - Graphiste
+2 - Opérateur d'impression
+3 - Chauffeur livreur
+4 - Monteur vidéo
+5 - Support client
+
+Répondez avec un numéro.`,
+    de: `💼 JOBANGEBOTE
+
+Wählen Sie Ihren Beruf:
+
+1 - Grafikdesigner
+2 - Druckoperator
+3 - Lieferfahrer
+4 - Videoeditor
+5 - Kundensupport
+
+Antworten Sie mit einer Nummer.`,
+    pt: `💼 OPORTUNIDADES DE EMPREGO
+
+Escolha sua profissão:
+
+1 - Designer gráfico
+2 - Operador de impressão
+3 - Motorista de entrega
+4 - Editor de vídeo
+5 - Atendimento ao cliente
+
+Responda com um número.`,
+    ar: `💼 فرص عمل
+
+اختر مهنتك:
+
+1 - مصمم جرافيك
+2 - مشغل طباعة
+3 - سائق توصيل
+4 - محرر فيديو
+5 - دعم العملاء
+
+رد برقم.`
+  }));
 
   return res.sendStatus(200);
 }
@@ -1673,9 +1925,8 @@ if (lower === "15") {
   session.selectedService = "HIRE_WORKER";
   session.stage = "HIRE_WORKER_MENU";
 
-  await sendMessage(
-    from,
-    `👷 HIRE A WORKER
+  await sendMessage(from, pickText(session.language, {
+    en: `👷 HIRE A WORKER
 
 Please describe the worker you need.
 
@@ -1686,8 +1937,68 @@ Examples:
 - Video editor
 - Carpenter
 
-You can also send voice note.`
-  );
+You can also send voice note.`,
+    es: `👷 CONTRATAR UN TRABAJADOR
+
+Describa el trabajador que necesita.
+
+Ejemplos:
+- Diseñador gráfico
+- Electricista
+- Plomero
+- Editor de video
+- Carpintero
+
+También puede enviar una nota de voz.`,
+    fr: `👷 EMBAUCHER UN TRAVAILLEUR
+
+Décrivez le travailleur dont vous avez besoin.
+
+Exemples :
+- Graphiste
+- Électricien
+- Plombier
+- Monteur vidéo
+- Menuisier
+
+Vous pouvez aussi envoyer une note vocale.`,
+    de: `👷 ARBEITER EINSTELLEN
+
+Beschreiben Sie den Arbeiter, den Sie benötigen.
+
+Beispiele:
+- Grafikdesigner
+- Elektriker
+- Klempner
+- Videoeditor
+- Schreiner
+
+Sie können auch eine Sprachnachricht senden.`,
+    pt: `👷 CONTRATAR TRABALHADOR
+
+Descreva o trabalhador que você precisa.
+
+Exemplos:
+- Designer gráfico
+- Eletricista
+- Encanador
+- Editor de vídeo
+- Carpinteiro
+
+Você também pode enviar nota de voz.`,
+    ar: `👷 توظيف عامل
+
+صف العامل الذي تحتاجه.
+
+أمثلة:
+- مصمم جرافيك
+- كهربائي
+- سباك
+- محرر فيديو
+- نجار
+
+يمكنك أيضًا إرسال رسالة صوتية.`
+  }));
 
   return res.sendStatus(200);
 }
@@ -1696,9 +2007,8 @@ if (lower === "16") {
   session.selectedService = "COMMUNITY_ALERT";
   session.stage = "COMMUNITY_ALERT_WAITING";
 
-  await sendMessage(
-    from,
-    `🚨 COMMUNITY ALERT
+  await sendMessage(from, pickText(session.language, {
+    en: `🚨 COMMUNITY ALERT
 
 Please send:
 
@@ -1706,8 +2016,53 @@ Please send:
 • Description
 • Location
 
-This information will be reviewed before broadcasting.`
-  );
+This information will be reviewed before broadcasting.`,
+    es: `🚨 ALERTA COMUNITARIA
+
+Envíe:
+
+• Foto/video del incidente
+• Descripción
+• Ubicación
+
+Esta información será revisada antes de publicarse.`,
+    fr: `🚨 ALERTE COMMUNAUTAIRE
+
+Veuillez envoyer :
+
+• Photo/vidéo de l'incident
+• Description
+• Lieu
+
+Ces informations seront examinées avant diffusion.`,
+    de: `🚨 GEMEINSCHAFTSALARM
+
+Bitte senden Sie:
+
+• Foto/Video des Vorfalls
+• Beschreibung
+• Standort
+
+Diese Informationen werden vor der Veröffentlichung geprüft.`,
+    pt: `🚨 ALERTA COMUNITÁRIO
+
+Envie:
+
+• Foto/vídeo do incidente
+• Descrição
+• Localização
+
+Essas informações serão revisadas antes da divulgação.`,
+    ar: `🚨 تنبيه مجتمعي
+
+يرجى إرسال:
+
+• صورة/فيديو للحادث
+• وصف
+• الموقع
+
+سيتم مراجعة هذه المعلومات قبل نشرها.`
+  }));
 
   return res.sendStatus(200);
 }
@@ -1716,9 +2071,8 @@ if (lower === "17") {
   session.selectedService = "TRUSTED_SUPPLIERS";
   session.stage = "SUPPLIER_CATEGORY";
 
-  await sendMessage(
-    from,
-    `🏪 TRUSTED SUPPLIERS
+  await sendMessage(from, pickText(session.language, {
+    en: `🏪 TRUSTED SUPPLIERS
 
 Choose category:
 
@@ -1728,8 +2082,63 @@ Choose category:
 4 - Fashion Materials
 5 - Computer Accessories
 
-Reply with a number.`
-  );
+Reply with a number.`,
+    es: `🏪 PROVEEDORES CONFIABLES
+
+Elija categoría:
+
+1 - Materiales de impresión
+2 - Materiales eléctricos
+3 - Materiales de construcción
+4 - Materiales de moda
+5 - Accesorios de computadora
+
+Responda con un número.`,
+    fr: `🏪 FOURNISSEURS FIABLES
+
+Choisissez une catégorie :
+
+1 - Matériaux d'impression
+2 - Matériaux électriques
+3 - Matériaux de construction
+4 - Matériaux de mode
+5 - Accessoires informatiques
+
+Répondez avec un numéro.`,
+    de: `🏪 VERTRAUENSWÜRDIGE LIEFERANTEN
+
+Wählen Sie eine Kategorie:
+
+1 - Druckmaterialien
+2 - Elektromaterialien
+3 - Baumaterialien
+4 - Modematerialien
+5 - Computerzubehör
+
+Antworten Sie mit einer Nummer.`,
+    pt: `🏪 FORNECEDORES CONFIÁVEIS
+
+Escolha a categoria:
+
+1 - Materiais de impressão
+2 - Materiais elétricos
+3 - Materiais de construção
+4 - Materiais de moda
+5 - Acessórios de computador
+
+Responda com um número.`,
+    ar: `🏪 موردون موثوقون
+
+اختر الفئة:
+
+1 - مواد الطباعة
+2 - مواد كهربائية
+3 - مواد البناء
+4 - مواد الأزياء
+5 - ملحقات الكمبيوتر
+
+رد برقم.`
+  }));
 
   return res.sendStatus(200);
 }
@@ -1737,9 +2146,8 @@ Reply with a number.`
   session.selectedService = "BUY_LAND_RESELL";
   session.stage = "SERVICE_WAITING_EXTRA_NOTES";
 
-  await sendMessage(
-    from,
-    `🏞️ Buy Land for Use or Resell selected.
+  await sendMessage(from, pickText(session.language, {
+    en: `🏞️ Buy Land for Use or Resell selected.
 
 Please send:
 1. Country/state/location
@@ -1747,8 +2155,53 @@ Please send:
 3. Land purpose: use, build, farm, or resell
 4. How soon you want it
 
-Our team will contact you shortly on WhatsApp.`
-  );
+Our team will contact you shortly on WhatsApp.`,
+    es: `🏞️ Comprar terreno para uso o reventa seleccionado.
+
+Envíe:
+1. País/estado/ubicación
+2. Su presupuesto
+3. Propósito del terreno: usar, construir, cultivar o revender
+4. Qué tan pronto lo necesita
+
+Nuestro equipo se comunicará con usted pronto por WhatsApp.`,
+    fr: `🏞️ Acheter un terrain pour usage ou revente sélectionné.
+
+Veuillez envoyer :
+1. Pays/état/lieu
+2. Votre budget
+3. Objectif du terrain : utiliser, construire, cultiver ou revendre
+4. Le délai souhaité
+
+Notre équipe vous contactera bientôt sur WhatsApp.`,
+    de: `🏞️ Land kaufen zur Nutzung oder zum Weiterverkauf ausgewählt.
+
+Bitte senden Sie:
+1. Land/Bundesland/Standort
+2. Ihr Budget
+3. Zweck: Nutzung, Bau, Landwirtschaft oder Weiterverkauf
+4. Wie schnell Sie es möchten
+
+Unser Team wird Sie in Kürze per WhatsApp kontaktieren.`,
+    pt: `🏞️ Comprar terreno para uso ou revenda selecionado.
+
+Envie:
+1. País/estado/localização
+2. Seu orçamento
+3. Finalidade: uso, construção, fazenda ou revenda
+4. Prazo desejado
+
+Nossa equipe entrará em contato em breve pelo WhatsApp.`,
+    ar: `🏞️ تم اختيار شراء أرض للاستخدام أو إعادة البيع.
+
+يرجى إرسال:
+1. البلد/الولاية/الموقع
+2. ميزانيتك
+3. الغرض من الأرض: استخدام أو بناء أو زراعة أو إعادة بيع
+4. متى تريدها
+
+سيتواصل معك فريقنا قريبًا عبر واتساب.`
+  }));
 
   return res.sendStatus(200);
 }
@@ -1757,9 +2210,8 @@ if (lower === "19") {
   session.selectedService = "CURRENCY_EXCHANGE";
   session.stage = "SERVICE_WAITING_EXTRA_NOTES";
 
-  await sendMessage(
-    from,
-    `💱 Currency Exchange selected.
+  await sendMessage(from, pickText(session.language, {
+    en: `💱 Currency Exchange selected.
 
 Please send:
 1. Currency you have
@@ -1767,8 +2219,53 @@ Please send:
 3. Amount
 4. Country/location
 
-Our team will contact you shortly on WhatsApp.`
-  );
+Our team will contact you shortly on WhatsApp.`,
+    es: `💱 Cambio de moneda seleccionado.
+
+Envíe:
+1. Moneda que tiene
+2. Moneda que necesita
+3. Cantidad
+4. País/ubicación
+
+Nuestro equipo se comunicará con usted pronto por WhatsApp.`,
+    fr: `💱 Change de monnaie sélectionné.
+
+Veuillez envoyer :
+1. Devise que vous avez
+2. Devise souhaitée
+3. Montant
+4. Pays/lieu
+
+Notre équipe vous contactera bientôt sur WhatsApp.`,
+    de: `💱 Geldwechsel ausgewählt.
+
+Bitte senden Sie:
+1. Währung, die Sie haben
+2. Währung, die Sie brauchen
+3. Betrag
+4. Land/Standort
+
+Unser Team wird Sie in Kürze per WhatsApp kontaktieren.`,
+    pt: `💱 Câmbio selecionado.
+
+Envie:
+1. Moeda que você tem
+2. Moeda que você precisa
+3. Valor
+4. País/localização
+
+Nossa equipe entrará em contato em breve pelo WhatsApp.`,
+    ar: `💱 تم اختيار تحويل العملات.
+
+يرجى إرسال:
+1. العملة التي لديك
+2. العملة التي تحتاجها
+3. المبلغ
+4. البلد/الموقع
+
+سيتواصل معك فريقنا قريبًا عبر واتساب.`
+  }));
 
   return res.sendStatus(200);
 }
@@ -1777,9 +2274,8 @@ if (lower === "20") {
   session.selectedService = "SOCIAL_MEDIA_CREATOR";
   session.stage = "SERVICE_WAITING_EXTRA_NOTES";
 
-  await sendMessage(
-    from,
-    `📱 Social Media Creator selected.
+  await sendMessage(from, pickText(session.language, {
+    en: `📱 Social Media Creator selected.
 
 Please send:
 1. Type of content you need
@@ -1787,8 +2283,53 @@ Please send:
 3. Topic/product/business name
 4. Any sample or idea
 
-You can also send photo, video, text, or voice note.`
-  );
+You can also send photo, video, text, or voice note.`,
+    es: `📱 Creador de redes sociales seleccionado.
+
+Envíe:
+1. Tipo de contenido que necesita
+2. Plataforma: TikTok, Instagram, Facebook, YouTube, etc.
+3. Tema/producto/nombre del negocio
+4. Muestra o idea
+
+También puede enviar foto, video, texto o nota de voz.`,
+    fr: `📱 Créateur de réseaux sociaux sélectionné.
+
+Veuillez envoyer :
+1. Type de contenu souhaité
+2. Plateforme : TikTok, Instagram, Facebook, YouTube, etc.
+3. Sujet/produit/nom d'entreprise
+4. Exemple ou idée
+
+Vous pouvez aussi envoyer photo, vidéo, texte ou note vocale.`,
+    de: `📱 Social-Media-Ersteller ausgewählt.
+
+Bitte senden Sie:
+1. Art des Inhalts
+2. Plattform: TikTok, Instagram, Facebook, YouTube usw.
+3. Thema/Produkt/Firmenname
+4. Beispiel oder Idee
+
+Sie können auch Foto, Video, Text oder Sprachnachricht senden.`,
+    pt: `📱 Criador de mídia social selecionado.
+
+Envie:
+1. Tipo de conteúdo necessário
+2. Plataforma: TikTok, Instagram, Facebook, YouTube etc.
+3. Tema/produto/nome do negócio
+4. Amostra ou ideia
+
+Você também pode enviar foto, vídeo, texto ou nota de voz.`,
+    ar: `📱 تم اختيار منشئ محتوى وسائل التواصل.
+
+يرجى إرسال:
+1. نوع المحتوى المطلوب
+2. المنصة: TikTok أو Instagram أو Facebook أو YouTube إلخ
+3. الموضوع/المنتج/اسم العمل
+4. أي نموذج أو فكرة
+
+يمكنك أيضًا إرسال صورة أو فيديو أو نص أو رسالة صوتية.`
+  }));
 
   return res.sendStatus(200);
 }
@@ -1797,9 +2338,8 @@ if (lower === "21") {
   session.selectedService = "BUY_RESELL_AUTO";
   session.stage = "SERVICE_WAITING_EXTRA_NOTES";
 
-  await sendMessage(
-    from,
-    `🚘 Buy & Resell Auto selected.
+  await sendMessage(from, pickText(session.language, {
+    en: `🚘 Buy & Resell Auto selected.
 
 Please send:
 1. Vehicle type/model
@@ -1807,9 +2347,53 @@ Please send:
 3. Budget or asking price
 4. Location
 
+Our team will contact you shortly on WhatsApp.`,
+    es: `🚘 Comprar y revender autos seleccionado.
 
-Our team will contact you shortly on WhatsApp.`
-  );
+Envíe:
+1. Tipo/modelo de vehículo
+2. Comprar, vender o revender
+3. Presupuesto o precio solicitado
+4. Ubicación
+
+Nuestro equipo se comunicará con usted pronto por WhatsApp.`,
+    fr: `🚘 Acheter et revendre auto sélectionné.
+
+Veuillez envoyer :
+1. Type/modèle du véhicule
+2. Acheter, vendre ou revendre
+3. Budget ou prix demandé
+4. Lieu
+
+Notre équipe vous contactera bientôt sur WhatsApp.`,
+    de: `🚘 Autos kaufen und weiterverkaufen ausgewählt.
+
+Bitte senden Sie:
+1. Fahrzeugtyp/Modell
+2. Kaufen, verkaufen oder weiterverkaufen
+3. Budget oder Preisvorstellung
+4. Standort
+
+Unser Team wird Sie in Kürze per WhatsApp kontaktieren.`,
+    pt: `🚘 Comprar e revender carros selecionado.
+
+Envie:
+1. Tipo/modelo do veículo
+2. Comprar, vender ou revender
+3. Orçamento ou preço pedido
+4. Localização
+
+Nossa equipe entrará em contato em breve pelo WhatsApp.`,
+    ar: `🚘 تم اختيار شراء وإعادة بيع السيارات.
+
+يرجى إرسال:
+1. نوع/موديل المركبة
+2. شراء أو بيع أو إعادة بيع
+3. الميزانية أو السعر المطلوب
+4. الموقع
+
+سيتواصل معك فريقنا قريبًا عبر واتساب.`
+  }));
 
   return res.sendStatus(200);
 }
@@ -1827,14 +2411,38 @@ Our team will contact you shortly on WhatsApp.`
   session.lastServiceJobId = job?.id || null;
   session.stage = "MENU";
 
-  await sendMessage(
-    from,
-    `✅ Your worker request has been received.
+  await sendMessage(from, pickText(session.language, {
+    en: `✅ Your worker request has been received.
 
 Worker needed: ${workerRequest}
 
-Our team will review available workers and contact you shortly on WhatsApp.`
-  );
+Our team will review available workers and contact you shortly on WhatsApp.`,
+    es: `✅ Su solicitud de trabajador ha sido recibida.
+
+Trabajador necesario: ${workerRequest}
+
+Nuestro equipo revisará los trabajadores disponibles y le contactará pronto por WhatsApp.`,
+    fr: `✅ Votre demande de travailleur a été reçue.
+
+Travailleur nécessaire : ${workerRequest}
+
+Notre équipe examinera les travailleurs disponibles et vous contactera bientôt sur WhatsApp.`,
+    de: `✅ Ihre Arbeiteranfrage wurde empfangen.
+
+Benötigter Arbeiter: ${workerRequest}
+
+Unser Team prüft verfügbare Arbeiter und kontaktiert Sie bald per WhatsApp.`,
+    pt: `✅ Sua solicitação de trabalhador foi recebida.
+
+Trabalhador necessário: ${workerRequest}
+
+Nossa equipe verificará trabalhadores disponíveis e entrará em contato em breve pelo WhatsApp.`,
+    ar: `✅ تم استلام طلب العامل الخاص بك.
+
+العامل المطلوب: ${workerRequest}
+
+سيراجع فريقنا العمال المتاحين ويتواصل معك قريبًا عبر واتساب.`
+  }));
 
   return res.sendStatus(200);
 }
@@ -1850,16 +2458,50 @@ Our team will review available workers and contact you shortly on WhatsApp.`
   const selectedRole = roleMap[lower];
 
   if (!selectedRole) {
-    await sendMessage(
-      from,
-      `Please choose a valid role:
+    await sendMessage(from, pickText(session.language, {
+      en: `Please choose a valid role:
 
 1 - Graphic Designer
 2 - Print Operator
 3 - Delivery Driver
 4 - Video Editor
-5 - Customer Support`
-    );
+5 - Customer Support`,
+      es: `Elija un puesto válido:
+
+1 - Diseñador gráfico
+2 - Operador de impresión
+3 - Conductor de reparto
+4 - Editor de video
+5 - Atención al cliente`,
+      fr: `Veuillez choisir un rôle valide :
+
+1 - Graphiste
+2 - Opérateur d'impression
+3 - Chauffeur livreur
+4 - Monteur vidéo
+5 - Support client`,
+      de: `Bitte wählen Sie eine gültige Rolle:
+
+1 - Grafikdesigner
+2 - Druckoperator
+3 - Lieferfahrer
+4 - Videoeditor
+5 - Kundensupport`,
+      pt: `Escolha uma função válida:
+
+1 - Designer gráfico
+2 - Operador de impressão
+3 - Motorista de entrega
+4 - Editor de vídeo
+5 - Atendimento ao cliente`,
+      ar: `يرجى اختيار وظيفة صحيحة:
+
+1 - مصمم جرافيك
+2 - مشغل طباعة
+3 - سائق توصيل
+4 - محرر فيديو
+5 - دعم العملاء`
+    }));
 
     return res.sendStatus(200);
   }
@@ -1872,14 +2514,38 @@ Our team will review available workers and contact you shortly on WhatsApp.`
   session.lastServiceJobId = job?.id || null;
   session.stage = "MENU";
 
-  await sendMessage(
-    from,
-    `✅ Your job interest has been received.
+  await sendMessage(from, pickText(session.language, {
+    en: `✅ Your job interest has been received.
 
 Selected Role: ${selectedRole}
 
-Our recruitment team will contact you shortly on WhatsApp with available opportunities.`
-  );
+Our recruitment team will contact you shortly on WhatsApp with available opportunities.`,
+    es: `✅ Su interés laboral ha sido recibido.
+
+Puesto seleccionado: ${selectedRole}
+
+Nuestro equipo de reclutamiento le contactará pronto por WhatsApp con oportunidades disponibles.`,
+    fr: `✅ Votre intérêt pour l'emploi a été reçu.
+
+Rôle sélectionné : ${selectedRole}
+
+Notre équipe de recrutement vous contactera bientôt sur WhatsApp avec les opportunités disponibles.`,
+    de: `✅ Ihr Interesse an der Stelle wurde empfangen.
+
+Ausgewählte Rolle: ${selectedRole}
+
+Unser Recruiting-Team wird Sie bald per WhatsApp mit verfügbaren Angeboten kontaktieren.`,
+    pt: `✅ Seu interesse por emprego foi recebido.
+
+Função selecionada: ${selectedRole}
+
+Nossa equipe de recrutamento entrará em contato em breve pelo WhatsApp com oportunidades disponíveis.`,
+    ar: `✅ تم استلام اهتمامك بالوظيفة.
+
+الوظيفة المختارة: ${selectedRole}
+
+سيتواصل معك فريق التوظيف قريبًا عبر واتساب بالفرص المتاحة.`
+  }));
 
   return res.sendStatus(200);
 }
@@ -1895,14 +2561,38 @@ Our recruitment team will contact you shortly on WhatsApp with available opportu
   session.lastServiceJobId = job?.id || null;
   session.stage = "MENU";
 
-  await sendMessage(
-    from,
-    `🚨 Community alert received.
+  await sendMessage(from, pickText(session.language, {
+    en: `🚨 Community alert received.
 
 Our moderation team will review the report before broadcasting it to the community.
 
-Thank you for helping keep the community safe.`
-  );
+Thank you for helping keep the community safe.`,
+    es: `🚨 Alerta comunitaria recibida.
+
+Nuestro equipo de moderación revisará el reporte antes de transmitirlo a la comunidad.
+
+Gracias por ayudar a mantener segura la comunidad.`,
+    fr: `🚨 Alerte communautaire reçue.
+
+Notre équipe de modération examinera le rapport avant toute diffusion à la communauté.
+
+Merci d'aider à protéger la communauté.`,
+    de: `🚨 Gemeinschaftsalarm erhalten.
+
+Unser Moderationsteam prüft den Bericht, bevor er an die Community gesendet wird.
+
+Danke, dass Sie helfen, die Community sicher zu halten.`,
+    pt: `🚨 Alerta comunitário recebido.
+
+Nossa equipe de moderação revisará o relatório antes de divulgar à comunidade.
+
+Obrigado por ajudar a manter a comunidade segura.`,
+    ar: `🚨 تم استلام التنبيه المجتمعي.
+
+سيقوم فريق المراجعة بفحص التقرير قبل بثه للمجتمع.
+
+شكرًا لمساعدتك في الحفاظ على سلامة المجتمع.`
+  }));
 
   return res.sendStatus(200);
 }
@@ -1918,14 +2608,38 @@ Thank you for helping keep the community safe.`
 
   session.stage = "MENU";
 
-  await sendMessage(
-    from,
-    `✅ Community alert details received.
+  await sendMessage(from, pickText(session.language, {
+    en: `✅ Community alert details received.
 
 Our moderation team will review the media and details before any community broadcast.
 
-Thank you for helping keep the community safe.`
-  );
+Thank you for helping keep the community safe.`,
+    es: `✅ Detalles de alerta comunitaria recibidos.
+
+Nuestro equipo de moderación revisará los medios y detalles antes de cualquier difusión comunitaria.
+
+Gracias por ayudar a mantener segura la comunidad.`,
+    fr: `✅ Détails de l'alerte communautaire reçus.
+
+Notre équipe de modération examinera les médias et détails avant toute diffusion.
+
+Merci d'aider à protéger la communauté.`,
+    de: `✅ Details zum Gemeinschaftsalarm erhalten.
+
+Unser Moderationsteam prüft Medien und Details vor jeder Community-Veröffentlichung.
+
+Danke, dass Sie helfen, die Community sicher zu halten.`,
+    pt: `✅ Detalhes do alerta comunitário recebidos.
+
+Nossa equipe de moderação revisará mídia e detalhes antes de qualquer divulgação.
+
+Obrigado por ajudar a manter a comunidade segura.`,
+    ar: `✅ تم استلام تفاصيل التنبيه المجتمعي.
+
+سيقوم فريق المراجعة بفحص الوسائط والتفاصيل قبل أي نشر مجتمعي.
+
+شكرًا لمساعدتك في الحفاظ على سلامة المجتمع.`
+  }));
 
   return res.sendStatus(200);
 }
@@ -1941,14 +2655,38 @@ Thank you for helping keep the community safe.`
 
   session.stage = "MENU";
 
-  await sendMessage(
-    from,
-    `✅ Community alert voice note received.
+  await sendMessage(from, pickText(session.language, {
+    en: `✅ Community alert voice note received.
 
 Our moderation team will review the media and voice details before any community broadcast.
 
-Thank you for helping keep the community safe.`
-  );
+Thank you for helping keep the community safe.`,
+    es: `✅ Nota de voz de alerta comunitaria recibida.
+
+Nuestro equipo revisará los medios y la voz antes de cualquier difusión.
+
+Gracias por ayudar a mantener segura la comunidad.`,
+    fr: `✅ Note vocale d'alerte communautaire reçue.
+
+Notre équipe examinera les médias et la voix avant toute diffusion.
+
+Merci d'aider à protéger la communauté.`,
+    de: `✅ Sprachnachricht zum Gemeinschaftsalarm erhalten.
+
+Unser Team prüft Medien und Sprachnotiz vor jeder Veröffentlichung.
+
+Danke, dass Sie helfen, die Community sicher zu halten.`,
+    pt: `✅ Nota de voz do alerta comunitário recebida.
+
+Nossa equipe revisará a mídia e a voz antes de qualquer divulgação.
+
+Obrigado por ajudar a manter a comunidade segura.`,
+    ar: `✅ تم استلام الرسالة الصوتية للتنبيه المجتمعي.
+
+سيقوم فريقنا بمراجعة الوسائط والتفاصيل الصوتية قبل أي نشر.
+
+شكرًا لمساعدتك في الحفاظ على سلامة المجتمع.`
+  }));
 
   return res.sendStatus(200);
 }
@@ -1964,16 +2702,50 @@ Thank you for helping keep the community safe.`
   const selectedCategory = supplierMap[lower];
 
   if (!selectedCategory) {
-    await sendMessage(
-      from,
-      `Please choose a valid supplier category:
+    await sendMessage(from, pickText(session.language, {
+      en: `Please choose a valid supplier category:
 
 1 - Printing Materials
 2 - Electrical Materials
 3 - Building Materials
 4 - Fashion Materials
-5 - Computer Accessories`
-    );
+5 - Computer Accessories`,
+      es: `Elija una categoría válida de proveedor:
+
+1 - Materiales de impresión
+2 - Materiales eléctricos
+3 - Materiales de construcción
+4 - Materiales de moda
+5 - Accesorios de computadora`,
+      fr: `Veuillez choisir une catégorie de fournisseur valide :
+
+1 - Matériaux d'impression
+2 - Matériaux électriques
+3 - Matériaux de construction
+4 - Matériaux de mode
+5 - Accessoires informatiques`,
+      de: `Bitte wählen Sie eine gültige Lieferantenkategorie:
+
+1 - Druckmaterialien
+2 - Elektromaterialien
+3 - Baumaterialien
+4 - Modematerialien
+5 - Computerzubehör`,
+      pt: `Escolha uma categoria válida de fornecedor:
+
+1 - Materiais de impressão
+2 - Materiais elétricos
+3 - Materiais de construção
+4 - Materiais de moda
+5 - Acessórios de computador`,
+      ar: `يرجى اختيار فئة مورد صحيحة:
+
+1 - مواد الطباعة
+2 - مواد كهربائية
+3 - مواد البناء
+4 - مواد الأزياء
+5 - ملحقات الكمبيوتر`
+    }));
 
     return res.sendStatus(200);
   }
@@ -1986,16 +2758,50 @@ Thank you for helping keep the community safe.`
   session.lastServiceJobId = job?.id || null;
   session.stage = "MENU";
 
-  await sendMessage(
-    from,
-    `🏪 Trusted Suppliers
+  await sendMessage(from, pickText(session.language, {
+    en: `🏪 Trusted Suppliers
 
 Category selected: ${selectedCategory}
 
 Our team will send you verified supplier recommendations shortly.
 
-We are also setting up referral tracking so workmen can buy materials from trusted companies with proper monitoring.`
-  );
+We are also setting up referral tracking so workmen can buy materials from trusted companies with proper monitoring.`,
+    es: `🏪 Proveedores confiables
+
+Categoría seleccionada: ${selectedCategory}
+
+Nuestro equipo le enviará recomendaciones de proveedores verificados pronto.
+
+También estamos configurando seguimiento de referencias para que los trabajadores compren materiales a empresas confiables con monitoreo adecuado.`,
+    fr: `🏪 Fournisseurs fiables
+
+Catégorie sélectionnée : ${selectedCategory}
+
+Notre équipe vous enverra bientôt des recommandations de fournisseurs vérifiés.
+
+Nous mettons aussi en place un suivi des références pour que les travailleurs achètent auprès d'entreprises fiables avec un bon contrôle.`,
+    de: `🏪 Vertrauenswürdige Lieferanten
+
+Ausgewählte Kategorie: ${selectedCategory}
+
+Unser Team sendet Ihnen in Kürze geprüfte Lieferantenempfehlungen.
+
+Wir richten außerdem Empfehlungsverfolgung ein, damit Handwerker Materialien von vertrauenswürdigen Firmen mit ordentlicher Kontrolle kaufen können.`,
+    pt: `🏪 Fornecedores confiáveis
+
+Categoria selecionada: ${selectedCategory}
+
+Nossa equipe enviará recomendações de fornecedores verificados em breve.
+
+Também estamos configurando rastreamento de indicações para que trabalhadores comprem materiais de empresas confiáveis com monitoramento adequado.`,
+    ar: `🏪 موردون موثوقون
+
+الفئة المختارة: ${selectedCategory}
+
+سيرسل لك فريقنا توصيات موردين موثوقين قريبًا.
+
+نقوم أيضًا بإعداد تتبع الإحالات حتى يتمكن العمال من شراء المواد من شركات موثوقة مع مراقبة مناسبة.`
+  }));
 
   return res.sendStatus(200);
 }
@@ -2178,14 +2984,38 @@ if (session.stage === "JOB_SELECT_ROLE" && type === "text") {
   session.jobRole = role;
   session.stage = "JOB_WAITING_CV";
 
-  await sendMessage(
-    from,
-    `✅ Selected Role: ${role}
+  await sendMessage(from, pickText(session.language, {
+    en: `✅ Selected Role: ${role}
 
 Please upload your CV (PDF or document).
 
-You can also send a voice note with additional information.`
-  );
+You can also send a voice note with additional information.`,
+    es: `✅ Puesto seleccionado: ${role}
+
+Suba su CV (PDF o documento).
+
+También puede enviar una nota de voz con información adicional.`,
+    fr: `✅ Rôle sélectionné : ${role}
+
+Veuillez télécharger votre CV (PDF ou document).
+
+Vous pouvez aussi envoyer une note vocale avec des informations supplémentaires.`,
+    de: `✅ Ausgewählte Rolle: ${role}
+
+Bitte laden Sie Ihren Lebenslauf hoch (PDF oder Dokument).
+
+Sie können auch eine Sprachnachricht mit weiteren Informationen senden.`,
+    pt: `✅ Função selecionada: ${role}
+
+Envie seu CV (PDF ou documento).
+
+Você também pode enviar uma nota de voz com informações adicionais.`,
+    ar: `✅ الوظيفة المختارة: ${role}
+
+يرجى رفع سيرتك الذاتية (PDF أو مستند).
+
+يمكنك أيضًا إرسال رسالة صوتية بمعلومات إضافية.`
+  }));
 
   return res.sendStatus(200);
 }
@@ -2213,9 +3043,8 @@ if (session.stage === "IMAGE_EDIT_SELECT_TYPE" && type === "text") {
   session.imageEditType = selected[0];
   session.stage = "IMAGE_EDIT_WAITING_UPLOAD";
 
-  await sendMessage(
-    from,
-    `✅ Selected: ${selected[0]}
+  await sendMessage(from, pickText(session.language, {
+    en: `✅ Selected: ${selected[0]}
 
 Shopify Checkout:
 ${buildShopifyCartUrl(selected[1], 1)}
@@ -2223,8 +3052,53 @@ ${buildShopifyCartUrl(selected[1], 1)}
 Africa Payment:
 https://www.patapata.us/pages/africa-payment
 
-Please upload your image now.`
-  );
+Please upload your image now.`,
+    es: `✅ Seleccionado: ${selected[0]}
+
+Pago Shopify:
+${buildShopifyCartUrl(selected[1], 1)}
+
+Pago África:
+https://www.patapata.us/pages/africa-payment
+
+Suba su imagen ahora.`,
+    fr: `✅ Sélectionné : ${selected[0]}
+
+Paiement Shopify :
+${buildShopifyCartUrl(selected[1], 1)}
+
+Paiement Afrique :
+https://www.patapata.us/pages/africa-payment
+
+Veuillez télécharger votre image maintenant.`,
+    de: `✅ Ausgewählt: ${selected[0]}
+
+Shopify-Zahlung:
+${buildShopifyCartUrl(selected[1], 1)}
+
+Afrika-Zahlung:
+https://www.patapata.us/pages/africa-payment
+
+Bitte laden Sie jetzt Ihr Bild hoch.`,
+    pt: `✅ Selecionado: ${selected[0]}
+
+Pagamento Shopify:
+${buildShopifyCartUrl(selected[1], 1)}
+
+Pagamento África:
+https://www.patapata.us/pages/africa-payment
+
+Envie sua imagem agora.`,
+    ar: `✅ تم الاختيار: ${selected[0]}
+
+دفع Shopify:
+${buildShopifyCartUrl(selected[1], 1)}
+
+دفع أفريقيا:
+https://www.patapata.us/pages/africa-payment
+
+يرجى رفع صورتك الآن.`
+  }));
   return res.sendStatus(200);
 }
 
@@ -2253,9 +3127,8 @@ if (session.stage === "VIDEO_EDIT_SELECT_TYPE" && type === "text") {
   session.videoVariantId = selected[1];
   session.stage = "VIDEO_EDIT_WAITING_UPLOAD";
 
-  await sendMessage(
-    from,
-    `✅ Selected: ${selected[0]}
+  await sendMessage(from, pickText(session.language, {
+    en: `✅ Selected: ${selected[0]}
 
 Shopify Checkout:
 ${buildShopifyCartUrl(selected[1], 1)}
@@ -2263,8 +3136,53 @@ ${buildShopifyCartUrl(selected[1], 1)}
 Africa Payment:
 https://www.patapata.us/pages/africa-payment
 
-Please upload your video now.`
-  );
+Please upload your video now.`,
+    es: `✅ Seleccionado: ${selected[0]}
+
+Pago Shopify:
+${buildShopifyCartUrl(selected[1], 1)}
+
+Pago África:
+https://www.patapata.us/pages/africa-payment
+
+Suba su video ahora.`,
+    fr: `✅ Sélectionné : ${selected[0]}
+
+Paiement Shopify :
+${buildShopifyCartUrl(selected[1], 1)}
+
+Paiement Afrique :
+https://www.patapata.us/pages/africa-payment
+
+Veuillez télécharger votre vidéo maintenant.`,
+    de: `✅ Ausgewählt: ${selected[0]}
+
+Shopify-Zahlung:
+${buildShopifyCartUrl(selected[1], 1)}
+
+Afrika-Zahlung:
+https://www.patapata.us/pages/africa-payment
+
+Bitte laden Sie jetzt Ihr Video hoch.`,
+    pt: `✅ Selecionado: ${selected[0]}
+
+Pagamento Shopify:
+${buildShopifyCartUrl(selected[1], 1)}
+
+Pagamento África:
+https://www.patapata.us/pages/africa-payment
+
+Envie seu vídeo agora.`,
+    ar: `✅ تم الاختيار: ${selected[0]}
+
+دفع Shopify:
+${buildShopifyCartUrl(selected[1], 1)}
+
+دفع أفريقيا:
+https://www.patapata.us/pages/africa-payment
+
+يرجى رفع الفيديو الآن.`
+  }));
   return res.sendStatus(200);
 }
 
@@ -2301,9 +3219,8 @@ if (session.stage === "TSHIRT_SELECT_SIZE" && type === "text") {
   session.tshirtSize = size;
   session.stage = "TSHIRT_WAITING_TEXT";
 
-  await sendMessage(
-    from,
-    `✅ Size selected: ${size}
+  await sendMessage(from, pickText(session.language, {
+    en: `✅ Size selected: ${size}
 
 Please type the text you want printed on your T-shirt.
 
@@ -2312,8 +3229,58 @@ You can also include:
 - Print color
 - Front or back placement
 
-Our team will contact you shortly on WhatsApp.`
-  );
+Our team will contact you shortly on WhatsApp.`,
+    es: `✅ Talla seleccionada: ${size}
+
+Escriba el texto que desea imprimir en su camiseta.
+
+También puede incluir:
+- Color de camiseta
+- Color de impresión
+- Ubicación frontal o trasera
+
+Nuestro equipo se comunicará con usted pronto por WhatsApp.`,
+    fr: `✅ Taille sélectionnée : ${size}
+
+Tapez le texte que vous voulez imprimer sur votre T-shirt.
+
+Vous pouvez aussi inclure :
+- Couleur du T-shirt
+- Couleur d'impression
+- Emplacement devant ou dos
+
+Notre équipe vous contactera bientôt sur WhatsApp.`,
+    de: `✅ Größe ausgewählt: ${size}
+
+Bitte geben Sie den Text ein, der auf Ihr T-Shirt gedruckt werden soll.
+
+Sie können auch hinzufügen:
+- Shirtfarbe
+- Druckfarbe
+- Vorder- oder Rückseite
+
+Unser Team wird Sie in Kürze per WhatsApp kontaktieren.`,
+    pt: `✅ Tamanho selecionado: ${size}
+
+Digite o texto que deseja imprimir na camiseta.
+
+Você também pode incluir:
+- Cor da camisa
+- Cor da impressão
+- Frente ou costas
+
+Nossa equipe entrará em contato em breve pelo WhatsApp.`,
+    ar: `✅ تم اختيار المقاس: ${size}
+
+اكتب النص الذي تريد طباعته على التيشيرت.
+
+يمكنك أيضًا إضافة:
+- لون القميص
+- لون الطباعة
+- مكان الطباعة أمامي أو خلفي
+
+سيتواصل معك فريقنا قريبًا عبر واتساب.`
+  }));
   return res.sendStatus(200);
 }
 
@@ -2327,15 +3294,44 @@ if (session.stage === "TSHIRT_WAITING_TEXT" && type === "text") {
 
   session.lastServiceJobId = job?.id || null;
 
-  await sendMessage(
-    from,
-    `👕 Your T-shirt request has been received.
+  await sendMessage(from, pickText(session.language, {
+    en: `👕 Your T-shirt request has been received.
 
 Size: ${session.tshirtSize}
 Design: ${designText}
 
-Our team will contact you shortly on WhatsApp.`
-  );
+Our team will contact you shortly on WhatsApp.`,
+    es: `👕 Su solicitud de camiseta ha sido recibida.
+
+Talla: ${session.tshirtSize}
+Diseño: ${designText}
+
+Nuestro equipo se comunicará con usted pronto por WhatsApp.`,
+    fr: `👕 Votre demande de T-shirt a été reçue.
+
+Taille : ${session.tshirtSize}
+Design : ${designText}
+
+Notre équipe vous contactera bientôt sur WhatsApp.`,
+    de: `👕 Ihre T-Shirt-Anfrage wurde empfangen.
+
+Größe: ${session.tshirtSize}
+Design: ${designText}
+
+Unser Team wird Sie in Kürze per WhatsApp kontaktieren.`,
+    pt: `👕 Seu pedido de camiseta foi recebido.
+
+Tamanho: ${session.tshirtSize}
+Design: ${designText}
+
+Nossa equipe entrará em contato em breve pelo WhatsApp.`,
+    ar: `👕 تم استلام طلب التيشيرت الخاص بك.
+
+المقاس: ${session.tshirtSize}
+التصميم: ${designText}
+
+سيتواصل معك فريقنا قريبًا عبر واتساب.`
+  }));
 
   session.stage = "MENU";
   return res.sendStatus(200);
@@ -2467,11 +3463,8 @@ if (session.stage === "SERVICE_WAITING_EXTRA_NOTES") {
   session.lastServiceJobId = job?.id || null;
   session.stage = "COMMUNITY_ALERT_WAITING_DETAILS";
 
-  await sendMessage(
-    from,
-    
-
-`🚨 Community alert media received.
+  await sendMessage(from, pickText(session.language, {
+    en: `🚨 Community alert media received.
 
 Please now send ANY of the following:
 
@@ -2482,8 +3475,68 @@ Please now send ANY of the following:
 
 You may send text, voice note, or both.
 
-Our moderation team will review everything before any community broadcast.`
-  );
+Our moderation team will review everything before any community broadcast.`,
+    es: `🚨 Medio de alerta comunitaria recibido.
+
+Ahora envíe CUALQUIERA de lo siguiente:
+
+• Qué pasó
+• Ubicación
+• Hora/fecha si la sabe
+• Explicación por nota de voz
+
+Puede enviar texto, nota de voz o ambos.
+
+Nuestro equipo revisará todo antes de cualquier difusión comunitaria.`,
+    fr: `🚨 Média d'alerte communautaire reçu.
+
+Veuillez maintenant envoyer L'UN des éléments suivants :
+
+• Ce qui s'est passé
+• Lieu
+• Heure/date si connue
+• Explication vocale
+
+Vous pouvez envoyer texte, note vocale ou les deux.
+
+Notre équipe examinera tout avant toute diffusion communautaire.`,
+    de: `🚨 Medien zum Gemeinschaftsalarm erhalten.
+
+Bitte senden Sie jetzt EINES der folgenden Dinge:
+
+• Was passiert ist
+• Standort
+• Zeit/Datum, falls bekannt
+• Erklärung per Sprachnachricht
+
+Sie können Text, Sprachnachricht oder beides senden.
+
+Unser Moderationsteam prüft alles vor jeder Community-Veröffentlichung.`,
+    pt: `🚨 Mídia do alerta comunitário recebida.
+
+Agora envie QUALQUER um dos seguintes:
+
+• O que aconteceu
+• Localização
+• Hora/data se souber
+• Explicação por nota de voz
+
+Você pode enviar texto, nota de voz ou ambos.
+
+Nossa equipe revisará tudo antes de qualquer divulgação comunitária.`,
+    ar: `🚨 تم استلام وسائط التنبيه المجتمعي.
+
+يرجى الآن إرسال أي مما يلي:
+
+• ماذا حدث
+• الموقع
+• الوقت/التاريخ إن وجد
+• شرح برسالة صوتية
+
+يمكنك إرسال نص أو رسالة صوتية أو الاثنين معًا.
+
+سيراجع فريقنا كل شيء قبل أي نشر مجتمعي.`
+  }));
 
   return res.sendStatus(200);
 }
@@ -2562,16 +3615,50 @@ if (session.stage === "LAMINATE_WAITING_FILE") {
   session.lastServiceJobId = job?.id || null;
   session.stage = "SERVICE_WAITING_EXTRA_NOTES";
 
-  await sendMessage(
-    from,
-    `✅ CV received for ${session.jobRole}
+  await sendMessage(from, pickText(session.language, {
+    en: `✅ CV received for ${session.jobRole}
 
 You can now send:
 • Text instruction
 • OR voice note
 
-Our team will review and contact you shortly.`
-  );
+Our team will review and contact you shortly.`,
+    es: `✅ CV recibido para ${session.jobRole}
+
+Ahora puede enviar:
+• Instrucción de texto
+• O nota de voz
+
+Nuestro equipo lo revisará y le contactará pronto.`,
+    fr: `✅ CV reçu pour ${session.jobRole}
+
+Vous pouvez maintenant envoyer :
+• Instruction texte
+• OU note vocale
+
+Notre équipe examinera et vous contactera bientôt.`,
+    de: `✅ Lebenslauf für ${session.jobRole} erhalten
+
+Sie können jetzt senden:
+• Textanweisung
+• ODER Sprachnachricht
+
+Unser Team prüft dies und kontaktiert Sie bald.`,
+    pt: `✅ CV recebido para ${session.jobRole}
+
+Agora você pode enviar:
+• Instrução de texto
+• OU nota de voz
+
+Nossa equipe irá revisar e entrar em contato em breve.`,
+    ar: `✅ تم استلام السيرة الذاتية لـ ${session.jobRole}
+
+يمكنك الآن إرسال:
+• تعليمات نصية
+• أو رسالة صوتية
+
+سيراجع فريقنا الطلب ويتواصل معك قريبًا.`
+  }));
 
   return res.sendStatus(200);
 }
@@ -2589,14 +3676,7 @@ Our team will review and contact you shortly.`
         session.lastServiceJobId = job?.id || null;
         session.stage = "SERVICE_WAITING_EXTRA_NOTES";
 
-        await sendMessage(
-  from,
-  `✅ Image received.
-
-Please send your instruction now as text or voice note.
-
-Our team will contact you shortly on WhatsApp.`
-);
+        await sendMessage(from, mediaInstructionReceivedText(session.language, pickText(session.language, { en: "Image", es: "Imagen", fr: "Image", de: "Bild", pt: "Imagem", ar: "الصورة" })));
         return res.sendStatus(200);
       }
 if (session.stage === "LESSON_WAITING_UPLOAD") {
@@ -2614,14 +3694,7 @@ if (session.stage === "LESSON_WAITING_UPLOAD") {
   session.lastServiceJobId = job?.id || null;
   session.stage = "SERVICE_WAITING_EXTRA_NOTES";
 
-  await sendMessage(
-    from,
-    `✅ Lesson / Homework file received.
-
-Please send your instruction now as text or voice note.
-
-Our team will contact you shortly on WhatsApp.`
-  );
+  await sendMessage(from, mediaInstructionReceivedText(session.language, pickText(session.language, { en: "Lesson / Homework file", es: "Archivo de lección / tarea", fr: "Fichier de leçon / devoir", de: "Unterrichts- / Hausaufgabendatei", pt: "Arquivo de aula / tarefa", ar: "ملف الدرس / الواجب" })));
 
   return res.sendStatus(200);
 }
@@ -2638,14 +3711,7 @@ Our team will contact you shortly on WhatsApp.`
         session.lastServiceJobId = job?.id || null;
         session.stage = "SERVICE_WAITING_EXTRA_NOTES";
 
-        await sendMessage(
-  from,
-  `✅ Video received.
-
-Please send your instruction now as text or voice note.
-
-Our team will contact you shortly on WhatsApp.`
-);
+        await sendMessage(from, mediaInstructionReceivedText(session.language, pickText(session.language, { en: "Video", es: "Video", fr: "Vidéo", de: "Video", pt: "Vídeo", ar: "الفيديو" })));
         return res.sendStatus(200);
       }
 
@@ -2662,14 +3728,7 @@ Our team will contact you shortly on WhatsApp.`
         session.lastServiceJobId = job?.id || null;
         session.stage = "SERVICE_WAITING_EXTRA_NOTES";
 
-        await sendMessage(
-  from,
-  `✅ ID photo received.
-
-Please send your instruction now as text or voice note.
-
-Our team will contact you shortly on WhatsApp.`
-);
+        await sendMessage(from, mediaInstructionReceivedText(session.language, pickText(session.language, { en: "ID photo", es: "Foto de identificación", fr: "Photo d'identité", de: "Passfoto", pt: "Foto de identificação", ar: "صورة الهوية" })));
         return res.sendStatus(200);
       }
     }
@@ -2787,7 +3846,14 @@ Nossa equipe entrará em contato em breve pelo WhatsApp.`,
 else if (session.stage === "MENU") {
   await sendMessage(
     from,
-    `Please reply with one of the options below:
+    `${pickText(session.language, {
+      en: "Please reply with one of the options below:",
+      es: "Por favor responda con una de las siguientes opciones:",
+      fr: "Veuillez répondre avec l'une des options ci-dessous :",
+      de: "Bitte antworten Sie mit einer der folgenden Optionen:",
+      pt: "Responda com uma das opções abaixo:",
+      ar: "يرجى الرد بأحد الخيارات أدناه:"
+    })}
 
 ${serviceMenu(session.language)}`
   );
