@@ -953,7 +953,7 @@ if (session.stage === "MENU") {
   if (lower === "1") {
     session.selectedService = "PRINT";
     session.stage = "PRINT_SELECT_SIZE";
-    await sendMessage(from, printSizeMenuText(session.language)
+    await sendMessage(from, printSizeMenuText(session.language));
     return res.sendStatus(200);
   }
 
@@ -961,7 +961,7 @@ if (session.stage === "MENU") {
     session.selectedService = "LAMINATE";
     session.laminateSpec = {};
     session.stage = "LAMINATE_WAITING_SIZE";
-    await sendMessage(from, laminateSizeMenuText(session.language)
+    await sendMessage(from, laminateSizeMenuText(session.language));
     return res.sendStatus(200);
   }
 
@@ -1476,7 +1476,7 @@ We are also setting up referral tracking so workmen can buy materials from trust
   session.printSpec.paper_size = selectedSize;
   session.stage = "PRINT_SELECT_COLOR";
 
-  await sendMessage(from, printColorMenuText(session.language)
+  await sendMessage(from, printColorMenuText(session.language));
   return res.sendStatus(200);
 }
 
@@ -1489,7 +1489,7 @@ if (session.stage === "PRINT_SELECT_COLOR" && type === "text") {
   const selectedColor = colorMap[lower];
 
   if (!selectedColor) {
-    await sendMessage(from, printColorMenuText(session.language)
+    await sendMessage(from, printColorMenuText(session.language));
     return res.sendStatus(200);
   }
 
