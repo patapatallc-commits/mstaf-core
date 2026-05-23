@@ -1013,7 +1013,14 @@ Reply with 1, 2, 3, or 4.`
   if (lower === "6") {
     session.selectedService = "LESSON_HOMEWORK";
     session.stage = "LESSON_WAITING_UPLOAD";
-    await sendMessage(from, "📚 Lesson / Homework selected. Please upload your file now.");
+    await sendMessage(from, {
+  en: "📚 Lesson / Homework selected. Please upload your file now.",
+  es: "📚 Lección / Tarea seleccionada. Por favor suba su archivo ahora.",
+  fr: "📚 Leçon / Devoir sélectionné. Veuillez télécharger votre fichier maintenant.",
+  de: "📚 Unterricht / Hausaufgabe ausgewählt. Bitte laden Sie jetzt Ihre Datei hoch.",
+  pt: "📚 Aula / Trabalho selecionado. Faça upload do seu arquivo agora.",
+  ar: "📚 تم اختيار الدرس / الواجب. يرجى رفع الملف الآن."
+}[session.language || "en"]);
     return res.sendStatus(200);
   }
 
@@ -1027,14 +1034,28 @@ Reply with 1, 2, 3, or 4.`
   if (lower === "8") {
     session.selectedService = "AUTO_MECHANIC";
     session.stage = "SERVICE_WAITING_EXTRA_NOTES";
-    await sendMessage(from, "🔧 Please send your location, vehicle type, and the problem.");
+    await sendMessage(from, {
+  en: "👨‍🔧 Please send your location, vehicle type, and the problem.",
+  es: "👨‍🔧 Por favor envíe su ubicación, tipo de vehículo y el problema.",
+  fr: "👨‍🔧 Veuillez envoyer votre position, le type de véhicule et le problème.",
+  de: "👨‍🔧 Bitte senden Sie Ihren Standort, Fahrzeugtyp und das Problem.",
+  pt: "👨‍🔧 Envie sua localização, tipo de veículo e o problema.",
+  ar: "👨‍🔧 يرجى إرسال موقعك ونوع المركبة والمشكلة."
+}[session.language || "en"]);
     return res.sendStatus(200);
   }
 
   if (lower === "9") {
     session.selectedService = "RIDE_TO_WORK";
     session.stage = "SERVICE_WAITING_EXTRA_NOTES";
-    await sendMessage(from, "🚗 Please send pickup location, destination, date, and time.");
+    await sendMessage(from, {
+  en: "🚘 Please send pickup location, destination, date, and time.",
+  es: "🚘 Envíe el lugar de recogida, destino, fecha y hora.",
+  fr: "🚘 Veuillez envoyer le lieu de prise en charge, la destination, la date et l'heure.",
+  de: "🚘 Bitte senden Sie Abholort, Zielort, Datum und Uhrzeit.",
+  pt: "🚘 Envie o local de partida, destino, data e hora.",
+  ar: "🚘 يرجى إرسال موقع الاستلام والوجهة والتاريخ والوقت."
+}[session.language || "en"]);
     return res.sendStatus(200);
   }
 
@@ -1496,7 +1517,14 @@ if (session.stage === "PRINT_SELECT_COLOR" && type === "text") {
   session.printSpec.color_mode = selectedColor;
   session.stage = "PRINT_WAITING_COPIES";
 
-  await sendMessage(from, "How many copies do you want?");
+  await sendMessage(from, {
+  en: "How many copies do you want?",
+  es: "¿Cuántas copias deseas?",
+  fr: "Combien de copies voulez-vous ?",
+  de: "Wie viele Kopien möchten Sie?",
+  pt: "Quantas cópias você deseja?",
+  ar: "كم عدد النسخ التي تريدها؟"
+}[session.language || "en"]);
   return res.sendStatus(200);
 }
 
@@ -1511,7 +1539,14 @@ if (session.stage === "PRINT_WAITING_COPIES" && type === "text") {
   session.printSpec.copies = copies;
   session.stage = "PRINT_WAITING_PAGES";
 
-  await sendMessage(from, "How many pages are in the document?");
+  await sendMessage(from, {
+  en: "How many pages are in the document?",
+  es: "¿Cuántas páginas tiene el documento?",
+  fr: "Combien de pages contient le document ?",
+  de: "Wie viele Seiten hat das Dokument?",
+  pt: "Quantas páginas tem o documento?",
+  ar: "كم عدد صفحات المستند؟"
+}[session.language || "en"]);
   return res.sendStatus(200);
 }
 
@@ -1519,7 +1554,14 @@ if (session.stage === "PRINT_WAITING_PAGES" && type === "text") {
   const pages = parseInt(lower, 10);
 
   if (!pages || pages < 1) {
-    await sendMessage(from, "Please type a valid page count, for example: 1, 2, 5, or 10.");
+    await sendMessage(from, {
+  en: "Please type a valid page count, for example: 1, 2, 5, or 10.",
+  es: "Por favor escriba una cantidad válida de páginas, por ejemplo: 1, 2, 5 o 10.",
+  fr: "Veuillez saisir un nombre valide de pages, par exemple : 1, 2, 5 ou 10.",
+  de: "Bitte geben Sie eine gültige Seitenanzahl ein, zum Beispiel: 1, 2, 5 oder 10.",
+  pt: "Digite uma quantidade válida de páginas, por exemplo: 1, 2, 5 ou 10.",
+  ar: "يرجى إدخال عدد صحيح للصفحات، مثل: 1 أو 2 أو 5 أو 10."
+}[session.language || "en"]);
     return res.sendStatus(200);
   }
 
@@ -1558,7 +1600,14 @@ Please upload your PDF, image, or document now.`
   session.laminateSpec.size = selectedSize;
   session.stage = "LAMINATE_WAITING_QUANTITY";
 
-  await sendMessage(from, "How many documents/pages do you want laminated?");
+  await sendMessage(from, {
+  en: "How many documents/pages do you want laminated?",
+  es: "¿Cuántos documentos/páginas desea laminar?",
+  fr: "Combien de documents/pages voulez-vous plastifier ?",
+  de: "Wie viele Dokumente/Seiten möchten Sie laminieren?",
+  pt: "Quantos documentos/páginas você deseja laminar?",
+  ar: "كم عدد المستندات/الصفحات التي تريد تغليفها؟"
+}[session.language || "en"]);
   return res.sendStatus(200);
 }
 
@@ -1566,7 +1615,14 @@ if (session.stage === "LAMINATE_WAITING_QUANTITY" && type === "text") {
   const quantity = parseInt(lower, 10);
 
   if (!quantity || quantity < 1) {
-    await sendMessage(from, "Please type a valid quantity, for example: 1, 2, 5, or 10.");
+    await sendMessage(from, {
+  en: "Please type a valid quantity, for example: 1, 2, 5, or 10.",
+  es: "Por favor escriba una cantidad válida, por ejemplo: 1, 2, 5 o 10.",
+  fr: "Veuillez saisir une quantité valide, par exemple : 1, 2, 5 ou 10.",
+  de: "Bitte geben Sie eine gültige Menge ein, zum Beispiel: 1, 2, 5 oder 10.",
+  pt: "Digite uma quantidade válida, por exemplo: 1, 2, 5 ou 10.",
+  ar: "يرجى إدخال كمية صحيحة، مثل: 1 أو 2 أو 5 أو 10."
+}[session.language || "en"]);
     return res.sendStatus(200);
   }
 
