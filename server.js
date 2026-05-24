@@ -217,7 +217,8 @@ function serviceMenu(language = "en") {
 22 - Car Loan / Auto Financing
 23 - Car Insurance
 24 - Car Rental Services
-25 - Mobile App Development`,
+25 - Mobile App Development
+26 - Hotel Reservation`,
 
     es: `1 - Imprimir
 2 - Laminar
@@ -243,7 +244,8 @@ function serviceMenu(language = "en") {
 22 - Préstamo de auto / Financiamiento
 23 - Seguro de auto
 24 - Servicios de alquiler de autos
-25 - Desarrollo de aplicaciones móviles`,
+25 - Desarrollo de aplicaciones móviles
+26 - Reserva de hotel`,
 
     fr: `1 - Imprimer
 2 - Plastifier
@@ -269,7 +271,8 @@ function serviceMenu(language = "en") {
 22 - Prêt auto / Financement
 23 - Assurance auto
 24 - Services de location de voiture
-25 - Développement d'application mobile`,
+25 - Développement d'application mobile
+26 - Réservation d'hôtel`,
 
     de: `1 - Drucken
 2 - Laminieren
@@ -295,7 +298,8 @@ function serviceMenu(language = "en") {
 22 - Autokredit / Finanzierung
 23 - Autoversicherung
 24 - Autovermietung
-25 - Mobile-App-Entwicklung`,
+25 - Mobile-App-Entwicklung
+26 - Hotelreservierung`,
 
     pt: `1 - Imprimir
 2 - Laminar
@@ -321,7 +325,8 @@ function serviceMenu(language = "en") {
 22 - Empréstimo de carro / Financiamento
 23 - Seguro de carro
 24 - Serviços de aluguel de carros
-25 - Desenvolvimento de aplicativo móvel`,
+25 - Desenvolvimento de aplicativo móvel
+26 - Reserva de hotel`,
 
     ar: `1 - طباعة
 2 - تغليف حراري
@@ -347,7 +352,8 @@ function serviceMenu(language = "en") {
 22 - قرض سيارة / تمويل
 23 - تأمين السيارات
 24 - خدمات تأجير السيارات
-25 - تطوير تطبيقات الجوال`
+25 - تطوير تطبيقات الجوال
+26 - حجز فندق`
   };
 
   return menus[language] || menus.en;
@@ -2109,6 +2115,82 @@ A PATAPATA conectará você a desenvolvedores de aplicativos. A comissão é pag
   }));
   return res.sendStatus(200);
 }
+
+
+if (lower === "26") {
+  session.selectedService = "HOTEL_RESERVATION";
+  session.stage = "SERVICE_WAITING_EXTRA_NOTES";
+  await sendMessage(from, pickText(session.language, {
+    en: `🏨 Hotel Reservation selected.
+
+Please send:
+1. Destination city/country
+2. Check-in and check-out dates
+3. Number of guests
+4. Room type or hotel preference
+5. Budget range
+6. Best contact time
+
+PATAPATA will connect you with hotel/reservation providers. Provider commission is handled by the provider, not the customer.`,
+    es: `🏨 Reserva de hotel seleccionada.
+
+Envíe:
+1. Ciudad/país de destino
+2. Fechas de entrada y salida
+3. Número de huéspedes
+4. Tipo de habitación o preferencia de hotel
+5. Rango de presupuesto
+6. Mejor hora de contacto
+
+PATAPATA lo conectará con proveedores de hoteles/reservas. La comisión la paga el proveedor, no el cliente.`,
+    fr: `🏨 Réservation d'hôtel sélectionnée.
+
+Veuillez envoyer :
+1. Ville/pays de destination
+2. Dates d'arrivée et de départ
+3. Nombre de voyageurs
+4. Type de chambre ou préférence d'hôtel
+5. Fourchette de budget
+6. Meilleur moment pour vous contacter
+
+PATAPATA vous mettra en relation avec des fournisseurs d'hôtels/réservations. La commission est payée par le fournisseur, pas par le client.`,
+    de: `🏨 Hotelreservierung ausgewählt.
+
+Bitte senden Sie:
+1. Zielstadt/Zielland
+2. Check-in- und Check-out-Datum
+3. Anzahl der Gäste
+4. Zimmertyp oder Hotelwunsch
+5. Budgetrahmen
+6. Beste Kontaktzeit
+
+PATAPATA verbindet Sie mit Hotel-/Reservierungsanbietern. Die Provision wird vom Anbieter bezahlt, nicht vom Kunden.`,
+    pt: `🏨 Reserva de hotel selecionada.
+
+Envie:
+1. Cidade/país de destino
+2. Datas de check-in e check-out
+3. Número de hóspedes
+4. Tipo de quarto ou preferência de hotel
+5. Faixa de orçamento
+6. Melhor horário para contato
+
+A PATAPATA conectará você a provedores de hotéis/reservas. A comissão é paga pelo provedor, não pelo cliente.`,
+    ar: `🏨 تم اختيار حجز فندق.
+
+يرجى إرسال:
+1. مدينة/بلد الوجهة
+2. تاريخ الوصول والمغادرة
+3. عدد الضيوف
+4. نوع الغرفة أو الفندق المفضل
+5. نطاق الميزانية
+6. أفضل وقت للتواصل
+
+ستوصلك PATAPATA بمزودي الفنادق/الحجوزات. العمولة يدفعها مقدم الخدمة وليس العميل.`
+  }));
+  return res.sendStatus(200);
+}
+
 
   await sendMessage(from, serviceMenu(session.language));
   return res.sendStatus(200);
