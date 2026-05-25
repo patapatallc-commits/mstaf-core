@@ -218,7 +218,9 @@ function serviceMenu(language = "en") {
 23 - Car Insurance
 24 - Car Rental Services
 25 - Mobile App Development
-26 - Hotel Reservation`,
+26 - Hotel Reservation
+27 - Home Security Technician
+28 - Locksmith`,
 
     es: `1 - Imprimir
 2 - Laminar
@@ -245,7 +247,9 @@ function serviceMenu(language = "en") {
 23 - Seguro de auto
 24 - Servicios de alquiler de autos
 25 - Desarrollo de aplicaciones móviles
-26 - Reserva de hotel`,
+26 - Reserva de hotel
+27 - Técnico de seguridad para el hogar
+28 - Cerrajero`,
 
     fr: `1 - Imprimer
 2 - Plastifier
@@ -272,7 +276,9 @@ function serviceMenu(language = "en") {
 23 - Assurance auto
 24 - Services de location de voiture
 25 - Développement d'application mobile
-26 - Réservation d'hôtel`,
+26 - Réservation d'hôtel
+27 - Technicien en sécurité résidentielle
+28 - Serrurier`,
 
     de: `1 - Drucken
 2 - Laminieren
@@ -299,7 +305,9 @@ function serviceMenu(language = "en") {
 23 - Autoversicherung
 24 - Autovermietung
 25 - Mobile-App-Entwicklung
-26 - Hotelreservierung`,
+26 - Hotelreservierung
+27 - Haussicherheitstechniker
+28 - Schlüsseldienst`,
 
     pt: `1 - Imprimir
 2 - Laminar
@@ -326,7 +334,9 @@ function serviceMenu(language = "en") {
 23 - Seguro de carro
 24 - Serviços de aluguel de carros
 25 - Desenvolvimento de aplicativo móvel
-26 - Reserva de hotel`,
+26 - Reserva de hotel
+27 - Técnico de segurança residencial
+28 - Chaveiro`,
 
     ar: `1 - طباعة
 2 - تغليف حراري
@@ -353,13 +363,44 @@ function serviceMenu(language = "en") {
 23 - تأمين السيارات
 24 - خدمات تأجير السيارات
 25 - تطوير تطبيقات الجوال
-26 - حجز فندق`
+26 - حجز فندق
+27 - فني أمن المنازل
+28 - صانع أقفال`,
+
+    zh: `1 - 打印
+2 - 覆膜
+3 - 证件照
+4 - 图片编辑
+5 - 视频编辑
+6 - 课程 / 作业
+7 - 联系客服
+8 - 查找汽车修理工
+9 - 上班接送
+10 - 合租公寓 / 租房
+11 - 室内或室外帮工
+12 - 定制 T 恤打印
+13 - 找工作 / 提交简历
+14 - 工作机会
+15 - 雇用工人
+16 - 社区警报
+17 - 可信供应商
+18 - 购买土地自用或转售
+19 - 货币兑换
+20 - 社交媒体创作者
+21 - 买卖 / 转售汽车
+22 - 汽车贷款 / 汽车融资
+23 - 汽车保险
+24 - 汽车租赁服务
+25 - 手机应用开发
+26 - 酒店预订
+27 - 家庭安防技术员
+28 - 锁匠服务`
   };
 
   return menus[language] || menus.en;
 }
 function printSizeMenuText(language = "en") {
-  const texts = {
+  return pickText(language, {
     en: `Print selected.
 
 Choose paper size:
@@ -369,17 +410,6 @@ Choose paper size:
 4 - Legal
 5 - Tabloid
 6 - Card`,
-
-    de: `Drucken ausgewählt.
-
-Wählen Sie die Papiergröße:
-1 - A4
-2 - A3
-3 - Letter
-4 - Legal
-5 - Tabloid
-6 - Karte`,
-
     es: `Impresión seleccionada.
 
 Elige el tamaño de papel:
@@ -389,7 +419,6 @@ Elige el tamaño de papel:
 4 - Legal
 5 - Tabloide
 6 - Tarjeta`,
-
     fr: `Impression sélectionnée.
 
 Choisissez le format papier :
@@ -399,7 +428,15 @@ Choisissez le format papier :
 4 - Legal
 5 - Tabloïd
 6 - Carte`,
+    de: `Drucken ausgewählt.
 
+Wählen Sie die Papiergröße:
+1 - A4
+2 - A3
+3 - Letter
+4 - Legal
+5 - Tabloid
+6 - Karte`,
     pt: `Impressão selecionada.
 
 Escolha o tamanho do papel:
@@ -409,7 +446,6 @@ Escolha o tamanho do papel:
 4 - Legal
 5 - Tabloide
 6 - Cartão`,
-
     ar: `تم اختيار الطباعة.
 
 اختر حجم الورق:
@@ -418,44 +454,45 @@ Escolha o tamanho do papel:
 3 - Letter
 4 - Legal
 5 - Tabloid
-6 - Card`
-  };
+6 - Card`,
+    zh: `已选择打印。
 
-  return texts[language] || texts.en;
+请选择纸张尺寸：
+1 - A4
+2 - A3
+3 - Letter
+4 - Legal
+5 - Tabloid
+6 - 卡片`
+  });
 }
-
 function printColorMenuText(language = "en") {
-  const texts = {
+  return pickText(language, {
     en: `Choose color:
 1 - Black & White
 2 - Color`,
-
-    de: `Farbe wählen:
-1 - Schwarzweiß
-2 - Farbe`,
-
     es: `Elige color:
 1 - Blanco y negro
 2 - Color`,
-
     fr: `Choisissez la couleur :
 1 - Noir et blanc
 2 - Couleur`,
-
+    de: `Farbe wählen:
+1 - Schwarzweiß
+2 - Farbe`,
     pt: `Escolha a cor:
 1 - Preto e branco
 2 - Colorido`,
-
     ar: `اختر اللون:
 1 - أبيض وأسود
-2 - ملون`
-  };
-
-  return texts[language] || texts.en;
+2 - ملون`,
+    zh: `请选择颜色：
+1 - 黑白
+2 - 彩色`
+  });
 }
-
 function laminateSizeMenuText(language = "en") {
-  const texts = {
+  return pickText(language, {
     en: `Laminate selected.
 
 Choose laminate size:
@@ -469,21 +506,6 @@ Africa Laminating Prices:
 • Letter: ₦300
 • Legal: ₦300
 • Tabloid: ₦500`,
-
-    de: `Laminieren ausgewählt.
-
-Wählen Sie die Laminiergröße:
-1 - A4
-2 - Letter
-3 - Legal
-4 - Tabloid
-
-Afrika Laminierpreise:
-• A4: ₦300
-• Letter: ₦300
-• Legal: ₦300
-• Tabloid: ₦500`,
-
     es: `Laminado seleccionado.
 
 Elige el tamaño de laminado:
@@ -497,7 +519,6 @@ Precios de laminado en África:
 • Carta: ₦300
 • Legal: ₦300
 • Tabloide: ₦500`,
-
     fr: `Plastification sélectionnée.
 
 Choisissez le format :
@@ -511,7 +532,19 @@ Prix de plastification en Afrique :
 • Lettre : ₦300
 • Legal : ₦300
 • Tabloïd : ₦500`,
+    de: `Laminieren ausgewählt.
 
+Wählen Sie die Laminiergröße:
+1 - A4
+2 - Letter
+3 - Legal
+4 - Tabloid
+
+Afrika Laminierpreise:
+• A4: ₦300
+• Letter: ₦300
+• Legal: ₦300
+• Tabloid: ₦500`,
     pt: `Laminação selecionada.
 
 Escolha o tamanho:
@@ -525,7 +558,6 @@ Preços de laminação na África:
 • Carta: ₦300
 • Legal: ₦300
 • Tabloide: ₦500`,
-
     ar: `تم اختيار التغليف الحراري.
 
 اختر حجم التغليف:
@@ -538,12 +570,22 @@ Preços de laminação na África:
 • A4: ₦300
 • Letter: ₦300
 • Legal: ₦300
+• Tabloid: ₦500`,
+    zh: `已选择覆膜。
+
+请选择覆膜尺寸：
+1 - A4
+2 - Letter
+3 - Legal
+4 - Tabloid
+
+非洲覆膜价格：
+• A4: ₦300
+• Letter: ₦300
+• Legal: ₦300
 • Tabloid: ₦500`
-  };
-
-  return texts[language] || texts.en;
+  });
 }
-
 
 // =========================
 // MULTILINGUAL MESSAGE HELPERS
@@ -560,7 +602,8 @@ function welcomeText(language = "en") {
     fr: "Bonjour 👋 Bienvenue chez PATAPATA Print-O-Matic",
     de: "Hallo 👋 Willkommen bei PATAPATA Print-O-Matic",
     pt: "Olá 👋 Bem-vindo ao PATAPATA Print-O-Matic",
-    ar: "مرحبًا 👋 أهلاً بك في PATAPATA Print-O-Matic"
+    ar: "مرحبًا 👋 أهلاً بك في PATAPATA Print-O-Matic",
+    zh: "您好 👋 欢迎使用 PATAPATA Print-O-Matic"
   });
 }
 
@@ -571,14 +614,15 @@ function selectedText(language = "en", serviceName = "") {
     fr: `✅ Sélectionné : ${serviceName}`,
     de: `✅ Ausgewählt: ${serviceName}`,
     pt: `✅ Selecionado: ${serviceName}`,
-    ar: `✅ تم الاختيار: ${serviceName}`
+    ar: `✅ تم الاختيار: ${serviceName}`,
+    zh: `✅ 已选择：${serviceName}`
   });
 }
 
 function printSetupCompleteText(language = "en", spec = {}) {
   const colorText = spec.color_mode === "COLOR"
-    ? pickText(language, { en: "Color", es: "Color", fr: "Couleur", de: "Farbe", pt: "Colorido", ar: "ملون" })
-    : pickText(language, { en: "Black & White", es: "Blanco y negro", fr: "Noir et blanc", de: "Schwarzweiß", pt: "Preto e branco", ar: "أبيض وأسود" });
+    ? pickText(language, { en: "Color", es: "Color", fr: "Couleur", de: "Farbe", pt: "Colorido", ar: "ملون", zh: "彩色" })
+    : pickText(language, { en: "Black & White", es: "Blanco y negro", fr: "Noir et blanc", de: "Schwarzweiß", pt: "Preto e branco", ar: "أبيض وأسود", zh: "黑白" });
 
   return pickText(language, {
     en: `✅ Print setup complete.
@@ -633,7 +677,15 @@ Envie agora seu PDF, imagem ou documento.`,
 النسخ: ${spec.copies}
 الصفحات: ${spec.pages}
 
-يرجى رفع ملف PDF أو صورة أو مستند الآن.`
+يرجى رفع ملف PDF أو صورة أو مستند الآن.`,
+    zh: `✅ 打印设置已完成。
+
+纸张：${spec.paper_size}
+颜色：${colorText}
+份数：${spec.copies}
+页数：${spec.pages}
+
+请现在上传您的 PDF、图片或文档。`
   });
 }
 
@@ -679,14 +731,20 @@ Envie agora seu arquivo/imagem.`,
 الحجم: ${spec.size}
 الكمية: ${spec.quantity}
 
-يرجى رفع الملف/الصورة الآن.`
+يرجى رفع الملف/الصورة الآن.`,
+    zh: `✅ 覆膜设置已完成。
+
+尺寸：${spec.size}
+数量：${spec.quantity}
+
+请现在上传您的文件/图片。`
   });
 }
 
 function printFileReceivedText(language = "en", details = {}) {
   const colorText = details.colorMode === "COLOR"
-    ? pickText(language, { en: "Color", es: "Color", fr: "Couleur", de: "Farbe", pt: "Colorido", ar: "ملون" })
-    : pickText(language, { en: "Black & White", es: "Blanco y negro", fr: "Noir et blanc", de: "Schwarzweiß", pt: "Preto e branco", ar: "أبيض وأسود" });
+    ? pickText(language, { en: "Color", es: "Color", fr: "Couleur", de: "Farbe", pt: "Colorido", ar: "ملون", zh: "彩色" })
+    : pickText(language, { en: "Black & White", es: "Blanco y negro", fr: "Noir et blanc", de: "Schwarzweiß", pt: "Preto e branco", ar: "أبيض وأسود", zh: "黑白" });
 
   const checkout = details.checkoutUrl || pickText(language, {
     en: "Checkout link not available for this paper/color yet.",
@@ -694,7 +752,8 @@ function printFileReceivedText(language = "en", details = {}) {
     fr: "Le lien de paiement n'est pas encore disponible pour ce papier/couleur.",
     de: "Der Checkout-Link ist für dieses Papier/diese Farbe noch nicht verfügbar.",
     pt: "O link de pagamento ainda não está disponível para este papel/cor.",
-    ar: "رابط الدفع غير متاح بعد لهذا الورق/اللون."
+    ar: "رابط الدفع غير متاح بعد لهذا الورق/اللون.",
+    zh: "此纸张/颜色的付款链接暂时不可用。"
   });
 
   return pickText(language, {
@@ -804,7 +863,24 @@ https://www.patapata.us/pages/africa-payment
 رد:
 1 - دفعت عبر Shopify
 2 - دفعت عبر دفع أفريقيا
-3 - المتابعة مع موظف`
+3 - المتابعة مع موظف`,
+    zh: `✅ 文件已收到，并已加入打印队列。
+
+纸张：${details.paperSize}
+颜色：${colorText}
+份数：${details.copies}
+页数：${details.pages}
+
+Shopify 付款：
+${checkout}
+
+非洲付款：
+https://www.patapata.us/pages/africa-payment
+
+回复：
+1 - 我已通过 Shopify 付款
+2 - 我已通过非洲付款
+3 - 继续联系客服`
   });
 }
 
@@ -815,7 +891,8 @@ function laminateFileReceivedText(language = "en", details = {}) {
     fr: "Le lien de paiement n'est pas encore disponible pour ce format de plastification.",
     de: "Der Checkout-Link ist für diese Laminiergröße noch nicht verfügbar.",
     pt: "O link de pagamento ainda não está disponível para este tamanho de laminação.",
-    ar: "رابط الدفع غير متاح بعد لحجم التغليف هذا."
+    ar: "رابط الدفع غير متاح بعد لحجم التغليف هذا.",
+    zh: "此覆膜尺寸的付款链接暂时不可用。"
   });
 
   return pickText(language, {
@@ -913,7 +990,22 @@ https://www.patapata.us/pages/africa-payment
 رد:
 1 - دفعت عبر Shopify
 2 - دفعت عبر دفع أفريقيا
-3 - المتابعة مع موظف`
+3 - المتابعة مع موظف`,
+    zh: `✅ 覆膜文件已收到。
+
+尺寸：${details.size}
+数量：${details.quantity}
+
+Shopify 付款：
+${checkout}
+
+非洲付款：
+https://www.patapata.us/pages/africa-payment
+
+回复：
+1 - 我已通过 Shopify 付款
+2 - 我已通过非洲付款
+3 - 继续联系客服`
   });
 }
 
@@ -948,8 +1040,219 @@ function paymentChoiceInvalidText(language = "en") {
 
 1 - دفعت عبر Shopify
 2 - دفعت عبر دفع أفريقيا
-3 - المتابعة مع موظف`
+3 - المتابعة مع موظف`,
+    zh: `请选择：
+
+1 - 我已通过 Shopify 付款
+2 - 我已通过非洲付款
+3 - 继续联系客服`
   });
+}
+
+
+
+function botText(key, language = "en", vars = {}) {
+  const dict = {
+    landing_received: {
+      en: `✅ Your request has been received by PATAPATA Print-O-Matic.
+
+Service: ${vars.service || "SERVICE"}
+
+A worker will review it and reply to you shortly here on WhatsApp.
+
+You may now send your file, photo, video, document, or voice instruction.`,
+      es: `✅ Su solicitud fue recibida por PATAPATA Print-O-Matic.
+
+Servicio: ${vars.service || "SERVICIO"}
+
+Un trabajador la revisará y le responderá pronto aquí en WhatsApp.
+
+Ahora puede enviar su archivo, foto, video, documento o instrucción de voz.`,
+      fr: `✅ Votre demande a été reçue par PATAPATA Print-O-Matic.
+
+Service : ${vars.service || "SERVICE"}
+
+Un agent l'examinera et vous répondra bientôt ici sur WhatsApp.
+
+Vous pouvez maintenant envoyer votre fichier, photo, vidéo, document ou instruction vocale.`,
+      de: `✅ Ihre Anfrage wurde von PATAPATA Print-O-Matic erhalten.
+
+Service: ${vars.service || "SERVICE"}
+
+Ein Mitarbeiter prüft sie und antwortet Ihnen in Kürze hier auf WhatsApp.
+
+Sie können jetzt Ihre Datei, Ihr Foto, Video, Dokument oder Ihre Sprachanweisung senden.`,
+      pt: `✅ Sua solicitação foi recebida pela PATAPATA Print-O-Matic.
+
+Serviço: ${vars.service || "SERVIÇO"}
+
+Um trabalhador analisará e responderá em breve aqui no WhatsApp.
+
+Agora você pode enviar seu arquivo, foto, vídeo, documento ou instrução de voz.`,
+      ar: `✅ تم استلام طلبك من PATAPATA Print-O-Matic.
+
+الخدمة: ${vars.service || "SERVICE"}
+
+سيقوم أحد الموظفين بمراجعته والرد عليك قريبًا هنا على واتساب.
+
+يمكنك الآن إرسال ملف أو صورة أو فيديو أو مستند أو تعليمات صوتية.`,
+      zh: `✅ PATAPATA Print-O-Matic 已收到您的请求。
+
+服务：${vars.service || "服务"}
+
+工作人员会审核，并很快在 WhatsApp 上回复您。
+
+您现在可以发送文件、照片、视频、文档或语音说明。`
+    },
+    id_photo_upload: { en: "📸 ID Photo selected. Please upload your photo now.", es: "📸 Foto de identificación seleccionada. Suba su foto ahora.", fr: "📸 Photo d'identité sélectionnée. Veuillez télécharger votre photo maintenant.", de: "📸 Passfoto ausgewählt. Bitte laden Sie jetzt Ihr Foto hoch.", pt: "📸 Foto de identificação selecionada. Envie sua foto agora.", ar: "📸 تم اختيار صورة الهوية. يرجى رفع صورتك الآن.", zh: "📸 已选择证件照。请现在上传您的照片。" },
+    image_edit_menu: { en: `🖼️ Image Editing selected.
+
+Choose image editing type:
+
+1 - Basic Image Edit
+2 - Background Removal
+3 - Product Photo Enhancement
+4 - Advanced Image Editing
+
+Reply with 1, 2, 3, or 4.`, es: `🖼️ Edición de imagen seleccionada.
+
+Elija el tipo de edición:
+
+1 - Edición básica
+2 - Eliminación de fondo
+3 - Mejora de foto de producto
+4 - Edición avanzada
+
+Responda con 1, 2, 3 o 4.`, fr: `🖼️ Retouche d'image sélectionnée.
+
+Choisissez le type de retouche :
+
+1 - Retouche de base
+2 - Suppression d'arrière-plan
+3 - Amélioration de photo produit
+4 - Retouche avancée
+
+Répondez avec 1, 2, 3 ou 4.`, de: `🖼️ Bildbearbeitung ausgewählt.
+
+Wählen Sie die Art der Bildbearbeitung:
+
+1 - Einfache Bildbearbeitung
+2 - Hintergrund entfernen
+3 - Produktfoto verbessern
+4 - Erweiterte Bildbearbeitung
+
+Antworten Sie mit 1, 2, 3 oder 4.`, pt: `🖼️ Edição de imagem selecionada.
+
+Escolha o tipo de edição:
+
+1 - Edição básica
+2 - Remoção de fundo
+3 - Melhoria de foto de produto
+4 - Edição avançada
+
+Responda com 1, 2, 3 ou 4.`, ar: `🖼️ تم اختيار تعديل الصور.
+
+اختر نوع التعديل:
+
+1 - تعديل أساسي
+2 - إزالة الخلفية
+3 - تحسين صورة المنتج
+4 - تعديل متقدم
+
+رد بـ 1 أو 2 أو 3 أو 4.`, zh: `🖼️ 已选择图片编辑。
+
+请选择图片编辑类型：
+
+1 - 基础图片编辑
+2 - 去除背景
+3 - 产品照片增强
+4 - 高级图片编辑
+
+请回复 1、2、3 或 4。` },
+    video_edit_menu: { en: `🎬 Video Editing selected.
+
+Choose video editing type:
+
+1 - Short Video Edit
+2 - Social Media Video Edit
+3 - Standard Video Edit
+4 - Advanced Video Edit
+
+Reply with 1, 2, 3, or 4.`, es: `🎬 Edición de video seleccionada.
+
+Elija el tipo de edición:
+
+1 - Video corto
+2 - Video para redes sociales
+3 - Edición estándar
+4 - Edición avanzada
+
+Responda con 1, 2, 3 o 4.`, fr: `🎬 Montage vidéo sélectionné.
+
+Choisissez le type de montage :
+
+1 - Vidéo courte
+2 - Vidéo réseaux sociaux
+3 - Montage standard
+4 - Montage avancé
+
+Répondez avec 1, 2, 3 ou 4.`, de: `🎬 Videobearbeitung ausgewählt.
+
+Wählen Sie die Videobearbeitung:
+
+1 - Kurzvideo
+2 - Social-Media-Video
+3 - Standard-Video
+4 - Fortgeschrittenes Video
+
+Antworten Sie mit 1, 2, 3 oder 4.`, pt: `🎬 Edição de vídeo selecionada.
+
+Escolha o tipo de edição:
+
+1 - Vídeo curto
+2 - Vídeo para redes sociais
+3 - Vídeo padrão
+4 - Vídeo avançado
+
+Responda com 1, 2, 3 ou 4.`, ar: `🎬 تم اختيار تعديل الفيديو.
+
+اختر نوع تعديل الفيديو:
+
+1 - فيديو قصير
+2 - فيديو لوسائل التواصل
+3 - فيديو عادي
+4 - فيديو متقدم
+
+رد بـ 1 أو 2 أو 3 أو 4.`, zh: `🎬 已选择视频编辑。
+
+请选择视频编辑类型：
+
+1 - 短视频编辑
+2 - 社交媒体视频编辑
+3 - 标准视频编辑
+4 - 高级视频编辑
+
+请回复 1、2、3 或 4。` },
+    copies_question: { en: "How many copies do you want?", es: "¿Cuántas copias deseas?", fr: "Combien de copies voulez-vous ?", de: "Wie viele Kopien möchten Sie?", pt: "Quantas cópias você deseja?", ar: "كم عدد النسخ التي تريدها؟", zh: "您需要多少份？" },
+    pages_question: { en: "How many pages are in the document?", es: "¿Cuántas páginas tiene el documento?", fr: "Combien de pages contient le document ?", de: "Wie viele Seiten hat das Dokument?", pt: "Quantas páginas tem o documento?", ar: "كم عدد صفحات المستند؟", zh: "文档共有多少页？" },
+    laminate_quantity_question: { en: "How many documents/pages do you want laminated?", es: "¿Cuántos documentos/páginas desea laminar?", fr: "Combien de documents/pages voulez-vous plastifier ?", de: "Wie viele Dokumente/Seiten möchten Sie laminieren?", pt: "Quantos documentos/páginas você deseja laminar?", ar: "كم عدد المستندات/الصفحات التي تريد تغليفها؟", zh: "您要覆膜多少份文件/页面？" },
+    menu_invalid: { en: `Please reply with one of the options below:
+
+${serviceMenu(language)}`, es: `Responda con una de las opciones siguientes:
+
+${serviceMenu(language)}`, fr: `Veuillez répondre avec l'une des options ci-dessous :
+
+${serviceMenu(language)}`, de: `Bitte antworten Sie mit einer der folgenden Optionen:
+
+${serviceMenu(language)}`, pt: `Responda com uma das opções abaixo:
+
+${serviceMenu(language)}`, ar: `يرجى الرد بأحد الخيارات أدناه:
+
+${serviceMenu(language)}`, zh: `请回复以下其中一个选项：
+
+${serviceMenu(language)}` }
+  };
+  return pickText(language, dict[key] || dict.menu_invalid);
 }
 
 // =========================
@@ -1151,7 +1454,7 @@ app.post("/webhook", async (req, res) => {
     let text = "";
     if (type === "text") text = message.text?.body || "";
     const lower = text.toLowerCase().trim();
-    const langMatch = lower.match(/lang=(en|es|fr|de|pt|ar)/);
+    const langMatch = lower.match(/lang=(en|es|fr|de|pt|ar|zh)/);
 
 if (langMatch) {
   session.language = langMatch[1];
@@ -1209,13 +1512,7 @@ if (
 
   await sendMessage(
     from,
-    `✅ Your request has been received by PATAPATA Print-O-Matic.
-
-Service: ${serviceType.replaceAll("_", " ")}
-
-A worker will review it and reply to you shortly here on WhatsApp.
-
-You may now send your file, photo, video, document, or voice instruction.`
+    botText("landing_received", session.language, { service: serviceType.replaceAll("_", " ") })
   );
 
   return res.sendStatus(200);
@@ -1408,45 +1705,21 @@ if (session.stage === "MENU") {
   if (lower === "3") {
     session.selectedService = "ID_PHOTO";
     session.stage = "IDPHOTO_WAITING_UPLOAD";
-    await sendMessage(from, "📸 ID Photo selected. Please upload your photo now.");
+    await sendMessage(from, botText("id_photo_upload", session.language));
     return res.sendStatus(200);
   }
 
   if (lower === "4") {
     session.selectedService = "IMAGE_EDIT";
     session.stage = "IMAGE_EDIT_SELECT_TYPE";
-    await sendMessage(
-      from,
-      `🖼️ Image Editing selected.
-
-Choose image editing type:
-
-1 - Basic Image Edit
-2 - Background Removal
-3 - Product Photo Enhancement
-4 - Advanced Image Editing
-
-Reply with 1, 2, 3, or 4.`
-    );
+    await sendMessage(from, botText("image_edit_menu", session.language));
     return res.sendStatus(200);
   }
 
   if (lower === "5") {
     session.selectedService = "VIDEO_EDIT";
     session.stage = "VIDEO_EDIT_SELECT_TYPE";
-    await sendMessage(
-      from,
-      `🎬 Video Editing selected.
-
-Choose video editing type:
-
-1 - Short Video Edit
-2 - Social Media Video Edit
-3 - Standard Video Edit
-4 - Advanced Video Edit
-
-Reply with 1, 2, 3, or 4.`
-    );
+    await sendMessage(from, botText("video_edit_menu", session.language));
     return res.sendStatus(200);
   }
 
@@ -1459,7 +1732,8 @@ Reply with 1, 2, 3, or 4.`
   fr: "📚 Leçon / Devoir sélectionné. Veuillez télécharger votre fichier maintenant.",
   de: "📚 Unterricht / Hausaufgabe ausgewählt. Bitte laden Sie jetzt Ihre Datei hoch.",
   pt: "📚 Aula / Trabalho selecionado. Faça upload do seu arquivo agora.",
-  ar: "📚 تم اختيار الدرس / الواجب. يرجى رفع الملف الآن."
+  ar: "📚 تم اختيار الدرس / الواجب. يرجى رفع الملف الآن.",
+  zh: "📚 已选择课程 / 作业。请现在上传您的文件。"
 }[session.language || "en"]);
     return res.sendStatus(200);
   }
@@ -1487,7 +1761,8 @@ Reply with 1, 2, 3, or 4.`
   fr: "👨‍🔧 Veuillez envoyer votre position, le type de véhicule et le problème.",
   de: "👨‍🔧 Bitte senden Sie Ihren Standort, Fahrzeugtyp und das Problem.",
   pt: "👨‍🔧 Envie sua localização, tipo de veículo e o problema.",
-  ar: "👨‍🔧 يرجى إرسال موقعك ونوع المركبة والمشكلة."
+  ar: "👨‍🔧 يرجى إرسال موقعك ونوع المركبة والمشكلة.",
+  zh: "👨‍🔧 请发送您的位置、车辆类型和问题。"
 }[session.language || "en"]);
     return res.sendStatus(200);
   }
@@ -1501,7 +1776,8 @@ Reply with 1, 2, 3, or 4.`
   fr: "🚘 Veuillez envoyer le lieu de prise en charge, la destination, la date et l'heure.",
   de: "🚘 Bitte senden Sie Abholort, Zielort, Datum und Uhrzeit.",
   pt: "🚘 Envie o local de partida, destino, data e hora.",
-  ar: "🚘 يرجى إرسال موقع الاستلام والوجهة والتاريخ والوقت."
+  ar: "🚘 يرجى إرسال موقع الاستلام والوجهة والتاريخ والوقت.",
+  zh: "🚘 请发送上车地点、目的地、日期和时间。"
 }[session.language || "en"]);
     return res.sendStatus(200);
   }
@@ -2186,8 +2462,165 @@ A PATAPATA conectará você a provedores de hotéis/reservas. A comissão é pag
 5. نطاق الميزانية
 6. أفضل وقت للتواصل
 
-ستوصلك PATAPATA بمزودي الفنادق/الحجوزات. العمولة يدفعها مقدم الخدمة وليس العميل.`
+ستوصلك PATAPATA بمزودي الفنادق/الحجوزات. العمولة يدفعها مقدم الخدمة وليس العميل.`,
+    zh: `🏨 已选择酒店预订服务。
+
+请发送：
+1. 目的地城市/国家
+2. 入住和退房日期
+3. 客人人数
+4. 房型或酒店偏好
+5. 预算范围
+6. 最佳联系时间
+
+PATAPATA 将为您连接酒店/预订服务提供商。服务商佣金由服务商承担，不由客户承担。`
   }));
+  return res.sendStatus(200);
+}
+
+if (lower === "27") {
+  session.selectedService = "HOME_SECURITY_TECHNICIAN";
+  session.stage = "SERVICE_WAITING_EXTRA_NOTES";
+
+  await sendMessage(from, pickText(session.language, {
+    en: `🏠🔐 Home Security Technician selected.
+
+Please send:
+1. Your location
+2. Type of security service needed
+3. House, office, or store
+4. Preferred service date/time
+
+PATAPATA will connect you with trusted technicians.`,
+    es: `🏠🔐 Técnico de seguridad para el hogar seleccionado.
+
+Envíe:
+1. Su ubicación
+2. Tipo de servicio de seguridad necesario
+3. Casa, oficina o tienda
+4. Fecha/hora preferida del servicio
+
+PATAPATA lo conectará con técnicos confiables.`,
+    fr: `🏠🔐 Technicien en sécurité résidentielle sélectionné.
+
+Veuillez envoyer :
+1. Votre emplacement
+2. Type de service de sécurité nécessaire
+3. Maison, bureau ou magasin
+4. Date/heure souhaitée
+
+PATAPATA vous mettra en relation avec des techniciens fiables.`,
+    de: `🏠🔐 Haussicherheitstechniker ausgewählt.
+
+Bitte senden Sie:
+1. Ihren Standort
+2. Benötigte Sicherheitsdienstleistung
+3. Haus, Büro oder Geschäft
+4. Gewünschtes Datum/Uhrzeit
+
+PATAPATA verbindet Sie mit vertrauenswürdigen Technikern.`,
+    pt: `🏠🔐 Técnico de segurança residencial selecionado.
+
+Envie:
+1. Sua localização
+2. Tipo de serviço de segurança necessário
+3. Casa, escritório ou loja
+4. Data/hora preferida
+
+A PATAPATA conectará você a técnicos confiáveis.`,
+    ar: `🏠🔐 تم اختيار فني أمن المنازل.
+
+يرجى إرسال:
+1. موقعك
+2. نوع خدمة الأمن المطلوبة
+3. منزل أو مكتب أو متجر
+4. التاريخ/الوقت المفضل للخدمة
+
+ستوصلك PATAPATA بفنيين موثوقين.`,
+    zh: `🏠🔐 已选择家庭安防技术员服务。
+
+请发送：
+1. 您的位置
+2. 所需安防服务类型
+3. 住宅、办公室或商店
+4. 首选服务日期/时间
+
+PATAPATA 将为您连接可靠的技术人员。`
+  }));
+
+  return res.sendStatus(200);
+}
+
+if (lower === "28") {
+  session.selectedService = "LOCKSMITH";
+  session.stage = "SERVICE_WAITING_EXTRA_NOTES";
+
+  await sendMessage(from, pickText(session.language, {
+    en: `🔑 Locksmith selected.
+
+Please send:
+1. Your location
+2. Lock issue or service needed
+3. House, office, or vehicle
+4. Emergency or scheduled service
+
+PATAPATA will connect you with trusted locksmiths.`,
+    es: `🔑 Cerrajero seleccionado.
+
+Envíe:
+1. Su ubicación
+2. Problema o servicio de cerradura
+3. Casa, oficina o vehículo
+4. Servicio de emergencia o programado
+
+PATAPATA lo conectará con cerrajeros confiables.`,
+    fr: `🔑 Serrurier sélectionné.
+
+Veuillez envoyer :
+1. Votre emplacement
+2. Problème ou service de serrure
+3. Maison, bureau ou véhicule
+4. Service d'urgence ou programmé
+
+PATAPATA vous mettra en relation avec des serruriers fiables.`,
+    de: `🔑 Schlüsseldienst ausgewählt.
+
+Bitte senden Sie:
+1. Ihren Standort
+2. Schlossproblem oder benötigter Service
+3. Haus, Büro oder Fahrzeug
+4. Notfall oder geplanter Service
+
+PATAPATA verbindet Sie mit vertrauenswürdigen Schlüsseldiensten.`,
+    pt: `🔑 Chaveiro selecionado.
+
+Envie:
+1. Sua localização
+2. Problema da fechadura ou serviço necessário
+3. Casa, escritório ou veículo
+4. Serviço de emergência ou agendado
+
+A PATAPATA conectará você a chaveiros confiáveis.`,
+    ar: `🔑 تم اختيار خدمة صانع الأقفال.
+
+يرجى إرسال:
+1. موقعك
+2. مشكلة القفل أو الخدمة المطلوبة
+3. منزل أو مكتب أو سيارة
+4. خدمة طارئة أو مجدولة
+
+ستوصلك PATAPATA بصناع أقفال موثوقين.`,
+    zh: `🔑 已选择锁匠服务。
+
+请发送：
+1. 您的位置
+2. 锁的问题或所需服务
+3. 住宅、办公室或车辆
+4. 紧急服务或预约服务
+
+PATAPATA 将为您连接可靠的锁匠。`
+  }));
+
   return res.sendStatus(200);
 }
 
@@ -2418,14 +2851,7 @@ if (session.stage === "PRINT_SELECT_COLOR" && type === "text") {
   session.printSpec.color_mode = selectedColor;
   session.stage = "PRINT_WAITING_COPIES";
 
-  await sendMessage(from, {
-  en: "How many copies do you want?",
-  es: "¿Cuántas copias deseas?",
-  fr: "Combien de copies voulez-vous ?",
-  de: "Wie viele Kopien möchten Sie?",
-  pt: "Quantas cópias você deseja?",
-  ar: "كم عدد النسخ التي تريدها؟"
-}[session.language || "en"]);
+  await sendMessage(from, botText("copies_question", session.language));
   return res.sendStatus(200);
 }
 
@@ -2447,14 +2873,7 @@ if (session.stage === "PRINT_WAITING_COPIES" && type === "text") {
   session.printSpec.copies = copies;
   session.stage = "PRINT_WAITING_PAGES";
 
-  await sendMessage(from, {
-  en: "How many pages are in the document?",
-  es: "¿Cuántas páginas tiene el documento?",
-  fr: "Combien de pages contient le document ?",
-  de: "Wie viele Seiten hat das Dokument?",
-  pt: "Quantas páginas tem o documento?",
-  ar: "كم عدد صفحات المستند؟"
-}[session.language || "en"]);
+  await sendMessage(from, botText("pages_question", session.language));
   return res.sendStatus(200);
 }
 
@@ -2498,14 +2917,7 @@ if (session.stage === "PRINT_WAITING_PAGES" && type === "text") {
   session.laminateSpec.size = selectedSize;
   session.stage = "LAMINATE_WAITING_QUANTITY";
 
-  await sendMessage(from, {
-  en: "How many documents/pages do you want laminated?",
-  es: "¿Cuántos documentos/páginas desea laminar?",
-  fr: "Combien de documents/pages voulez-vous plastifier ?",
-  de: "Wie viele Dokumente/Seiten möchten Sie laminieren?",
-  pt: "Quantos documentos/páginas você deseja laminar?",
-  ar: "كم عدد المستندات/الصفحات التي تريد تغليفها؟"
-}[session.language || "en"]);
+  await sendMessage(from, botText("laminate_quantity_question", session.language));
   return res.sendStatus(200);
 }
 
@@ -3078,7 +3490,10 @@ Unser Team wird Sie in Kürze per WhatsApp kontaktieren.`,
 Nossa equipe entrará em contato em breve pelo WhatsApp.`,
       ar: `✅ تم تسجيل دفع Shopify.
 
-سيتواصل معك فريقنا قريبًا عبر واتساب.`
+سيتواصل معك فريقنا قريبًا عبر واتساب.`,
+      zh: `✅ Shopify 付款已记录。
+
+我们的团队会很快通过 WhatsApp 联系您。`
     }));
 
     return res.sendStatus(200);
@@ -3109,7 +3524,10 @@ Unser Team wird Sie in Kürze per WhatsApp kontaktieren.`,
 Nossa equipe entrará em contato em breve pelo WhatsApp.`,
       ar: `✅ تم تسجيل دفع أفريقيا.
 
-سيتواصل معك فريقنا قريبًا عبر واتساب.`
+سيتواصل معك فريقنا قريبًا عبر واتساب.`,
+      zh: `✅ 非洲付款已记录。
+
+我们的团队会很快通过 WhatsApp 联系您。`
     }));
 
     return res.sendStatus(200);
@@ -3152,7 +3570,12 @@ Nossa equipe entrará em contato em breve pelo WhatsApp.`,
 
 يرجى إرسال أي تعليمات إضافية كنص أو رسالة صوتية.
 
-سيتواصل معك فريقنا قريبًا عبر واتساب.`
+سيتواصل معك فريقنا قريبًا عبر واتساب.`,
+      zh: `👨‍💼 已选择继续联系客服。
+
+请通过文字或语音发送任何补充说明。
+
+我们的团队会很快通过 WhatsApp 联系您。`
     }));
 
     return res.sendStatus(200);
@@ -3164,12 +3587,7 @@ Nossa equipe entrará em contato em breve pelo WhatsApp.`,
 }
   // Only show menu if already in MENU stage
 else if (session.stage === "MENU") {
-  await sendMessage(
-    from,
-    `Please reply with one of the options below:
-
-${serviceMenu(session.language)}`
-  );
+  await sendMessage(from, botText("menu_invalid", session.language));
 
   return res.sendStatus(200);
 }
