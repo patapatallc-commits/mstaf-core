@@ -191,9 +191,12 @@ function resetSession(from) {
 // =========================
 // MENUS
 // =========================
-function serviceMenu(language = "en") {
+function serviceMenu(language = "en" ) {
   const menus = {
-    en: `1 - Print
+    en: ` 📌 Choose a service number.
+
+Example: 1, 4, 15 
+1 - Print
 2 - Laminate
 3 - ID Photo
 4 - Image Editing
