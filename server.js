@@ -191,11 +191,12 @@ function resetSession(from) {
 // =========================
 // MENUS
 // =========================
-function serviceMenu(language = "en" ) {
+function serviceMenu(language = "en") {
   const menus = {
-    en: ` 📌 Choose a service number.
+    en: `📌 Choose a service number.
 
-Example: 1, 4, 15 
+Example: 1, 4, 15
+
 1 - Print
 2 - Laminate
 3 - ID Photo
@@ -225,7 +226,11 @@ Example: 1, 4, 15
 27 - Home Security Technician
 28 - Locksmith`,
 
-    es: `1 - Imprimir
+    es: `📌 Elige un número de servicio.
+
+Ejemplo: 1, 4, 15
+
+1 - Imprimir
 2 - Laminar
 3 - Foto de identificación
 4 - Edición de imagen
@@ -254,7 +259,11 @@ Example: 1, 4, 15
 27 - Técnico de seguridad para el hogar
 28 - Cerrajero`,
 
-    fr: `1 - Imprimer
+    fr: `📌 Choisissez un numéro de service.
+
+Exemple : 1, 4, 15
+
+1 - Imprimer
 2 - Plastifier
 3 - Photo d'identité
 4 - Retouche d'image
@@ -283,7 +292,11 @@ Example: 1, 4, 15
 27 - Technicien en sécurité résidentielle
 28 - Serrurier`,
 
-    de: `1 - Drucken
+    de: `📌 Wählen Sie eine Servicenummer.
+
+Beispiel: 1, 4, 15
+
+1 - Drucken
 2 - Laminieren
 3 - Passfoto
 4 - Bildbearbeitung
@@ -312,7 +325,11 @@ Example: 1, 4, 15
 27 - Haussicherheitstechniker
 28 - Schlüsseldienst`,
 
-    pt: `1 - Imprimir
+    pt: `📌 Escolha um número de serviço.
+
+Exemplo: 1, 4, 15
+
+1 - Imprimir
 2 - Laminar
 3 - Foto de identificação
 4 - Edição de imagem
@@ -341,7 +358,11 @@ Example: 1, 4, 15
 27 - Técnico de segurança residencial
 28 - Chaveiro`,
 
-    ar: `1 - طباعة
+    ar: `📌 اختر رقم الخدمة.
+
+مثال: 1، 4، 15
+
+1 - طباعة
 2 - تغليف حراري
 3 - صورة هوية
 4 - تعديل الصور
@@ -370,7 +391,11 @@ Example: 1, 4, 15
 27 - فني أمن المنازل
 28 - صانع أقفال`,
 
-    zh: `1 - 打印
+    zh: `📌 请选择服务编号。
+
+示例：1、4、15
+
+1 - 打印
 2 - 覆膜
 3 - 证件照
 4 - 图片编辑
