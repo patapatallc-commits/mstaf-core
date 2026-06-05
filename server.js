@@ -2408,101 +2408,72 @@ Responda com um número.`,
 
   return res.sendStatus(200);
 }
-```js
-if (lower === "18") {
-  session.selectedService = "BUY_LAND_USE_RESELL";
+  if (lower === "18") {
+  session.selectedService = "BUY_LAND_RESELL";
   session.stage = "SERVICE_WAITING_EXTRA_NOTES";
 
   await sendMessage(from, pickText(session.language, {
     en: `🏞️ Buy Land for Use or Resell selected.
 
-Please type what you need in your own words.
-Do not choose another number here.
-
-Example:
-I want land in Nigeria for resale. My budget is ₦5 million.
-
-Send your details below:
-
-You can also send pictures, links, documents, or voice notes.
+Please send:
+1. Country/state/location
+2. Your budget
+3. Land purpose: use, build, farm, or resell
+4. How soon you want it
 
 Our team will contact you shortly on WhatsApp.`,
-    es: `🏞️ Compra de terreno para uso o reventa seleccionada.
+    es: `🏞️ Comprar terreno para usar o revender seleccionado.
 
-Por favor escriba lo que necesita con sus propias palabras.
-No seleccione otro número aquí.
-
-Ejemplo:
-Quiero un terreno en Nigeria para reventa. Mi presupuesto es de ₦5 millones.
-
-Envíe sus detalles a continuación:
-
-También puede enviar fotos, enlaces, documentos o notas de voz.
+Envíe:
+1. País/estado/ubicación
+2. Su presupuesto
+3. Propósito del terreno: usar, construir, cultivar o revender
+4. Qué tan pronto lo necesita
 
 Nuestro equipo se comunicará con usted pronto por WhatsApp.`,
     fr: `🏞️ Achat de terrain pour usage ou revente sélectionné.
 
-Veuillez décrire vos besoins avec vos propres mots.
-Ne choisissez pas un autre numéro ici.
-
-Exemple :
-Je veux un terrain au Nigeria pour la revente. Mon budget est de ₦5 millions.
-
-Envoyez vos informations ci-dessous :
-
-Vous pouvez également envoyer des photos, liens, documents ou messages vocaux.
+Veuillez envoyer :
+1. Pays/État/lieu
+2. Votre budget
+3. Objectif du terrain : usage, construction, agriculture ou revente
+4. Délai souhaité
 
 Notre équipe vous contactera bientôt sur WhatsApp.`,
     de: `🏞️ Land zum Nutzen oder Weiterverkaufen ausgewählt.
 
-Bitte beschreiben Sie Ihren Bedarf mit Ihren eigenen Worten.
-Wählen Sie hier keine weitere Nummer aus.
-
-Beispiel:
-Ich möchte Land in Nigeria zum Weiterverkaufen. Mein Budget beträgt ₦5 Millionen.
-
-Senden Sie Ihre Angaben unten:
-
-Sie können auch Bilder, Links, Dokumente oder Sprachnachrichten senden.
+Bitte senden Sie:
+1. Land/Bundesland/Standort
+2. Ihr Budget
+3. Zweck des Grundstücks: Nutzung, Bau, Landwirtschaft oder Weiterverkauf
+4. Wie schnell Sie es benötigen
 
 Unser Team wird Sie in Kürze per WhatsApp kontaktieren.`,
     pt: `🏞️ Comprar terreno para usar ou revender selecionado.
 
-Por favor descreva o que você precisa com suas próprias palavras.
-Não escolha outro número aqui.
-
-Exemplo:
-Quero um terreno na Nigéria para revenda. Meu orçamento é de ₦5 milhões.
-
-Envie seus detalhes abaixo:
-
-Você também pode enviar fotos, links, documentos ou mensagens de voz.
+Envie:
+1. País/estado/localização
+2. Seu orçamento
+3. Finalidade do terreno: usar, construir, cultivar ou revender
+4. Quando você precisa
 
 Nossa equipe entrará em contato em breve pelo WhatsApp.`,
     ar: `🏞️ تم اختيار شراء أرض للاستخدام أو إعادة البيع.
 
-يرجى كتابة ما تحتاجه بكلماتك الخاصة.
-لا تختر رقمًا آخر هنا.
-
-مثال:
-أريد أرضًا في نيجيريا لإعادة البيع. ميزانيتي ₦5 ملايين.
-
-أرسل التفاصيل الخاصة بك أدناه:
-
-يمكنك أيضًا إرسال صور أو روابط أو مستندات أو رسائل صوتية.
+يرجى إرسال:
+1. البلد/الولاية/الموقع
+2. ميزانيتك
+3. الغرض من الأرض: استخدام، بناء، زراعة أو إعادة بيع
+4. متى تحتاجها
 
 سيتواصل معك فريقنا قريبًا عبر واتساب.`,
     zh: `🏞️ 已选择购买土地自用或转售。
 
-请用您自己的话描述您的需求。
-请不要在这里选择其他数字。
-
-示例：
-我想在尼日利亚购买土地用于转售，预算为₦500万。
-
-请在下方发送您的详细信息：
-
-您也可以发送图片、链接、文件或语音消息。
+请发送：
+1. 国家/州/位置
+2. 您的预算
+3. 土地用途：自用、建房、耕种或转售
+4. 您希望多快办理
 
 我们的团队会很快通过 WhatsApp 联系您。`
   }));
@@ -2517,93 +2488,65 @@ if (lower === "19") {
   await sendMessage(from, pickText(session.language, {
     en: `💱 Currency Exchange selected.
 
-Please type what you need in your own words.
-Do not choose another number here.
-
-Example:
-I have USD and need Nigerian Naira. Amount: $5,000. Location: New Jersey.
-
-Send your details below:
-
-You can also send pictures, links, documents, or voice notes.
+Please send:
+1. Currency you have
+2. Currency you need
+3. Amount
+4. Country/location
 
 Our team will contact you shortly on WhatsApp.`,
     es: `💱 Cambio de moneda seleccionado.
 
-Por favor escriba lo que necesita con sus propias palabras.
-No seleccione otro número aquí.
-
-Ejemplo:
-Tengo dólares y necesito naira nigeriana. Monto: $5,000. Ubicación: New Jersey.
-
-Envíe sus detalles a continuación:
-
-También puede enviar fotos, enlaces, documentos o notas de voz.
+Envíe:
+1. Moneda que tiene
+2. Moneda que necesita
+3. Monto
+4. País/ubicación
 
 Nuestro equipo se comunicará con usted pronto por WhatsApp.`,
     fr: `💱 Change de monnaie sélectionné.
 
-Veuillez décrire vos besoins avec vos propres mots.
-Ne choisissez pas un autre numéro ici.
-
-Exemple :
-J’ai des dollars américains et j’ai besoin de nairas nigérians. Montant : 5 000 $. Lieu : New Jersey.
-
-Envoyez vos informations ci-dessous :
-
-Vous pouvez également envoyer des photos, liens, documents ou messages vocaux.
+Veuillez envoyer :
+1. Devise que vous avez
+2. Devise souhaitée
+3. Montant
+4. Pays/lieu
 
 Notre équipe vous contactera bientôt sur WhatsApp.`,
     de: `💱 Geldwechsel ausgewählt.
 
-Bitte beschreiben Sie Ihren Bedarf mit Ihren eigenen Worten.
-Wählen Sie hier keine weitere Nummer aus.
-
-Beispiel:
-Ich habe US-Dollar und brauche nigerianische Naira. Betrag: 5.000 $. Standort: New Jersey.
-
-Senden Sie Ihre Angaben unten:
-
-Sie können auch Bilder, Links, Dokumente oder Sprachnachrichten senden.
+Bitte senden Sie:
+1. Währung, die Sie haben
+2. Währung, die Sie benötigen
+3. Betrag
+4. Land/Standort
 
 Unser Team wird Sie in Kürze per WhatsApp kontaktieren.`,
     pt: `💱 Câmbio selecionado.
 
-Por favor descreva o que você precisa com suas próprias palavras.
-Não escolha outro número aqui.
-
-Exemplo:
-Tenho dólares e preciso de naira nigeriana. Valor: US$ 5.000. Localização: New Jersey.
-
-Envie seus detalhes abaixo:
-
-Você também pode enviar fotos, links, documentos ou mensagens de voz.
+Envie:
+1. Moeda que você tem
+2. Moeda que precisa
+3. Valor
+4. País/localização
 
 Nossa equipe entrará em contato em breve pelo WhatsApp.`,
     ar: `💱 تم اختيار تحويل العملات.
 
-يرجى كتابة ما تحتاجه بكلماتك الخاصة.
-لا تختر رقمًا آخر هنا.
-
-مثال:
-لدي دولارات وأحتاج إلى نايرا نيجيرية. المبلغ: 5,000 دولار. الموقع: نيوجيرسي.
-
-أرسل التفاصيل الخاصة بك أدناه:
-
-يمكنك أيضًا إرسال صور أو روابط أو مستندات أو رسائل صوتية.
+يرجى إرسال:
+1. العملة التي لديك
+2. العملة التي تحتاجها
+3. المبلغ
+4. البلد/الموقع
 
 سيتواصل معك فريقنا قريبًا عبر واتساب.`,
     zh: `💱 已选择货币兑换。
 
-请用您自己的话描述您的需求。
-请不要在这里选择其他数字。
-
-示例：
-我有美元，需要兑换成尼日利亚奈拉。金额：5,000美元。位置：新泽西。
-
-请在下方发送您的详细信息：
-
-您也可以发送图片、链接、文件或语音消息。
+请发送：
+1. 您持有的货币
+2. 您需要的货币
+3. 金额
+4. 国家/位置
 
 我们的团队会很快通过 WhatsApp 联系您。`
   }));
@@ -2618,95 +2561,67 @@ if (lower === "20") {
   await sendMessage(from, pickText(session.language, {
     en: `📱 Social Media Creator selected.
 
-Please type what you need in your own words.
-Do not choose another number here.
+Please send:
+1. Type of content you need
+2. Platform: TikTok, Instagram, Facebook, YouTube, etc.
+3. Topic/product/business name
+4. Any sample or idea
 
-Example:
-I need a TikTok video for my phone repair business. I have photos and want a short promotional video.
-
-Send your details below:
-
-You can also send pictures, links, documents, videos, or voice notes.
-
-Our team will contact you shortly on WhatsApp.`,
+You can also send photo, video, text, or voice note.`,
     es: `📱 Creador de redes sociales seleccionado.
 
-Por favor escriba lo que necesita con sus propias palabras.
-No seleccione otro número aquí.
+Envíe:
+1. Tipo de contenido que necesita
+2. Plataforma: TikTok, Instagram, Facebook, YouTube, etc.
+3. Tema/producto/nombre del negocio
+4. Cualquier muestra o idea
 
-Ejemplo:
-Necesito un video de TikTok para mi negocio de reparación de teléfonos. Tengo fotos y quiero un video promocional corto.
-
-Envíe sus detalles a continuación:
-
-También puede enviar fotos, enlaces, documentos, videos o notas de voz.
-
-Nuestro equipo se comunicará con usted pronto por WhatsApp.`,
+También puede enviar foto, video, texto o nota de voz.`,
     fr: `📱 Créateur de réseaux sociaux sélectionné.
 
-Veuillez décrire vos besoins avec vos propres mots.
-Ne choisissez pas un autre numéro ici.
+Veuillez envoyer :
+1. Type de contenu souhaité
+2. Plateforme : TikTok, Instagram, Facebook, YouTube, etc.
+3. Sujet/produit/nom de l'entreprise
+4. Exemple ou idée
 
-Exemple :
-J’ai besoin d’une vidéo TikTok pour mon entreprise de réparation de téléphones. J’ai des photos et je veux une courte vidéo promotionnelle.
-
-Envoyez vos informations ci-dessous :
-
-Vous pouvez également envoyer des photos, liens, documents, vidéos ou messages vocaux.
-
-Notre équipe vous contactera bientôt sur WhatsApp.`,
+Vous pouvez aussi envoyer photo, vidéo, texte ou note vocale.`,
     de: `📱 Social-Media-Ersteller ausgewählt.
 
-Bitte beschreiben Sie Ihren Bedarf mit Ihren eigenen Worten.
-Wählen Sie hier keine weitere Nummer aus.
+Bitte senden Sie:
+1. Art des Inhalts, den Sie benötigen
+2. Plattform: TikTok, Instagram, Facebook, YouTube usw.
+3. Thema/Produkt/Firmenname
+4. Beispiel oder Idee
 
-Beispiel:
-Ich brauche ein TikTok-Video für mein Handy-Reparaturgeschäft. Ich habe Fotos und möchte ein kurzes Werbevideo.
-
-Senden Sie Ihre Angaben unten:
-
-Sie können auch Bilder, Links, Dokumente, Videos oder Sprachnachrichten senden.
-
-Unser Team wird Sie in Kürze per WhatsApp kontaktieren.`,
+Sie können auch Foto, Video, Text oder Sprachnachricht senden.`,
     pt: `📱 Criador de mídia social selecionado.
 
-Por favor descreva o que você precisa com suas próprias palavras.
-Não escolha outro número aqui.
+Envie:
+1. Tipo de conteúdo necessário
+2. Plataforma: TikTok, Instagram, Facebook, YouTube, etc.
+3. Tema/produto/nome da empresa
+4. Qualquer exemplo ou ideia
 
-Exemplo:
-Preciso de um vídeo para TikTok para meu negócio de conserto de celulares. Tenho fotos e quero um vídeo promocional curto.
-
-Envie seus detalhes abaixo:
-
-Você também pode enviar fotos, links, documentos, vídeos ou mensagens de voz.
-
-Nossa equipe entrará em contato em breve pelo WhatsApp.`,
+Você também pode enviar foto, vídeo, texto ou mensagem de voz.`,
     ar: `📱 تم اختيار منشئ محتوى وسائل التواصل.
 
-يرجى كتابة ما تحتاجه بكلماتك الخاصة.
-لا تختر رقمًا آخر هنا.
+يرجى إرسال:
+1. نوع المحتوى المطلوب
+2. المنصة: TikTok أو Instagram أو Facebook أو YouTube إلخ
+3. الموضوع/المنتج/اسم العمل
+4. أي مثال أو فكرة
 
-مثال:
-أحتاج إلى فيديو TikTok لعملي في إصلاح الهواتف. لدي صور وأريد فيديو ترويجيًا قصيرًا.
-
-أرسل التفاصيل الخاصة بك أدناه:
-
-يمكنك أيضًا إرسال صور أو روابط أو مستندات أو فيديوهات أو رسائل صوتية.
-
-سيتواصل معك فريقنا قريبًا عبر واتساب.`,
+يمكنك أيضًا إرسال صورة أو فيديو أو نص أو رسالة صوتية.`,
     zh: `📱 已选择社交媒体创作者。
 
-请用您自己的话描述您的需求。
-请不要在这里选择其他数字。
+请发送：
+1. 您需要的内容类型
+2. 平台：TikTok、Instagram、Facebook、YouTube 等
+3. 主题/产品/商家名称
+4. 样例或想法
 
-示例：
-我需要为我的手机维修业务制作一个 TikTok 视频。我有照片，想要一个简短的宣传视频。
-
-请在下方发送您的详细信息：
-
-您也可以发送图片、链接、文件、视频或语音消息。
-
-我们的团队会很快通过 WhatsApp 联系您。`
+您也可以发送照片、视频、文字或语音。`
   }));
 
   return res.sendStatus(200);
@@ -2719,102 +2634,305 @@ if (lower === "21") {
   await sendMessage(from, pickText(session.language, {
     en: `🚘 Buy & Resell Auto selected.
 
-Please type what you need in your own words.
-Do not choose another number here.
-
-Example:
-I want to buy a Toyota Camry for resale. My budget is $6,000. Location: Newark, New Jersey.
-
-Send your details below:
-
-You can also send pictures, links, documents, or voice notes.
+Please send:
+1. Vehicle type/model
+2. Buy, sell, or resell
+3. Budget or asking price
+4. Location
 
 Our team will contact you shortly on WhatsApp.`,
     es: `🚘 Comprar y revender autos seleccionado.
 
-Por favor escriba lo que necesita con sus propias palabras.
-No seleccione otro número aquí.
-
-Ejemplo:
-Quiero comprar un Toyota Camry para revender. Mi presupuesto es de $6,000. Ubicación: Newark, New Jersey.
-
-Envíe sus detalles a continuación:
-
-También puede enviar fotos, enlaces, documentos o notas de voz.
+Envíe:
+1. Tipo/modelo de vehículo
+2. Comprar, vender o revender
+3. Presupuesto o precio solicitado
+4. Ubicación
 
 Nuestro equipo se comunicará con usted pronto por WhatsApp.`,
     fr: `🚘 Achat et revente automobile sélectionné.
 
-Veuillez décrire vos besoins avec vos propres mots.
-Ne choisissez pas un autre numéro ici.
-
-Exemple :
-Je veux acheter une Toyota Camry pour la revente. Mon budget est de 6 000 $. Lieu : Newark, New Jersey.
-
-Envoyez vos informations ci-dessous :
-
-Vous pouvez également envoyer des photos, liens, documents ou messages vocaux.
+Veuillez envoyer :
+1. Type/modèle du véhicule
+2. Acheter, vendre ou revendre
+3. Budget ou prix demandé
+4. Lieu
 
 Notre équipe vous contactera bientôt sur WhatsApp.`,
     de: `🚘 Autos kaufen und weiterverkaufen ausgewählt.
 
-Bitte beschreiben Sie Ihren Bedarf mit Ihren eigenen Worten.
-Wählen Sie hier keine weitere Nummer aus.
-
-Beispiel:
-Ich möchte einen Toyota Camry zum Weiterverkaufen kaufen. Mein Budget beträgt 6.000 $. Standort: Newark, New Jersey.
-
-Senden Sie Ihre Angaben unten:
-
-Sie können auch Bilder, Links, Dokumente oder Sprachnachrichten senden.
+Bitte senden Sie:
+1. Fahrzeugtyp/Modell
+2. Kaufen, verkaufen oder weiterverkaufen
+3. Budget oder Preisvorstellung
+4. Standort
 
 Unser Team wird Sie in Kürze per WhatsApp kontaktieren.`,
     pt: `🚘 Comprar e revender carros selecionado.
 
-Por favor descreva o que você precisa com suas próprias palavras.
-Não escolha outro número aqui.
-
-Exemplo:
-Quero comprar um Toyota Camry para revenda. Meu orçamento é de US$ 6.000. Localização: Newark, New Jersey.
-
-Envie seus detalhes abaixo:
-
-Você também pode enviar fotos, links, documentos ou mensagens de voz.
+Envie:
+1. Tipo/modelo do veículo
+2. Comprar, vender ou revender
+3. Orçamento ou preço pedido
+4. Localização
 
 Nossa equipe entrará em contato em breve pelo WhatsApp.`,
     ar: `🚘 تم اختيار شراء وإعادة بيع السيارات.
 
-يرجى كتابة ما تحتاجه بكلماتك الخاصة.
-لا تختر رقمًا آخر هنا.
-
-مثال:
-أريد شراء Toyota Camry لإعادة البيع. ميزانيتي 6,000 دولار. الموقع: نيوارك، نيوجيرسي.
-
-أرسل التفاصيل الخاصة بك أدناه:
-
-يمكنك أيضًا إرسال صور أو روابط أو مستندات أو رسائل صوتية.
+يرجى إرسال:
+1. نوع/موديل السيارة
+2. شراء أو بيع أو إعادة بيع
+3. الميزانية أو السعر المطلوب
+4. الموقع
 
 سيتواصل معك فريقنا قريبًا عبر واتساب.`,
     zh: `🚘 已选择买卖 / 转售汽车。
 
-请用您自己的话描述您的需求。
-请不要在这里选择其他数字。
-
-示例：
-我想购买一辆 Toyota Camry 用于转售，预算为6,000美元。位置：新泽西纽瓦克。
-
-请在下方发送您的详细信息：
-
-您也可以发送图片、链接、文件或语音消息。
+请发送：
+1. 车辆类型/型号
+2. 购买、出售或转售
+3. 预算或要价
+4. 位置
 
 我们的团队会很快通过 WhatsApp 联系您。`
   }));
 
   return res.sendStatus(200);
 }
-```
 
+if (lower === "22") {
+  session.selectedService = "CAR_LOAN_FINANCING";
+  session.stage = "SERVICE_WAITING_EXTRA_NOTES";
+  await sendMessage(from, pickText(session.language, {
+    en: `🚗💰 Car Loan / Auto Financing selected.
 
+Please send:
+1. Your location/country
+2. Vehicle type or model
+3. Loan amount or budget
+4. Employment/income status
+5. Best contact time
+
+PATAPATA will connect you with approved providers. Provider commission is handled by the provider, not the customer.`,
+    es: `🚗💰 Préstamo de auto / Financiamiento seleccionado.
+
+Envíe:
+1. Su ubicación/país
+2. Tipo o modelo de vehículo
+3. Monto del préstamo o presupuesto
+4. Estado laboral/ingresos
+5. Mejor hora de contacto
+
+PATAPATA lo conectará con proveedores aprobados. La comisión la paga el proveedor, no el cliente.`,
+    fr: `🚗💰 Prêt auto / Financement sélectionné.
+
+Veuillez envoyer :
+1. Votre lieu/pays
+2. Type ou modèle du véhicule
+3. Montant du prêt ou budget
+4. Situation professionnelle/revenus
+5. Meilleur moment pour vous contacter
+
+PATAPATA vous mettra en relation avec des fournisseurs approuvés. La commission est payée par le fournisseur, pas par le client.`,
+    de: `🚗💰 Autokredit / Finanzierung ausgewählt.
+
+Bitte senden Sie:
+1. Standort/Land
+2. Fahrzeugtyp oder Modell
+3. Kreditbetrag oder Budget
+4. Beschäftigungs-/Einkommensstatus
+5. Beste Kontaktzeit
+
+PATAPATA verbindet Sie mit geprüften Anbietern. Die Provision wird vom Anbieter bezahlt, nicht vom Kunden.`,
+    pt: `🚗💰 Empréstimo de carro / Financiamento selecionado.
+
+Envie:
+1. Sua localização/país
+2. Tipo ou modelo do veículo
+3. Valor do empréstimo ou orçamento
+4. Situação de emprego/renda
+5. Melhor horário para contato
+
+A PATAPATA conectará você a provedores aprovados. A comissão é paga pelo provedor, não pelo cliente.`,
+    ar: `🚗💰 تم اختيار قرض سيارة / تمويل.
+
+يرجى إرسال:
+1. موقعك/بلدك
+2. نوع أو موديل السيارة
+3. مبلغ القرض أو الميزانية
+4. حالة العمل/الدخل
+5. أفضل وقت للتواصل
+
+ستوصلك PATAPATA بمقدمي خدمات معتمدين. العمولة يدفعها مقدم الخدمة وليس العميل.`,
+    zh: `🚗💰 已选择汽车贷款 / 汽车融资。
+
+请发送：
+1. 您的位置/国家
+2. 车辆类型或型号
+3. 贷款金额或预算
+4. 就业/收入情况
+5. 最佳联系时间
+
+PATAPATA 会为您连接已审核的服务商。服务商佣金由服务商承担，不由客户承担。`
+  }));
+  return res.sendStatus(200);
+}
+
+if (lower === "23") {
+  session.selectedService = "CAR_INSURANCE";
+  session.stage = "SERVICE_WAITING_EXTRA_NOTES";
+  await sendMessage(from, pickText(session.language, {
+    en: `🛡️ Car Insurance selected.
+
+Please send:
+1. Your location/country
+2. Vehicle make, model, and year
+3. Current insurance status
+4. Coverage needed
+5. Best contact time
+
+PATAPATA will refer you to trusted insurance providers. Provider commission is handled by the provider, not the customer.`,
+    es: `🛡️ Seguro de auto seleccionado.
+
+Envíe:
+1. Su ubicación/país
+2. Marca, modelo y año del vehículo
+3. Estado actual del seguro
+4. Cobertura necesaria
+5. Mejor hora de contacto
+
+PATAPATA lo referirá a proveedores de seguros confiables. La comisión la paga el proveedor, no el cliente.`,
+    fr: `🛡️ Assurance auto sélectionnée.
+
+Veuillez envoyer :
+1. Votre lieu/pays
+2. Marque, modèle et année du véhicule
+3. Statut actuel d'assurance
+4. Couverture souhaitée
+5. Meilleur moment pour vous contacter
+
+PATAPATA vous orientera vers des assureurs fiables. La commission est payée par le fournisseur, pas par le client.`,
+    de: `🛡️ Autoversicherung ausgewählt.
+
+Bitte senden Sie:
+1. Standort/Land
+2. Marke, Modell und Baujahr
+3. Aktueller Versicherungsstatus
+4. Gewünschte Deckung
+5. Beste Kontaktzeit
+
+PATAPATA vermittelt Sie an vertrauenswürdige Versicherungsanbieter. Die Provision wird vom Anbieter bezahlt, nicht vom Kunden.`,
+    pt: `🛡️ Seguro de carro selecionado.
+
+Envie:
+1. Sua localização/país
+2. Marca, modelo e ano do veículo
+3. Situação atual do seguro
+4. Cobertura desejada
+5. Melhor horário para contato
+
+A PATAPATA encaminhará você a seguradoras confiáveis. A comissão é paga pelo provedor, não pelo cliente.`,
+    ar: `🛡️ تم اختيار تأمين السيارات.
+
+يرجى إرسال:
+1. موقعك/بلدك
+2. نوع السيارة والموديل والسنة
+3. حالة التأمين الحالية
+4. نوع التغطية المطلوبة
+5. أفضل وقت للتواصل
+
+ستحيلك PATAPATA إلى مزودي تأمين موثوقين. العمولة يدفعها مقدم الخدمة وليس العميل.`,
+    zh: `🛡️ 已选择汽车保险。
+
+请发送：
+1. 您的位置/国家
+2. 车辆品牌、型号和年份
+3. 当前保险状态
+4. 需要的保险范围
+5. 最佳联系时间
+
+PATAPATA 会推荐可靠的保险服务商。服务商佣金由服务商承担，不由客户承担。`
+  }));
+  return res.sendStatus(200);
+}
+
+if (lower === "24") {
+  session.selectedService = "CAR_RENTAL";
+  session.stage = "SERVICE_WAITING_EXTRA_NOTES";
+  await sendMessage(from, pickText(session.language, {
+    en: `🚙 Car Rental Services selected.
+
+Please send:
+1. Pickup city/location
+2. Rental start and return date
+3. Vehicle type needed
+4. Driver needed? Yes/No
+5. Budget range
+
+PATAPATA will connect you with rental providers. Provider commission is handled by the provider, not the customer.`,
+    es: `🚙 Servicios de alquiler de autos seleccionado.
+
+Envíe:
+1. Ciudad/lugar de recogida
+2. Fecha de inicio y devolución
+3. Tipo de vehículo necesario
+4. ¿Necesita conductor? Sí/No
+5. Rango de presupuesto
+
+PATAPATA lo conectará con proveedores de alquiler. La comisión la paga el proveedor, no el cliente.`,
+    fr: `🚙 Services de location de voiture sélectionnés.
+
+Veuillez envoyer :
+1. Ville/lieu de prise en charge
+2. Date de début et de retour
+3. Type de véhicule souhaité
+4. Chauffeur nécessaire ? Oui/Non
+5. Fourchette de budget
+
+PATAPATA vous mettra en relation avec des loueurs. La commission est payée par le fournisseur, pas par le client.`,
+    de: `🚙 Autovermietung ausgewählt.
+
+Bitte senden Sie:
+1. Abholstadt/Standort
+2. Start- und Rückgabedatum
+3. Benötigter Fahrzeugtyp
+4. Fahrer benötigt? Ja/Nein
+5. Budgetrahmen
+
+PATAPATA verbindet Sie mit Mietwagenanbietern. Die Provision wird vom Anbieter bezahlt, nicht vom Kunden.`,
+    pt: `🚙 Serviços de aluguel de carros selecionados.
+
+Envie:
+1. Cidade/local de retirada
+2. Data de início e devolução
+3. Tipo de veículo necessário
+4. Precisa de motorista? Sim/Não
+5. Faixa de orçamento
+
+A PATAPATA conectará você a locadoras. A comissão é paga pelo provedor, não pelo cliente.`,
+    ar: `🚙 تم اختيار خدمات تأجير السيارات.
+
+يرجى إرسال:
+1. مدينة/موقع الاستلام
+2. تاريخ البداية والإرجاع
+3. نوع السيارة المطلوبة
+4. هل تحتاج سائق؟ نعم/لا
+5. نطاق الميزانية
+
+ستوصلك PATAPATA بمزودي تأجير السيارات. العمولة يدفعها مقدم الخدمة وليس العميل.`,
+    zh: `🚙 已选择汽车租赁服务。
+
+请发送：
+1. 取车城市/地点
+2. 租车开始和归还日期
+3. 需要的车辆类型
+4. 是否需要司机？是/否
+5. 预算范围
+
+PATAPATA 会为您连接租车服务商。服务商佣金由服务商承担，不由客户承担。`
+  }));
+  return res.sendStatus(200);
+}
 
 if (lower === "25") {
   session.selectedService = "MOBILE_APP_DEVELOPMENT";
