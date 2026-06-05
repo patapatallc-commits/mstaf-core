@@ -422,68 +422,73 @@ zh: `📌 请选择服务编号。
 27 - 家庭安防技术员
 28 - 锁匠服务`
 
-Choose paper size:
+function printSizeMenuText(language = "en") {
+  const texts = {
+    en: `Choose paper size:
+
 1 - A4
 2 - A3
 3 - Letter
 4 - Legal
 5 - Tabloid
 6 - Card`,
-    es: `Impresión seleccionada.
 
-Elige el tamaño de papel:
+    es: `Elige el tamaño de papel:
+
 1 - A4
 2 - A3
 3 - Carta
 4 - Legal
 5 - Tabloide
 6 - Tarjeta`,
-    fr: `Impression sélectionnée.
 
-Choisissez le format papier :
+    fr: `Choisissez le format du papier :
+
 1 - A4
 2 - A3
 3 - Lettre
-4 - Legal
-5 - Tabloïd
+4 - Légal
+5 - Tabloïde
 6 - Carte`,
-    de: `Drucken ausgewählt.
 
-Wählen Sie die Papiergröße:
+    de: `Papiergröße wählen:
+
 1 - A4
 2 - A3
 3 - Letter
 4 - Legal
 5 - Tabloid
 6 - Karte`,
-    pt: `Impressão selecionada.
 
-Escolha o tamanho do papel:
+    pt: `Escolha o tamanho do papel:
+
 1 - A4
 2 - A3
 3 - Carta
 4 - Legal
 5 - Tabloide
 6 - Cartão`,
-    ar: `تم اختيار الطباعة.
 
-اختر حجم الورق:
+    ar: `اختر حجم الورق:
+
 1 - A4
 2 - A3
 3 - Letter
 4 - Legal
 5 - Tabloid
 6 - Card`,
-    zh: `已选择打印。
 
-请选择纸张尺寸：
+    zh: `请选择纸张尺寸：
+
 1 - A4
 2 - A3
 3 - Letter
 4 - Legal
 5 - Tabloid
-6 - 卡片`
-  });
+6 - Card`
+  };
+
+  return texts[language] || texts.en;
 }
 function printColorMenuText(language = "en") {
   return pickText(language, {
