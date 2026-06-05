@@ -2415,14 +2415,32 @@ Responda com um número.`,
   await sendMessage(from, pickText(session.language, {
     en: `🏞️ Buy Land for Use or Resell selected.
 
+Please type what you need in your own words.
+Do not choose another number here.
+
+Example:
+I want land in Nigeria for resale. My budget is ₦5 million.
+
+Send your details below:
+
+You can also send pictures, links, or voice notes.
+
+Our team will contact you shortly on WhatsApp.`,
+if (lower === "18") {
+  session.selectedService = "BUY_LAND_USE_RESELL";
+  session.stage = "SERVICE_WAITING_EXTRA_NOTES";
+
+  await sendMessage(from, pickText(session.language, {
+    en: `🏞️ Buy land for use or resale selected.
+
 Please send:
 1. Country/state/location
 2. Your budget
-3. Land purpose: use, build, farm, or resell
-4. How soon you want it
+3. Purpose of the land: use, build, farm, or resell
+4. How soon you need it
 
 Our team will contact you shortly on WhatsApp.`,
-    es: `🏞️ Comprar terreno para usar o revender seleccionado.
+    es: `🏞️ Compra de terreno para uso o reventa seleccionada.
 
 Envíe:
 1. País/estado/ubicación
