@@ -2689,66 +2689,142 @@ if (lower === "21") {
 
   await sendMessage(from, pickText(session.language, {
     en: `🚘 Buy & Resell Auto selected.
+Please type the details in your own words.
 
-Please send:
-1. Vehicle type/model
-2. Buy, sell, or resell
-3. Budget or asking price
-4. Location
+Include details like:
+• Vehicle make, model, and year
+• Buy, sell, or resell
+• Budget or asking price
+• Location
+
+Do not choose another number here.
+
+Example:
+I want to buy a 2015 Toyota Camry for resale. My budget is $6,000. Location: Newark, New Jersey.
+
+Send your details below:
+
+You can also send pictures, links, documents, or voice notes.
 
 Our team will contact you shortly on WhatsApp.`,
     es: `🚘 Comprar y revender autos seleccionado.
 
-Envíe:
-1. Tipo/modelo de vehículo
-2. Comprar, vender o revender
-3. Presupuesto o precio solicitado
-4. Ubicación
+Por favor escriba los detalles con sus propias palabras.
+
+Incluya detalles como:
+• Marca, modelo y año del vehículo
+• Comprar, vender o revender
+• Presupuesto o precio solicitado
+• Ubicación
+
+No seleccione otro número aquí.
+
+Ejemplo:
+Quiero comprar un Toyota Camry 2015 para revender. Mi presupuesto es de $6,000. Ubicación: Newark, New Jersey.
+
+Envíe sus detalles a continuación:
+
+También puede enviar fotos, enlaces, documentos o notas de voz.
 
 Nuestro equipo se comunicará con usted pronto por WhatsApp.`,
     fr: `🚘 Achat et revente automobile sélectionné.
 
-Veuillez envoyer :
-1. Type/modèle du véhicule
-2. Acheter, vendre ou revendre
-3. Budget ou prix demandé
-4. Lieu
+Veuillez écrire les détails avec vos propres mots.
+
+Incluez des détails comme :
+• Marque, modèle et année du véhicule
+• Acheter, vendre ou revendre
+• Budget ou prix demandé
+• Lieu
+
+Ne choisissez pas un autre numéro ici.
+
+Exemple :
+Je veux acheter une Toyota Camry 2015 pour la revente. Mon budget est de 6 000 $. Lieu : Newark, New Jersey.
+
+Envoyez vos informations ci-dessous :
+
+Vous pouvez également envoyer des photos, liens, documents ou messages vocaux.
 
 Notre équipe vous contactera bientôt sur WhatsApp.`,
     de: `🚘 Autos kaufen und weiterverkaufen ausgewählt.
 
-Bitte senden Sie:
-1. Fahrzeugtyp/Modell
-2. Kaufen, verkaufen oder weiterverkaufen
-3. Budget oder Preisvorstellung
-4. Standort
+Bitte schreiben Sie die Details mit Ihren eigenen Worten.
+
+Geben Sie Details an wie:
+• Fahrzeugmarke, Modell und Baujahr
+• Kaufen, verkaufen oder weiterverkaufen
+• Budget oder Preisvorstellung
+• Standort
+
+Wählen Sie hier keine weitere Nummer aus.
+
+Beispiel:
+Ich möchte einen Toyota Camry 2015 zum Weiterverkaufen kaufen. Mein Budget beträgt 6.000 $. Standort: Newark, New Jersey.
+
+Senden Sie Ihre Angaben unten:
+
+Sie können auch Bilder, Links, Dokumente oder Sprachnachrichten senden.
 
 Unser Team wird Sie in Kürze per WhatsApp kontaktieren.`,
     pt: `🚘 Comprar e revender carros selecionado.
 
-Envie:
-1. Tipo/modelo do veículo
-2. Comprar, vender ou revender
-3. Orçamento ou preço pedido
-4. Localização
+Por favor escreva os detalhes com suas próprias palavras.
+
+Inclua detalhes como:
+• Marca, modelo e ano do veículo
+• Comprar, vender ou revender
+• Orçamento ou preço pedido
+• Localização
+
+Não escolha outro número aqui.
+
+Exemplo:
+Quero comprar um Toyota Camry 2015 para revenda. Meu orçamento é de US$ 6.000. Localização: Newark, New Jersey.
+
+Envie seus detalhes abaixo:
+
+Você também pode enviar fotos, links, documentos ou mensagens de voz.
 
 Nossa equipe entrará em contato em breve pelo WhatsApp.`,
     ar: `🚘 تم اختيار شراء وإعادة بيع السيارات.
 
-يرجى إرسال:
-1. نوع/موديل السيارة
-2. شراء أو بيع أو إعادة بيع
-3. الميزانية أو السعر المطلوب
-4. الموقع
+يرجى كتابة التفاصيل بكلماتك الخاصة.
+
+اذكر تفاصيل مثل:
+• ماركة السيارة والموديل والسنة
+• شراء أو بيع أو إعادة بيع
+• الميزانية أو السعر المطلوب
+• الموقع
+
+لا تختر رقمًا آخر هنا.
+
+مثال:
+أريد شراء Toyota Camry 2015 لإعادة البيع. ميزانيتي 6,000 دولار. الموقع: نيوارك، نيوجيرسي.
+
+أرسل التفاصيل الخاصة بك أدناه:
+
+يمكنك أيضًا إرسال صور أو روابط أو مستندات أو رسائل صوتية.
 
 سيتواصل معك فريقنا قريبًا عبر واتساب.`,
     zh: `🚘 已选择买卖 / 转售汽车。
 
-请发送：
-1. 车辆类型/型号
-2. 购买、出售或转售
-3. 预算或要价
-4. 位置
+请用您自己的话填写详细信息。
+
+请包括以下信息：
+• 车辆品牌、型号和年份
+• 购买、出售或转售
+• 预算或要价
+• 位置
+
+请不要在这里选择其他数字。
+
+示例：
+我想购买一辆 2015 年 Toyota Camry 用于转售，预算为 6,000 美元。位置：新泽西纽瓦克。
+
+请在下方发送您的详细信息：
+
+您也可以发送图片、链接、文件或语音消息。
 
 我们的团队会很快通过 WhatsApp 联系您。`
   }));
@@ -2762,72 +2838,149 @@ if (lower === "22") {
   await sendMessage(from, pickText(session.language, {
     en: `🚗💰 Car Loan / Auto Financing selected.
 
-Please send:
-1. Your location/country
-2. Vehicle type or model
-3. Loan amount or budget
-4. Employment/income status
-5. Best contact time
+Please type the details in your own words.
+
+Include details like:
+• Your location or country
+• Vehicle make, model, and year
+• Loan amount or budget
+• Employment or income status
+• Best contact time
+
+Do not choose another number here.
+
+Example:
+I need a car loan for a 2018 Toyota Corolla. My budget is $12,000. I work full-time. Location: New Jersey.
+
+Send your details below:
+
+You can also send pictures, links, documents, or voice notes.
 
 PATAPATA will connect you with approved providers. Provider commission is handled by the provider, not the customer.`,
     es: `🚗💰 Préstamo de auto / Financiamiento seleccionado.
 
-Envíe:
-1. Su ubicación/país
-2. Tipo o modelo de vehículo
-3. Monto del préstamo o presupuesto
-4. Estado laboral/ingresos
-5. Mejor hora de contacto
+Por favor escriba los detalles con sus propias palabras.
+
+Incluya detalles como:
+• Su ubicación o país
+• Marca, modelo y año del vehículo
+• Monto del préstamo o presupuesto
+• Estado laboral o de ingresos
+• Mejor hora de contacto
+
+No seleccione otro número aquí.
+
+Ejemplo:
+Necesito un préstamo para un Toyota Corolla 2018. Mi presupuesto es de $12,000. Trabajo tiempo completo. Ubicación: New Jersey.
+
+Envíe sus detalles a continuación:
+
+También puede enviar fotos, enlaces, documentos o notas de voz.
 
 PATAPATA lo conectará con proveedores aprobados. La comisión la paga el proveedor, no el cliente.`,
     fr: `🚗💰 Prêt auto / Financement sélectionné.
 
-Veuillez envoyer :
-1. Votre lieu/pays
-2. Type ou modèle du véhicule
-3. Montant du prêt ou budget
-4. Situation professionnelle/revenus
-5. Meilleur moment pour vous contacter
+Veuillez écrire les détails avec vos propres mots.
+
+Incluez des détails comme :
+• Votre lieu ou pays
+• Marque, modèle et année du véhicule
+• Montant du prêt ou budget
+• Situation professionnelle ou revenus
+• Meilleur moment pour vous contacter
+
+Ne choisissez pas un autre numéro ici.
+
+Exemple :
+J’ai besoin d’un prêt auto pour une Toyota Corolla 2018. Mon budget est de 12 000 $. Je travaille à temps plein. Lieu : New Jersey.
+
+Envoyez vos informations ci-dessous :
+
+Vous pouvez également envoyer des photos, liens, documents ou messages vocaux.
 
 PATAPATA vous mettra en relation avec des fournisseurs approuvés. La commission est payée par le fournisseur, pas par le client.`,
     de: `🚗💰 Autokredit / Finanzierung ausgewählt.
 
-Bitte senden Sie:
-1. Standort/Land
-2. Fahrzeugtyp oder Modell
-3. Kreditbetrag oder Budget
-4. Beschäftigungs-/Einkommensstatus
-5. Beste Kontaktzeit
+Bitte schreiben Sie die Details mit Ihren eigenen Worten.
+
+Geben Sie Details an wie:
+• Ihr Standort oder Land
+• Fahrzeugmarke, Modell und Baujahr
+• Kreditbetrag oder Budget
+• Beschäftigungs- oder Einkommensstatus
+• Beste Kontaktzeit
+
+Wählen Sie hier keine weitere Nummer aus.
+
+Beispiel:
+Ich brauche einen Autokredit für einen Toyota Corolla 2018. Mein Budget beträgt 12.000 $. Ich arbeite Vollzeit. Standort: New Jersey.
+
+Senden Sie Ihre Angaben unten:
+
+Sie können auch Bilder, Links, Dokumente oder Sprachnachrichten senden.
 
 PATAPATA verbindet Sie mit geprüften Anbietern. Die Provision wird vom Anbieter bezahlt, nicht vom Kunden.`,
     pt: `🚗💰 Empréstimo de carro / Financiamento selecionado.
 
-Envie:
-1. Sua localização/país
-2. Tipo ou modelo do veículo
-3. Valor do empréstimo ou orçamento
-4. Situação de emprego/renda
-5. Melhor horário para contato
+Por favor escreva os detalhes com suas próprias palavras.
+
+Inclua detalhes como:
+• Sua localização ou país
+• Marca, modelo e ano do veículo
+• Valor do empréstimo ou orçamento
+• Situação de emprego ou renda
+• Melhor horário para contato
+
+Não escolha outro número aqui.
+
+Exemplo:
+Preciso de um empréstimo para um Toyota Corolla 2018. Meu orçamento é de US$ 12.000. Trabalho em tempo integral. Localização: New Jersey.
+
+Envie seus detalhes abaixo:
+
+Você também pode enviar fotos, links, documentos ou mensagens de voz.
 
 A PATAPATA conectará você a provedores aprovados. A comissão é paga pelo provedor, não pelo cliente.`,
     ar: `🚗💰 تم اختيار قرض سيارة / تمويل.
 
-يرجى إرسال:
-1. موقعك/بلدك
-2. نوع أو موديل السيارة
-3. مبلغ القرض أو الميزانية
-4. حالة العمل/الدخل
-5. أفضل وقت للتواصل
+يرجى كتابة التفاصيل بكلماتك الخاصة.
+
+اذكر تفاصيل مثل:
+• موقعك أو بلدك
+• ماركة السيارة والموديل والسنة
+• مبلغ القرض أو الميزانية
+• حالة العمل أو الدخل
+• أفضل وقت للتواصل
+
+لا تختر رقمًا آخر هنا.
+
+مثال:
+أحتاج إلى قرض سيارة لـ Toyota Corolla 2018. ميزانيتي 12,000 دولار. أعمل بدوام كامل. الموقع: نيوجيرسي.
+
+أرسل التفاصيل الخاصة بك أدناه:
+
+يمكنك أيضًا إرسال صور أو روابط أو مستندات أو رسائل صوتية.
 
 ستوصلك PATAPATA بمقدمي خدمات معتمدين. العمولة يدفعها مقدم الخدمة وليس العميل.`,
     zh: `🚗💰 已选择汽车贷款 / 汽车融资。
 
-请发送：
-1. 您的位置/国家
-2. 车辆类型或型号
-3. 贷款金额或预算
-4. 就业/收入情况
-5. 最佳联系时间
+请用您自己的话填写详细信息。
+
+请包括以下信息：
+• 您的位置或国家
+• 车辆品牌、型号和年份
+• 贷款金额或预算
+• 就业或收入情况
+• 最佳联系时间
+
+请不要在这里选择其他数字。
+
+示例：
+我需要为一辆 2018 年 Toyota Corolla 申请汽车贷款。预算为 12,000 美元。我是全职工作。位置：新泽西。
+
+请在下方发送您的详细信息：
+
+您也可以发送图片、链接、文件或语音消息。
 
 PATAPATA 会为您连接已审核的服务商。服务商佣金由服务商承担，不由客户承担。`
   }));
