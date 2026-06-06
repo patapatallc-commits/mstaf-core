@@ -2408,72 +2408,100 @@ Responda com um número.`,
 
   return res.sendStatus(200);
 }
-  if (lower === "18") {
+if (lower === "18") {
   session.selectedService = "BUY_LAND_RESELL";
   session.stage = "SERVICE_WAITING_EXTRA_NOTES";
 
   await sendMessage(from, pickText(session.language, {
     en: `🏞️ Buy Land for Use or Resell selected.
 
-Please send:
-1. Country/state/location
-2. Your budget
-3. Land purpose: use, build, farm, or resell
-4. How soon you want it
+Please type what you need in your own words.
+Do not choose another number here.
+
+Example:
+I want land in Nigeria for resale. My budget is ₦5 million.
+
+Send your details below:
+
+You can also send pictures, links, documents, or voice notes.
 
 Our team will contact you shortly on WhatsApp.`,
     es: `🏞️ Comprar terreno para usar o revender seleccionado.
 
-Envíe:
-1. País/estado/ubicación
-2. Su presupuesto
-3. Propósito del terreno: usar, construir, cultivar o revender
-4. Qué tan pronto lo necesita
+Por favor escriba lo que necesita con sus propias palabras.
+No seleccione otro número aquí.
+
+Ejemplo:
+Quiero un terreno en Nigeria para reventa. Mi presupuesto es de ₦5 millones.
+
+Envíe sus detalles a continuación:
+
+También puede enviar fotos, enlaces, documentos o notas de voz.
 
 Nuestro equipo se comunicará con usted pronto por WhatsApp.`,
     fr: `🏞️ Achat de terrain pour usage ou revente sélectionné.
 
-Veuillez envoyer :
-1. Pays/État/lieu
-2. Votre budget
-3. Objectif du terrain : usage, construction, agriculture ou revente
-4. Délai souhaité
+Veuillez décrire vos besoins avec vos propres mots.
+Ne choisissez pas un autre numéro ici.
+
+Exemple :
+Je veux un terrain au Nigeria pour la revente. Mon budget est de ₦5 millions.
+
+Envoyez vos informations ci-dessous :
+
+Vous pouvez également envoyer des photos, liens, documents ou messages vocaux.
 
 Notre équipe vous contactera bientôt sur WhatsApp.`,
     de: `🏞️ Land zum Nutzen oder Weiterverkaufen ausgewählt.
 
-Bitte senden Sie:
-1. Land/Bundesland/Standort
-2. Ihr Budget
-3. Zweck des Grundstücks: Nutzung, Bau, Landwirtschaft oder Weiterverkauf
-4. Wie schnell Sie es benötigen
+Bitte beschreiben Sie Ihren Bedarf mit Ihren eigenen Worten.
+Wählen Sie hier keine weitere Nummer aus.
+
+Beispiel:
+Ich möchte Land in Nigeria zum Weiterverkaufen. Mein Budget beträgt ₦5 Millionen.
+
+Senden Sie Ihre Angaben unten:
+
+Sie können auch Bilder, Links, Dokumente oder Sprachnachrichten senden.
 
 Unser Team wird Sie in Kürze per WhatsApp kontaktieren.`,
     pt: `🏞️ Comprar terreno para usar ou revender selecionado.
 
-Envie:
-1. País/estado/localização
-2. Seu orçamento
-3. Finalidade do terreno: usar, construir, cultivar ou revender
-4. Quando você precisa
+Por favor descreva o que você precisa com suas próprias palavras.
+Não escolha outro número aqui.
+
+Exemplo:
+Quero um terreno na Nigéria para revenda. Meu orçamento é de ₦5 milhões.
+
+Envie seus detalhes abaixo:
+
+Você também pode enviar fotos, links, documentos ou mensagens de voz.
 
 Nossa equipe entrará em contato em breve pelo WhatsApp.`,
     ar: `🏞️ تم اختيار شراء أرض للاستخدام أو إعادة البيع.
 
-يرجى إرسال:
-1. البلد/الولاية/الموقع
-2. ميزانيتك
-3. الغرض من الأرض: استخدام، بناء، زراعة أو إعادة بيع
-4. متى تحتاجها
+يرجى كتابة ما تحتاجه بكلماتك الخاصة.
+لا تختر رقمًا آخر هنا.
+
+مثال:
+أريد أرضًا في نيجيريا لإعادة البيع. ميزانيتي ₦5 ملايين.
+
+أرسل التفاصيل الخاصة بك أدناه:
+
+يمكنك أيضًا إرسال صور أو روابط أو مستندات أو رسائل صوتية.
 
 سيتواصل معك فريقنا قريبًا عبر واتساب.`,
     zh: `🏞️ 已选择购买土地自用或转售。
 
-请发送：
-1. 国家/州/位置
-2. 您的预算
-3. 土地用途：自用、建房、耕种或转售
-4. 您希望多快办理
+请用您自己的话描述您的需求。
+请不要在这里选择其他数字。
+
+示例：
+我想在尼日利亚购买土地用于转售，预算为₦500万。
+
+请在下方发送您的详细信息：
+
+您也可以发送图片、链接、文件或语音消息。
 
 我们的团队会很快通过 WhatsApp 联系您。`
   }));
@@ -2488,65 +2516,93 @@ if (lower === "19") {
   await sendMessage(from, pickText(session.language, {
     en: `💱 Currency Exchange selected.
 
-Please send:
-1. Currency you have
-2. Currency you need
-3. Amount
-4. Country/location
+Please type what you need in your own words.
+Do not choose another number here.
+
+Example:
+I have USD and need Nigerian Naira. Amount: $5,000. Location: New Jersey.
+
+Send your details below:
+
+You can also send pictures, links, documents, or voice notes.
 
 Our team will contact you shortly on WhatsApp.`,
     es: `💱 Cambio de moneda seleccionado.
 
-Envíe:
-1. Moneda que tiene
-2. Moneda que necesita
-3. Monto
-4. País/ubicación
+Por favor escriba lo que necesita con sus propias palabras.
+No seleccione otro número aquí.
+
+Ejemplo:
+Tengo dólares y necesito naira nigeriana. Monto: $5,000. Ubicación: New Jersey.
+
+Envíe sus detalles a continuación:
+
+También puede enviar fotos, enlaces, documentos o notas de voz.
 
 Nuestro equipo se comunicará con usted pronto por WhatsApp.`,
     fr: `💱 Change de monnaie sélectionné.
 
-Veuillez envoyer :
-1. Devise que vous avez
-2. Devise souhaitée
-3. Montant
-4. Pays/lieu
+Veuillez décrire vos besoins avec vos propres mots.
+Ne choisissez pas un autre numéro ici.
+
+Exemple :
+J’ai des dollars américains et j’ai besoin de nairas nigérians. Montant : 5 000 $. Lieu : New Jersey.
+
+Envoyez vos informations ci-dessous :
+
+Vous pouvez également envoyer des photos, liens, documents ou messages vocaux.
 
 Notre équipe vous contactera bientôt sur WhatsApp.`,
     de: `💱 Geldwechsel ausgewählt.
 
-Bitte senden Sie:
-1. Währung, die Sie haben
-2. Währung, die Sie benötigen
-3. Betrag
-4. Land/Standort
+Bitte beschreiben Sie Ihren Bedarf mit Ihren eigenen Worten.
+Wählen Sie hier keine weitere Nummer aus.
+
+Beispiel:
+Ich habe US-Dollar und brauche nigerianische Naira. Betrag: 5.000 $. Standort: New Jersey.
+
+Senden Sie Ihre Angaben unten:
+
+Sie können auch Bilder, Links, Dokumente oder Sprachnachrichten senden.
 
 Unser Team wird Sie in Kürze per WhatsApp kontaktieren.`,
     pt: `💱 Câmbio selecionado.
 
-Envie:
-1. Moeda que você tem
-2. Moeda que precisa
-3. Valor
-4. País/localização
+Por favor descreva o que você precisa com suas próprias palavras.
+Não escolha outro número aqui.
+
+Exemplo:
+Tenho dólares e preciso de naira nigeriana. Valor: US$ 5.000. Localização: New Jersey.
+
+Envie seus detalhes abaixo:
+
+Você também pode enviar fotos, links, documentos ou mensagens de voz.
 
 Nossa equipe entrará em contato em breve pelo WhatsApp.`,
     ar: `💱 تم اختيار تحويل العملات.
 
-يرجى إرسال:
-1. العملة التي لديك
-2. العملة التي تحتاجها
-3. المبلغ
-4. البلد/الموقع
+يرجى كتابة ما تحتاجه بكلماتك الخاصة.
+لا تختر رقمًا آخر هنا.
+
+مثال:
+لدي دولارات وأحتاج إلى نايرا نيجيرية. المبلغ: 5,000 دولار. الموقع: نيوجيرسي.
+
+أرسل التفاصيل الخاصة بك أدناه:
+
+يمكنك أيضًا إرسال صور أو روابط أو مستندات أو رسائل صوتية.
 
 سيتواصل معك فريقنا قريبًا عبر واتساب.`,
     zh: `💱 已选择货币兑换。
 
-请发送：
-1. 您持有的货币
-2. 您需要的货币
-3. 金额
-4. 国家/位置
+请用您自己的话描述您的需求。
+请不要在这里选择其他数字。
+
+示例：
+我有美元，需要兑换成尼日利亚奈拉。金额：5,000美元。位置：新泽西。
+
+请在下方发送您的详细信息：
+
+您也可以发送图片、链接、文件或语音消息。
 
 我们的团队会很快通过 WhatsApp 联系您。`
   }));
