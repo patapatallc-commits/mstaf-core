@@ -635,6 +635,20 @@ function imageReceivedThanksText(language = "en") {
   });
 }
 
+function mediaReceivedText(language = "en", type = "file") {
+  if (type === "image") return imageReceivedThanksText(language);
+
+  return pickText(language, {
+    en: `✅ ${type} received. You can also send text instruction or voice note.`,
+    es: `✅ ${type} recibido. También puede enviar instrucciones de texto o nota de voz.`,
+    fr: `✅ ${type} reçu. Vous pouvez aussi envoyer une instruction texte ou une note vocale.`,
+    de: `✅ ${type} erhalten. Sie können auch Textanweisungen oder eine Sprachnachricht senden.`,
+    pt: `✅ ${type} recebido. Você também pode enviar instrução de texto ou nota de voz.`,
+    ar: `✅ تم استلام ${type}. يمكنك أيضًا إرسال تعليمات نصية أو رسالة صوتية.`,
+    zh: `✅ 已收到 ${type}。您也可以发送文字说明或语音说明。`
+  });
+}
+
 function welcomeText(language = "en") {
   return pickText(language, {
     en: "Hello 👋 Welcome to PATAPATA Print-O-Matic",
@@ -3161,7 +3175,368 @@ if (lower === "25") {
   await sendMessage(from, pickText(session.language, {
     en: `📱 Mobile App Development selected.
 
+Please send:
+1. App idea or business type
+2. Android, iPhone, or both
+3. Main features needed
+4. Budget range
+5. Timeline
 
+PATAPATA will connect you with app development providers. Provider commission is handled by the provider, not the customer.`,
+    es: `📱 Desarrollo de aplicaciones móviles seleccionado.
+
+Envíe:
+1. Idea de la app o tipo de negocio
+2. Android, iPhone o ambos
+3. Funciones principales necesarias
+4. Rango de presupuesto
+5. Tiempo estimado
+
+PATAPATA lo conectará con desarrolladores de apps. La comisión la paga el proveedor, no el cliente.`,
+    fr: `📱 Développement d'application mobile sélectionné.
+
+Veuillez envoyer :
+1. Idée d'application ou type d'entreprise
+2. Android, iPhone ou les deux
+3. Fonctionnalités principales souhaitées
+4. Fourchette de budget
+5. Délai
+
+PATAPATA vous mettra en relation avec des développeurs d'applications. La commission est payée par le fournisseur, pas par le client.`,
+    de: `📱 Mobile-App-Entwicklung ausgewählt.
+
+Bitte senden Sie:
+1. App-Idee oder Geschäftstyp
+2. Android, iPhone oder beides
+3. Benötigte Hauptfunktionen
+4. Budgetrahmen
+5. Zeitplan
+
+PATAPATA verbindet Sie mit App-Entwicklungsanbietern. Die Provision wird vom Anbieter bezahlt, nicht vom Kunden.`,
+    pt: `📱 Desenvolvimento de aplicativo móvel selecionado.
+
+Envie:
+1. Ideia do aplicativo ou tipo de negócio
+2. Android, iPhone ou ambos
+3. Principais recursos necessários
+4. Faixa de orçamento
+5. Prazo
+
+A PATAPATA conectará você a desenvolvedores de aplicativos. A comissão é paga pelo provedor, não pelo cliente.`,
+    ar: `📱 تم اختيار تطوير تطبيقات الجوال.
+
+يرجى إرسال:
+1. فكرة التطبيق أو نوع العمل
+2. أندرويد أو آيفون أو كلاهما
+3. الميزات الرئيسية المطلوبة
+4. نطاق الميزانية
+5. الجدول الزمني
+
+ستوصلك PATAPATA بمطوري التطبيقات. العمولة يدفعها مقدم الخدمة وليس العميل.`,
+    zh: `📱 已选择手机应用开发。
+
+请发送：
+1. 应用想法或业务类型
+2. Android、iPhone 或两者都要
+3. 所需主要功能
+4. 预算范围
+5. 时间安排
+
+PATAPATA 会为您连接应用开发服务商。服务商佣金由服务商承担，不由客户承担。`
+  }));
+  return res.sendStatus(200);
+}
+
+if (lower === "26") {
+  session.selectedService = "HOTEL_RESERVATION";
+  session.stage = "SERVICE_WAITING_EXTRA_NOTES";
+  await sendMessage(from, pickText(session.language, {
+    en: `🏨 Hotel Reservation selected.
+
+Please send:
+1. Destination city/country
+2. Check-in and check-out dates
+3. Number of guests
+4. Room type or hotel preference
+5. Budget range
+6. Best contact time
+
+PATAPATA will connect you with hotel/reservation providers. Provider commission is handled by the provider, not the customer.`,
+    es: `🏨 Reserva de hotel seleccionada.
+
+Envíe:
+1. Ciudad/país de destino
+2. Fechas de entrada y salida
+3. Número de huéspedes
+4. Tipo de habitación o preferencia de hotel
+5. Rango de presupuesto
+6. Mejor hora de contacto
+
+PATAPATA lo conectará con proveedores de hoteles/reservas. La comisión la paga el proveedor, no el cliente.`,
+    fr: `🏨 Réservation d'hôtel sélectionnée.
+
+Veuillez envoyer :
+1. Ville/pays de destination
+2. Dates d'arrivée et de départ
+3. Nombre de voyageurs
+4. Type de chambre ou préférence d'hôtel
+5. Fourchette de budget
+6. Meilleur moment pour vous contacter
+
+PATAPATA vous mettra en relation avec des fournisseurs d'hôtels/réservations. La commission est payée par le fournisseur, pas par le client.`,
+    de: `🏨 Hotelreservierung ausgewählt.
+
+Bitte senden Sie:
+1. Zielstadt/Zielland
+2. Check-in- und Check-out-Datum
+3. Anzahl der Gäste
+4. Zimmertyp oder Hotelwunsch
+5. Budgetrahmen
+6. Beste Kontaktzeit
+
+PATAPATA verbindet Sie mit Hotel-/Reservierungsanbietern. Die Provision wird vom Anbieter bezahlt, nicht vom Kunden.`,
+    pt: `🏨 Reserva de hotel selecionada.
+
+Envie:
+1. Cidade/país de destino
+2. Datas de check-in e check-out
+3. Número de hóspedes
+4. Tipo de quarto ou preferência de hotel
+5. Faixa de orçamento
+6. Melhor horário para contato
+
+A PATAPATA conectará você a provedores de hotéis/reservas. A comissão é paga pelo provedor, não pelo cliente.`,
+    ar: `🏨 تم اختيار حجز فندق.
+
+يرجى إرسال:
+1. مدينة/بلد الوجهة
+2. تاريخ الوصول والمغادرة
+3. عدد الضيوف
+4. نوع الغرفة أو الفندق المفضل
+5. نطاق الميزانية
+6. أفضل وقت للتواصل
+
+ستوصلك PATAPATA بمزودي الفنادق/الحجوزات. العمولة يدفعها مقدم الخدمة وليس العميل.`,
+    zh: `🏨 已选择酒店预订服务。
+
+请发送：
+1. 目的地城市/国家
+2. 入住和退房日期
+3. 客人人数
+4. 房型或酒店偏好
+5. 预算范围
+6. 最佳联系时间
+
+PATAPATA 将为您连接酒店/预订服务提供商。服务商佣金由服务商承担，不由客户承担。`
+  }));
+  return res.sendStatus(200);
+}
+
+if (lower === "27") {
+  session.selectedService = "HOME_SECURITY_TECHNICIAN";
+  session.stage = "SERVICE_WAITING_EXTRA_NOTES";
+  await sendMessage(from, pickText(session.language, {
+    en: `🏠🔐 Home Security Technician selected.
+
+Please send:
+1. Your location
+2. Type of security service needed
+3. House, office, or store
+4. Preferred service date/time
+
+PATAPATA will connect you with trusted technicians.`,
+    es: `🏠🔐 Técnico de seguridad para el hogar seleccionado.
+
+Envíe:
+1. Su ubicación
+2. Tipo de servicio de seguridad necesario
+3. Casa, oficina o tienda
+4. Fecha/hora preferida del servicio
+
+PATAPATA lo conectará con técnicos confiables.`,
+    fr: `🏠🔐 Technicien en sécurité résidentielle sélectionné.
+
+Veuillez envoyer :
+1. Votre emplacement
+2. Type de service de sécurité nécessaire
+3. Maison, bureau ou magasin
+4. Date/heure souhaitée
+
+PATAPATA vous mettra en relation avec des techniciens fiables.`,
+    de: `🏠🔐 Haussicherheitstechniker ausgewählt.
+
+Bitte senden Sie:
+1. Ihren Standort
+2. Benötigte Sicherheitsdienstleistung
+3. Haus, Büro oder Geschäft
+4. Gewünschtes Datum/Uhrzeit
+
+PATAPATA verbindet Sie mit vertrauenswürdigen Technikern.`,
+    pt: `🏠🔐 Técnico de segurança residencial selecionado.
+
+Envie:
+1. Sua localização
+2. Tipo de serviço de segurança necessário
+3. Casa, escritório ou loja
+4. Data/hora preferida
+
+A PATAPATA conectará você a técnicos confiáveis.`,
+    ar: `🏠🔐 تم اختيار فني أمن المنازل.
+
+يرجى إرسال:
+1. موقعك
+2. نوع خدمة الأمن المطلوبة
+3. منزل أو مكتب أو متجر
+4. التاريخ/الوقت المفضل للخدمة
+
+ستوصلك PATAPATA بفنيين موثوقين.`,
+    zh: `🏠🔐 已选择家庭安防技术员服务。
+
+请发送：
+1. 您的位置
+2. 所需安防服务类型
+3. 住宅、办公室或商店
+4. 首选服务日期/时间
+
+PATAPATA 将为您连接可靠的技术人员。`
+  }));
+  return res.sendStatus(200);
+}
+
+if (lower === "28") {
+  session.selectedService = "LOCKSMITH";
+  session.stage = "SERVICE_WAITING_EXTRA_NOTES";
+  await sendMessage(from, pickText(session.language, {
+    en: `🔑 Locksmith selected.
+
+Please send:
+1. Your location
+2. Lock issue or service needed
+3. House, office, or vehicle
+4. Emergency or scheduled service
+
+PATAPATA will connect you with trusted locksmiths.`,
+    es: `🔑 Cerrajero seleccionado.
+
+Envíe:
+1. Su ubicación
+2. Problema o servicio de cerradura
+3. Casa, oficina o vehículo
+4. Servicio de emergencia o programado
+
+PATAPATA lo conectará con cerrajeros confiables.`,
+    fr: `🔑 Serrurier sélectionné.
+
+Veuillez envoyer :
+1. Votre emplacement
+2. Problème ou service de serrure
+3. Maison, bureau ou véhicule
+4. Service d'urgence ou programmé
+
+PATAPATA vous mettra en relation avec des serruriers fiables.`,
+    de: `🔑 Schlüsseldienst ausgewählt.
+
+Bitte senden Sie:
+1. Ihren Standort
+2. Schlossproblem oder benötigter Service
+3. Haus, Büro oder Fahrzeug
+4. Notfall oder geplanter Service
+
+PATAPATA verbindet Sie mit vertrauenswürdigen Schlüsseldiensten.`,
+    pt: `🔑 Chaveiro selecionado.
+
+Envie:
+1. Sua localização
+2. Problema da fechadura ou serviço necessário
+3. Casa, escritório ou veículo
+4. Serviço de emergência ou agendado
+
+A PATAPATA conectará você a chaveiros confiáveis.`,
+    ar: `🔑 تم اختيار خدمة صانع الأقفال.
+
+يرجى إرسال:
+1. موقعك
+2. مشكلة القفل أو الخدمة المطلوبة
+3. منزل أو مكتب أو سيارة
+4. خدمة طارئة أو مجدولة
+
+ستوصلك PATAPATA بصناع أقفال موثوقين.`,
+    zh: `🔑 已选择锁匠服务。
+
+请发送：
+1. 您的位置
+2. 锁的问题或所需服务
+3. 住宅、办公室或车辆
+4. 紧急服务或预约服务
+
+PATAPATA 将为您连接可靠的锁匠。`
+  }));
+  return res.sendStatus(200);
+}
+
+  await sendMessage(from, serviceMenu(session.language));
+  return res.sendStatus(200);
+}
+
+if (session.stage === "PRINT_SELECT_SIZE" && type === "text") {
+  const sizeMap = {
+    "1": "A4",
+    "2": "A3",
+    "3": "LETTER",
+    "4": "LEGAL",
+    "5": "TABLOID",
+    "6": "CARD"
+  };
+
+  const selectedSize = sizeMap[lower];
+
+  if (!selectedSize) {
+    await sendMessage(from, printSizeMenuText(session.language));
+    return res.sendStatus(200);
+  }
+
+  session.printSpec.paper_size = selectedSize;
+  session.stage = "PRINT_SELECT_COLOR";
+
+  await sendMessage(from, printColorMenuText(session.language));
+  return res.sendStatus(200);
+}
+
+if (session.stage === "PRINT_SELECT_COLOR" && type === "text") {
+  const colorMap = {
+    "1": "BW",
+    "2": "COLOR"
+  };
+
+  const selectedColor = colorMap[lower];
+
+  if (!selectedColor) {
+    await sendMessage(from, printColorMenuText(session.language));
+    return res.sendStatus(200);
+  }
+
+  session.printSpec.color_mode = selectedColor;
+  session.stage = "PRINT_WAITING_COPIES";
+
+  await sendMessage(from, botText("copies_question", session.language));
+  return res.sendStatus(200);
+}
+
+if (session.stage === "PRINT_WAITING_COPIES" && type === "text") {
+  const copies = parseInt(lower, 10);
+
+  if (!copies || copies < 1) {
+    await sendMessage(from, pickText(session.language, {
+      en: "Please type a valid number of copies, for example: 1, 2, 5, or 10.",
+      es: "Por favor escriba un número válido de copias, por ejemplo: 1, 2, 5 o 10.",
+      fr: "Veuillez saisir un nombre valide de copies, par exemple : 1, 2, 5 ou 10.",
+      de: "Bitte geben Sie eine gültige Anzahl von Kopien ein, zum Beispiel: 1, 2, 5 oder 10.",
+      pt: "Digite um número válido de cópias, por exemplo: 1, 2, 5 ou 10.",
+      ar: "يرجى إدخال عدد صحيح من النسخ، مثل: 1 أو 2 أو 5 أو 10.",
+      zh: "请输入有效的份数，例如：1、2、5 或 10。"
+    }));
+    return res.sendStatus(200);
+  }
 
   session.printSpec.copies = copies;
   session.stage = "PRINT_WAITING_PAGES";
@@ -3740,19 +4115,7 @@ if (session.stage === "SERVICE_WAITING_EXTRA_NOTES") {
       session.lastServiceJobId = job?.id || null;
     }
 
-    if (type === "image") {
-      await sendMessage(from, imageReceivedThanksText(session.language));
-    } else {
-      await sendMessage(from, pickText(session.language, {
-        en: `✅ ${type} received. You can also send text instruction or voice note.`,
-        es: `✅ ${type} recibido. También puede enviar instrucciones de texto o nota de voz.`,
-        fr: `✅ ${type} reçu. Vous pouvez aussi envoyer une instruction texte ou une note vocale.`,
-        de: `✅ ${type} erhalten. Sie können auch Textanweisungen oder eine Sprachnachricht senden.`,
-        pt: `✅ ${type} recebido. Você também pode enviar instrução de texto ou nota de voz.`,
-        ar: `✅ تم استلام ${type}. يمكنك أيضًا إرسال تعليمات نصية أو رسالة صوتية.`,
-        zh: `✅ 已收到 ${type}。您也可以发送文字说明或语音说明。`
-      }));
-    }
+    await sendMessage(from, mediaReceivedText(session.language, type));
     session.stage = "SERVICE_WAITING_EXTRA_NOTES";
     return res.sendStatus(200);
   }
