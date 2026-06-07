@@ -1717,6 +1717,8 @@ ${serviceMenu(freshSession.language)}`
 if (session.stage === "MENU") {
   if (lower === "1") {
     session.selectedService = "PRINT";
+    session.lastServiceJobId = null;
+    session.pendingFile = null;
     session.stage = "PRINT_SELECT_SIZE";
     await sendMessage(from, printSizeMenuText(session.language));
     return res.sendStatus(200);
@@ -1724,6 +1726,8 @@ if (session.stage === "MENU") {
 
   if (lower === "2") {
     session.selectedService = "LAMINATE";
+    session.lastServiceJobId = null;
+    session.pendingFile = null;
     session.laminateSpec = {};
     session.stage = "LAMINATE_WAITING_SIZE";
     await sendMessage(from, laminateSizeMenuText(session.language));
@@ -1732,6 +1736,8 @@ if (session.stage === "MENU") {
 
   if (lower === "3") {
     session.selectedService = "ID_PHOTO";
+    session.lastServiceJobId = null;
+    session.pendingFile = null;
     session.stage = "IDPHOTO_WAITING_UPLOAD";
     await sendMessage(from, botText("id_photo_upload", session.language));
     return res.sendStatus(200);
@@ -1739,6 +1745,8 @@ if (session.stage === "MENU") {
 
   if (lower === "4") {
     session.selectedService = "IMAGE_EDIT";
+    session.lastServiceJobId = null;
+    session.pendingFile = null;
     session.stage = "IMAGE_EDIT_SELECT_TYPE";
     await sendMessage(from, botText("image_edit_menu", session.language));
     return res.sendStatus(200);
@@ -1746,6 +1754,8 @@ if (session.stage === "MENU") {
 
   if (lower === "5") {
     session.selectedService = "VIDEO_EDIT";
+    session.lastServiceJobId = null;
+    session.pendingFile = null;
     session.stage = "VIDEO_EDIT_SELECT_TYPE";
     await sendMessage(from, botText("video_edit_menu", session.language));
     return res.sendStatus(200);
@@ -1753,6 +1763,8 @@ if (session.stage === "MENU") {
 
   if (lower === "6") {
     session.selectedService = "LESSON_HOMEWORK";
+    session.lastServiceJobId = null;
+    session.pendingFile = null;
     session.stage = "LESSON_WAITING_UPLOAD";
     await sendMessage(from, {
   en: "📚 Lesson / Homework selected. Please upload your file now.",
@@ -1768,6 +1780,8 @@ if (session.stage === "MENU") {
 
   if (lower === "7") {
     session.selectedService = "TALK_TO_AGENT";
+    session.lastServiceJobId = null;
+    session.pendingFile = null;
     session.stage = "SERVICE_WAITING_EXTRA_NOTES";
     await sendMessage(from, pickText(session.language, {
       en: "👨‍💼 Talk to Agent selected. Please type your request now.",
@@ -1783,6 +1797,8 @@ if (session.stage === "MENU") {
 
   if (lower === "8") {
     session.selectedService = "AUTO_MECHANIC";
+    session.lastServiceJobId = null;
+    session.pendingFile = null;
     session.stage = "SERVICE_WAITING_EXTRA_NOTES";
     await sendMessage(from, {
   en: "👨‍🔧 Please send your location, vehicle type, and the problem.",
@@ -1798,6 +1814,8 @@ if (session.stage === "MENU") {
 
   if (lower === "9") {
     session.selectedService = "RIDE_TO_WORK";
+    session.lastServiceJobId = null;
+    session.pendingFile = null;
     session.stage = "SERVICE_WAITING_EXTRA_NOTES";
     await sendMessage(from, {
   en: "🚘 Please send pickup location, destination, date, and time.",
@@ -1813,6 +1831,8 @@ if (session.stage === "MENU") {
 
   if (lower === "10") {
     session.selectedService = "SHARED_APARTMENT_RENT";
+    session.lastServiceJobId = null;
+    session.pendingFile = null;
     session.stage = "SERVICE_WAITING_EXTRA_NOTES";
     await sendMessage(from, pickText(session.language, {
       en: "🏠 Please send preferred location, budget, and move-in date.",
@@ -1828,6 +1848,8 @@ if (session.stage === "MENU") {
 
   if (lower === "11") {
   session.selectedService = "INDOOR_OUTDOOR_HELPER";
+  session.lastServiceJobId = null;
+  session.pendingFile = null;
   session.stage = "SERVICE_WAITING_EXTRA_NOTES";
   await sendMessage(from, pickText(session.language, {
     en: `🧰 Indoor / Outdoor Helper selected.
@@ -1927,6 +1949,7 @@ Nossa equipe entrará em contato em breve pelo WhatsApp.`,
 
 if (lower === "12") {
     session.selectedService = "TSHIRT_PRINT";
+    session.pendingFile = null;
   session.lastServiceJobId = null;
     session.stage = "TSHIRT_SELECT_SIZE";
 
@@ -2013,6 +2036,8 @@ XXL - 双加大号
   }
   if (lower === "13") {
   session.selectedService = "JOB_APPLICATION";
+  session.lastServiceJobId = null;
+  session.pendingFile = null;
   session.stage = "SERVICE_WAITING_EXTRA_NOTES";
 
   await sendMessage(from, pickText(session.language, {
@@ -2121,6 +2146,8 @@ Nossa equipe entrará em contato em breve pelo WhatsApp.`,
 
 if (lower === "14") {
   session.selectedService = "JOB_OPPORTUNITIES";
+  session.lastServiceJobId = null;
+  session.pendingFile = null;
   session.stage = "SERVICE_WAITING_EXTRA_NOTES";
 
   await sendMessage(from, pickText(session.language, {
@@ -2229,6 +2256,8 @@ Nossa equipe entrará em contato em breve pelo WhatsApp.`,
 
 if (lower === "15") {
   session.selectedService = "HIRE_WORKER";
+  session.lastServiceJobId = null;
+  session.pendingFile = null;
   session.stage = "HIRE_WORKER_MENU";
 
   await sendMessage(from, pickText(session.language, {
@@ -2323,6 +2352,7 @@ Você também pode enviar uma mensagem de voz.`,
 
 if (lower === "16") {
   session.selectedService = "COMMUNITY_ALERT";
+  session.pendingFile = null;
   session.lastServiceJobId = null;
   session.stage = "COMMUNITY_ALERT_WAITING";
 
@@ -2397,6 +2427,7 @@ Essas informações serão analisadas antes da divulgação.`,
 
 if (lower === "17") {
   session.selectedService = "TRUSTED_SUPPLIERS";
+  session.pendingFile = null;
   session.lastServiceJobId = null;
   session.stage = "SERVICE_WAITING_EXTRA_NOTES";
 
@@ -2506,6 +2537,7 @@ Nossa equipe entrará em contato em breve pelo WhatsApp.`,
 
 if (lower === "18") {
   session.selectedService = "BUY_LAND_RESELL";
+  session.pendingFile = null;
   session.lastServiceJobId = null;
   session.stage = "SERVICE_WAITING_EXTRA_NOTES";
 
@@ -2594,6 +2626,7 @@ Nossa equipe entrará em contato em breve pelo WhatsApp.`,
 
 if (lower === "19") {
   session.selectedService = "CURRENCY_EXCHANGE";
+  session.pendingFile = null;
   session.lastServiceJobId = null;
   session.stage = "SERVICE_WAITING_EXTRA_NOTES";
 
@@ -2682,6 +2715,7 @@ Nossa equipe entrará em contato em breve pelo WhatsApp.`,
 
 if (lower === "20") {
   session.selectedService = "SOCIAL_MEDIA_CREATOR";
+  session.pendingFile = null;
   session.lastServiceJobId = null;
   session.stage = "SERVICE_WAITING_EXTRA_NOTES";
 
@@ -2791,6 +2825,7 @@ Nossa equipe entrará em contato em breve pelo WhatsApp.`,
 
 if (lower === "21") {
   session.selectedService = "BUY_RESELL_AUTO";
+  session.pendingFile = null;
   session.lastServiceJobId = null;
   session.stage = "SERVICE_WAITING_EXTRA_NOTES";
 
@@ -2927,6 +2962,7 @@ Nossa equipe entrará em contato em breve pelo WhatsApp.`,
 
 if (lower === "22") {
   session.selectedService = "CAR_LOAN_FINANCING";
+  session.pendingFile = null;
   session.lastServiceJobId = null;
   session.stage = "SERVICE_WAITING_EXTRA_NOTES";
   await sendMessage(from, pickText(session.language, {
@@ -3069,6 +3105,7 @@ PATAPATA 会为您连接已审核的服务商。服务商佣金由服务商承�
 
 if (lower === "23") {
   session.selectedService = "CAR_INSURANCE";
+  session.pendingFile = null;
   session.lastServiceJobId = null;
   session.stage = "SERVICE_WAITING_EXTRA_NOTES";
   await sendMessage(from, pickText(session.language, {
@@ -3176,6 +3213,7 @@ Nossa equipe entrará em contato em breve pelo WhatsApp.`,
 
 if (lower === "24") {
   session.selectedService = "CAR_RENTAL";
+  session.pendingFile = null;
   session.lastServiceJobId = null;
   session.stage = "SERVICE_WAITING_EXTRA_NOTES";
   await sendMessage(from, pickText(session.language, {
@@ -3283,6 +3321,7 @@ Nossa equipe entrará em contato em breve pelo WhatsApp.`,
 
 if (lower === "25") {
   session.selectedService = "MOBILE_APP_DEVELOPMENT";
+  session.pendingFile = null;
   session.lastServiceJobId = null;
   session.stage = "SERVICE_WAITING_EXTRA_NOTES";
   await sendMessage(from, pickText(session.language, {
@@ -3390,6 +3429,7 @@ Nossa equipe entrará em contato em breve pelo WhatsApp.`,
 
 if (lower === "26") {
   session.selectedService = "HOTEL_RESERVATION";
+  session.pendingFile = null;
   session.lastServiceJobId = null;
   session.stage = "SERVICE_WAITING_EXTRA_NOTES";
   await sendMessage(from, pickText(session.language, {
@@ -3497,6 +3537,7 @@ Nossa equipe entrará em contato em breve pelo WhatsApp.`,
 
 if (lower === "27") {
   session.selectedService = "HOME_SECURITY_TECHNICIAN";
+  session.pendingFile = null;
   session.lastServiceJobId = null;
   session.stage = "SERVICE_WAITING_EXTRA_NOTES";
   await sendMessage(from, pickText(session.language, {
@@ -3597,6 +3638,7 @@ Nossa equipe entrará em contato em breve pelo WhatsApp.`,
 
 if (lower === "28") {
   session.selectedService = "LOCKSMITH";
+  session.pendingFile = null;
   session.lastServiceJobId = null;
   session.stage = "SERVICE_WAITING_EXTRA_NOTES";
   await sendMessage(from, pickText(session.language, {
