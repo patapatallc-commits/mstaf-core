@@ -1827,77 +1827,105 @@ if (session.stage === "MENU") {
   }
 
   if (lower === "11") {
-    session.selectedService = "INDOOR_OUTDOOR_HELPER";
-    session.stage = "SERVICE_WAITING_EXTRA_NOTES";
-    await sendMessage(from, pickText(session.language, {
-      en: `🧰 Indoor / Outdoor Helper selected.
+  session.selectedService = "INDOOR_OUTDOOR_HELPER";
+  session.stage = "SERVICE_WAITING_EXTRA_NOTES";
+  await sendMessage(from, pickText(session.language, {
+    en: `🧰 Indoor / Outdoor Helper selected.
 
-Please send:
-1. Type of helper needed
-2. Indoor or outdoor work
-3. Your location
-4. Date and time needed
+Please type the details in your own words.
+
+Include:
+• Type of helper needed
+• Indoor or outdoor work
+• Your location
+• Preferred date and time
+
+You may also send pictures, links, documents, or voice notes.
 
 Our team will contact you shortly on WhatsApp.`,
-      es: `🧰 Ayudante interior / exterior seleccionado.
+    es: `🧰 Ayudante interior / exterior seleccionado.
 
-Envíe:
-1. Tipo de ayudante necesario
-2. Trabajo interior o exterior
-3. Su ubicación
-4. Fecha y hora necesarias
+Por favor escriba los detalles con sus propias palabras.
+
+Incluya:
+• Tipo de ayudante necesario
+• Trabajo interior o exterior
+• Su ubicación
+• Fecha y hora preferidas
+
+También puede enviar fotos, enlaces, documentos o notas de voz.
 
 Nuestro equipo se comunicará con usted pronto por WhatsApp.`,
-      fr: `🧰 Aide intérieure / extérieure sélectionnée.
+    fr: `🧰 Aide intérieure / extérieure sélectionnée.
 
-Veuillez envoyer :
-1. Type d'aide nécessaire
-2. Travail intérieur ou extérieur
-3. Votre position
-4. Date et heure souhaitées
+Veuillez écrire les détails avec vos propres mots.
+
+Incluez :
+• Type d'aide nécessaire
+• Travail intérieur ou extérieur
+• Votre position
+• Date et heure souhaitées
+
+Vous pouvez aussi envoyer des photos, liens, documents ou messages vocaux.
 
 Notre équipe vous contactera bientôt sur WhatsApp.`,
-      de: `🧰 Innen- / Außenhilfe ausgewählt.
+    de: `🧰 Innen- / Außenhilfe ausgewählt.
 
-Bitte senden Sie:
-1. Art der benötigten Hilfe
-2. Innen- oder Außenarbeit
-3. Ihren Standort
-4. Benötigtes Datum und Uhrzeit
+Bitte schreiben Sie die Details mit Ihren eigenen Worten.
+
+Bitte angeben:
+• Art der benötigten Hilfe
+• Innen- oder Außenarbeit
+• Ihren Standort
+• Gewünschtes Datum und Uhrzeit
+
+Sie können auch Bilder, Links, Dokumente oder Sprachnachrichten senden.
 
 Unser Team wird Sie in Kürze per WhatsApp kontaktieren.`,
-      pt: `🧰 Ajudante interno / externo selecionado.
+    pt: `🧰 Ajudante interno / externo selecionado.
 
-Envie:
-1. Tipo de ajudante necessário
-2. Trabalho interno ou externo
-3. Sua localização
-4. Data e horário necessários
+Digite os detalhes com suas próprias palavras.
+
+Inclua:
+• Tipo de ajudante necessário
+• Trabalho interno ou externo
+• Sua localização
+• Data e horário preferidos
+
+Você também pode enviar fotos, links, documentos ou mensagens de voz.
 
 Nossa equipe entrará em contato em breve pelo WhatsApp.`,
-      ar: `🧰 تم اختيار مساعد داخلي / خارجي.
+    ar: `🧰 تم اختيار مساعد داخلي / خارجي.
 
-يرجى إرسال:
-1. نوع المساعد المطلوب
-2. عمل داخلي أو خارجي
-3. موقعك
-4. التاريخ والوقت المطلوبان
+يرجى كتابة التفاصيل بكلماتك الخاصة.
+
+اذكر:
+• نوع المساعد المطلوب
+• عمل داخلي أو خارجي
+• موقعك
+• التاريخ والوقت المفضلان
+
+يمكنك أيضًا إرسال صور أو روابط أو مستندات أو رسائل صوتية.
 
 سيتواصل معك فريقنا قريبًا عبر واتساب.`,
-      zh: `🧰 已选择室内 / 室外帮工。
+    zh: `🧰 已选择室内 / 室外帮工。
 
-请发送：
-1. 需要的帮工类型
-2. 室内或室外工作
-3. 您的位置
-4. 需要的日期和时间
+请用您自己的话填写详细信息。
+
+请包括：
+• 需要的帮工类型
+• 室内或室外工作
+• 您的位置
+• 首选日期和时间
+
+您也可以发送图片、链接、文件或语音消息。
 
 我们的团队会很快通过 WhatsApp 联系您。`
-    }));
-    return res.sendStatus(200);
-  }
+  }));
+  return res.sendStatus(200);
+}
 
-  if (lower === "12") {
+if (lower === "12") {
     session.selectedService = "TSHIRT_PRINT";
     session.stage = "TSHIRT_SELECT_SIZE";
 
@@ -1984,172 +2012,215 @@ XXL - 双加大号
   }
   if (lower === "13") {
   session.selectedService = "JOB_APPLICATION";
-  session.stage = "JOB_SELECT_ROLE";
+  session.stage = "SERVICE_WAITING_EXTRA_NOTES";
 
   await sendMessage(from, pickText(session.language, {
-    en: `💼 Job Application / CV Submission
+    en: `💼 Job Search / Submit CV selected.
 
-Please choose the role you are applying for:
+Please type the details in your own words.
 
-1 - Graphic Designer
-2 - Print Machine Operator
-3 - Customer Support Agent
-4 - Delivery Driver
-5 - Video Editor
+Include:
+• Job role you want
+• Your location
+• Your experience or skills
+• Full-time, part-time, remote, or contract
+• Best contact time
 
-Reply with 1, 2, 3, 4, or 5.`,
-    es: `💼 Solicitud de empleo / Envío de CV
+You may also upload your CV/resume, documents, links, pictures, or voice notes.
 
-Elija el puesto al que desea postularse:
+Our team will contact you shortly on WhatsApp.`,
+    es: `💼 Buscar trabajo / Enviar CV seleccionado.
 
-1 - Diseñador gráfico
-2 - Operador de máquina de impresión
-3 - Agente de atención al cliente
-4 - Repartidor
-5 - Editor de video
+Por favor escriba los detalles con sus propias palabras.
 
-Responda con 1, 2, 3, 4 o 5.`,
-    fr: `💼 Candidature / Envoi de CV
+Incluya:
+• Puesto de trabajo que desea
+• Su ubicación
+• Su experiencia o habilidades
+• Tiempo completo, medio tiempo, remoto o contrato
+• Mejor hora de contacto
 
-Choisissez le poste auquel vous postulez :
+También puede subir su CV, documentos, enlaces, fotos o notas de voz.
 
-1 - Graphiste
-2 - Opérateur de machine d'impression
-3 - Agent du service client
-4 - Chauffeur-livreur
-5 - Monteur vidéo
+Nuestro equipo se comunicará con usted pronto por WhatsApp.`,
+    fr: `💼 Recherche d'emploi / Envoyer CV sélectionné.
 
-Répondez avec 1, 2, 3, 4 ou 5.`,
-    de: `💼 Bewerbung / Lebenslauf einreichen
+Veuillez écrire les détails avec vos propres mots.
 
-Bitte wählen Sie die Stelle aus, für die Sie sich bewerben:
+Incluez :
+• Poste recherché
+• Votre emplacement
+• Votre expérience ou vos compétences
+• Temps plein, temps partiel, à distance ou contrat
+• Meilleur moment pour vous contacter
 
-1 - Grafikdesigner
-2 - Druckmaschinenbediener
-3 - Kundendienstmitarbeiter
-4 - Lieferfahrer
-5 - Videoeditor
+Vous pouvez aussi envoyer votre CV, documents, liens, photos ou messages vocaux.
 
-Antworten Sie mit 1, 2, 3, 4 oder 5.`,
-    pt: `💼 Candidatura / Envio de currículo
+Notre équipe vous contactera bientôt sur WhatsApp.`,
+    de: `💼 Jobsuche / Lebenslauf senden ausgewählt.
 
-Escolha a função para a qual deseja se candidatar:
+Bitte schreiben Sie die Details mit Ihren eigenen Worten.
 
-1 - Designer gráfico
-2 - Operador de máquina de impressão
-3 - Agente de atendimento ao cliente
-4 - Motorista de entrega
-5 - Editor de vídeo
+Bitte angeben:
+• Gewünschte Stelle
+• Ihren Standort
+• Ihre Erfahrung oder Fähigkeiten
+• Vollzeit, Teilzeit, Remote oder Vertrag
+• Beste Kontaktzeit
 
-Responda com 1, 2, 3, 4 ou 5.`,
-    ar: `💼 طلب وظيفة / إرسال السيرة الذاتية
+Sie können auch Ihren Lebenslauf, Dokumente, Links, Bilder oder Sprachnachrichten hochladen.
 
-يرجى اختيار الوظيفة التي تريد التقديم لها:
+Unser Team wird Sie in Kürze per WhatsApp kontaktieren.`,
+    pt: `💼 Procurar emprego / Enviar CV selecionado.
 
-1 - مصمم جرافيك
-2 - مشغل ماكينة طباعة
-3 - موظف خدمة عملاء
-4 - سائق توصيل
-5 - محرر فيديو
+Digite os detalhes com suas próprias palavras.
 
-رد بـ 1 أو 2 أو 3 أو 4 أو 5.`,
-    zh: `💼 求职申请 / 提交简历
+Inclua:
+• Cargo desejado
+• Sua localização
+• Sua experiência ou habilidades
+• Tempo integral, meio período, remoto ou contrato
+• Melhor horário para contato
 
-请选择您要申请的职位：
+Você também pode enviar seu currículo, documentos, links, fotos ou mensagens de voz.
 
-1 - 平面设计师
-2 - 打印机操作员
-3 - 客户服务人员
-4 - 送货司机
-5 - 视频编辑
+Nossa equipe entrará em contato em breve pelo WhatsApp.`,
+    ar: `💼 تم اختيار البحث عن عمل / إرسال السيرة الذاتية.
 
-请回复 1、2、3、4 或 5。`
+يرجى كتابة التفاصيل بكلماتك الخاصة.
+
+اذكر:
+• الوظيفة التي تريدها
+• موقعك
+• خبرتك أو مهاراتك
+• دوام كامل أو جزئي أو عن بعد أو عقد
+• أفضل وقت للتواصل
+
+يمكنك أيضًا رفع السيرة الذاتية أو المستندات أو الروابط أو الصور أو الرسائل الصوتية.
+
+سيتواصل معك فريقنا قريبًا عبر واتساب.`,
+    zh: `💼 已选择找工作 / 提交简历。
+
+请用您自己的话填写详细信息。
+
+请包括：
+• 您想要的职位
+• 您的位置
+• 您的经验或技能
+• 全职、兼职、远程或合同
+• 最佳联系时间
+
+您也可以上传简历、文件、链接、图片或语音消息。
+
+我们的团队会很快通过 WhatsApp 联系您。`
   }));
 
   return res.sendStatus(200);
 }
+
 if (lower === "14") {
   session.selectedService = "JOB_OPPORTUNITIES";
-  session.stage = "JOB_OPPORTUNITIES_MENU";
+  session.stage = "SERVICE_WAITING_EXTRA_NOTES";
 
   await sendMessage(from, pickText(session.language, {
-    en: `💼 JOB OPPORTUNITIES
+    en: `💼 Job Opportunities selected.
 
-Please choose your profession:
+Please type the details in your own words.
 
-1 - Graphic Designer
-2 - Print Operator
-3 - Delivery Driver
-4 - Video Editor
-5 - Customer Support
+Include:
+• Type of job or profession you want
+• Your location
+• Your skills or experience
+• Availability
+• Best contact time
 
-Reply with a number.`,
-    es: `💼 OPORTUNIDADES DE TRABAJO
+You may also send your CV/resume, documents, links, pictures, or voice notes.
 
-Elija su profesión:
+Our team will contact you shortly on WhatsApp.`,
+    es: `💼 Oportunidades de trabajo seleccionado.
 
-1 - Diseñador gráfico
-2 - Operador de impresión
-3 - Repartidor
-4 - Editor de video
-5 - Atención al cliente
+Por favor escriba los detalles con sus propias palabras.
 
-Responda con un número.`,
-    fr: `💼 OFFRES D'EMPLOI
+Incluya:
+• Tipo de trabajo o profesión que desea
+• Su ubicación
+• Sus habilidades o experiencia
+• Disponibilidad
+• Mejor hora de contacto
 
-Choisissez votre profession :
+También puede enviar su CV, documentos, enlaces, fotos o notas de voz.
 
-1 - Graphiste
-2 - Opérateur d'impression
-3 - Chauffeur-livreur
-4 - Monteur vidéo
-5 - Service client
+Nuestro equipo se comunicará con usted pronto por WhatsApp.`,
+    fr: `💼 Offres d'emploi sélectionné.
 
-Répondez avec un numéro.`,
-    de: `💼 JOBANGEBOTE
+Veuillez écrire les détails avec vos propres mots.
 
-Bitte wählen Sie Ihren Beruf:
+Incluez :
+• Type de travail ou profession souhaitée
+• Votre emplacement
+• Vos compétences ou votre expérience
+• Disponibilité
+• Meilleur moment pour vous contacter
 
-1 - Grafikdesigner
-2 - Druckoperator
-3 - Lieferfahrer
-4 - Videoeditor
-5 - Kundendienst
+Vous pouvez aussi envoyer votre CV, documents, liens, photos ou messages vocaux.
 
-Antworten Sie mit einer Zahl.`,
-    pt: `💼 OPORTUNIDADES DE EMPREGO
+Notre équipe vous contactera bientôt sur WhatsApp.`,
+    de: `💼 Jobangebote ausgewählt.
 
-Escolha sua profissão:
+Bitte schreiben Sie die Details mit Ihren eigenen Worten.
 
-1 - Designer gráfico
-2 - Operador de impressão
-3 - Motorista de entrega
-4 - Editor de vídeo
-5 - Atendimento ao cliente
+Bitte angeben:
+• Gewünschter Job oder Beruf
+• Ihren Standort
+• Ihre Fähigkeiten oder Erfahrung
+• Verfügbarkeit
+• Beste Kontaktzeit
 
-Responda com um número.`,
-    ar: `💼 فرص عمل
+Sie können auch Ihren Lebenslauf, Dokumente, Links, Bilder oder Sprachnachrichten senden.
 
-يرجى اختيار مهنتك:
+Unser Team wird Sie in Kürze per WhatsApp kontaktieren.`,
+    pt: `💼 Oportunidades de emprego selecionado.
 
-1 - مصمم جرافيك
-2 - مشغل طباعة
-3 - سائق توصيل
-4 - محرر فيديو
-5 - خدمة عملاء
+Digite os detalhes com suas próprias palavras.
 
-رد برقم.`,
-    zh: `💼 工作机会
+Inclua:
+• Tipo de trabalho ou profissão desejada
+• Sua localização
+• Suas habilidades ou experiência
+• Disponibilidade
+• Melhor horário para contato
 
-请选择您的职业：
+Você também pode enviar seu currículo, documentos, links, fotos ou mensagens de voz.
 
-1 - 平面设计师
-2 - 打印操作员
-3 - 送货司机
-4 - 视频编辑
-5 - 客户服务
+Nossa equipe entrará em contato em breve pelo WhatsApp.`,
+    ar: `💼 تم اختيار فرص عمل.
 
-请回复数字。`
+يرجى كتابة التفاصيل بكلماتك الخاصة.
+
+اذكر:
+• نوع العمل أو المهنة المطلوبة
+• موقعك
+• مهاراتك أو خبرتك
+• التوفر
+• أفضل وقت للتواصل
+
+يمكنك أيضًا إرسال السيرة الذاتية أو المستندات أو الروابط أو الصور أو الرسائل الصوتية.
+
+سيتواصل معك فريقنا قريبًا عبر واتساب.`,
+    zh: `💼 已选择工作机会。
+
+请用您自己的话填写详细信息。
+
+请包括：
+• 您想要的工作或职业类型
+• 您的位置
+• 您的技能或经验
+• 可工作时间
+• 最佳联系时间
+
+您也可以发送简历、文件、链接、图片或语音消息。
+
+我们的团队会很快通过 WhatsApp 联系您。`
   }));
 
   return res.sendStatus(200);
@@ -2324,90 +2395,112 @@ Essas informações serão analisadas antes da divulgação.`,
 
 if (lower === "17") {
   session.selectedService = "TRUSTED_SUPPLIERS";
-  session.stage = "SUPPLIER_CATEGORY";
+  session.stage = "SERVICE_WAITING_EXTRA_NOTES";
 
   await sendMessage(from, pickText(session.language, {
-    en: `🏪 TRUSTED SUPPLIERS
+    en: `🏪 Trusted Suppliers selected.
 
-Choose category:
+Please type the details in your own words.
 
-1 - Printing Materials
-2 - Electrical Materials
-3 - Building Materials
-4 - Fashion Materials
-5 - Computer Accessories
+Include:
+• Product or supplier category needed
+• Quantity or estimated order size
+• Your location or delivery destination
+• Budget or target price
+• Preferred delivery date
 
-Reply with a number.`,
-    es: `🏪 PROVEEDORES CONFIABLES
+You may also send pictures, links, documents, or voice notes.
 
-Elija una categoría:
+Our team will contact you shortly on WhatsApp.`,
+    es: `🏪 Proveedores confiables seleccionado.
 
-1 - Materiales de impresión
-2 - Materiales eléctricos
-3 - Materiales de construcción
-4 - Materiales de moda
-5 - Accesorios de computadora
+Por favor escriba los detalles con sus propias palabras.
 
-Responda con un número.`,
-    fr: `🏪 FOURNISSEURS FIABLES
+Incluya:
+• Producto o categoría de proveedor necesaria
+• Cantidad o tamaño estimado del pedido
+• Su ubicación o destino de entrega
+• Presupuesto o precio objetivo
+• Fecha de entrega preferida
 
-Choisissez une catégorie :
+También puede enviar fotos, enlaces, documentos o notas de voz.
 
-1 - Matériel d'impression
-2 - Matériel électrique
-3 - Matériaux de construction
-4 - Matériel de mode
-5 - Accessoires informatiques
+Nuestro equipo se comunicará con usted pronto por WhatsApp.`,
+    fr: `🏪 Fournisseurs fiables sélectionné.
 
-Répondez avec un numéro.`,
-    de: `🏪 VERTRAUENSWÜRDIGE LIEFERANTEN
+Veuillez écrire les détails avec vos propres mots.
 
-Wählen Sie eine Kategorie:
+Incluez :
+• Produit ou catégorie de fournisseur souhaité
+• Quantité ou taille estimée de la commande
+• Votre position ou destination de livraison
+• Budget ou prix souhaité
+• Date de livraison souhaitée
 
-1 - Druckmaterialien
-2 - Elektromaterialien
-3 - Baumaterialien
-4 - Modematerialien
-5 - Computerzubehör
+Vous pouvez aussi envoyer des photos, liens, documents ou messages vocaux.
 
-Antworten Sie mit einer Zahl.`,
-    pt: `🏪 FORNECEDORES CONFIÁVEIS
+Notre équipe vous contactera bientôt sur WhatsApp.`,
+    de: `🏪 Vertrauenswürdige Lieferanten ausgewählt.
 
-Escolha uma categoria:
+Bitte schreiben Sie die Details mit Ihren eigenen Worten.
 
-1 - Materiais de impressão
-2 - Materiais elétricos
-3 - Materiais de construção
-4 - Materiais de moda
-5 - Acessórios de computador
+Bitte angeben:
+• Benötigtes Produkt oder Lieferantenkategorie
+• Menge oder geschätzte Bestellgröße
+• Ihren Standort oder Lieferziel
+• Budget oder Zielpreis
+• Gewünschtes Lieferdatum
 
-Responda com um número.`,
-    ar: `🏪 موردون موثوقون
+Sie können auch Bilder, Links, Dokumente oder Sprachnachrichten senden.
 
-اختر الفئة:
+Unser Team wird Sie in Kürze per WhatsApp kontaktieren.`,
+    pt: `🏪 Fornecedores confiáveis selecionado.
 
-1 - مواد الطباعة
-2 - مواد كهربائية
-3 - مواد البناء
-4 - مواد الأزياء
-5 - ملحقات الكمبيوتر
+Digite os detalhes com suas próprias palavras.
 
-رد برقم.`,
-    zh: `🏪 可信供应商
+Inclua:
+• Produto ou categoria de fornecedor necessária
+• Quantidade ou tamanho estimado do pedido
+• Sua localização ou destino de entrega
+• Orçamento ou preço desejado
+• Data de entrega preferida
 
-请选择类别：
+Você também pode enviar fotos, links, documentos ou mensagens de voz.
 
-1 - 打印材料
-2 - 电气材料
-3 - 建筑材料
-4 - 时尚材料
-5 - 电脑配件
+Nossa equipe entrará em contato em breve pelo WhatsApp.`,
+    ar: `🏪 تم اختيار موردين موثوقين.
 
-请回复数字。`
+يرجى كتابة التفاصيل بكلماتك الخاصة.
+
+اذكر:
+• المنتج أو فئة المورد المطلوبة
+• الكمية أو حجم الطلب المتوقع
+• موقعك أو وجهة التسليم
+• الميزانية أو السعر المطلوب
+• تاريخ التسليم المفضل
+
+يمكنك أيضًا إرسال صور أو روابط أو مستندات أو رسائل صوتية.
+
+سيتواصل معك فريقنا قريبًا عبر واتساب.`,
+    zh: `🏪 已选择可信供应商。
+
+请用您自己的话填写详细信息。
+
+请包括：
+• 需要的产品或供应商类别
+• 数量或预计订单规模
+• 您的位置或送货目的地
+• 预算或目标价格
+• 首选送货日期
+
+您也可以发送图片、链接、文件或语音消息。
+
+我们的团队会很快通过 WhatsApp 联系您。`
   }));
 
   return res.sendStatus(200);
 }
+
 if (lower === "18") {
   session.selectedService = "BUY_LAND_RESELL";
   session.stage = "SERVICE_WAITING_EXTRA_NOTES";
@@ -2416,8 +2509,6 @@ if (lower === "18") {
     en: `🏞️ Buy Land for Use or Resell selected.
 
 Please type what you need in your own words.
-Do not choose another number here.
-
 Example:
 I want land in Nigeria for resale. My budget is ₦5 million.
 
@@ -2429,8 +2520,6 @@ Our team will contact you shortly on WhatsApp.`,
     es: `🏞️ Comprar terreno para usar o revender seleccionado.
 
 Por favor escriba lo que necesita con sus propias palabras.
-No seleccione otro número aquí.
-
 Ejemplo:
 Quiero un terreno en Nigeria para reventa. Mi presupuesto es de ₦5 millones.
 
@@ -2442,8 +2531,6 @@ Nuestro equipo se comunicará con usted pronto por WhatsApp.`,
     fr: `🏞️ Achat de terrain pour usage ou revente sélectionné.
 
 Veuillez décrire vos besoins avec vos propres mots.
-Ne choisissez pas un autre numéro ici.
-
 Exemple :
 Je veux un terrain au Nigeria pour la revente. Mon budget est de ₦5 millions.
 
@@ -2455,8 +2542,6 @@ Notre équipe vous contactera bientôt sur WhatsApp.`,
     de: `🏞️ Land zum Nutzen oder Weiterverkaufen ausgewählt.
 
 Bitte beschreiben Sie Ihren Bedarf mit Ihren eigenen Worten.
-Wählen Sie hier keine weitere Nummer aus.
-
 Beispiel:
 Ich möchte Land in Nigeria zum Weiterverkaufen. Mein Budget beträgt ₦5 Millionen.
 
@@ -2468,8 +2553,6 @@ Unser Team wird Sie in Kürze per WhatsApp kontaktieren.`,
     pt: `🏞️ Comprar terreno para usar ou revender selecionado.
 
 Por favor descreva o que você precisa com suas próprias palavras.
-Não escolha outro número aqui.
-
 Exemplo:
 Quero um terreno na Nigéria para revenda. Meu orçamento é de ₦5 milhões.
 
@@ -2481,8 +2564,6 @@ Nossa equipe entrará em contato em breve pelo WhatsApp.`,
     ar: `🏞️ تم اختيار شراء أرض للاستخدام أو إعادة البيع.
 
 يرجى كتابة ما تحتاجه بكلماتك الخاصة.
-لا تختر رقمًا آخر هنا.
-
 مثال:
 أريد أرضًا في نيجيريا لإعادة البيع. ميزانيتي ₦5 ملايين.
 
@@ -2494,8 +2575,6 @@ Nossa equipe entrará em contato em breve pelo WhatsApp.`,
     zh: `🏞️ 已选择购买土地自用或转售。
 
 请用您自己的话描述您的需求。
-请不要在这里选择其他数字。
-
 示例：
 我想在尼日利亚购买土地用于转售，预算为₦500万。
 
@@ -2517,8 +2596,6 @@ if (lower === "19") {
     en: `💱 Currency Exchange selected.
 
 Please type what you need in your own words.
-Do not choose another number here.
-
 Example:
 I have USD and need Nigerian Naira. Amount: $5,000. Location: New Jersey.
 
@@ -2530,8 +2607,6 @@ Our team will contact you shortly on WhatsApp.`,
     es: `💱 Cambio de moneda seleccionado.
 
 Por favor escriba lo que necesita con sus propias palabras.
-No seleccione otro número aquí.
-
 Ejemplo:
 Tengo dólares y necesito naira nigeriana. Monto: $5,000. Ubicación: New Jersey.
 
@@ -2543,8 +2618,6 @@ Nuestro equipo se comunicará con usted pronto por WhatsApp.`,
     fr: `💱 Change de monnaie sélectionné.
 
 Veuillez décrire vos besoins avec vos propres mots.
-Ne choisissez pas un autre numéro ici.
-
 Exemple :
 J’ai des dollars américains et j’ai besoin de nairas nigérians. Montant : 5 000 $. Lieu : New Jersey.
 
@@ -2556,8 +2629,6 @@ Notre équipe vous contactera bientôt sur WhatsApp.`,
     de: `💱 Geldwechsel ausgewählt.
 
 Bitte beschreiben Sie Ihren Bedarf mit Ihren eigenen Worten.
-Wählen Sie hier keine weitere Nummer aus.
-
 Beispiel:
 Ich habe US-Dollar und brauche nigerianische Naira. Betrag: 5.000 $. Standort: New Jersey.
 
@@ -2569,8 +2640,6 @@ Unser Team wird Sie in Kürze per WhatsApp kontaktieren.`,
     pt: `💱 Câmbio selecionado.
 
 Por favor descreva o que você precisa com suas próprias palavras.
-Não escolha outro número aqui.
-
 Exemplo:
 Tenho dólares e preciso de naira nigeriana. Valor: US$ 5.000. Localização: New Jersey.
 
@@ -2582,8 +2651,6 @@ Nossa equipe entrará em contato em breve pelo WhatsApp.`,
     ar: `💱 تم اختيار تحويل العملات.
 
 يرجى كتابة ما تحتاجه بكلماتك الخاصة.
-لا تختر رقمًا آخر هنا.
-
 مثال:
 لدي دولارات وأحتاج إلى نايرا نيجيرية. المبلغ: 5,000 دولار. الموقع: نيوجيرسي.
 
@@ -2595,8 +2662,6 @@ Nossa equipe entrará em contato em breve pelo WhatsApp.`,
     zh: `💱 已选择货币兑换。
 
 请用您自己的话描述您的需求。
-请不要在这里选择其他数字。
-
 示例：
 我有美元，需要兑换成尼日利亚奈拉。金额：5,000美元。位置：新泽西。
 
@@ -2617,67 +2682,102 @@ if (lower === "20") {
   await sendMessage(from, pickText(session.language, {
     en: `📱 Social Media Creator selected.
 
-Please send:
-1. Type of content you need
-2. Platform: TikTok, Instagram, Facebook, YouTube, etc.
-3. Topic/product/business name
-4. Any sample or idea
+Please type the details in your own words.
 
-You can also send photo, video, text, or voice note.`,
+Include:
+• Type of content you need
+• Platform such as TikTok, Instagram, Facebook, or YouTube
+• Topic, product, or business name
+• Sample, idea, or brand style
+• Preferred deadline
+
+You may also send pictures, videos, links, documents, or voice notes.
+
+Our team will contact you shortly on WhatsApp.`,
     es: `📱 Creador de redes sociales seleccionado.
 
-Envíe:
-1. Tipo de contenido que necesita
-2. Plataforma: TikTok, Instagram, Facebook, YouTube, etc.
-3. Tema/producto/nombre del negocio
-4. Cualquier muestra o idea
+Por favor escriba los detalles con sus propias palabras.
 
-También puede enviar foto, video, texto o nota de voz.`,
+Incluya:
+• Tipo de contenido que necesita
+• Plataforma como TikTok, Instagram, Facebook o YouTube
+• Tema, producto o nombre del negocio
+• Muestra, idea o estilo de marca
+• Fecha límite preferida
+
+También puede enviar fotos, videos, enlaces, documentos o notas de voz.
+
+Nuestro equipo se comunicará con usted pronto por WhatsApp.`,
     fr: `📱 Créateur de réseaux sociaux sélectionné.
 
-Veuillez envoyer :
-1. Type de contenu souhaité
-2. Plateforme : TikTok, Instagram, Facebook, YouTube, etc.
-3. Sujet/produit/nom de l'entreprise
-4. Exemple ou idée
+Veuillez écrire les détails avec vos propres mots.
 
-Vous pouvez aussi envoyer photo, vidéo, texte ou note vocale.`,
+Incluez :
+• Type de contenu souhaité
+• Plateforme comme TikTok, Instagram, Facebook ou YouTube
+• Sujet, produit ou nom de l'entreprise
+• Exemple, idée ou style de marque
+• Date limite souhaitée
+
+Vous pouvez aussi envoyer des photos, vidéos, liens, documents ou messages vocaux.
+
+Notre équipe vous contactera bientôt sur WhatsApp.`,
     de: `📱 Social-Media-Ersteller ausgewählt.
 
-Bitte senden Sie:
-1. Art des Inhalts, den Sie benötigen
-2. Plattform: TikTok, Instagram, Facebook, YouTube usw.
-3. Thema/Produkt/Firmenname
-4. Beispiel oder Idee
+Bitte schreiben Sie die Details mit Ihren eigenen Worten.
 
-Sie können auch Foto, Video, Text oder Sprachnachricht senden.`,
+Bitte angeben:
+• Art des benötigten Inhalts
+• Plattform wie TikTok, Instagram, Facebook oder YouTube
+• Thema, Produkt oder Firmenname
+• Beispiel, Idee oder Markenstil
+• Gewünschte Frist
+
+Sie können auch Bilder, Videos, Links, Dokumente oder Sprachnachrichten senden.
+
+Unser Team wird Sie in Kürze per WhatsApp kontaktieren.`,
     pt: `📱 Criador de mídia social selecionado.
 
-Envie:
-1. Tipo de conteúdo necessário
-2. Plataforma: TikTok, Instagram, Facebook, YouTube, etc.
-3. Tema/produto/nome da empresa
-4. Qualquer exemplo ou ideia
+Digite os detalhes com suas próprias palavras.
 
-Você também pode enviar foto, vídeo, texto ou mensagem de voz.`,
+Inclua:
+• Tipo de conteúdo necessário
+• Plataforma como TikTok, Instagram, Facebook ou YouTube
+• Tema, produto ou nome da empresa
+• Exemplo, ideia ou estilo da marca
+• Prazo preferido
+
+Você também pode enviar fotos, vídeos, links, documentos ou mensagens de voz.
+
+Nossa equipe entrará em contato em breve pelo WhatsApp.`,
     ar: `📱 تم اختيار منشئ محتوى وسائل التواصل.
 
-يرجى إرسال:
-1. نوع المحتوى المطلوب
-2. المنصة: TikTok أو Instagram أو Facebook أو YouTube إلخ
-3. الموضوع/المنتج/اسم العمل
-4. أي مثال أو فكرة
+يرجى كتابة التفاصيل بكلماتك الخاصة.
 
-يمكنك أيضًا إرسال صورة أو فيديو أو نص أو رسالة صوتية.`,
+اذكر:
+• نوع المحتوى المطلوب
+• المنصة مثل TikTok أو Instagram أو Facebook أو YouTube
+• الموضوع أو المنتج أو اسم العمل
+• مثال أو فكرة أو أسلوب العلامة التجارية
+• الموعد النهائي المفضل
+
+يمكنك أيضًا إرسال صور أو فيديوهات أو روابط أو مستندات أو رسائل صوتية.
+
+سيتواصل معك فريقنا قريبًا عبر واتساب.`,
     zh: `📱 已选择社交媒体创作者。
 
-请发送：
-1. 您需要的内容类型
-2. 平台：TikTok、Instagram、Facebook、YouTube 等
-3. 主题/产品/商家名称
-4. 样例或想法
+请用您自己的话填写详细信息。
 
-您也可以发送照片、视频、文字或语音。`
+请包括：
+• 需要的内容类型
+• 平台，例如 TikTok、Instagram、Facebook 或 YouTube
+• 主题、产品或商家名称
+• 样例、想法或品牌风格
+• 首选完成时间
+
+您也可以发送图片、视频、链接、文件或语音消息。
+
+我们的团队会很快通过 WhatsApp 联系您。`
   }));
 
   return res.sendStatus(200);
@@ -2697,8 +2797,6 @@ Include details like:
 • Budget or asking price
 • Location
 
-Do not choose another number here.
-
 Example:
 I want to buy a 2015 Toyota Camry for resale. My budget is $6,000. Location: Newark, New Jersey.
 
@@ -2716,8 +2814,6 @@ Incluya detalles como:
 • Comprar, vender o revender
 • Presupuesto o precio solicitado
 • Ubicación
-
-No seleccione otro número aquí.
 
 Ejemplo:
 Quiero comprar un Toyota Camry 2015 para revender. Mi presupuesto es de $6,000. Ubicación: Newark, New Jersey.
@@ -2737,8 +2833,6 @@ Incluez des détails comme :
 • Budget ou prix demandé
 • Lieu
 
-Ne choisissez pas un autre numéro ici.
-
 Exemple :
 Je veux acheter une Toyota Camry 2015 pour la revente. Mon budget est de 6 000 $. Lieu : Newark, New Jersey.
 
@@ -2756,8 +2850,6 @@ Geben Sie Details an wie:
 • Kaufen, verkaufen oder weiterverkaufen
 • Budget oder Preisvorstellung
 • Standort
-
-Wählen Sie hier keine weitere Nummer aus.
 
 Beispiel:
 Ich möchte einen Toyota Camry 2015 zum Weiterverkaufen kaufen. Mein Budget beträgt 6.000 $. Standort: Newark, New Jersey.
@@ -2777,8 +2869,6 @@ Inclua detalhes como:
 • Orçamento ou preço pedido
 • Localização
 
-Não escolha outro número aqui.
-
 Exemplo:
 Quero comprar um Toyota Camry 2015 para revenda. Meu orçamento é de US$ 6.000. Localização: Newark, New Jersey.
 
@@ -2797,8 +2887,6 @@ Nossa equipe entrará em contato em breve pelo WhatsApp.`,
 • الميزانية أو السعر المطلوب
 • الموقع
 
-لا تختر رقمًا آخر هنا.
-
 مثال:
 أريد شراء Toyota Camry 2015 لإعادة البيع. ميزانيتي 6,000 دولار. الموقع: نيوارك، نيوجيرسي.
 
@@ -2816,8 +2904,6 @@ Nossa equipe entrará em contato em breve pelo WhatsApp.`,
 • 购买、出售或转售
 • 预算或要价
 • 位置
-
-请不要在这里选择其他数字。
 
 示例：
 我想购买一辆 2015 年 Toyota Camry 用于转售，预算为 6,000 美元。位置：新泽西纽瓦克。
@@ -2847,8 +2933,6 @@ Include details like:
 • Employment or income status
 • Best contact time
 
-Do not choose another number here.
-
 Example:
 I need a car loan for a 2018 Toyota Corolla. My budget is $12,000. I work full-time. Location: New Jersey.
 
@@ -2867,8 +2951,6 @@ Incluya detalles como:
 • Monto del préstamo o presupuesto
 • Estado laboral o de ingresos
 • Mejor hora de contacto
-
-No seleccione otro número aquí.
 
 Ejemplo:
 Necesito un préstamo para un Toyota Corolla 2018. Mi presupuesto es de $12,000. Trabajo tiempo completo. Ubicación: New Jersey.
@@ -2889,8 +2971,6 @@ Incluez des détails comme :
 • Situation professionnelle ou revenus
 • Meilleur moment pour vous contacter
 
-Ne choisissez pas un autre numéro ici.
-
 Exemple :
 J’ai besoin d’un prêt auto pour une Toyota Corolla 2018. Mon budget est de 12 000 $. Je travaille à temps plein. Lieu : New Jersey.
 
@@ -2909,8 +2989,6 @@ Geben Sie Details an wie:
 • Kreditbetrag oder Budget
 • Beschäftigungs- oder Einkommensstatus
 • Beste Kontaktzeit
-
-Wählen Sie hier keine weitere Nummer aus.
 
 Beispiel:
 Ich brauche einen Autokredit für einen Toyota Corolla 2018. Mein Budget beträgt 12.000 $. Ich arbeite Vollzeit. Standort: New Jersey.
@@ -2931,8 +3009,6 @@ Inclua detalhes como:
 • Situação de emprego ou renda
 • Melhor horário para contato
 
-Não escolha outro número aqui.
-
 Exemplo:
 Preciso de um empréstimo para um Toyota Corolla 2018. Meu orçamento é de US$ 12.000. Trabalho em tempo integral. Localização: New Jersey.
 
@@ -2951,8 +3027,6 @@ A PATAPATA conectará você a provedores aprovados. A comissão é paga pelo pro
 • مبلغ القرض أو الميزانية
 • حالة العمل أو الدخل
 • أفضل وقت للتواصل
-
-لا تختر رقمًا آخر هنا.
 
 مثال:
 أحتاج إلى قرض سيارة لـ Toyota Corolla 2018. ميزانيتي 12,000 دولار. أعمل بدوام كامل. الموقع: نيوجيرسي.
@@ -2973,8 +3047,6 @@ A PATAPATA conectará você a provedores aprovados. A comissão é paga pelo pro
 • 就业或收入情况
 • 最佳联系时间
 
-请不要在这里选择其他数字。
-
 示例：
 我需要为一辆 2018 年 Toyota Corolla 申请汽车贷款。预算为 12,000 美元。我是全职工作。位置：新泽西。
 
@@ -2993,74 +3065,102 @@ if (lower === "23") {
   await sendMessage(from, pickText(session.language, {
     en: `🛡️ Car Insurance selected.
 
-Please send:
-1. Your location/country
-2. Vehicle make, model, and year
-3. Current insurance status
-4. Coverage needed
-5. Best contact time
+Please type the details in your own words.
 
-PATAPATA will refer you to trusted insurance providers. Provider commission is handled by the provider, not the customer.`,
+Include:
+• Your location or country
+• Vehicle make, model, and year
+• Current insurance status
+• Coverage needed
+• Best contact time
+
+You may also send pictures, links, documents, or voice notes.
+
+Our team will contact you shortly on WhatsApp.`,
     es: `🛡️ Seguro de auto seleccionado.
 
-Envíe:
-1. Su ubicación/país
-2. Marca, modelo y año del vehículo
-3. Estado actual del seguro
-4. Cobertura necesaria
-5. Mejor hora de contacto
+Por favor escriba los detalles con sus propias palabras.
 
-PATAPATA lo referirá a proveedores de seguros confiables. La comisión la paga el proveedor, no el cliente.`,
-    fr: `🛡️ Assurance auto sélectionnée.
+Incluya:
+• Su ubicación o país
+• Marca, modelo y año del vehículo
+• Estado actual del seguro
+• Cobertura necesaria
+• Mejor hora de contacto
 
-Veuillez envoyer :
-1. Votre lieu/pays
-2. Marque, modèle et année du véhicule
-3. Statut actuel d'assurance
-4. Couverture souhaitée
-5. Meilleur moment pour vous contacter
+También puede enviar fotos, enlaces, documentos o notas de voz.
 
-PATAPATA vous orientera vers des assureurs fiables. La commission est payée par le fournisseur, pas par le client.`,
+Nuestro equipo se comunicará con usted pronto por WhatsApp.`,
+    fr: `🛡️ Assurance auto sélectionné.
+
+Veuillez écrire les détails avec vos propres mots.
+
+Incluez :
+• Votre emplacement ou pays
+• Marque, modèle et année du véhicule
+• Statut actuel de l'assurance
+• Couverture souhaitée
+• Meilleur moment pour vous contacter
+
+Vous pouvez aussi envoyer des photos, liens, documents ou messages vocaux.
+
+Notre équipe vous contactera bientôt sur WhatsApp.`,
     de: `🛡️ Autoversicherung ausgewählt.
 
-Bitte senden Sie:
-1. Standort/Land
-2. Marke, Modell und Baujahr
-3. Aktueller Versicherungsstatus
-4. Gewünschte Deckung
-5. Beste Kontaktzeit
+Bitte schreiben Sie die Details mit Ihren eigenen Worten.
 
-PATAPATA vermittelt Sie an vertrauenswürdige Versicherungsanbieter. Die Provision wird vom Anbieter bezahlt, nicht vom Kunden.`,
+Bitte angeben:
+• Ihr Standort oder Land
+• Fahrzeugmarke, Modell und Baujahr
+• Aktueller Versicherungsstatus
+• Benötigte Deckung
+• Beste Kontaktzeit
+
+Sie können auch Bilder, Links, Dokumente oder Sprachnachrichten senden.
+
+Unser Team wird Sie in Kürze per WhatsApp kontaktieren.`,
     pt: `🛡️ Seguro de carro selecionado.
 
-Envie:
-1. Sua localização/país
-2. Marca, modelo e ano do veículo
-3. Situação atual do seguro
-4. Cobertura desejada
-5. Melhor horário para contato
+Digite os detalhes com suas próprias palavras.
 
-A PATAPATA encaminhará você a seguradoras confiáveis. A comissão é paga pelo provedor, não pelo cliente.`,
+Inclua:
+• Sua localização ou país
+• Marca, modelo e ano do veículo
+• Status atual do seguro
+• Cobertura necessária
+• Melhor horário para contato
+
+Você também pode enviar fotos, links, documentos ou mensagens de voz.
+
+Nossa equipe entrará em contato em breve pelo WhatsApp.`,
     ar: `🛡️ تم اختيار تأمين السيارات.
 
-يرجى إرسال:
-1. موقعك/بلدك
-2. نوع السيارة والموديل والسنة
-3. حالة التأمين الحالية
-4. نوع التغطية المطلوبة
-5. أفضل وقت للتواصل
+يرجى كتابة التفاصيل بكلماتك الخاصة.
 
-ستحيلك PATAPATA إلى مزودي تأمين موثوقين. العمولة يدفعها مقدم الخدمة وليس العميل.`,
+اذكر:
+• موقعك أو بلدك
+• ماركة السيارة وموديلها وسنتها
+• حالة التأمين الحالية
+• التغطية المطلوبة
+• أفضل وقت للتواصل
+
+يمكنك أيضًا إرسال صور أو روابط أو مستندات أو رسائل صوتية.
+
+سيتواصل معك فريقنا قريبًا عبر واتساب.`,
     zh: `🛡️ 已选择汽车保险。
 
-请发送：
-1. 您的位置/国家
-2. 车辆品牌、型号和年份
-3. 当前保险状态
-4. 需要的保险范围
-5. 最佳联系时间
+请用您自己的话填写详细信息。
 
-PATAPATA 会推荐可靠的保险服务商。服务商佣金由服务商承担，不由客户承担。`
+请包括：
+• 您的位置或国家
+• 车辆品牌、型号和年份
+• 当前保险状态
+• 需要的保险范围
+• 最佳联系时间
+
+您也可以发送图片、链接、文件或语音消息。
+
+我们的团队会很快通过 WhatsApp 联系您。`
   }));
   return res.sendStatus(200);
 }
@@ -3071,74 +3171,102 @@ if (lower === "24") {
   await sendMessage(from, pickText(session.language, {
     en: `🚙 Car Rental Services selected.
 
-Please send:
-1. Pickup city/location
-2. Rental start and return date
-3. Vehicle type needed
-4. Driver needed? Yes/No
-5. Budget range
+Please type the details in your own words.
 
-PATAPATA will connect you with rental providers. Provider commission is handled by the provider, not the customer.`,
+Include:
+• Pickup city or location
+• Rental start and return date
+• Vehicle type needed
+• Driver needed or self-drive
+• Budget range
+
+You may also send pictures, links, documents, or voice notes.
+
+Our team will contact you shortly on WhatsApp.`,
     es: `🚙 Servicios de alquiler de autos seleccionado.
 
-Envíe:
-1. Ciudad/lugar de recogida
-2. Fecha de inicio y devolución
-3. Tipo de vehículo necesario
-4. ¿Necesita conductor? Sí/No
-5. Rango de presupuesto
+Por favor escriba los detalles con sus propias palabras.
 
-PATAPATA lo conectará con proveedores de alquiler. La comisión la paga el proveedor, no el cliente.`,
-    fr: `🚙 Services de location de voiture sélectionnés.
+Incluya:
+• Ciudad o lugar de recogida
+• Fecha de inicio y devolución
+• Tipo de vehículo necesario
+• Con conductor o sin conductor
+• Rango de presupuesto
 
-Veuillez envoyer :
-1. Ville/lieu de prise en charge
-2. Date de début et de retour
-3. Type de véhicule souhaité
-4. Chauffeur nécessaire ? Oui/Non
-5. Fourchette de budget
+También puede enviar fotos, enlaces, documentos o notas de voz.
 
-PATAPATA vous mettra en relation avec des loueurs. La commission est payée par le fournisseur, pas par le client.`,
+Nuestro equipo se comunicará con usted pronto por WhatsApp.`,
+    fr: `🚙 Services de location de voiture sélectionné.
+
+Veuillez écrire les détails avec vos propres mots.
+
+Incluez :
+• Ville ou lieu de prise en charge
+• Date de début et de retour
+• Type de véhicule souhaité
+• Avec chauffeur ou sans chauffeur
+• Fourchette de budget
+
+Vous pouvez aussi envoyer des photos, liens, documents ou messages vocaux.
+
+Notre équipe vous contactera bientôt sur WhatsApp.`,
     de: `🚙 Autovermietung ausgewählt.
 
-Bitte senden Sie:
-1. Abholstadt/Standort
-2. Start- und Rückgabedatum
-3. Benötigter Fahrzeugtyp
-4. Fahrer benötigt? Ja/Nein
-5. Budgetrahmen
+Bitte schreiben Sie die Details mit Ihren eigenen Worten.
 
-PATAPATA verbindet Sie mit Mietwagenanbietern. Die Provision wird vom Anbieter bezahlt, nicht vom Kunden.`,
-    pt: `🚙 Serviços de aluguel de carros selecionados.
+Bitte angeben:
+• Abholstadt oder Standort
+• Start- und Rückgabedatum
+• Benötigter Fahrzeugtyp
+• Mit Fahrer oder Selbstfahrer
+• Budgetrahmen
 
-Envie:
-1. Cidade/local de retirada
-2. Data de início e devolução
-3. Tipo de veículo necessário
-4. Precisa de motorista? Sim/Não
-5. Faixa de orçamento
+Sie können auch Bilder, Links, Dokumente oder Sprachnachrichten senden.
 
-A PATAPATA conectará você a locadoras. A comissão é paga pelo provedor, não pelo cliente.`,
+Unser Team wird Sie in Kürze per WhatsApp kontaktieren.`,
+    pt: `🚙 Serviços de aluguel de carros selecionado.
+
+Digite os detalhes com suas próprias palavras.
+
+Inclua:
+• Cidade ou local de retirada
+• Data de início e devolução
+• Tipo de veículo necessário
+• Com motorista ou sem motorista
+• Faixa de orçamento
+
+Você também pode enviar fotos, links, documentos ou mensagens de voz.
+
+Nossa equipe entrará em contato em breve pelo WhatsApp.`,
     ar: `🚙 تم اختيار خدمات تأجير السيارات.
 
-يرجى إرسال:
-1. مدينة/موقع الاستلام
-2. تاريخ البداية والإرجاع
-3. نوع السيارة المطلوبة
-4. هل تحتاج سائق؟ نعم/لا
-5. نطاق الميزانية
+يرجى كتابة التفاصيل بكلماتك الخاصة.
 
-ستوصلك PATAPATA بمزودي تأجير السيارات. العمولة يدفعها مقدم الخدمة وليس العميل.`,
+اذكر:
+• مدينة أو موقع الاستلام
+• تاريخ البداية والإرجاع
+• نوع السيارة المطلوبة
+• مع سائق أو قيادة ذاتية
+• نطاق الميزانية
+
+يمكنك أيضًا إرسال صور أو روابط أو مستندات أو رسائل صوتية.
+
+سيتواصل معك فريقنا قريبًا عبر واتساب.`,
     zh: `🚙 已选择汽车租赁服务。
 
-请发送：
-1. 取车城市/地点
-2. 租车开始和归还日期
-3. 需要的车辆类型
-4. 是否需要司机？是/否
-5. 预算范围
+请用您自己的话填写详细信息。
 
-PATAPATA 会为您连接租车服务商。服务商佣金由服务商承担，不由客户承担。`
+请包括：
+• 取车城市或地点
+• 租车开始和归还日期
+• 需要的车辆类型
+• 需要司机或自驾
+• 预算范围
+
+您也可以发送图片、链接、文件或语音消息。
+
+我们的团队会很快通过 WhatsApp 联系您。`
   }));
   return res.sendStatus(200);
 }
@@ -3149,78 +3277,105 @@ if (lower === "25") {
   await sendMessage(from, pickText(session.language, {
     en: `📱 Mobile App Development selected.
 
-Please send:
-1. App idea or business type
-2. Android, iPhone, or both
-3. Main features needed
-4. Budget range
-5. Timeline
+Please type the details in your own words.
 
-PATAPATA will connect you with app development providers. Provider commission is handled by the provider, not the customer.`,
+Include:
+• Your location
+• App idea or business type
+• Android, iPhone, or both
+• Main features needed
+• Budget range and timeline
+
+You may also send pictures, links, documents, or voice notes.
+
+Our team will contact you shortly on WhatsApp.`,
     es: `📱 Desarrollo de aplicaciones móviles seleccionado.
 
-Envíe:
-1. Idea de la app o tipo de negocio
-2. Android, iPhone o ambos
-3. Funciones principales necesarias
-4. Rango de presupuesto
-5. Tiempo estimado
+Por favor escriba los detalles con sus propias palabras.
 
-PATAPATA lo conectará con desarrolladores de apps. La comisión la paga el proveedor, no el cliente.`,
+Incluya:
+• Su ubicación
+• Idea de la app o tipo de negocio
+• Android, iPhone o ambos
+• Funciones principales necesarias
+• Presupuesto y tiempo estimado
+
+También puede enviar fotos, enlaces, documentos o notas de voz.
+
+Nuestro equipo se comunicará con usted pronto por WhatsApp.`,
     fr: `📱 Développement d'application mobile sélectionné.
 
-Veuillez envoyer :
-1. Idée d'application ou type d'entreprise
-2. Android, iPhone ou les deux
-3. Fonctionnalités principales souhaitées
-4. Fourchette de budget
-5. Délai
+Veuillez écrire les détails avec vos propres mots.
 
-PATAPATA vous mettra en relation avec des développeurs d'applications. La commission est payée par le fournisseur, pas par le client.`,
+Incluez :
+• Votre emplacement
+• Idée d'application ou type d'entreprise
+• Android, iPhone ou les deux
+• Fonctionnalités principales souhaitées
+• Budget et délai
+
+Vous pouvez aussi envoyer des photos, liens, documents ou messages vocaux.
+
+Notre équipe vous contactera bientôt sur WhatsApp.`,
     de: `📱 Mobile-App-Entwicklung ausgewählt.
 
-Bitte senden Sie:
-1. App-Idee oder Geschäftstyp
-2. Android, iPhone oder beides
-3. Benötigte Hauptfunktionen
-4. Budgetrahmen
-5. Zeitplan
+Bitte schreiben Sie die Details mit Ihren eigenen Worten.
 
-PATAPATA verbindet Sie mit App-Entwicklungsanbietern. Die Provision wird vom Anbieter bezahlt, nicht vom Kunden.`,
+Bitte angeben:
+• Ihr Standort
+• App-Idee oder Geschäftstyp
+• Android, iPhone oder beides
+• Benötigte Hauptfunktionen
+• Budget und Zeitplan
+
+Sie können auch Bilder, Links, Dokumente oder Sprachnachrichten senden.
+
+Unser Team wird Sie in Kürze per WhatsApp kontaktieren.`,
     pt: `📱 Desenvolvimento de aplicativo móvel selecionado.
 
-Envie:
-1. Ideia do aplicativo ou tipo de negócio
-2. Android, iPhone ou ambos
-3. Principais recursos necessários
-4. Faixa de orçamento
-5. Prazo
+Digite os detalhes com suas próprias palavras.
 
-A PATAPATA conectará você a desenvolvedores de aplicativos. A comissão é paga pelo provedor, não pelo cliente.`,
+Inclua:
+• Sua localização
+• Ideia do aplicativo ou tipo de negócio
+• Android, iPhone ou ambos
+• Principais recursos necessários
+• Orçamento e prazo
+
+Você também pode enviar fotos, links, documentos ou mensagens de voz.
+
+Nossa equipe entrará em contato em breve pelo WhatsApp.`,
     ar: `📱 تم اختيار تطوير تطبيقات الجوال.
 
-يرجى إرسال:
-1. فكرة التطبيق أو نوع العمل
-2. أندرويد أو آيفون أو كلاهما
-3. الميزات الرئيسية المطلوبة
-4. نطاق الميزانية
-5. الجدول الزمني
+يرجى كتابة التفاصيل بكلماتك الخاصة.
 
-ستوصلك PATAPATA بمطوري التطبيقات. العمولة يدفعها مقدم الخدمة وليس العميل.`,
+اذكر:
+• موقعك
+• فكرة التطبيق أو نوع العمل
+• أندرويد أو آيفون أو كلاهما
+• الميزات الرئيسية المطلوبة
+• الميزانية والجدول الزمني
+
+يمكنك أيضًا إرسال صور أو روابط أو مستندات أو رسائل صوتية.
+
+سيتواصل معك فريقنا قريبًا عبر واتساب.`,
     zh: `📱 已选择手机应用开发。
 
-请发送：
-1. 应用想法或业务类型
-2. Android、iPhone 或两者都要
-3. 所需主要功能
-4. 预算范围
-5. 时间安排
+请用您自己的话填写详细信息。
 
-PATAPATA 会为您连接应用开发服务商。服务商佣金由服务商承担，不由客户承担。`
+请包括：
+• 您的位置
+• 应用想法或业务类型
+• Android、iPhone 或两者都要
+• 所需主要功能
+• 预算和时间安排
+
+您也可以发送图片、链接、文件或语音消息。
+
+我们的团队会很快通过 WhatsApp 联系您。`
   }));
   return res.sendStatus(200);
 }
-
 
 if (lower === "26") {
   session.selectedService = "HOTEL_RESERVATION";
@@ -3228,81 +3383,102 @@ if (lower === "26") {
   await sendMessage(from, pickText(session.language, {
     en: `🏨 Hotel Reservation selected.
 
-Please send:
-1. Destination city/country
-2. Check-in and check-out dates
-3. Number of guests
-4. Room type or hotel preference
-5. Budget range
-6. Best contact time
+Please type the details in your own words.
 
-PATAPATA will connect you with hotel/reservation providers. Provider commission is handled by the provider, not the customer.`,
-    es: `🏨 Reserva de hotel seleccionada.
+Include:
+• Destination city or country
+• Check-in and check-out dates
+• Number of guests
+• Room type or hotel preference
+• Budget range and best contact time
 
-Envíe:
-1. Ciudad/país de destino
-2. Fechas de entrada y salida
-3. Número de huéspedes
-4. Tipo de habitación o preferencia de hotel
-5. Rango de presupuesto
-6. Mejor hora de contacto
+You may also send pictures, links, documents, or voice notes.
 
-PATAPATA lo conectará con proveedores de hoteles/reservas. La comisión la paga el proveedor, no el cliente.`,
-    fr: `🏨 Réservation d'hôtel sélectionnée.
+Our team will contact you shortly on WhatsApp.`,
+    es: `🏨 Reserva de hotel seleccionado.
 
-Veuillez envoyer :
-1. Ville/pays de destination
-2. Dates d'arrivée et de départ
-3. Nombre de voyageurs
-4. Type de chambre ou préférence d'hôtel
-5. Fourchette de budget
-6. Meilleur moment pour vous contacter
+Por favor escriba los detalles con sus propias palabras.
 
-PATAPATA vous mettra en relation avec des fournisseurs d'hôtels/réservations. La commission est payée par le fournisseur, pas par le client.`,
+Incluya:
+• Ciudad o país de destino
+• Fechas de entrada y salida
+• Número de huéspedes
+• Tipo de habitación o preferencia de hotel
+• Presupuesto y mejor hora de contacto
+
+También puede enviar fotos, enlaces, documentos o notas de voz.
+
+Nuestro equipo se comunicará con usted pronto por WhatsApp.`,
+    fr: `🏨 Réservation d'hôtel sélectionné.
+
+Veuillez écrire les détails avec vos propres mots.
+
+Incluez :
+• Ville ou pays de destination
+• Dates d'arrivée et de départ
+• Nombre de voyageurs
+• Type de chambre ou préférence d'hôtel
+• Budget et meilleur moment pour vous contacter
+
+Vous pouvez aussi envoyer des photos, liens, documents ou messages vocaux.
+
+Notre équipe vous contactera bientôt sur WhatsApp.`,
     de: `🏨 Hotelreservierung ausgewählt.
 
-Bitte senden Sie:
-1. Zielstadt/Zielland
-2. Check-in- und Check-out-Datum
-3. Anzahl der Gäste
-4. Zimmertyp oder Hotelwunsch
-5. Budgetrahmen
-6. Beste Kontaktzeit
+Bitte schreiben Sie die Details mit Ihren eigenen Worten.
 
-PATAPATA verbindet Sie mit Hotel-/Reservierungsanbietern. Die Provision wird vom Anbieter bezahlt, nicht vom Kunden.`,
-    pt: `🏨 Reserva de hotel selecionada.
+Bitte angeben:
+• Zielstadt oder Zielland
+• Check-in- und Check-out-Datum
+• Anzahl der Gäste
+• Zimmertyp oder Hotelwunsch
+• Budget und beste Kontaktzeit
 
-Envie:
-1. Cidade/país de destino
-2. Datas de check-in e check-out
-3. Número de hóspedes
-4. Tipo de quarto ou preferência de hotel
-5. Faixa de orçamento
-6. Melhor horário para contato
+Sie können auch Bilder, Links, Dokumente oder Sprachnachrichten senden.
 
-A PATAPATA conectará você a provedores de hotéis/reservas. A comissão é paga pelo provedor, não pelo cliente.`,
+Unser Team wird Sie in Kürze per WhatsApp kontaktieren.`,
+    pt: `🏨 Reserva de hotel selecionado.
+
+Digite os detalhes com suas próprias palavras.
+
+Inclua:
+• Cidade ou país de destino
+• Datas de check-in e check-out
+• Número de hóspedes
+• Tipo de quarto ou preferência de hotel
+• Orçamento e melhor horário para contato
+
+Você também pode enviar fotos, links, documentos ou mensagens de voz.
+
+Nossa equipe entrará em contato em breve pelo WhatsApp.`,
     ar: `🏨 تم اختيار حجز فندق.
 
-يرجى إرسال:
-1. مدينة/بلد الوجهة
-2. تاريخ الوصول والمغادرة
-3. عدد الضيوف
-4. نوع الغرفة أو الفندق المفضل
-5. نطاق الميزانية
-6. أفضل وقت للتواصل
+يرجى كتابة التفاصيل بكلماتك الخاصة.
 
-ستوصلك PATAPATA بمزودي الفنادق/الحجوزات. العمولة يدفعها مقدم الخدمة وليس العميل.`,
-    zh: `🏨 已选择酒店预订服务。
+اذكر:
+• مدينة أو بلد الوجهة
+• تاريخ الوصول والمغادرة
+• عدد الضيوف
+• نوع الغرفة أو الفندق المفضل
+• الميزانية وأفضل وقت للتواصل
 
-请发送：
-1. 目的地城市/国家
-2. 入住和退房日期
-3. 客人人数
-4. 房型或酒店偏好
-5. 预算范围
-6. 最佳联系时间
+يمكنك أيضًا إرسال صور أو روابط أو مستندات أو رسائل صوتية.
 
-PATAPATA 将为您连接酒店/预订服务提供商。服务商佣金由服务商承担，不由客户承担。`
+سيتواصل معك فريقنا قريبًا عبر واتساب.`,
+    zh: `🏨 已选择酒店预订。
+
+请用您自己的话填写详细信息。
+
+请包括：
+• 目的地城市或国家
+• 入住和退房日期
+• 客人人数
+• 房型或酒店偏好
+• 预算和最佳联系时间
+
+您也可以发送图片、链接、文件或语音消息。
+
+我们的团队会很快通过 WhatsApp 联系您。`
   }));
   return res.sendStatus(200);
 }
@@ -3310,148 +3486,202 @@ PATAPATA 将为您连接酒店/预订服务提供商。服务商佣金由服务�
 if (lower === "27") {
   session.selectedService = "HOME_SECURITY_TECHNICIAN";
   session.stage = "SERVICE_WAITING_EXTRA_NOTES";
-
   await sendMessage(from, pickText(session.language, {
     en: `🏠🔐 Home Security Technician selected.
 
-Please send:
-1. Your location
-2. Type of security service needed
-3. House, office, or store
-4. Preferred service date/time
+Please type the details in your own words.
 
-PATAPATA will connect you with trusted technicians.`,
+Include:
+• Your location
+• Type of security service needed
+• House, office, store, or warehouse
+• Preferred service date and time
+
+You may also send pictures, links, documents, or voice notes.
+
+Our team will contact you shortly on WhatsApp.`,
     es: `🏠🔐 Técnico de seguridad para el hogar seleccionado.
 
-Envíe:
-1. Su ubicación
-2. Tipo de servicio de seguridad necesario
-3. Casa, oficina o tienda
-4. Fecha/hora preferida del servicio
+Por favor escriba los detalles con sus propias palabras.
 
-PATAPATA lo conectará con técnicos confiables.`,
+Incluya:
+• Su ubicación
+• Tipo de servicio de seguridad necesario
+• Casa, oficina, tienda o almacén
+• Fecha y hora preferidas del servicio
+
+También puede enviar fotos, enlaces, documentos o notas de voz.
+
+Nuestro equipo se comunicará con usted pronto por WhatsApp.`,
     fr: `🏠🔐 Technicien en sécurité résidentielle sélectionné.
 
-Veuillez envoyer :
-1. Votre emplacement
-2. Type de service de sécurité nécessaire
-3. Maison, bureau ou magasin
-4. Date/heure souhaitée
+Veuillez écrire les détails avec vos propres mots.
 
-PATAPATA vous mettra en relation avec des techniciens fiables.`,
+Incluez :
+• Votre emplacement
+• Type de service de sécurité nécessaire
+• Maison, bureau, magasin ou entrepôt
+• Date et heure souhaitées
+
+Vous pouvez aussi envoyer des photos, liens, documents ou messages vocaux.
+
+Notre équipe vous contactera bientôt sur WhatsApp.`,
     de: `🏠🔐 Haussicherheitstechniker ausgewählt.
 
-Bitte senden Sie:
-1. Ihren Standort
-2. Benötigte Sicherheitsdienstleistung
-3. Haus, Büro oder Geschäft
-4. Gewünschtes Datum/Uhrzeit
+Bitte schreiben Sie die Details mit Ihren eigenen Worten.
 
-PATAPATA verbindet Sie mit vertrauenswürdigen Technikern.`,
+Bitte angeben:
+• Ihr Standort
+• Benötigte Sicherheitsdienstleistung
+• Haus, Büro, Geschäft oder Lager
+• Gewünschtes Datum und Uhrzeit
+
+Sie können auch Bilder, Links, Dokumente oder Sprachnachrichten senden.
+
+Unser Team wird Sie in Kürze per WhatsApp kontaktieren.`,
     pt: `🏠🔐 Técnico de segurança residencial selecionado.
 
-Envie:
-1. Sua localização
-2. Tipo de serviço de segurança necessário
-3. Casa, escritório ou loja
-4. Data/hora preferida
+Digite os detalhes com suas próprias palavras.
 
-A PATAPATA conectará você a técnicos confiáveis.`,
+Inclua:
+• Sua localização
+• Tipo de serviço de segurança necessário
+• Casa, escritório, loja ou armazém
+• Data e horário preferidos
+
+Você também pode enviar fotos, links, documentos ou mensagens de voz.
+
+Nossa equipe entrará em contato em breve pelo WhatsApp.`,
     ar: `🏠🔐 تم اختيار فني أمن المنازل.
 
-يرجى إرسال:
-1. موقعك
-2. نوع خدمة الأمن المطلوبة
-3. منزل أو مكتب أو متجر
-4. التاريخ/الوقت المفضل للخدمة
+يرجى كتابة التفاصيل بكلماتك الخاصة.
 
-ستوصلك PATAPATA بفنيين موثوقين.`,
-    zh: `🏠🔐 已选择家庭安防技术员服务。
+اذكر:
+• موقعك
+• نوع خدمة الأمن المطلوبة
+• منزل أو مكتب أو متجر أو مستودع
+• التاريخ والوقت المفضلان للخدمة
 
-请发送：
-1. 您的位置
-2. 所需安防服务类型
-3. 住宅、办公室或商店
-4. 首选服务日期/时间
+يمكنك أيضًا إرسال صور أو روابط أو مستندات أو رسائل صوتية.
 
-PATAPATA 将为您连接可靠的技术人员。`
+سيتواصل معك فريقنا قريبًا عبر واتساب.`,
+    zh: `🏠🔐 已选择家庭安防技术员。
+
+请用您自己的话填写详细信息。
+
+请包括：
+• 您的位置
+• 所需安防服务类型
+• 住宅、办公室、商店或仓库
+• 首选服务日期和时间
+
+您也可以发送图片、链接、文件或语音消息。
+
+我们的团队会很快通过 WhatsApp 联系您。`
   }));
-
   return res.sendStatus(200);
 }
 
 if (lower === "28") {
   session.selectedService = "LOCKSMITH";
   session.stage = "SERVICE_WAITING_EXTRA_NOTES";
-
   await sendMessage(from, pickText(session.language, {
     en: `🔑 Locksmith selected.
 
-Please send:
-1. Your location
-2. Lock issue or service needed
-3. House, office, or vehicle
-4. Emergency or scheduled service
+Please type the details in your own words.
 
-PATAPATA will connect you with trusted locksmiths.`,
+Include:
+• Your location
+• Lock issue or service needed
+• House, office, store, or vehicle
+• Emergency or scheduled service
+
+You may also send pictures, links, documents, or voice notes.
+
+Our team will contact you shortly on WhatsApp.`,
     es: `🔑 Cerrajero seleccionado.
 
-Envíe:
-1. Su ubicación
-2. Problema o servicio de cerradura
-3. Casa, oficina o vehículo
-4. Servicio de emergencia o programado
+Por favor escriba los detalles con sus propias palabras.
 
-PATAPATA lo conectará con cerrajeros confiables.`,
+Incluya:
+• Su ubicación
+• Problema de cerradura o servicio necesario
+• Casa, oficina, tienda o vehículo
+• Servicio de emergencia o programado
+
+También puede enviar fotos, enlaces, documentos o notas de voz.
+
+Nuestro equipo se comunicará con usted pronto por WhatsApp.`,
     fr: `🔑 Serrurier sélectionné.
 
-Veuillez envoyer :
-1. Votre emplacement
-2. Problème ou service de serrure
-3. Maison, bureau ou véhicule
-4. Service d'urgence ou programmé
+Veuillez écrire les détails avec vos propres mots.
 
-PATAPATA vous mettra en relation avec des serruriers fiables.`,
+Incluez :
+• Votre emplacement
+• Problème ou service de serrure nécessaire
+• Maison, bureau, magasin ou véhicule
+• Service d'urgence ou programmé
+
+Vous pouvez aussi envoyer des photos, liens, documents ou messages vocaux.
+
+Notre équipe vous contactera bientôt sur WhatsApp.`,
     de: `🔑 Schlüsseldienst ausgewählt.
 
-Bitte senden Sie:
-1. Ihren Standort
-2. Schlossproblem oder benötigter Service
-3. Haus, Büro oder Fahrzeug
-4. Notfall oder geplanter Service
+Bitte schreiben Sie die Details mit Ihren eigenen Worten.
 
-PATAPATA verbindet Sie mit vertrauenswürdigen Schlüsseldiensten.`,
+Bitte angeben:
+• Ihr Standort
+• Schlossproblem oder benötigter Service
+• Haus, Büro, Geschäft oder Fahrzeug
+• Notfall oder geplanter Service
+
+Sie können auch Bilder, Links, Dokumente oder Sprachnachrichten senden.
+
+Unser Team wird Sie in Kürze per WhatsApp kontaktieren.`,
     pt: `🔑 Chaveiro selecionado.
 
-Envie:
-1. Sua localização
-2. Problema da fechadura ou serviço necessário
-3. Casa, escritório ou veículo
-4. Serviço de emergência ou agendado
+Digite os detalhes com suas próprias palavras.
 
-A PATAPATA conectará você a chaveiros confiáveis.`,
-    ar: `🔑 تم اختيار خدمة صانع الأقفال.
+Inclua:
+• Sua localização
+• Problema da fechadura ou serviço necessário
+• Casa, escritório, loja ou veículo
+• Serviço de emergência ou agendado
 
-يرجى إرسال:
-1. موقعك
-2. مشكلة القفل أو الخدمة المطلوبة
-3. منزل أو مكتب أو سيارة
-4. خدمة طارئة أو مجدولة
+Você também pode enviar fotos, links, documentos ou mensagens de voz.
 
-ستوصلك PATAPATA بصناع أقفال موثوقين.`,
-    zh: `🔑 已选择锁匠服务。
+Nossa equipe entrará em contato em breve pelo WhatsApp.`,
+    ar: `🔑 تم اختيار صانع أقفال.
 
-请发送：
-1. 您的位置
-2. 锁的问题或所需服务
-3. 住宅、办公室或车辆
-4. 紧急服务或预约服务
+يرجى كتابة التفاصيل بكلماتك الخاصة.
 
-PATAPATA 将为您连接可靠的锁匠。`
+اذكر:
+• موقعك
+• مشكلة القفل أو الخدمة المطلوبة
+• منزل أو مكتب أو متجر أو سيارة
+• خدمة طارئة أو مجدولة
+
+يمكنك أيضًا إرسال صور أو روابط أو مستندات أو رسائل صوتية.
+
+سيتواصل معك فريقنا قريبًا عبر واتساب.`,
+    zh: `🔑 已选择锁匠。
+
+请用您自己的话填写详细信息。
+
+请包括：
+• 您的位置
+• 锁具问题或所需服务
+• 住宅、办公室、商店或车辆
+• 紧急服务或预约服务
+
+您也可以发送图片、链接、文件或语音消息。
+
+我们的团队会很快通过 WhatsApp 联系您。`
   }));
-
   return res.sendStatus(200);
 }
+
+
 
 
   await sendMessage(from, serviceMenu(session.language));
