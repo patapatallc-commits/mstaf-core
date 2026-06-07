@@ -2258,7 +2258,7 @@ if (lower === "15") {
   session.selectedService = "HIRE_WORKER";
   session.lastServiceJobId = null;
   session.pendingFile = null;
-  session.stage = "HIRE_WORKER_MENU";
+  session.stage = "SERVICE_WAITING_EXTRA_NOTES";
 
   await sendMessage(from, pickText(session.language, {
     en: `👷 HIRE A WORKER
