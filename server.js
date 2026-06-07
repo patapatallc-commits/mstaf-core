@@ -1927,6 +1927,7 @@ Nossa equipe entrará em contato em breve pelo WhatsApp.`,
 
 if (lower === "12") {
     session.selectedService = "TSHIRT_PRINT";
+  session.lastServiceJobId = null;
     session.stage = "TSHIRT_SELECT_SIZE";
 
     await sendMessage(from, pickText(session.language, {
@@ -2322,6 +2323,7 @@ Você também pode enviar uma mensagem de voz.`,
 
 if (lower === "16") {
   session.selectedService = "COMMUNITY_ALERT";
+  session.lastServiceJobId = null;
   session.stage = "COMMUNITY_ALERT_WAITING";
 
   await sendMessage(from, pickText(session.language, {
@@ -2395,6 +2397,7 @@ Essas informações serão analisadas antes da divulgação.`,
 
 if (lower === "17") {
   session.selectedService = "TRUSTED_SUPPLIERS";
+  session.lastServiceJobId = null;
   session.stage = "SERVICE_WAITING_EXTRA_NOTES";
 
   await sendMessage(from, pickText(session.language, {
@@ -2503,6 +2506,7 @@ Nossa equipe entrará em contato em breve pelo WhatsApp.`,
 
 if (lower === "18") {
   session.selectedService = "BUY_LAND_RESELL";
+  session.lastServiceJobId = null;
   session.stage = "SERVICE_WAITING_EXTRA_NOTES";
 
   await sendMessage(from, pickText(session.language, {
@@ -2590,6 +2594,7 @@ Nossa equipe entrará em contato em breve pelo WhatsApp.`,
 
 if (lower === "19") {
   session.selectedService = "CURRENCY_EXCHANGE";
+  session.lastServiceJobId = null;
   session.stage = "SERVICE_WAITING_EXTRA_NOTES";
 
   await sendMessage(from, pickText(session.language, {
@@ -2677,6 +2682,7 @@ Nossa equipe entrará em contato em breve pelo WhatsApp.`,
 
 if (lower === "20") {
   session.selectedService = "SOCIAL_MEDIA_CREATOR";
+  session.lastServiceJobId = null;
   session.stage = "SERVICE_WAITING_EXTRA_NOTES";
 
   await sendMessage(from, pickText(session.language, {
@@ -2785,6 +2791,7 @@ Nossa equipe entrará em contato em breve pelo WhatsApp.`,
 
 if (lower === "21") {
   session.selectedService = "BUY_RESELL_AUTO";
+  session.lastServiceJobId = null;
   session.stage = "SERVICE_WAITING_EXTRA_NOTES";
 
   await sendMessage(from, pickText(session.language, {
@@ -2920,6 +2927,7 @@ Nossa equipe entrará em contato em breve pelo WhatsApp.`,
 
 if (lower === "22") {
   session.selectedService = "CAR_LOAN_FINANCING";
+  session.lastServiceJobId = null;
   session.stage = "SERVICE_WAITING_EXTRA_NOTES";
   await sendMessage(from, pickText(session.language, {
     en: `🚗💰 Car Loan / Auto Financing selected.
@@ -3061,6 +3069,7 @@ PATAPATA 会为您连接已审核的服务商。服务商佣金由服务商承�
 
 if (lower === "23") {
   session.selectedService = "CAR_INSURANCE";
+  session.lastServiceJobId = null;
   session.stage = "SERVICE_WAITING_EXTRA_NOTES";
   await sendMessage(from, pickText(session.language, {
     en: `🛡️ Car Insurance selected.
@@ -3167,6 +3176,7 @@ Nossa equipe entrará em contato em breve pelo WhatsApp.`,
 
 if (lower === "24") {
   session.selectedService = "CAR_RENTAL";
+  session.lastServiceJobId = null;
   session.stage = "SERVICE_WAITING_EXTRA_NOTES";
   await sendMessage(from, pickText(session.language, {
     en: `🚙 Car Rental Services selected.
@@ -3273,6 +3283,7 @@ Nossa equipe entrará em contato em breve pelo WhatsApp.`,
 
 if (lower === "25") {
   session.selectedService = "MOBILE_APP_DEVELOPMENT";
+  session.lastServiceJobId = null;
   session.stage = "SERVICE_WAITING_EXTRA_NOTES";
   await sendMessage(from, pickText(session.language, {
     en: `📱 Mobile App Development selected.
@@ -3379,6 +3390,7 @@ Nossa equipe entrará em contato em breve pelo WhatsApp.`,
 
 if (lower === "26") {
   session.selectedService = "HOTEL_RESERVATION";
+  session.lastServiceJobId = null;
   session.stage = "SERVICE_WAITING_EXTRA_NOTES";
   await sendMessage(from, pickText(session.language, {
     en: `🏨 Hotel Reservation selected.
@@ -3485,6 +3497,7 @@ Nossa equipe entrará em contato em breve pelo WhatsApp.`,
 
 if (lower === "27") {
   session.selectedService = "HOME_SECURITY_TECHNICIAN";
+  session.lastServiceJobId = null;
   session.stage = "SERVICE_WAITING_EXTRA_NOTES";
   await sendMessage(from, pickText(session.language, {
     en: `🏠🔐 Home Security Technician selected.
@@ -3584,6 +3597,7 @@ Nossa equipe entrará em contato em breve pelo WhatsApp.`,
 
 if (lower === "28") {
   session.selectedService = "LOCKSMITH";
+  session.lastServiceJobId = null;
   session.stage = "SERVICE_WAITING_EXTRA_NOTES";
   await sendMessage(from, pickText(session.language, {
     en: `🔑 Locksmith selected.
