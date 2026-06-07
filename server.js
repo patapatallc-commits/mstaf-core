@@ -1902,7 +1902,8 @@ También puede enviar fotos, enlaces, documentos o notas de voz.
 Nuestro equipo se pondrá en contacto con usted por WhatsApp.
 
 Para volver al menú principal en cualquier momento, escriba Hello.
-    fr: `🧰 Aide intérieure / extérieure sélectionnée.
+`,
+fr: `🧰 Aide intérieure / extérieure sélectionnée.
 
 Veuillez écrire les détails avec vos propres mots.
 
@@ -1917,7 +1918,8 @@ Vous pouvez aussi envoyer des photos, liens, documents ou messages vocaux.
 Notre équipe vous contactera bientôt sur WhatsApp.
 
 Pour revenir au menu principal à tout moment, tapez Hello.
-    de: `🧰 Innen- / Außenhilfe ausgewählt.
+`,
+de: `🧰 Innen- / Außenhilfe ausgewählt.
 
 Bitte schreiben Sie die Details mit Ihren eigenen Worten.
 
@@ -1932,7 +1934,8 @@ Sie können auch Bilder, Links, Dokumente oder Sprachnachrichten senden.
 Unser Team wird Sie in Kürze über WhatsApp kontaktieren.
 
 Um jederzeit zum Hauptmenü zurückzukehren, schreiben Sie Hello.
-    pt: `🧰 Ajudante interno / externo selecionado.
+`,
+ pt: `🧰 Ajudante interno / externo selecionado.
 
 Digite os detalhes com suas próprias palavras.
 
@@ -1947,7 +1950,8 @@ Você também pode enviar fotos, links, documentos ou mensagens de voz.
 Nossa equipe entrará em contato com você pelo WhatsApp em breve.
 
 Para voltar ao menu principal a qualquer momento, digite Hello.
-    ar: `🧰 تم اختيار مساعد داخلي / خارجي.
+`,
+ar: `🧰 تم اختيار مساعد داخلي / خارجي.
 
 يرجى كتابة التفاصيل بكلماتك الخاصة.
 
@@ -1960,9 +1964,10 @@ Para voltar ao menu principal a qualquer momento, digite Hello.
 يمكنك أيضًا إرسال صور أو روابط أو مستندات أو رسائل صوتية.
 
   سيتواصل معك فريقنا قريبًا عبر واتساب.
-
-للعودة إلى القائمة الرئيسية في أي وقت، اكتب Hello.
-    zh: `🧰 已选择室内 / 室外帮工。
+  
+للتعودة إلى القائمة الرئيسية في أي وقت، اكتب Hello.
+`,
+zh: `🧰 已选择室内 / 室外帮工。
 
 请用您自己的话填写详细信息。
 
