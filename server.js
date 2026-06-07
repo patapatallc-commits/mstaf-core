@@ -1965,7 +1965,7 @@ ar: `🧰 تم اختيار مساعد داخلي / خارجي.
 
   سيتواصل معك فريقنا قريبًا عبر واتساب.
   
-للتعودة إلى القائمة الرئيسية في أي وقت، اكتب Hello.
+للعودة إلى القائمة الرئيسية في أي وقت، اكتب Hello.
 `,
 zh: `🧰 已选择室内 / 室外帮工。
 
@@ -2093,7 +2093,9 @@ Include:
 
 You may also upload your CV/resume, documents, links, pictures, or voice notes.
 
-Our team will contact you shortly on WhatsApp.`,
+Our team will contact you shortly on WhatsApp.
+
+To return to the main menu anytime, type Hello.`,
     es: `💼 Buscar trabajo / Enviar CV seleccionado.
 
 Por favor escriba los detalles con sus propias palabras.
@@ -2107,7 +2109,9 @@ Incluya:
 
 También puede subir su CV, documentos, enlaces, fotos o notas de voz.
 
-Nuestro equipo se comunicará con usted pronto por WhatsApp.`,
+Nuestro equipo se comunicará con usted pronto por WhatsApp.
+
+Para volver al menú principal en cualquier momento, escriba Hello.`,
     fr: `💼 Recherche d'emploi / Envoyer CV sélectionné.
 
 Veuillez écrire les détails avec vos propres mots.
@@ -2121,7 +2125,9 @@ Incluez :
 
 Vous pouvez aussi envoyer votre CV, documents, liens, photos ou messages vocaux.
 
-Notre équipe vous contactera bientôt sur WhatsApp.`,
+Notre équipe vous contactera bientôt sur WhatsApp.
+
+Pour revenir au menu principal à tout moment, tapez Hello.`,
     de: `💼 Jobsuche / Lebenslauf senden ausgewählt.
 
 Bitte schreiben Sie die Details mit Ihren eigenen Worten.
@@ -2135,7 +2141,9 @@ Bitte angeben:
 
 Sie können auch Ihren Lebenslauf, Dokumente, Links, Bilder oder Sprachnachrichten hochladen.
 
-Unser Team wird Sie in Kürze per WhatsApp kontaktieren.`,
+Unser Team wird Sie in Kürze per WhatsApp kontaktieren.
+
+Um jederzeit zum Hauptmenü zurückzukehren, schreiben Sie Hello.`,
     pt: `💼 Procurar emprego / Enviar CV selecionado.
 
 Digite os detalhes com suas próprias palavras.
@@ -2149,7 +2157,9 @@ Inclua:
 
 Você também pode enviar seu currículo, documentos, links, fotos ou mensagens de voz.
 
-Nossa equipe entrará em contato em breve pelo WhatsApp.`,
+Nossa equipe entrará em contato em breve pelo WhatsApp.
+
+Para voltar ao menu principal a qualquer momento, digite Hello.`,
     ar: `💼 تم اختيار البحث عن عمل / إرسال السيرة الذاتية.
 
 يرجى كتابة التفاصيل بكلماتك الخاصة.
@@ -2163,7 +2173,9 @@ Nossa equipe entrará em contato em breve pelo WhatsApp.`,
 
 يمكنك أيضًا رفع السيرة الذاتية أو المستندات أو الروابط أو الصور أو الرسائل الصوتية.
 
-سيتواصل معك فريقنا قريبًا عبر واتساب.`,
+سيتواصل معك فريقنا قريبًا عبر واتساب.
+
+للعودة إلى القائمة الرئيسية في أي وقت، اكتب Hello.`,
     zh: `💼 已选择找工作 / 提交简历。
 
 请用您自己的话填写详细信息。
@@ -2177,7 +2189,9 @@ Nossa equipe entrará em contato em breve pelo WhatsApp.`,
 
 您也可以上传简历、文件、链接、图片或语音消息。
 
-我们的团队会很快通过 WhatsApp 联系您。`
+我们的团队会很快通过 WhatsApp 联系您。
+
+如需随时返回主菜单，请输入 Hello。`
   }));
 
   return res.sendStatus(200);
@@ -2203,7 +2217,9 @@ Include:
 
 You may also send your CV/resume, documents, links, pictures, or voice notes.
 
-Our team will contact you shortly on WhatsApp.`,
+Our team will contact you shortly on WhatsApp.
+
+To return to the main menu anytime, type Hello.`,
     es: `💼 Oportunidades de trabajo seleccionado.
 
 Por favor escriba los detalles con sus propias palabras.
@@ -2217,7 +2233,9 @@ Incluya:
 
 También puede enviar su CV, documentos, enlaces, fotos o notas de voz.
 
-Nuestro equipo se comunicará con usted pronto por WhatsApp.`,
+Nuestro equipo se comunicará con usted pronto por WhatsApp.
+
+Para volver al menú principal en cualquier momento, escriba Hello.`,
     fr: `💼 Offres d'emploi sélectionné.
 
 Veuillez écrire les détails avec vos propres mots.
@@ -2231,7 +2249,9 @@ Incluez :
 
 Vous pouvez aussi envoyer votre CV, documents, liens, photos ou messages vocaux.
 
-Notre équipe vous contactera bientôt sur WhatsApp.`,
+Notre équipe vous contactera bientôt sur WhatsApp.
+
+Pour revenir au menu principal à tout moment, tapez Hello.`,
     de: `💼 Jobangebote ausgewählt.
 
 Bitte schreiben Sie die Details mit Ihren eigenen Worten.
@@ -2245,7 +2265,9 @@ Bitte angeben:
 
 Sie können auch Ihren Lebenslauf, Dokumente, Links, Bilder oder Sprachnachrichten senden.
 
-Unser Team wird Sie in Kürze per WhatsApp kontaktieren.`,
+Unser Team wird Sie in Kürze per WhatsApp kontaktieren.
+
+Um jederzeit zum Hauptmenü zurückzukehren, schreiben Sie Hello.`,
     pt: `💼 Oportunidades de emprego selecionado.
 
 Digite os detalhes com suas próprias palavras.
@@ -2259,7 +2281,9 @@ Inclua:
 
 Você também pode enviar seu currículo, documentos, links, fotos ou mensagens de voz.
 
-Nossa equipe entrará em contato em breve pelo WhatsApp.`,
+Nossa equipe entrará em contato em breve pelo WhatsApp.
+
+Para voltar ao menu principal a qualquer momento, digite Hello.`,
     ar: `💼 تم اختيار فرص عمل.
 
 يرجى كتابة التفاصيل بكلماتك الخاصة.
@@ -2273,7 +2297,9 @@ Nossa equipe entrará em contato em breve pelo WhatsApp.`,
 
 يمكنك أيضًا إرسال السيرة الذاتية أو المستندات أو الروابط أو الصور أو الرسائل الصوتية.
 
-سيتواصل معك فريقنا قريبًا عبر واتساب.`,
+سيتواصل معك فريقنا قريبًا عبر واتساب.
+
+للعودة إلى القائمة الرئيسية في أي وقت، اكتب Hello.`,
     zh: `💼 已选择工作机会。
 
 请用您自己的话填写详细信息。
@@ -2287,7 +2313,9 @@ Nossa equipe entrará em contato em breve pelo WhatsApp.`,
 
 您也可以发送简历、文件、链接、图片或语音消息。
 
-我们的团队会很快通过 WhatsApp 联系您。`
+我们的团队会很快通过 WhatsApp 联系您。
+
+如需随时返回主菜单，请输入 Hello。`
   }));
 
   return res.sendStatus(200);
@@ -2484,7 +2512,9 @@ Include:
 
 You may also send pictures, links, documents, or voice notes.
 
-Our team will contact you shortly on WhatsApp.`,
+Our team will contact you shortly on WhatsApp.
+
+To return to the main menu anytime, type Hello.`,
     es: `🏪 Proveedores confiables seleccionado.
 
 Por favor escriba los detalles con sus propias palabras.
@@ -2498,7 +2528,9 @@ Incluya:
 
 También puede enviar fotos, enlaces, documentos o notas de voz.
 
-Nuestro equipo se comunicará con usted pronto por WhatsApp.`,
+Nuestro equipo se comunicará con usted pronto por WhatsApp.
+
+Para volver al menú principal en cualquier momento, escriba Hello.`,
     fr: `🏪 Fournisseurs fiables sélectionné.
 
 Veuillez écrire les détails avec vos propres mots.
@@ -2512,7 +2544,9 @@ Incluez :
 
 Vous pouvez aussi envoyer des photos, liens, documents ou messages vocaux.
 
-Notre équipe vous contactera bientôt sur WhatsApp.`,
+Notre équipe vous contactera bientôt sur WhatsApp.
+
+Pour revenir au menu principal à tout moment, tapez Hello.`,
     de: `🏪 Vertrauenswürdige Lieferanten ausgewählt.
 
 Bitte schreiben Sie die Details mit Ihren eigenen Worten.
@@ -2526,7 +2560,9 @@ Bitte angeben:
 
 Sie können auch Bilder, Links, Dokumente oder Sprachnachrichten senden.
 
-Unser Team wird Sie in Kürze per WhatsApp kontaktieren.`,
+Unser Team wird Sie in Kürze per WhatsApp kontaktieren.
+
+Um jederzeit zum Hauptmenü zurückzukehren, schreiben Sie Hello.`,
     pt: `🏪 Fornecedores confiáveis selecionado.
 
 Digite os detalhes com suas próprias palavras.
@@ -2540,7 +2576,9 @@ Inclua:
 
 Você também pode enviar fotos, links, documentos ou mensagens de voz.
 
-Nossa equipe entrará em contato em breve pelo WhatsApp.`,
+Nossa equipe entrará em contato em breve pelo WhatsApp.
+
+Para voltar ao menu principal a qualquer momento, digite Hello.`,
     ar: `🏪 تم اختيار موردين موثوقين.
 
 يرجى كتابة التفاصيل بكلماتك الخاصة.
@@ -2554,7 +2592,9 @@ Nossa equipe entrará em contato em breve pelo WhatsApp.`,
 
 يمكنك أيضًا إرسال صور أو روابط أو مستندات أو رسائل صوتية.
 
-سيتواصل معك فريقنا قريبًا عبر واتساب.`,
+سيتواصل معك فريقنا قريبًا عبر واتساب.
+
+للعودة إلى القائمة الرئيسية في أي وقت، اكتب Hello.`,
     zh: `🏪 已选择可信供应商。
 
 请用您自己的话填写详细信息。
@@ -2568,7 +2608,9 @@ Nossa equipe entrará em contato em breve pelo WhatsApp.`,
 
 您也可以发送图片、链接、文件或语音消息。
 
-我们的团队会很快通过 WhatsApp 联系您。`
+我们的团队会很快通过 WhatsApp 联系您。
+
+如需随时返回主菜单，请输入 Hello。`
   }));
 
   return res.sendStatus(200);
@@ -2591,7 +2633,9 @@ Send your details below:
 
 You can also send pictures, links, documents, or voice notes.
 
-Our team will contact you shortly on WhatsApp.`,
+Our team will contact you shortly on WhatsApp.
+
+To return to the main menu anytime, type Hello.`,
     es: `🏞️ Comprar terreno para usar o revender seleccionado.
 
 Por favor escriba lo que necesita con sus propias palabras.
@@ -2602,7 +2646,9 @@ Envíe sus detalles a continuación:
 
 También puede enviar fotos, enlaces, documentos o notas de voz.
 
-Nuestro equipo se comunicará con usted pronto por WhatsApp.`,
+Nuestro equipo se comunicará con usted pronto por WhatsApp.
+
+Para volver al menú principal en cualquier momento, escriba Hello.`,
     fr: `🏞️ Achat de terrain pour usage ou revente sélectionné.
 
 Veuillez décrire vos besoins avec vos propres mots.
@@ -2613,7 +2659,9 @@ Envoyez vos informations ci-dessous :
 
 Vous pouvez également envoyer des photos, liens, documents ou messages vocaux.
 
-Notre équipe vous contactera bientôt sur WhatsApp.`,
+Notre équipe vous contactera bientôt sur WhatsApp.
+
+Pour revenir au menu principal à tout moment, tapez Hello.`,
     de: `🏞️ Land zum Nutzen oder Weiterverkaufen ausgewählt.
 
 Bitte beschreiben Sie Ihren Bedarf mit Ihren eigenen Worten.
@@ -2624,7 +2672,9 @@ Senden Sie Ihre Angaben unten:
 
 Sie können auch Bilder, Links, Dokumente oder Sprachnachrichten senden.
 
-Unser Team wird Sie in Kürze per WhatsApp kontaktieren.`,
+Unser Team wird Sie in Kürze per WhatsApp kontaktieren.
+
+Um jederzeit zum Hauptmenü zurückzukehren, schreiben Sie Hello.`,
     pt: `🏞️ Comprar terreno para usar ou revender selecionado.
 
 Por favor descreva o que você precisa com suas próprias palavras.
@@ -2635,7 +2685,9 @@ Envie seus detalhes abaixo:
 
 Você também pode enviar fotos, links, documentos ou mensagens de voz.
 
-Nossa equipe entrará em contato em breve pelo WhatsApp.`,
+Nossa equipe entrará em contato em breve pelo WhatsApp.
+
+Para voltar ao menu principal a qualquer momento, digite Hello.`,
     ar: `🏞️ تم اختيار شراء أرض للاستخدام أو إعادة البيع.
 
 يرجى كتابة ما تحتاجه بكلماتك الخاصة.
@@ -2646,7 +2698,9 @@ Nossa equipe entrará em contato em breve pelo WhatsApp.`,
 
 يمكنك أيضًا إرسال صور أو روابط أو مستندات أو رسائل صوتية.
 
-سيتواصل معك فريقنا قريبًا عبر واتساب.`,
+سيتواصل معك فريقنا قريبًا عبر واتساب.
+
+للعودة إلى القائمة الرئيسية في أي وقت، اكتب Hello.`,
     zh: `🏞️ 已选择购买土地自用或转售。
 
 请用您自己的话描述您的需求。
@@ -2657,7 +2711,9 @@ Nossa equipe entrará em contato em breve pelo WhatsApp.`,
 
 您也可以发送图片、链接、文件或语音消息。
 
-我们的团队会很快通过 WhatsApp 联系您。`
+我们的团队会很快通过 WhatsApp 联系您。
+
+如需随时返回主菜单，请输入 Hello。`
   }));
 
   return res.sendStatus(200);
@@ -2680,7 +2736,9 @@ Send your details below:
 
 You can also send pictures, links, documents, or voice notes.
 
-Our team will contact you shortly on WhatsApp.`,
+Our team will contact you shortly on WhatsApp.
+
+To return to the main menu anytime, type Hello.`,
     es: `💱 Cambio de moneda seleccionado.
 
 Por favor escriba lo que necesita con sus propias palabras.
@@ -2691,7 +2749,9 @@ Envíe sus detalles a continuación:
 
 También puede enviar fotos, enlaces, documentos o notas de voz.
 
-Nuestro equipo se comunicará con usted pronto por WhatsApp.`,
+Nuestro equipo se comunicará con usted pronto por WhatsApp.
+
+Para volver al menú principal en cualquier momento, escriba Hello.`,
     fr: `💱 Change de monnaie sélectionné.
 
 Veuillez décrire vos besoins avec vos propres mots.
@@ -2702,7 +2762,9 @@ Envoyez vos informations ci-dessous :
 
 Vous pouvez également envoyer des photos, liens, documents ou messages vocaux.
 
-Notre équipe vous contactera bientôt sur WhatsApp.`,
+Notre équipe vous contactera bientôt sur WhatsApp.
+
+Pour revenir au menu principal à tout moment, tapez Hello.`,
     de: `💱 Geldwechsel ausgewählt.
 
 Bitte beschreiben Sie Ihren Bedarf mit Ihren eigenen Worten.
@@ -2713,7 +2775,9 @@ Senden Sie Ihre Angaben unten:
 
 Sie können auch Bilder, Links, Dokumente oder Sprachnachrichten senden.
 
-Unser Team wird Sie in Kürze per WhatsApp kontaktieren.`,
+Unser Team wird Sie in Kürze per WhatsApp kontaktieren.
+
+Um jederzeit zum Hauptmenü zurückzukehren, schreiben Sie Hello.`,
     pt: `💱 Câmbio selecionado.
 
 Por favor descreva o que você precisa com suas próprias palavras.
@@ -2724,7 +2788,9 @@ Envie seus detalhes abaixo:
 
 Você também pode enviar fotos, links, documentos ou mensagens de voz.
 
-Nossa equipe entrará em contato em breve pelo WhatsApp.`,
+Nossa equipe entrará em contato em breve pelo WhatsApp.
+
+Para voltar ao menu principal a qualquer momento, digite Hello.`,
     ar: `💱 تم اختيار تحويل العملات.
 
 يرجى كتابة ما تحتاجه بكلماتك الخاصة.
@@ -2735,7 +2801,9 @@ Nossa equipe entrará em contato em breve pelo WhatsApp.`,
 
 يمكنك أيضًا إرسال صور أو روابط أو مستندات أو رسائل صوتية.
 
-سيتواصل معك فريقنا قريبًا عبر واتساب.`,
+سيتواصل معك فريقنا قريبًا عبر واتساب.
+
+للعودة إلى القائمة الرئيسية في أي وقت، اكتب Hello.`,
     zh: `💱 已选择货币兑换。
 
 请用您自己的话描述您的需求。
@@ -2746,7 +2814,9 @@ Nossa equipe entrará em contato em breve pelo WhatsApp.`,
 
 您也可以发送图片、链接、文件或语音消息。
 
-我们的团队会很快通过 WhatsApp 联系您。`
+我们的团队会很快通过 WhatsApp 联系您。
+
+如需随时返回主菜单，请输入 Hello。`
   }));
 
   return res.sendStatus(200);
@@ -2772,7 +2842,9 @@ Include:
 
 You may also send pictures, videos, links, documents, or voice notes.
 
-Our team will contact you shortly on WhatsApp.`,
+Our team will contact you shortly on WhatsApp.
+
+To return to the main menu anytime, type Hello.`,
     es: `📱 Creador de redes sociales seleccionado.
 
 Por favor escriba los detalles con sus propias palabras.
@@ -2786,7 +2858,9 @@ Incluya:
 
 También puede enviar fotos, videos, enlaces, documentos o notas de voz.
 
-Nuestro equipo se comunicará con usted pronto por WhatsApp.`,
+Nuestro equipo se comunicará con usted pronto por WhatsApp.
+
+Para volver al menú principal en cualquier momento, escriba Hello.`,
     fr: `📱 Créateur de réseaux sociaux sélectionné.
 
 Veuillez écrire les détails avec vos propres mots.
@@ -2800,7 +2874,9 @@ Incluez :
 
 Vous pouvez aussi envoyer des photos, vidéos, liens, documents ou messages vocaux.
 
-Notre équipe vous contactera bientôt sur WhatsApp.`,
+Notre équipe vous contactera bientôt sur WhatsApp.
+
+Pour revenir au menu principal à tout moment, tapez Hello.`,
     de: `📱 Social-Media-Ersteller ausgewählt.
 
 Bitte schreiben Sie die Details mit Ihren eigenen Worten.
@@ -2814,7 +2890,9 @@ Bitte angeben:
 
 Sie können auch Bilder, Videos, Links, Dokumente oder Sprachnachrichten senden.
 
-Unser Team wird Sie in Kürze per WhatsApp kontaktieren.`,
+Unser Team wird Sie in Kürze per WhatsApp kontaktieren.
+
+Um jederzeit zum Hauptmenü zurückzukehren, schreiben Sie Hello.`,
     pt: `📱 Criador de mídia social selecionado.
 
 Digite os detalhes com suas próprias palavras.
@@ -2828,7 +2906,9 @@ Inclua:
 
 Você também pode enviar fotos, vídeos, links, documentos ou mensagens de voz.
 
-Nossa equipe entrará em contato em breve pelo WhatsApp.`,
+Nossa equipe entrará em contato em breve pelo WhatsApp.
+
+Para voltar ao menu principal a qualquer momento, digite Hello.`,
     ar: `📱 تم اختيار منشئ محتوى وسائل التواصل.
 
 يرجى كتابة التفاصيل بكلماتك الخاصة.
@@ -2842,7 +2922,9 @@ Nossa equipe entrará em contato em breve pelo WhatsApp.`,
 
 يمكنك أيضًا إرسال صور أو فيديوهات أو روابط أو مستندات أو رسائل صوتية.
 
-سيتواصل معك فريقنا قريبًا عبر واتساب.`,
+سيتواصل معك فريقنا قريبًا عبر واتساب.
+
+للعودة إلى القائمة الرئيسية في أي وقت، اكتب Hello.`,
     zh: `📱 已选择社交媒体创作者。
 
 请用您自己的话填写详细信息。
@@ -2856,7 +2938,9 @@ Nossa equipe entrará em contato em breve pelo WhatsApp.`,
 
 您也可以发送图片、视频、链接、文件或语音消息。
 
-我们的团队会很快通过 WhatsApp 联系您。`
+我们的团队会很快通过 WhatsApp 联系您。
+
+如需随时返回主菜单，请输入 Hello。`
   }));
 
   return res.sendStatus(200);
@@ -2885,7 +2969,9 @@ Send your details below:
 
 You can also send pictures, links, documents, or voice notes.
 
-Our team will contact you shortly on WhatsApp.`,
+Our team will contact you shortly on WhatsApp.
+
+To return to the main menu anytime, type Hello.`,
     es: `🚘 Comprar y revender autos seleccionado.
 
 Por favor escriba los detalles con sus propias palabras.
@@ -2903,7 +2989,9 @@ Envíe sus detalles a continuación:
 
 También puede enviar fotos, enlaces, documentos o notas de voz.
 
-Nuestro equipo se comunicará con usted pronto por WhatsApp.`,
+Nuestro equipo se comunicará con usted pronto por WhatsApp.
+
+Para volver al menú principal en cualquier momento, escriba Hello.`,
     fr: `🚘 Achat et revente automobile sélectionné.
 
 Veuillez écrire les détails avec vos propres mots.
@@ -2921,7 +3009,9 @@ Envoyez vos informations ci-dessous :
 
 Vous pouvez également envoyer des photos, liens, documents ou messages vocaux.
 
-Notre équipe vous contactera bientôt sur WhatsApp.`,
+Notre équipe vous contactera bientôt sur WhatsApp.
+
+Pour revenir au menu principal à tout moment, tapez Hello.`,
     de: `🚘 Autos kaufen und weiterverkaufen ausgewählt.
 
 Bitte schreiben Sie die Details mit Ihren eigenen Worten.
@@ -2939,7 +3029,9 @@ Senden Sie Ihre Angaben unten:
 
 Sie können auch Bilder, Links, Dokumente oder Sprachnachrichten senden.
 
-Unser Team wird Sie in Kürze per WhatsApp kontaktieren.`,
+Unser Team wird Sie in Kürze per WhatsApp kontaktieren.
+
+Um jederzeit zum Hauptmenü zurückzukehren, schreiben Sie Hello.`,
     pt: `🚘 Comprar e revender carros selecionado.
 
 Por favor escreva os detalhes com suas próprias palavras.
@@ -2957,7 +3049,9 @@ Envie seus detalhes abaixo:
 
 Você também pode enviar fotos, links, documentos ou mensagens de voz.
 
-Nossa equipe entrará em contato em breve pelo WhatsApp.`,
+Nossa equipe entrará em contato em breve pelo WhatsApp.
+
+Para voltar ao menu principal a qualquer momento, digite Hello.`,
     ar: `🚘 تم اختيار شراء وإعادة بيع السيارات.
 
 يرجى كتابة التفاصيل بكلماتك الخاصة.
@@ -2975,7 +3069,9 @@ Nossa equipe entrará em contato em breve pelo WhatsApp.`,
 
 يمكنك أيضًا إرسال صور أو روابط أو مستندات أو رسائل صوتية.
 
-سيتواصل معك فريقنا قريبًا عبر واتساب.`,
+سيتواصل معك فريقنا قريبًا عبر واتساب.
+
+للعودة إلى القائمة الرئيسية في أي وقت، اكتب Hello.`,
     zh: `🚘 已选择买卖 / 转售汽车。
 
 请用您自己的话填写详细信息。
@@ -2993,7 +3089,9 @@ Nossa equipe entrará em contato em breve pelo WhatsApp.`,
 
 您也可以发送图片、链接、文件或语音消息。
 
-我们的团队会很快通过 WhatsApp 联系您。`
+我们的团队会很快通过 WhatsApp 联系您。
+
+如需随时返回主菜单，请输入 Hello。`
   }));
 
   return res.sendStatus(200);
@@ -3161,7 +3259,9 @@ Include:
 
 You may also send pictures, links, documents, or voice notes.
 
-Our team will contact you shortly on WhatsApp.`,
+Our team will contact you shortly on WhatsApp.
+
+To return to the main menu anytime, type Hello.`,
     es: `🛡️ Seguro de auto seleccionado.
 
 Por favor escriba los detalles con sus propias palabras.
@@ -3175,7 +3275,9 @@ Incluya:
 
 También puede enviar fotos, enlaces, documentos o notas de voz.
 
-Nuestro equipo se comunicará con usted pronto por WhatsApp.`,
+Nuestro equipo se comunicará con usted pronto por WhatsApp.
+
+Para volver al menú principal en cualquier momento, escriba Hello.`,
     fr: `🛡️ Assurance auto sélectionné.
 
 Veuillez écrire les détails avec vos propres mots.
@@ -3189,7 +3291,9 @@ Incluez :
 
 Vous pouvez aussi envoyer des photos, liens, documents ou messages vocaux.
 
-Notre équipe vous contactera bientôt sur WhatsApp.`,
+Notre équipe vous contactera bientôt sur WhatsApp.
+
+Pour revenir au menu principal à tout moment, tapez Hello.`,
     de: `🛡️ Autoversicherung ausgewählt.
 
 Bitte schreiben Sie die Details mit Ihren eigenen Worten.
@@ -3203,7 +3307,9 @@ Bitte angeben:
 
 Sie können auch Bilder, Links, Dokumente oder Sprachnachrichten senden.
 
-Unser Team wird Sie in Kürze per WhatsApp kontaktieren.`,
+Unser Team wird Sie in Kürze per WhatsApp kontaktieren.
+
+Um jederzeit zum Hauptmenü zurückzukehren, schreiben Sie Hello.`,
     pt: `🛡️ Seguro de carro selecionado.
 
 Digite os detalhes com suas próprias palavras.
@@ -3217,7 +3323,9 @@ Inclua:
 
 Você também pode enviar fotos, links, documentos ou mensagens de voz.
 
-Nossa equipe entrará em contato em breve pelo WhatsApp.`,
+Nossa equipe entrará em contato em breve pelo WhatsApp.
+
+Para voltar ao menu principal a qualquer momento, digite Hello.`,
     ar: `🛡️ تم اختيار تأمين السيارات.
 
 يرجى كتابة التفاصيل بكلماتك الخاصة.
@@ -3231,7 +3339,9 @@ Nossa equipe entrará em contato em breve pelo WhatsApp.`,
 
 يمكنك أيضًا إرسال صور أو روابط أو مستندات أو رسائل صوتية.
 
-سيتواصل معك فريقنا قريبًا عبر واتساب.`,
+سيتواصل معك فريقنا قريبًا عبر واتساب.
+
+للعودة إلى القائمة الرئيسية في أي وقت، اكتب Hello.`,
     zh: `🛡️ 已选择汽车保险。
 
 请用您自己的话填写详细信息。
@@ -3245,7 +3355,9 @@ Nossa equipe entrará em contato em breve pelo WhatsApp.`,
 
 您也可以发送图片、链接、文件或语音消息。
 
-我们的团队会很快通过 WhatsApp 联系您。`
+我们的团队会很快通过 WhatsApp 联系您。
+
+如需随时返回主菜单，请输入 Hello。`
   }));
   return res.sendStatus(200);
 }
@@ -3269,7 +3381,9 @@ Include:
 
 You may also send pictures, links, documents, or voice notes.
 
-Our team will contact you shortly on WhatsApp.`,
+Our team will contact you shortly on WhatsApp.
+
+To return to the main menu anytime, type Hello.`,
     es: `🚙 Servicios de alquiler de autos seleccionado.
 
 Por favor escriba los detalles con sus propias palabras.
@@ -3283,7 +3397,9 @@ Incluya:
 
 También puede enviar fotos, enlaces, documentos o notas de voz.
 
-Nuestro equipo se comunicará con usted pronto por WhatsApp.`,
+Nuestro equipo se comunicará con usted pronto por WhatsApp.
+
+Para volver al menú principal en cualquier momento, escriba Hello.`,
     fr: `🚙 Services de location de voiture sélectionné.
 
 Veuillez écrire les détails avec vos propres mots.
@@ -3297,7 +3413,9 @@ Incluez :
 
 Vous pouvez aussi envoyer des photos, liens, documents ou messages vocaux.
 
-Notre équipe vous contactera bientôt sur WhatsApp.`,
+Notre équipe vous contactera bientôt sur WhatsApp.
+
+Pour revenir au menu principal à tout moment, tapez Hello.`,
     de: `🚙 Autovermietung ausgewählt.
 
 Bitte schreiben Sie die Details mit Ihren eigenen Worten.
@@ -3311,7 +3429,9 @@ Bitte angeben:
 
 Sie können auch Bilder, Links, Dokumente oder Sprachnachrichten senden.
 
-Unser Team wird Sie in Kürze per WhatsApp kontaktieren.`,
+Unser Team wird Sie in Kürze per WhatsApp kontaktieren.
+
+Um jederzeit zum Hauptmenü zurückzukehren, schreiben Sie Hello.`,
     pt: `🚙 Serviços de aluguel de carros selecionado.
 
 Digite os detalhes com suas próprias palavras.
@@ -3325,7 +3445,9 @@ Inclua:
 
 Você também pode enviar fotos, links, documentos ou mensagens de voz.
 
-Nossa equipe entrará em contato em breve pelo WhatsApp.`,
+Nossa equipe entrará em contato em breve pelo WhatsApp.
+
+Para voltar ao menu principal a qualquer momento, digite Hello.`,
     ar: `🚙 تم اختيار خدمات تأجير السيارات.
 
 يرجى كتابة التفاصيل بكلماتك الخاصة.
@@ -3339,7 +3461,9 @@ Nossa equipe entrará em contato em breve pelo WhatsApp.`,
 
 يمكنك أيضًا إرسال صور أو روابط أو مستندات أو رسائل صوتية.
 
-سيتواصل معك فريقنا قريبًا عبر واتساب.`,
+سيتواصل معك فريقنا قريبًا عبر واتساب.
+
+للعودة إلى القائمة الرئيسية في أي وقت، اكتب Hello.`,
     zh: `🚙 已选择汽车租赁服务。
 
 请用您自己的话填写详细信息。
@@ -3353,7 +3477,9 @@ Nossa equipe entrará em contato em breve pelo WhatsApp.`,
 
 您也可以发送图片、链接、文件或语音消息。
 
-我们的团队会很快通过 WhatsApp 联系您。`
+我们的团队会很快通过 WhatsApp 联系您。
+
+如需随时返回主菜单，请输入 Hello。`
   }));
   return res.sendStatus(200);
 }
@@ -3377,7 +3503,9 @@ Include:
 
 You may also send pictures, links, documents, or voice notes.
 
-Our team will contact you shortly on WhatsApp.`,
+Our team will contact you shortly on WhatsApp.
+
+To return to the main menu anytime, type Hello.`,
     es: `📱 Desarrollo de aplicaciones móviles seleccionado.
 
 Por favor escriba los detalles con sus propias palabras.
@@ -3391,7 +3519,9 @@ Incluya:
 
 También puede enviar fotos, enlaces, documentos o notas de voz.
 
-Nuestro equipo se comunicará con usted pronto por WhatsApp.`,
+Nuestro equipo se comunicará con usted pronto por WhatsApp.
+
+Para volver al menú principal en cualquier momento, escriba Hello.`,
     fr: `📱 Développement d'application mobile sélectionné.
 
 Veuillez écrire les détails avec vos propres mots.
@@ -3405,7 +3535,9 @@ Incluez :
 
 Vous pouvez aussi envoyer des photos, liens, documents ou messages vocaux.
 
-Notre équipe vous contactera bientôt sur WhatsApp.`,
+Notre équipe vous contactera bientôt sur WhatsApp.
+
+Pour revenir au menu principal à tout moment, tapez Hello.`,
     de: `📱 Mobile-App-Entwicklung ausgewählt.
 
 Bitte schreiben Sie die Details mit Ihren eigenen Worten.
@@ -3419,7 +3551,9 @@ Bitte angeben:
 
 Sie können auch Bilder, Links, Dokumente oder Sprachnachrichten senden.
 
-Unser Team wird Sie in Kürze per WhatsApp kontaktieren.`,
+Unser Team wird Sie in Kürze per WhatsApp kontaktieren.
+
+Um jederzeit zum Hauptmenü zurückzukehren, schreiben Sie Hello.`,
     pt: `📱 Desenvolvimento de aplicativo móvel selecionado.
 
 Digite os detalhes com suas próprias palavras.
@@ -3433,7 +3567,9 @@ Inclua:
 
 Você também pode enviar fotos, links, documentos ou mensagens de voz.
 
-Nossa equipe entrará em contato em breve pelo WhatsApp.`,
+Nossa equipe entrará em contato em breve pelo WhatsApp.
+
+Para voltar ao menu principal a qualquer momento, digite Hello.`,
     ar: `📱 تم اختيار تطوير تطبيقات الجوال.
 
 يرجى كتابة التفاصيل بكلماتك الخاصة.
@@ -3447,7 +3583,9 @@ Nossa equipe entrará em contato em breve pelo WhatsApp.`,
 
 يمكنك أيضًا إرسال صور أو روابط أو مستندات أو رسائل صوتية.
 
-سيتواصل معك فريقنا قريبًا عبر واتساب.`,
+سيتواصل معك فريقنا قريبًا عبر واتساب.
+
+للعودة إلى القائمة الرئيسية في أي وقت، اكتب Hello.`,
     zh: `📱 已选择手机应用开发。
 
 请用您自己的话填写详细信息。
@@ -3461,7 +3599,9 @@ Nossa equipe entrará em contato em breve pelo WhatsApp.`,
 
 您也可以发送图片、链接、文件或语音消息。
 
-我们的团队会很快通过 WhatsApp 联系您。`
+我们的团队会很快通过 WhatsApp 联系您。
+
+如需随时返回主菜单，请输入 Hello。`
   }));
   return res.sendStatus(200);
 }
@@ -3485,7 +3625,9 @@ Include:
 
 You may also send pictures, links, documents, or voice notes.
 
-Our team will contact you shortly on WhatsApp.`,
+Our team will contact you shortly on WhatsApp.
+
+To return to the main menu anytime, type Hello.`,
     es: `🏨 Reserva de hotel seleccionado.
 
 Por favor escriba los detalles con sus propias palabras.
@@ -3499,7 +3641,9 @@ Incluya:
 
 También puede enviar fotos, enlaces, documentos o notas de voz.
 
-Nuestro equipo se comunicará con usted pronto por WhatsApp.`,
+Nuestro equipo se comunicará con usted pronto por WhatsApp.
+
+Para volver al menú principal en cualquier momento, escriba Hello.`,
     fr: `🏨 Réservation d'hôtel sélectionné.
 
 Veuillez écrire les détails avec vos propres mots.
@@ -3513,7 +3657,9 @@ Incluez :
 
 Vous pouvez aussi envoyer des photos, liens, documents ou messages vocaux.
 
-Notre équipe vous contactera bientôt sur WhatsApp.`,
+Notre équipe vous contactera bientôt sur WhatsApp.
+
+Pour revenir au menu principal à tout moment, tapez Hello.`,
     de: `🏨 Hotelreservierung ausgewählt.
 
 Bitte schreiben Sie die Details mit Ihren eigenen Worten.
@@ -3527,7 +3673,9 @@ Bitte angeben:
 
 Sie können auch Bilder, Links, Dokumente oder Sprachnachrichten senden.
 
-Unser Team wird Sie in Kürze per WhatsApp kontaktieren.`,
+Unser Team wird Sie in Kürze per WhatsApp kontaktieren.
+
+Um jederzeit zum Hauptmenü zurückzukehren, schreiben Sie Hello.`,
     pt: `🏨 Reserva de hotel selecionado.
 
 Digite os detalhes com suas próprias palavras.
@@ -3541,7 +3689,9 @@ Inclua:
 
 Você também pode enviar fotos, links, documentos ou mensagens de voz.
 
-Nossa equipe entrará em contato em breve pelo WhatsApp.`,
+Nossa equipe entrará em contato em breve pelo WhatsApp.
+
+Para voltar ao menu principal a qualquer momento, digite Hello.`,
     ar: `🏨 تم اختيار حجز فندق.
 
 يرجى كتابة التفاصيل بكلماتك الخاصة.
@@ -3555,7 +3705,9 @@ Nossa equipe entrará em contato em breve pelo WhatsApp.`,
 
 يمكنك أيضًا إرسال صور أو روابط أو مستندات أو رسائل صوتية.
 
-سيتواصل معك فريقنا قريبًا عبر واتساب.`,
+سيتواصل معك فريقنا قريبًا عبر واتساب.
+
+للعودة إلى القائمة الرئيسية في أي وقت، اكتب Hello.`,
     zh: `🏨 已选择酒店预订。
 
 请用您自己的话填写详细信息。
@@ -3569,7 +3721,9 @@ Nossa equipe entrará em contato em breve pelo WhatsApp.`,
 
 您也可以发送图片、链接、文件或语音消息。
 
-我们的团队会很快通过 WhatsApp 联系您。`
+我们的团队会很快通过 WhatsApp 联系您。
+
+如需随时返回主菜单，请输入 Hello。`
   }));
   return res.sendStatus(200);
 }
@@ -3592,7 +3746,9 @@ Include:
 
 You may also send pictures, links, documents, or voice notes.
 
-Our team will contact you shortly on WhatsApp.`,
+Our team will contact you shortly on WhatsApp.
+
+To return to the main menu anytime, type Hello.`,
     es: `🏠🔐 Técnico de seguridad para el hogar seleccionado.
 
 Por favor escriba los detalles con sus propias palabras.
@@ -3605,7 +3761,9 @@ Incluya:
 
 También puede enviar fotos, enlaces, documentos o notas de voz.
 
-Nuestro equipo se comunicará con usted pronto por WhatsApp.`,
+Nuestro equipo se comunicará con usted pronto por WhatsApp.
+
+Para volver al menú principal en cualquier momento, escriba Hello.`,
     fr: `🏠🔐 Technicien en sécurité résidentielle sélectionné.
 
 Veuillez écrire les détails avec vos propres mots.
@@ -3618,7 +3776,9 @@ Incluez :
 
 Vous pouvez aussi envoyer des photos, liens, documents ou messages vocaux.
 
-Notre équipe vous contactera bientôt sur WhatsApp.`,
+Notre équipe vous contactera bientôt sur WhatsApp.
+
+Pour revenir au menu principal à tout moment, tapez Hello.`,
     de: `🏠🔐 Haussicherheitstechniker ausgewählt.
 
 Bitte schreiben Sie die Details mit Ihren eigenen Worten.
@@ -3631,7 +3791,9 @@ Bitte angeben:
 
 Sie können auch Bilder, Links, Dokumente oder Sprachnachrichten senden.
 
-Unser Team wird Sie in Kürze per WhatsApp kontaktieren.`,
+Unser Team wird Sie in Kürze per WhatsApp kontaktieren.
+
+Um jederzeit zum Hauptmenü zurückzukehren, schreiben Sie Hello.`,
     pt: `🏠🔐 Técnico de segurança residencial selecionado.
 
 Digite os detalhes com suas próprias palavras.
@@ -3644,7 +3806,9 @@ Inclua:
 
 Você também pode enviar fotos, links, documentos ou mensagens de voz.
 
-Nossa equipe entrará em contato em breve pelo WhatsApp.`,
+Nossa equipe entrará em contato em breve pelo WhatsApp.
+
+Para voltar ao menu principal a qualquer momento, digite Hello.`,
     ar: `🏠🔐 تم اختيار فني أمن المنازل.
 
 يرجى كتابة التفاصيل بكلماتك الخاصة.
@@ -3657,7 +3821,9 @@ Nossa equipe entrará em contato em breve pelo WhatsApp.`,
 
 يمكنك أيضًا إرسال صور أو روابط أو مستندات أو رسائل صوتية.
 
-سيتواصل معك فريقنا قريبًا عبر واتساب.`,
+سيتواصل معك فريقنا قريبًا عبر واتساب.
+
+للعودة إلى القائمة الرئيسية في أي وقت، اكتب Hello.`,
     zh: `🏠🔐 已选择家庭安防技术员。
 
 请用您自己的话填写详细信息。
@@ -3670,7 +3836,9 @@ Nossa equipe entrará em contato em breve pelo WhatsApp.`,
 
 您也可以发送图片、链接、文件或语音消息。
 
-我们的团队会很快通过 WhatsApp 联系您。`
+我们的团队会很快通过 WhatsApp 联系您。
+
+如需随时返回主菜单，请输入 Hello。`
   }));
   return res.sendStatus(200);
 }
@@ -3693,7 +3861,9 @@ Include:
 
 You may also send pictures, links, documents, or voice notes.
 
-Our team will contact you shortly on WhatsApp.`,
+Our team will contact you shortly on WhatsApp.
+
+To return to the main menu anytime, type Hello.`,
     es: `🔑 Cerrajero seleccionado.
 
 Por favor escriba los detalles con sus propias palabras.
@@ -3706,7 +3876,9 @@ Incluya:
 
 También puede enviar fotos, enlaces, documentos o notas de voz.
 
-Nuestro equipo se comunicará con usted pronto por WhatsApp.`,
+Nuestro equipo se comunicará con usted pronto por WhatsApp.
+
+Para volver al menú principal en cualquier momento, escriba Hello.`,
     fr: `🔑 Serrurier sélectionné.
 
 Veuillez écrire les détails avec vos propres mots.
@@ -3719,7 +3891,9 @@ Incluez :
 
 Vous pouvez aussi envoyer des photos, liens, documents ou messages vocaux.
 
-Notre équipe vous contactera bientôt sur WhatsApp.`,
+Notre équipe vous contactera bientôt sur WhatsApp.
+
+Pour revenir au menu principal à tout moment, tapez Hello.`,
     de: `🔑 Schlüsseldienst ausgewählt.
 
 Bitte schreiben Sie die Details mit Ihren eigenen Worten.
@@ -3732,7 +3906,9 @@ Bitte angeben:
 
 Sie können auch Bilder, Links, Dokumente oder Sprachnachrichten senden.
 
-Unser Team wird Sie in Kürze per WhatsApp kontaktieren.`,
+Unser Team wird Sie in Kürze per WhatsApp kontaktieren.
+
+Um jederzeit zum Hauptmenü zurückzukehren, schreiben Sie Hello.`,
     pt: `🔑 Chaveiro selecionado.
 
 Digite os detalhes com suas próprias palavras.
@@ -3745,7 +3921,9 @@ Inclua:
 
 Você também pode enviar fotos, links, documentos ou mensagens de voz.
 
-Nossa equipe entrará em contato em breve pelo WhatsApp.`,
+Nossa equipe entrará em contato em breve pelo WhatsApp.
+
+Para voltar ao menu principal a qualquer momento, digite Hello.`,
     ar: `🔑 تم اختيار صانع أقفال.
 
 يرجى كتابة التفاصيل بكلماتك الخاصة.
@@ -3758,7 +3936,9 @@ Nossa equipe entrará em contato em breve pelo WhatsApp.`,
 
 يمكنك أيضًا إرسال صور أو روابط أو مستندات أو رسائل صوتية.
 
-سيتواصل معك فريقنا قريبًا عبر واتساب.`,
+سيتواصل معك فريقنا قريبًا عبر واتساب.
+
+للعودة إلى القائمة الرئيسية في أي وقت، اكتب Hello.`,
     zh: `🔑 已选择锁匠。
 
 请用您自己的话填写详细信息。
@@ -3771,7 +3951,9 @@ Nossa equipe entrará em contato em breve pelo WhatsApp.`,
 
 您也可以发送图片、链接、文件或语音消息。
 
-我们的团队会很快通过 WhatsApp 联系您。`
+我们的团队会很快通过 WhatsApp 联系您。
+
+如需随时返回主菜单，请输入 Hello。`
   }));
   return res.sendStatus(200);
 }
@@ -3798,37 +3980,51 @@ Nossa equipe entrará em contato em breve pelo WhatsApp.`,
 
 Worker needed: ${workerRequest}
 
-Our team will review available workers and contact you shortly on WhatsApp.`,
+Our team will review available workers and contact you shortly on WhatsApp.
+
+To return to the main menu anytime, type Hello.`,
     es: `✅ Su solicitud de trabajador ha sido recibida.
 
 Trabajador necesario: ${workerRequest}
 
-Nuestro equipo revisará los trabajadores disponibles y se comunicará con usted pronto por WhatsApp.`,
+Nuestro equipo revisará los trabajadores disponibles y se comunicará con usted pronto por WhatsApp.
+
+Para volver al menú principal en cualquier momento, escriba Hello.`,
     fr: `✅ Votre demande de travailleur a été reçue.
 
 Travailleur recherché : ${workerRequest}
 
-Notre équipe vérifiera les travailleurs disponibles et vous contactera bientôt sur WhatsApp.`,
+Notre équipe vérifiera les travailleurs disponibles et vous contactera bientôt sur WhatsApp.
+
+Pour revenir au menu principal à tout moment, tapez Hello.`,
     de: `✅ Ihre Arbeiter-Anfrage wurde erhalten.
 
 Benötigter Arbeiter: ${workerRequest}
 
-Unser Team prüft verfügbare Arbeiter und kontaktiert Sie in Kürze per WhatsApp.`,
+Unser Team prüft verfügbare Arbeiter und kontaktiert Sie in Kürze per WhatsApp.
+
+Um jederzeit zum Hauptmenü zurückzukehren, schreiben Sie Hello.`,
     pt: `✅ Sua solicitação de trabalhador foi recebida.
 
 Trabalhador necessário: ${workerRequest}
 
-Nossa equipe verificará trabalhadores disponíveis e entrará em contato em breve pelo WhatsApp.`,
+Nossa equipe verificará trabalhadores disponíveis e entrará em contato em breve pelo WhatsApp.
+
+Para voltar ao menu principal a qualquer momento, digite Hello.`,
     ar: `✅ تم استلام طلب العامل.
 
 العامل المطلوب: ${workerRequest}
 
-سيقوم فريقنا بمراجعة العمال المتاحين والتواصل معك قريبًا عبر واتساب.`,
+سيقوم فريقنا بمراجعة العمال المتاحين والتواصل معك قريبًا عبر واتساب.
+
+للعودة إلى القائمة الرئيسية في أي وقت، اكتب Hello.`,
     zh: `✅ 您的工人请求已收到。
 
 所需工人：${workerRequest}
 
-我们的团队会查看可用工人，并很快通过 WhatsApp 联系您。`
+我们的团队会查看可用工人，并很快通过 WhatsApp 联系您。
+
+如需随时返回主菜单，请输入 Hello。`
   }));
 
   return res.sendStatus(200);
@@ -3913,37 +4109,51 @@ Nossa equipe verificará trabalhadores disponíveis e entrará em contato em bre
 
 Selected Role: ${selectedRole}
 
-Our recruitment team will contact you shortly on WhatsApp with available opportunities.`,
+Our recruitment team will contact you shortly on WhatsApp with available opportunities.
+
+To return to the main menu anytime, type Hello.`,
     es: `✅ Su interés laboral ha sido recibido.
 
 Puesto seleccionado: ${selectedRole}
 
-Nuestro equipo de reclutamiento se comunicará pronto por WhatsApp con oportunidades disponibles.`,
+Nuestro equipo de reclutamiento se comunicará pronto por WhatsApp con oportunidades disponibles.
+
+Para volver al menú principal en cualquier momento, escriba Hello.`,
     fr: `✅ Votre intérêt pour un emploi a été reçu.
 
 Poste sélectionné : ${selectedRole}
 
-Notre équipe de recrutement vous contactera bientôt sur WhatsApp avec les opportunités disponibles.`,
+Notre équipe de recrutement vous contactera bientôt sur WhatsApp avec les opportunités disponibles.
+
+Pour revenir au menu principal à tout moment, tapez Hello.`,
     de: `✅ Ihr Interesse an einer Stelle wurde erhalten.
 
 Ausgewählte Stelle: ${selectedRole}
 
-Unser Rekrutierungsteam kontaktiert Sie in Kürze per WhatsApp mit verfügbaren Möglichkeiten.`,
+Unser Rekrutierungsteam kontaktiert Sie in Kürze per WhatsApp mit verfügbaren Möglichkeiten.
+
+Um jederzeit zum Hauptmenü zurückzukehren, schreiben Sie Hello.`,
     pt: `✅ Seu interesse em emprego foi recebido.
 
 Função selecionada: ${selectedRole}
 
-Nossa equipe de recrutamento entrará em contato em breve pelo WhatsApp com oportunidades disponíveis.`,
+Nossa equipe de recrutamento entrará em contato em breve pelo WhatsApp com oportunidades disponíveis.
+
+Para voltar ao menu principal a qualquer momento, digite Hello.`,
     ar: `✅ تم استلام اهتمامك بالوظيفة.
 
 الوظيفة المختارة: ${selectedRole}
 
-سيتواصل معك فريق التوظيف قريبًا عبر واتساب بالفرص المتاحة.`,
+سيتواصل معك فريق التوظيف قريبًا عبر واتساب بالفرص المتاحة.
+
+للعودة إلى القائمة الرئيسية في أي وقت، اكتب Hello.`,
     zh: `✅ 您的求职意向已收到。
 
 选择职位：${selectedRole}
 
-我们的招聘团队会很快通过 WhatsApp 联系您并提供可用机会。`
+我们的招聘团队会很快通过 WhatsApp 联系您并提供可用机会。
+
+如需随时返回主菜单，请输入 Hello。`
   }));
 
   return res.sendStatus(200);
@@ -3965,25 +4175,35 @@ Nossa equipe de recrutamento entrará em contato em breve pelo WhatsApp com opor
 
 Our moderation team will review the report before broadcasting it to the community.
 
+To return to the main menu anytime, type Hello.
+
 Thank you for helping keep the community safe.`,
     es: `🚨 Alerta comunitaria recibida.
 
 Nuestro equipo de moderación revisará el reporte antes de publicarlo en la comunidad.
+
+Para volver al menú principal en cualquier momento, escriba Hello.
 
 Gracias por ayudar a mantener segura la comunidad.`,
     fr: `🚨 Alerte communautaire reçue.
 
 Notre équipe de modération examinera le rapport avant toute diffusion à la communauté.
 
+Pour revenir au menu principal à tout moment, tapez Hello.
+
 Merci d'aider à protéger la communauté.`,
     de: `🚨 Gemeinschaftsalarm erhalten.
 
 Unser Moderationsteam prüft die Meldung, bevor sie an die Gemeinschaft gesendet wird.
 
+Um jederzeit zum Hauptmenü zurückzukehren, schreiben Sie Hello.
+
 Danke, dass Sie helfen, die Gemeinschaft sicher zu halten.`,
     pt: `🚨 Alerta comunitário recebido.
 
 Nossa equipe de moderação analisará o relatório antes de divulgá-lo à comunidade.
+
+Para voltar ao menu principal a qualquer momento, digite Hello.
 
 Obrigado por ajudar a manter a comunidade segura.`,
     ar: `🚨 تم استلام التنبيه المجتمعي.
@@ -3994,6 +4214,8 @@ Obrigado por ajudar a manter a comunidade segura.`,
     zh: `🚨 社区警报已收到。
 
 我们的审核团队会先审核报告，然后再向社区发布。
+
+如需随时返回主菜单，请输入 Hello。
 
 感谢您帮助维护社区安全。`
   }));
@@ -4017,35 +4239,49 @@ Obrigado por ajudar a manter a comunidade segura.`,
 
 Our moderation team will review the media and details before any community broadcast.
 
+To return to the main menu anytime, type Hello.
+
 Thank you for helping keep the community safe.`,
     es: `✅ Detalles de alerta comunitaria recibidos.
 
 Nuestro equipo de moderación revisará los medios y detalles antes de cualquier publicación comunitaria.
+
+Para volver al menú principal en cualquier momento, escriba Hello.
 
 Gracias por ayudar a mantener segura la comunidad.`,
     fr: `✅ Détails de l'alerte communautaire reçus.
 
 Notre équipe de modération examinera les médias et les détails avant toute diffusion.
 
+Pour revenir au menu principal à tout moment, tapez Hello.
+
 Merci d'aider à protéger la communauté.`,
     de: `✅ Details zum Gemeinschaftsalarm erhalten.
 
 Unser Moderationsteam prüft Medien und Details vor jeder Veröffentlichung in der Gemeinschaft.
+
+Um jederzeit zum Hauptmenü zurückzukehren, schreiben Sie Hello.
 
 Danke, dass Sie helfen, die Gemeinschaft sicher zu halten.`,
     pt: `✅ Detalhes do alerta comunitário recebidos.
 
 Nossa equipe de moderação analisará a mídia e os detalhes antes de qualquer divulgação.
 
+Para voltar ao menu principal a qualquer momento, digite Hello.
+
 Obrigado por ajudar a manter a comunidade segura.`,
     ar: `✅ تم استلام تفاصيل التنبيه المجتمعي.
 
 سيراجع فريق الإشراف الوسائط والتفاصيل قبل أي نشر مجتمعي.
 
+للعودة إلى القائمة الرئيسية في أي وقت، اكتب Hello.
+
 شكرًا لمساعدتك في الحفاظ على أمان المجتمع.`,
     zh: `✅ 社区警报详情已收到。
 
 我们的审核团队会在任何社区发布前审核媒体和详情。
+
+如需随时返回主菜单，请输入 Hello。
 
 感谢您帮助维护社区安全。`
   }));
@@ -4069,35 +4305,49 @@ Obrigado por ajudar a manter a comunidade segura.`,
 
 Our moderation team will review the media and voice details before any community broadcast.
 
+To return to the main menu anytime, type Hello.
+
 Thank you for helping keep the community safe.`,
     es: `✅ Nota de voz de alerta comunitaria recibida.
 
 Nuestro equipo de moderación revisará los medios y la voz antes de cualquier publicación comunitaria.
+
+Para volver al menú principal en cualquier momento, escriba Hello.
 
 Gracias por ayudar a mantener segura la comunidad.`,
     fr: `✅ Note vocale d'alerte communautaire reçue.
 
 Notre équipe de modération examinera les médias et les détails vocaux avant toute diffusion.
 
+Pour revenir au menu principal à tout moment, tapez Hello.
+
 Merci d'aider à protéger la communauté.`,
     de: `✅ Sprachnachricht zum Gemeinschaftsalarm erhalten.
 
 Unser Moderationsteam prüft Medien und Sprachnotizen vor jeder Veröffentlichung.
+
+Um jederzeit zum Hauptmenü zurückzukehren, schreiben Sie Hello.
 
 Danke, dass Sie helfen, die Gemeinschaft sicher zu halten.`,
     pt: `✅ Mensagem de voz do alerta comunitário recebida.
 
 Nossa equipe de moderação analisará a mídia e a voz antes de qualquer divulgação.
 
+Para voltar ao menu principal a qualquer momento, digite Hello.
+
 Obrigado por ajudar a manter a comunidade segura.`,
     ar: `✅ تم استلام الرسالة الصوتية للتنبيه المجتمعي.
 
 سيراجع فريق الإشراف الوسائط والتفاصيل الصوتية قبل أي نشر.
 
+للعودة إلى القائمة الرئيسية في أي وقت، اكتب Hello.
+
 شكرًا لمساعدتك في الحفاظ على أمان المجتمع.`,
     zh: `✅ 社区警报语音已收到。
 
 我们的审核团队会在任何社区发布前审核媒体和语音详情。
+
+如需随时返回主菜单，请输入 Hello。
 
 感谢您帮助维护社区安全。`
   }));
@@ -4186,12 +4436,16 @@ Category selected: ${selectedCategory}
 
 Our team will send you verified supplier recommendations shortly.
 
+To return to the main menu anytime, type Hello.
+
 We are also setting up referral tracking so workmen can buy materials from trusted companies with proper monitoring.`,
     es: `🏪 Proveedores confiables
 
 Categoría seleccionada: ${selectedCategory}
 
 Nuestro equipo le enviará pronto recomendaciones de proveedores verificados.
+
+Para volver al menú principal en cualquier momento, escriba Hello.
 
 También estamos configurando seguimiento de referidos para que los trabajadores compren materiales de empresas confiables con monitoreo adecuado.`,
     fr: `🏪 Fournisseurs fiables
@@ -4200,12 +4454,16 @@ Catégorie sélectionnée : ${selectedCategory}
 
 Notre équipe vous enverra bientôt des recommandations de fournisseurs vérifiés.
 
+Pour revenir au menu principal à tout moment, tapez Hello.
+
 Nous mettons aussi en place un suivi des recommandations afin que les travailleurs achètent auprès d'entreprises fiables avec un bon contrôle.`,
     de: `🏪 Vertrauenswürdige Lieferanten
 
 Ausgewählte Kategorie: ${selectedCategory}
 
 Unser Team sendet Ihnen in Kürze geprüfte Lieferantenempfehlungen.
+
+Um jederzeit zum Hauptmenü zurückzukehren, schreiben Sie Hello.
 
 Wir richten außerdem Empfehlungsverfolgung ein, damit Handwerker Materialien von vertrauenswürdigen Firmen mit ordentlicher Überwachung kaufen können.`,
     pt: `🏪 Fornecedores confiáveis
@@ -4214,6 +4472,8 @@ Categoria selecionada: ${selectedCategory}
 
 Nossa equipe enviará recomendações de fornecedores verificados em breve.
 
+Para voltar ao menu principal a qualquer momento, digite Hello.
+
 Também estamos configurando rastreamento de indicação para que trabalhadores comprem materiais de empresas confiáveis com monitoramento adequado.`,
     ar: `🏪 موردون موثوقون
 
@@ -4221,12 +4481,16 @@ Também estamos configurando rastreamento de indicação para que trabalhadores 
 
 سيرسل لك فريقنا توصيات لموردين موثوقين قريبًا.
 
+للعودة إلى القائمة الرئيسية في أي وقت، اكتب Hello.
+
 نقوم أيضًا بإعداد تتبع الإحالات حتى يتمكن العمال من شراء المواد من شركات موثوقة مع متابعة مناسبة.`,
     zh: `🏪 可信供应商
 
 已选择类别：${selectedCategory}
 
 我们的团队会很快发送经过验证的供应商推荐。
+
+如需随时返回主菜单，请输入 Hello。
 
 我们也在设置推荐跟踪，以便工人可以从可信公司购买材料并进行适当监督。`
   }));
@@ -4664,7 +4928,9 @@ You can also include:
 - Print color
 - Front or back placement
 
-Our team will contact you shortly on WhatsApp.`,
+Our team will contact you shortly on WhatsApp.
+
+To return to the main menu anytime, type Hello.`,
     es: `✅ Talla seleccionada: ${size}
 
 Escriba el texto que desea imprimir en su camiseta.
@@ -4674,7 +4940,9 @@ También puede incluir:
 - Color de impresión
 - Ubicación delantera o trasera
 
-Nuestro equipo se comunicará pronto por WhatsApp.`,
+Nuestro equipo se comunicará pronto por WhatsApp.
+
+Para volver al menú principal en cualquier momento, escriba Hello.`,
     fr: `✅ Taille sélectionnée : ${size}
 
 Tapez le texte à imprimer sur votre T-shirt.
@@ -4684,7 +4952,9 @@ Vous pouvez aussi inclure :
 - Couleur d'impression
 - Emplacement devant ou dos
 
-Notre équipe vous contactera bientôt sur WhatsApp.`,
+Notre équipe vous contactera bientôt sur WhatsApp.
+
+Pour revenir au menu principal à tout moment, tapez Hello.`,
     de: `✅ Größe ausgewählt: ${size}
 
 Bitte geben Sie den Text ein, der auf Ihr T-Shirt gedruckt werden soll.
@@ -4694,7 +4964,9 @@ Sie können auch angeben:
 - Druckfarbe
 - Vorder- oder Rückseite
 
-Unser Team kontaktiert Sie bald per WhatsApp.`,
+Unser Team kontaktiert Sie bald per WhatsApp.
+
+Um jederzeit zum Hauptmenü zurückzukehren, schreiben Sie Hello.`,
     pt: `✅ Tamanho selecionado: ${size}
 
 Digite o texto que deseja imprimir na camiseta.
@@ -4704,7 +4976,9 @@ Você também pode incluir:
 - Cor da impressão
 - Frente ou costas
 
-Nossa equipe entrará em contato em breve pelo WhatsApp.`,
+Nossa equipe entrará em contato em breve pelo WhatsApp.
+
+Para voltar ao menu principal a qualquer momento, digite Hello.`,
     ar: `✅ تم اختيار المقاس: ${size}
 
 يرجى كتابة النص الذي تريد طباعته على التيشيرت.
@@ -4714,7 +4988,9 @@ Nossa equipe entrará em contato em breve pelo WhatsApp.`,
 - لون الطباعة
 - مكان الطباعة أمامي أو خلفي
 
-سيتواصل معك فريقنا قريبًا عبر واتساب.`,
+سيتواصل معك فريقنا قريبًا عبر واتساب.
+
+للعودة إلى القائمة الرئيسية في أي وقت، اكتب Hello.`,
     zh: `✅ 已选择尺码：${size}
 
 请输入您想印在 T 恤上的文字。
@@ -4724,7 +5000,9 @@ Nossa equipe entrará em contato em breve pelo WhatsApp.`,
 - 印刷颜色
 - 正面或背面位置
 
-我们的团队会很快通过 WhatsApp 联系您。`
+我们的团队会很快通过 WhatsApp 联系您。
+
+如需随时返回主菜单，请输入 Hello。`
   }));
   return res.sendStatus(200);
 }
@@ -4745,43 +5023,57 @@ if (session.stage === "TSHIRT_WAITING_TEXT" && type === "text") {
 Size: ${session.tshirtSize}
 Design: ${designText}
 
-Our team will contact you shortly on WhatsApp.`,
+Our team will contact you shortly on WhatsApp.
+
+To return to the main menu anytime, type Hello.`,
     es: `👕 Su solicitud de camiseta fue recibida.
 
 Talla: ${session.tshirtSize}
 Diseño: ${designText}
 
-Nuestro equipo se comunicará pronto por WhatsApp.`,
+Nuestro equipo se comunicará pronto por WhatsApp.
+
+Para volver al menú principal en cualquier momento, escriba Hello.`,
     fr: `👕 Votre demande de T-shirt a été reçue.
 
 Taille : ${session.tshirtSize}
 Design : ${designText}
 
-Notre équipe vous contactera bientôt sur WhatsApp.`,
+Notre équipe vous contactera bientôt sur WhatsApp.
+
+Pour revenir au menu principal à tout moment, tapez Hello.`,
     de: `👕 Ihre T-Shirt-Anfrage wurde erhalten.
 
 Größe: ${session.tshirtSize}
 Design: ${designText}
 
-Unser Team kontaktiert Sie bald per WhatsApp.`,
+Unser Team kontaktiert Sie bald per WhatsApp.
+
+Um jederzeit zum Hauptmenü zurückzukehren, schreiben Sie Hello.`,
     pt: `👕 Sua solicitação de camiseta foi recebida.
 
 Tamanho: ${session.tshirtSize}
 Design: ${designText}
 
-Nossa equipe entrará em contato em breve pelo WhatsApp.`,
+Nossa equipe entrará em contato em breve pelo WhatsApp.
+
+Para voltar ao menu principal a qualquer momento, digite Hello.`,
     ar: `👕 تم استلام طلب التيشيرت الخاص بك.
 
 المقاس: ${session.tshirtSize}
 التصميم: ${designText}
 
-سيتواصل معك فريقنا قريبًا عبر واتساب.`,
+سيتواصل معك فريقنا قريبًا عبر واتساب.
+
+للعودة إلى القائمة الرئيسية في أي وقت، اكتب Hello.`,
     zh: `👕 您的 T 恤请求已收到。
 
 尺码：${session.tshirtSize}
 设计：${designText}
 
-我们的团队会很快通过 WhatsApp 联系您。`
+我们的团队会很快通过 WhatsApp 联系您。
+
+如需随时返回主菜单，请输入 Hello。`
   }));
 
   session.stage = "MENU";
@@ -4930,7 +5222,9 @@ Please now send ANY of the following:
 
 You may send text, voice note, or both.
 
-Our moderation team will review everything before any community broadcast.`,
+Our moderation team will review everything before any community broadcast.
+
+To return to the main menu anytime, type Hello.`,
     es: `🚨 Medio de alerta comunitaria recibido.
 
 Ahora envíe cualquiera de lo siguiente:
@@ -4942,7 +5236,9 @@ Ahora envíe cualquiera de lo siguiente:
 
 Puede enviar texto, nota de voz o ambos.
 
-Nuestro equipo de moderación revisará todo antes de cualquier difusión comunitaria.`,
+Nuestro equipo de moderación revisará todo antes de cualquier difusión comunitaria.
+
+Para volver al menú principal en cualquier momento, escriba Hello.`,
     fr: `🚨 Média d'alerte communautaire reçu.
 
 Veuillez maintenant envoyer l'un des éléments suivants :
@@ -4954,7 +5250,9 @@ Veuillez maintenant envoyer l'un des éléments suivants :
 
 Vous pouvez envoyer un texte, une note vocale ou les deux.
 
-Notre équipe de modération examinera tout avant toute diffusion communautaire.`,
+Notre équipe de modération examinera tout avant toute diffusion communautaire.
+
+Pour revenir au menu principal à tout moment, tapez Hello.`,
     de: `🚨 Medien zum Gemeinschaftsalarm erhalten.
 
 Bitte senden Sie jetzt eine der folgenden Angaben:
@@ -4966,7 +5264,9 @@ Bitte senden Sie jetzt eine der folgenden Angaben:
 
 Sie können Text, Sprachnachricht oder beides senden.
 
-Unser Moderationsteam prüft alles vor einer Veröffentlichung.`,
+Unser Moderationsteam prüft alles vor einer Veröffentlichung.
+
+Um jederzeit zum Hauptmenü zurückzukehren, schreiben Sie Hello.`,
     pt: `🚨 Mídia de alerta comunitário recebida.
 
 Agora envie qualquer uma das informações abaixo:
@@ -4978,7 +5278,9 @@ Agora envie qualquer uma das informações abaixo:
 
 Você pode enviar texto, áudio ou ambos.
 
-Nossa equipe de moderação analisará tudo antes de qualquer divulgação.`,
+Nossa equipe de moderação analisará tudo antes de qualquer divulgação.
+
+Para voltar ao menu principal a qualquer momento, digite Hello.`,
     ar: `🚨 تم استلام وسائط التنبيه المجتمعي.
 
 يرجى الآن إرسال أي مما يلي:
@@ -5002,7 +5304,9 @@ Nossa equipe de moderação analisará tudo antes de qualquer divulgação.`,
 
 您可以发送文字、语音或两者都发送。
 
-我们的审核团队会在任何社区发布前审核全部内容。`
+我们的审核团队会在任何社区发布前审核全部内容。
+
+如需随时返回主菜单，请输入 Hello。`
   }));
 
   return res.sendStatus(200);
@@ -5089,49 +5393,63 @@ You can now send:
 • Text instruction
 • OR voice note
 
-Our team will review and contact you shortly.`,
+Our team will review and contact you shortly.
+
+To return to the main menu anytime, type Hello.`,
     es: `✅ CV recibido para ${session.jobRole}
 
 Ahora puede enviar:
 • Instrucción de texto
 • O nota de voz
 
-Nuestro equipo revisará y le contactará pronto.`,
+Nuestro equipo revisará y le contactará pronto.
+
+Para volver al menú principal en cualquier momento, escriba Hello.`,
     fr: `✅ CV reçu pour ${session.jobRole}
 
 Vous pouvez maintenant envoyer :
 • Instruction texte
 • OU note vocale
 
-Notre équipe examinera et vous contactera bientôt.`,
+Notre équipe examinera et vous contactera bientôt.
+
+Pour revenir au menu principal à tout moment, tapez Hello.`,
     de: `✅ Lebenslauf für ${session.jobRole} erhalten
 
 Sie können jetzt senden:
 • Textanweisung
 • ODER Sprachnachricht
 
-Unser Team prüft es und kontaktiert Sie bald.`,
+Unser Team prüft es und kontaktiert Sie bald.
+
+Um jederzeit zum Hauptmenü zurückzukehren, schreiben Sie Hello.`,
     pt: `✅ Currículo recebido para ${session.jobRole}
 
 Agora você pode enviar:
 • Instrução em texto
 • OU mensagem de voz
 
-Nossa equipe analisará e entrará em contato em breve.`,
+Nossa equipe analisará e entrará em contato em breve.
+
+Para voltar ao menu principal a qualquer momento, digite Hello.`,
     ar: `✅ تم استلام السيرة الذاتية لـ ${session.jobRole}
 
 يمكنك الآن إرسال:
 • تعليمات نصية
 • أو رسالة صوتية
 
-سيقوم فريقنا بالمراجعة والتواصل معك قريبًا.`,
+سيقوم فريقنا بالمراجعة والتواصل معك قريبًا.
+
+للعودة إلى القائمة الرئيسية في أي وقت، اكتب Hello.`,
     zh: `✅ 已收到 ${session.jobRole} 的简历
 
 您现在可以发送：
 • 文字说明
 • 或语音说明
 
-我们的团队会审核并很快联系您。`
+我们的团队会审核并很快联系您。
+
+如需随时返回主菜单，请输入 Hello。`
   }));
 
   return res.sendStatus(200);
@@ -5155,37 +5473,51 @@ Nossa equipe analisará e entrará em contato em breve.`,
 
 Please send your instruction now as text or voice note.
 
-Our team will contact you shortly on WhatsApp.`,
+Our team will contact you shortly on WhatsApp.
+
+To return to the main menu anytime, type Hello.`,
   es: `✅ Imagen recibida.
 
 Envíe ahora sus instrucciones por texto o nota de voz.
 
-Nuestro equipo se comunicará pronto por WhatsApp.`,
+Nuestro equipo se comunicará pronto por WhatsApp.
+
+Para volver al menú principal en cualquier momento, escriba Hello.`,
   fr: `✅ Image reçue.
 
 Veuillez envoyer vos instructions maintenant par texte ou note vocale.
 
-Notre équipe vous contactera bientôt sur WhatsApp.`,
+Notre équipe vous contactera bientôt sur WhatsApp.
+
+Pour revenir au menu principal à tout moment, tapez Hello.`,
   de: `✅ Bild erhalten.
 
 Bitte senden Sie jetzt Ihre Anweisung als Text oder Sprachnachricht.
 
-Unser Team kontaktiert Sie bald per WhatsApp.`,
+Unser Team kontaktiert Sie bald per WhatsApp.
+
+Um jederzeit zum Hauptmenü zurückzukehren, schreiben Sie Hello.`,
   pt: `✅ Imagem recebida.
 
 Envie agora sua instrução por texto ou mensagem de voz.
 
-Nossa equipe entrará em contato em breve pelo WhatsApp.`,
+Nossa equipe entrará em contato em breve pelo WhatsApp.
+
+Para voltar ao menu principal a qualquer momento, digite Hello.`,
   ar: `✅ تم استلام الصورة.
 
 يرجى إرسال تعليماتك الآن كنص أو رسالة صوتية.
 
-سيتواصل معك فريقنا قريبًا عبر واتساب.`,
+سيتواصل معك فريقنا قريبًا عبر واتساب.
+
+للعودة إلى القائمة الرئيسية في أي وقت، اكتب Hello.`,
   zh: `✅ 图片已收到。
 
 请现在通过文字或语音发送说明。
 
-我们的团队会很快通过 WhatsApp 联系您。`
+我们的团队会很快通过 WhatsApp 联系您。
+
+如需随时返回主菜单，请输入 Hello。`
 }));
         return res.sendStatus(200);
       }
@@ -5209,37 +5541,51 @@ if (session.stage === "LESSON_WAITING_UPLOAD") {
 
 Please send your instruction now as text or voice note.
 
-Our team will contact you shortly on WhatsApp.`,
+Our team will contact you shortly on WhatsApp.
+
+To return to the main menu anytime, type Hello.`,
     es: `✅ Archivo de lección / tarea recibido.
 
 Envíe ahora sus instrucciones por texto o nota de voz.
 
-Nuestro equipo se comunicará pronto por WhatsApp.`,
+Nuestro equipo se comunicará pronto por WhatsApp.
+
+Para volver al menú principal en cualquier momento, escriba Hello.`,
     fr: `✅ Fichier de leçon / devoir reçu.
 
 Veuillez envoyer vos instructions maintenant par texte ou note vocale.
 
-Notre équipe vous contactera bientôt sur WhatsApp.`,
+Notre équipe vous contactera bientôt sur WhatsApp.
+
+Pour revenir au menu principal à tout moment, tapez Hello.`,
     de: `✅ Unterrichts- / Hausaufgabendatei erhalten.
 
 Bitte senden Sie jetzt Ihre Anweisung als Text oder Sprachnachricht.
 
-Unser Team kontaktiert Sie bald per WhatsApp.`,
+Unser Team kontaktiert Sie bald per WhatsApp.
+
+Um jederzeit zum Hauptmenü zurückzukehren, schreiben Sie Hello.`,
     pt: `✅ Arquivo de aula / tarefa recebido.
 
 Envie agora sua instrução por texto ou mensagem de voz.
 
-Nossa equipe entrará em contato em breve pelo WhatsApp.`,
+Nossa equipe entrará em contato em breve pelo WhatsApp.
+
+Para voltar ao menu principal a qualquer momento, digite Hello.`,
     ar: `✅ تم استلام ملف الدرس / الواجب.
 
 يرجى إرسال تعليماتك الآن كنص أو رسالة صوتية.
 
-سيتواصل معك فريقنا قريبًا عبر واتساب.`,
+سيتواصل معك فريقنا قريبًا عبر واتساب.
+
+للعودة إلى القائمة الرئيسية في أي وقت، اكتب Hello.`,
     zh: `✅ 课程 / 作业文件已收到。
 
 请现在通过文字或语音发送说明。
 
-我们的团队会很快通过 WhatsApp 联系您。`
+我们的团队会很快通过 WhatsApp 联系您。
+
+如需随时返回主菜单，请输入 Hello。`
   }));
 
   return res.sendStatus(200);
@@ -5262,37 +5608,51 @@ Nossa equipe entrará em contato em breve pelo WhatsApp.`,
 
 Please send your instruction now as text or voice note.
 
-Our team will contact you shortly on WhatsApp.`,
+Our team will contact you shortly on WhatsApp.
+
+To return to the main menu anytime, type Hello.`,
   es: `✅ Video recibido.
 
 Envíe ahora sus instrucciones por texto o nota de voz.
 
-Nuestro equipo se comunicará pronto por WhatsApp.`,
+Nuestro equipo se comunicará pronto por WhatsApp.
+
+Para volver al menú principal en cualquier momento, escriba Hello.`,
   fr: `✅ Vidéo reçue.
 
 Veuillez envoyer vos instructions maintenant par texte ou note vocale.
 
-Notre équipe vous contactera bientôt sur WhatsApp.`,
+Notre équipe vous contactera bientôt sur WhatsApp.
+
+Pour revenir au menu principal à tout moment, tapez Hello.`,
   de: `✅ Video erhalten.
 
 Bitte senden Sie jetzt Ihre Anweisung als Text oder Sprachnachricht.
 
-Unser Team kontaktiert Sie bald per WhatsApp.`,
+Unser Team kontaktiert Sie bald per WhatsApp.
+
+Um jederzeit zum Hauptmenü zurückzukehren, schreiben Sie Hello.`,
   pt: `✅ Vídeo recebido.
 
 Envie agora sua instrução por texto ou mensagem de voz.
 
-Nossa equipe entrará em contato em breve pelo WhatsApp.`,
+Nossa equipe entrará em contato em breve pelo WhatsApp.
+
+Para voltar ao menu principal a qualquer momento, digite Hello.`,
   ar: `✅ تم استلام الفيديو.
 
 يرجى إرسال تعليماتك الآن كنص أو رسالة صوتية.
 
-سيتواصل معك فريقنا قريبًا عبر واتساب.`,
+سيتواصل معك فريقنا قريبًا عبر واتساب.
+
+للعودة إلى القائمة الرئيسية في أي وقت، اكتب Hello.`,
   zh: `✅ 视频已收到。
 
 请现在通过文字或语音发送说明。
 
-我们的团队会很快通过 WhatsApp 联系您。`
+我们的团队会很快通过 WhatsApp 联系您。
+
+如需随时返回主菜单，请输入 Hello。`
 }));
         return res.sendStatus(200);
       }
@@ -5315,37 +5675,51 @@ Nossa equipe entrará em contato em breve pelo WhatsApp.`,
 
 Please send your instruction now as text or voice note.
 
-Our team will contact you shortly on WhatsApp.`,
+Our team will contact you shortly on WhatsApp.
+
+To return to the main menu anytime, type Hello.`,
   es: `✅ Foto de identificación recibida.
 
 Envíe ahora sus instrucciones por texto o nota de voz.
 
-Nuestro equipo se comunicará pronto por WhatsApp.`,
+Nuestro equipo se comunicará pronto por WhatsApp.
+
+Para volver al menú principal en cualquier momento, escriba Hello.`,
   fr: `✅ Photo d'identité reçue.
 
 Veuillez envoyer vos instructions maintenant par texte ou note vocale.
 
-Notre équipe vous contactera bientôt sur WhatsApp.`,
+Notre équipe vous contactera bientôt sur WhatsApp.
+
+Pour revenir au menu principal à tout moment, tapez Hello.`,
   de: `✅ Passfoto erhalten.
 
 Bitte senden Sie jetzt Ihre Anweisung als Text oder Sprachnachricht.
 
-Unser Team kontaktiert Sie bald per WhatsApp.`,
+Unser Team kontaktiert Sie bald per WhatsApp.
+
+Um jederzeit zum Hauptmenü zurückzukehren, schreiben Sie Hello.`,
   pt: `✅ Foto de identificação recebida.
 
 Envie agora sua instrução por texto ou mensagem de voz.
 
-Nossa equipe entrará em contato em breve pelo WhatsApp.`,
+Nossa equipe entrará em contato em breve pelo WhatsApp.
+
+Para voltar ao menu principal a qualquer momento, digite Hello.`,
   ar: `✅ تم استلام صورة الهوية.
 
 يرجى إرسال تعليماتك الآن كنص أو رسالة صوتية.
 
-سيتواصل معك فريقنا قريبًا عبر واتساب.`,
+سيتواصل معك فريقنا قريبًا عبر واتساب.
+
+للعودة إلى القائمة الرئيسية في أي وقت، اكتب Hello.`,
   zh: `✅ 证件照已收到。
 
 请现在通过文字或语音发送说明。
 
-我们的团队会很快通过 WhatsApp 联系您。`
+我们的团队会很快通过 WhatsApp 联系您。
+
+如需随时返回主菜单，请输入 Hello。`
 }));
         return res.sendStatus(200);
       }
@@ -5361,25 +5735,39 @@ if (session.stage === "PRINT_PAYMENT_CHOICE" && type === "text") {
     await sendMessage(from, pickText(session.language, {
       en: `✅ Shopify payment noted.
 
-Our team will contact you shortly on WhatsApp.`,
+Our team will contact you shortly on WhatsApp.
+
+To return to the main menu anytime, type Hello.`,
       es: `✅ Pago de Shopify registrado.
 
-Nuestro equipo se comunicará con usted pronto por WhatsApp.`,
+Nuestro equipo se comunicará con usted pronto por WhatsApp.
+
+Para volver al menú principal en cualquier momento, escriba Hello.`,
       fr: `✅ Paiement Shopify noté.
 
-Notre équipe vous contactera bientôt sur WhatsApp.`,
+Notre équipe vous contactera bientôt sur WhatsApp.
+
+Pour revenir au menu principal à tout moment, tapez Hello.`,
       de: `✅ Shopify-Zahlung notiert.
 
-Unser Team wird Sie in Kürze per WhatsApp kontaktieren.`,
+Unser Team wird Sie in Kürze per WhatsApp kontaktieren.
+
+Um jederzeit zum Hauptmenü zurückzukehren, schreiben Sie Hello.`,
       pt: `✅ Pagamento Shopify registrado.
 
-Nossa equipe entrará em contato em breve pelo WhatsApp.`,
+Nossa equipe entrará em contato em breve pelo WhatsApp.
+
+Para voltar ao menu principal a qualquer momento, digite Hello.`,
       ar: `✅ تم تسجيل دفع Shopify.
 
-سيتواصل معك فريقنا قريبًا عبر واتساب.`,
+سيتواصل معك فريقنا قريبًا عبر واتساب.
+
+للعودة إلى القائمة الرئيسية في أي وقت، اكتب Hello.`,
       zh: `✅ Shopify 付款已记录。
 
-我们的团队会很快通过 WhatsApp 联系您。`
+我们的团队会很快通过 WhatsApp 联系您。
+
+如需随时返回主菜单，请输入 Hello。`
     }));
 
     return res.sendStatus(200);
@@ -5395,25 +5783,39 @@ Nossa equipe entrará em contato em breve pelo WhatsApp.`,
     await sendMessage(from, pickText(session.language, {
       en: `✅ Africa Payment noted.
 
-Our team will contact you shortly on WhatsApp.`,
+Our team will contact you shortly on WhatsApp.
+
+To return to the main menu anytime, type Hello.`,
       es: `✅ Pago África registrado.
 
-Nuestro equipo se comunicará con usted pronto por WhatsApp.`,
+Nuestro equipo se comunicará con usted pronto por WhatsApp.
+
+Para volver al menú principal en cualquier momento, escriba Hello.`,
       fr: `✅ Paiement Afrique noté.
 
-Notre équipe vous contactera bientôt sur WhatsApp.`,
+Notre équipe vous contactera bientôt sur WhatsApp.
+
+Pour revenir au menu principal à tout moment, tapez Hello.`,
       de: `✅ Afrika-Zahlung notiert.
 
-Unser Team wird Sie in Kürze per WhatsApp kontaktieren.`,
+Unser Team wird Sie in Kürze per WhatsApp kontaktieren.
+
+Um jederzeit zum Hauptmenü zurückzukehren, schreiben Sie Hello.`,
       pt: `✅ Pagamento África registrado.
 
-Nossa equipe entrará em contato em breve pelo WhatsApp.`,
+Nossa equipe entrará em contato em breve pelo WhatsApp.
+
+Para voltar ao menu principal a qualquer momento, digite Hello.`,
       ar: `✅ تم تسجيل دفع أفريقيا.
 
-سيتواصل معك فريقنا قريبًا عبر واتساب.`,
+سيتواصل معك فريقنا قريبًا عبر واتساب.
+
+للعودة إلى القائمة الرئيسية في أي وقت، اكتب Hello.`,
       zh: `✅ 非洲付款已记录。
 
-我们的团队会很快通过 WhatsApp 联系您。`
+我们的团队会很快通过 WhatsApp 联系您。
+
+如需随时返回主菜单，请输入 Hello。`
     }));
 
     return res.sendStatus(200);
@@ -5431,37 +5833,51 @@ Nossa equipe entrará em contato em breve pelo WhatsApp.`,
 
 Please send any additional instruction as text or voice note.
 
-Our team will contact you shortly on WhatsApp.`,
+Our team will contact you shortly on WhatsApp.
+
+To return to the main menu anytime, type Hello.`,
       es: `👨‍💼 Continuar con agente seleccionado.
 
 Envíe cualquier instrucción adicional como texto o nota de voz.
 
-Nuestro equipo se comunicará con usted pronto por WhatsApp.`,
+Nuestro equipo se comunicará con usted pronto por WhatsApp.
+
+Para volver al menú principal en cualquier momento, escriba Hello.`,
       fr: `👨‍💼 Continuer avec un agent sélectionné.
 
 Veuillez envoyer toute instruction supplémentaire par texte ou note vocale.
 
-Notre équipe vous contactera bientôt sur WhatsApp.`,
+Notre équipe vous contactera bientôt sur WhatsApp.
+
+Pour revenir au menu principal à tout moment, tapez Hello.`,
       de: `👨‍💼 Mit Agent fortfahren ausgewählt.
 
 Bitte senden Sie zusätzliche Anweisungen als Text oder Sprachnachricht.
 
-Unser Team wird Sie in Kürze per WhatsApp kontaktieren.`,
+Unser Team wird Sie in Kürze per WhatsApp kontaktieren.
+
+Um jederzeit zum Hauptmenü zurückzukehren, schreiben Sie Hello.`,
       pt: `👨‍💼 Continuar com agente selecionado.
 
 Envie qualquer instrução adicional por texto ou nota de voz.
 
-Nossa equipe entrará em contato em breve pelo WhatsApp.`,
+Nossa equipe entrará em contato em breve pelo WhatsApp.
+
+Para voltar ao menu principal a qualquer momento, digite Hello.`,
       ar: `👨‍💼 تم اختيار المتابعة مع موظف.
 
 يرجى إرسال أي تعليمات إضافية كنص أو رسالة صوتية.
 
-سيتواصل معك فريقنا قريبًا عبر واتساب.`,
+سيتواصل معك فريقنا قريبًا عبر واتساب.
+
+للعودة إلى القائمة الرئيسية في أي وقت، اكتب Hello.`,
       zh: `👨‍💼 已选择继续联系客服。
 
 请通过文字或语音发送任何补充说明。
 
-我们的团队会很快通过 WhatsApp 联系您。`
+我们的团队会很快通过 WhatsApp 联系您。
+
+如需随时返回主菜单，请输入 Hello。`
     }));
 
     return res.sendStatus(200);
