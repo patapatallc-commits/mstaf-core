@@ -1613,7 +1613,7 @@ if (
         UPDATE print_jobs
         SET instructions = CASE
           WHEN instructions IS NULL OR instructions = '' THEN $1
-          ELSE instructions || E'\\n\\n' || $1
+          ELSE instructions || E'\n\n--------------------\n' || $1
         END,
         updated_at = NOW()
         WHERE id = $2
