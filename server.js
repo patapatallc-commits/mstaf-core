@@ -1886,7 +1886,8 @@ You may also send pictures, links, documents, or voice notes.
 Our team will contact you shortly on WhatsApp.
 
 To return to the main menu anytime, type Hello.
-    es: `🧰 Ayudante interior / exterior seleccionado.
+`,
+es: `🧰 Ayudante interior / exterior seleccionado.
 
 Por favor escriba los detalles con sus propias palabras.
 
