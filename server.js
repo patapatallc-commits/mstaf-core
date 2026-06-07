@@ -5857,7 +5857,11 @@ app.post("/api/dashboard/jobs/:id/reply", requireDashboardKey, express.json(), a
     if (!sendResult.ok) {
       return res.status(500).json({ ok: false, error: sendResult.error });
     }
-
+const customerSession = getSession(phone);
+customerSession.selectedService = job.service_type || "SERVICE";
+customerSession.lastServiceJobId = job.id;
+customerSession.pendingFile = null;
+customerSession.stage = "SERVICE_WAITING_EXTRA_NOTES";
     res.json({ ok: true, sent: true });
   } catch (err) {
     console.error("Dashboard reply error:", err);
