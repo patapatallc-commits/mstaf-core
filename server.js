@@ -4705,15 +4705,15 @@ if (session.stage === "SERVICE_WAITING_EXTRA_NOTES") {
       session.lastServiceJobId = job?.id || null;
     }
 
-    await sendMessage(from, pickText(session.language, {
-      en: "✅ Text instruction received. You can also send photo, document, video, or voice note.",
-      es: "✅ Instrucción de texto recibida. También puede enviar foto, documento, video o nota de voz.",
-      fr: "✅ Instruction texte reçue. Vous pouvez aussi envoyer une photo, un document, une vidéo ou une note vocale.",
-      de: "✅ Textanweisung erhalten. Sie können auch Foto, Dokument, Video oder Sprachnachricht senden.",
-      pt: "✅ Instrução de texto recebida. Você também pode enviar foto, documento, vídeo ou nota de voz.",
-      ar: "✅ تم استلام التعليمات النصية. يمكنك أيضًا إرسال صورة أو مستند أو فيديو أو رسالة صوتية.",
-      zh: "✅ 已收到文字说明。您也可以发送照片、文档、视频或语音说明。"
-    }));
+   await sendMessage(from, pickText(session.language, {
+  en: "✅ Text instruction received. Thanks.",
+  es: "✅ Instrucción de texto recibida. Gracias.",
+  fr: "✅ Instruction texte reçue. Merci.",
+  de: "✅ Textanweisung erhalten. Danke.",
+  pt: "✅ Instrução de texto recebida. Obrigado.",
+  ar: "✅ تم استلام التعليمات النصية. شكرًا.",
+  zh: "✅ 已收到文字说明。谢谢。"
+}));
     session.stage = "SERVICE_WAITING_EXTRA_NOTES";
     return res.sendStatus(200);
   }
