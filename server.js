@@ -132,7 +132,12 @@ app.use("/uploads", express.static(uploadsDir));
 
 app.get("/uploads/:file", (req, res) => {
   const filePath = path.join(uploadsDir, req.params.file);
-  res.sendFile(filePath);
+
+  if (!fs.existsSync(filePath)) {
+    return res.status(404).send("File not found");
+  }
+
+  return res.sendFile(filePath);
 });
 const PORT = process.env.PORT || 10000;
 
