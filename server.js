@@ -224,7 +224,11 @@ Example: 1, 4, 15
 25 - Mobile App Development
 26 - Hotel Reservation
 27 - Home Security Technician
-28 - Locksmith`,
+28 - Locksmith
+29 - AI Flyer & Poster Design
+30 - AI Cartoon Video Creation
+31 - AI Social Media Content
+32 - Resume / CV Creation`,
 
     es: `📌 Elige un número de servicio.
 
@@ -257,7 +261,11 @@ Ejemplo: 1, 4, 15
 25 - Desarrollo de aplicaciones móviles
 26 - Reserva de hotel
 27 - Técnico de seguridad para el hogar
-28 - Cerrajero`,
+28 - Cerrajero
+29 - Diseño de flyer / póster con IA
+30 - Creación de video cartoon con IA
+31 - Contenido para redes sociales con IA
+32 - Creación de CV / Resume`,
 
     fr: `📌 Choisissez un numéro de service.
 
@@ -290,7 +298,11 @@ Exemple : 1, 4, 15
 25 - Développement d'application mobile
 26 - Réservation d'hôtel
 27 - Technicien en sécurité résidentielle
-28 - Serrurier`,
+28 - Serrurier
+29 - Création de flyer / affiche IA
+30 - Création de vidéo cartoon IA
+31 - Contenu réseaux sociaux IA
+32 - Création de CV / résumé`,
 
     de: `📌 Wählen Sie eine Servicenummer.
 
@@ -323,7 +335,11 @@ Beispiel: 1, 4, 15
 25 - Mobile-App-Entwicklung
 26 - Hotelreservierung
 27 - Haussicherheitstechniker
-28 - Schlüsseldienst`,
+28 - Schlüsseldienst
+29 - KI-Flyer- und Posterdesign
+30 - KI-Cartoon-Videoerstellung
+31 - KI-Social-Media-Inhalte
+32 - Lebenslauf-Erstellung`,
 
     pt: `📌 Escolha um número de serviço.
 
@@ -356,7 +372,11 @@ Exemplo: 1, 4, 15
 25 - Desenvolvimento de aplicativo móvel
 26 - Reserva de hotel
 27 - Técnico de segurança residencial
-28 - Chaveiro`,
+28 - Chaveiro
+29 - Design de flyer / pôster com IA
+30 - Criação de vídeo cartoon com IA
+31 - Conteúdo de mídia social com IA
+32 - Criação de currículo / CV`,
 
     ar: `📌 اختر رقم الخدمة.
 
@@ -389,7 +409,11 @@ Exemplo: 1, 4, 15
 25 - تطوير تطبيقات الجوال
 26 - حجز فندق
 27 - فني أمن المنازل
-28 - صانع أقفال`,
+28 - صانع أقفال
+29 - تصميم منشور / بوستر بالذكاء الاصطناعي
+30 - إنشاء فيديو كرتون بالذكاء الاصطناعي
+31 - محتوى وسائل التواصل بالذكاء الاصطناعي
+32 - إنشاء السيرة الذاتية`,
 
     zh: `📌 请选择服务编号。
 
@@ -422,7 +446,11 @@ Exemplo: 1, 4, 15
 25 - 手机应用开发
 26 - 酒店预订
 27 - 家庭安防技术员
-28 - 锁匠服务`
+28 - 锁匠服务
+29 - AI 传单 / 海报设计
+30 - AI 卡通视频制作
+31 - AI 社交媒体内容
+32 - 简历 / CV 制作`
   };
 
   return menus[language] || menus.en;
@@ -3957,6 +3985,510 @@ Para voltar ao menu principal a qualquer momento, digite Hello.`,
   }));
   return res.sendStatus(200);
 }
+
+
+if (lower === "29") {
+  session.selectedService = "AI_FLYER_POSTER";
+  session.pendingFile = null;
+  session.lastServiceJobId = null;
+  session.stage = "SERVICE_WAITING_EXTRA_NOTES";
+  await sendMessage(from, pickText(session.language, {
+    en: `🤖🎨 AI Flyer & Poster Design selected.
+
+Please type the details in your own words.
+
+Include:
+• Business, event, or product name
+• Text you want on the flyer/poster
+• Colors or style you prefer
+• Size needed: Facebook, Instagram, WhatsApp Status, print flyer, etc.
+• Deadline and best contact time
+
+You may also send logos, pictures, links, documents, or voice notes.
+
+Our team will contact you shortly on WhatsApp.
+
+To return to the main menu anytime, type Hello.`,
+    es: `🤖🎨 Diseño de flyer / póster con IA seleccionado.
+
+Por favor escriba los detalles con sus propias palabras.
+
+Incluya:
+• Nombre del negocio, evento o producto
+• Texto que desea en el flyer/póster
+• Colores o estilo preferido
+• Tamaño necesario: Facebook, Instagram, Estado de WhatsApp, flyer impreso, etc.
+• Fecha límite y mejor hora de contacto
+
+También puede enviar logos, fotos, enlaces, documentos o notas de voz.
+
+Nuestro equipo se comunicará con usted pronto por WhatsApp.
+
+Para volver al menú principal en cualquier momento, escriba Hello.`,
+    fr: `🤖🎨 Création de flyer / affiche IA sélectionnée.
+
+Veuillez écrire les détails avec vos propres mots.
+
+Incluez :
+• Nom de l'entreprise, de l'événement ou du produit
+• Texte à mettre sur le flyer/l'affiche
+• Couleurs ou style souhaités
+• Format nécessaire : Facebook, Instagram, statut WhatsApp, flyer imprimé, etc.
+• Date limite et meilleur moment pour vous contacter
+
+Vous pouvez aussi envoyer des logos, photos, liens, documents ou messages vocaux.
+
+Notre équipe vous contactera bientôt sur WhatsApp.
+
+Pour revenir au menu principal à tout moment, tapez Hello.`,
+    de: `🤖🎨 KI-Flyer- und Posterdesign ausgewählt.
+
+Bitte schreiben Sie die Details mit Ihren eigenen Worten.
+
+Bitte angeben:
+• Geschäfts-, Event- oder Produktname
+• Text für den Flyer/das Poster
+• Gewünschte Farben oder Stil
+• Benötigte Größe: Facebook, Instagram, WhatsApp-Status, Druckflyer usw.
+• Deadline und beste Kontaktzeit
+
+Sie können auch Logos, Bilder, Links, Dokumente oder Sprachnachrichten senden.
+
+Unser Team wird Sie in Kürze per WhatsApp kontaktieren.
+
+Um jederzeit zum Hauptmenü zurückzukehren, schreiben Sie Hello.`,
+    pt: `🤖🎨 Design de flyer / pôster com IA selecionado.
+
+Digite os detalhes com suas próprias palavras.
+
+Inclua:
+• Nome do negócio, evento ou produto
+• Texto para colocar no flyer/pôster
+• Cores ou estilo preferido
+• Tamanho necessário: Facebook, Instagram, Status do WhatsApp, flyer impresso, etc.
+• Prazo e melhor horário para contato
+
+Você também pode enviar logos, fotos, links, documentos ou mensagens de voz.
+
+Nossa equipe entrará em contato em breve pelo WhatsApp.
+
+Para voltar ao menu principal a qualquer momento, digite Hello.`,
+    ar: `🤖🎨 تم اختيار تصميم منشور / بوستر بالذكاء الاصطناعي.
+
+يرجى كتابة التفاصيل بكلماتك الخاصة.
+
+اذكر:
+• اسم النشاط أو الحدث أو المنتج
+• النص المطلوب على المنشور/البوستر
+• الألوان أو الأسلوب المفضل
+• المقاس المطلوب: Facebook أو Instagram أو حالة WhatsApp أو منشور للطباعة وغيرها
+• الموعد النهائي وأفضل وقت للتواصل
+
+يمكنك أيضًا إرسال الشعارات أو الصور أو الروابط أو المستندات أو الرسائل الصوتية.
+
+سيتواصل معك فريقنا قريبًا عبر واتساب.
+
+للعودة إلى القائمة الرئيسية في أي وقت، اكتب Hello.`,
+    zh: `🤖🎨 已选择 AI 传单 / 海报设计。
+
+请用您自己的话填写详细信息。
+
+请包括：
+• 商家、活动或产品名称
+• 您想放在传单/海报上的文字
+• 喜欢的颜色或风格
+• 需要的尺寸：Facebook、Instagram、WhatsApp 状态、打印传单等
+• 截止时间和最佳联系时间
+
+您也可以发送 logo、图片、链接、文件或语音消息。
+
+我们的团队会很快通过 WhatsApp 联系您。
+
+如需随时返回主菜单，请输入 Hello。`
+  }));
+  return res.sendStatus(200);
+}
+
+if (lower === "30") {
+  session.selectedService = "AI_CARTOON_VIDEO";
+  session.pendingFile = null;
+  session.lastServiceJobId = null;
+  session.stage = "SERVICE_WAITING_EXTRA_NOTES";
+  await sendMessage(from, pickText(session.language, {
+    en: `🤖🎬 AI Cartoon Video Creation selected.
+
+Please type the details in your own words.
+
+Include:
+• Cartoon character idea or name
+• What the character should say
+• Male or female voice
+• Video length: 15 sec, 30 sec, 1 min, etc.
+• Style: funny, birthday, business ad, church, real estate, kids story, etc.
+• Music or dance preference, if any
+
+You may also send pictures, logos, links, documents, or voice notes.
+
+Our team will contact you shortly on WhatsApp.
+
+To return to the main menu anytime, type Hello.`,
+    es: `🤖🎬 Creación de video cartoon con IA seleccionado.
+
+Por favor escriba los detalles con sus propias palabras.
+
+Incluya:
+• Idea o nombre del personaje
+• Lo que el personaje debe decir
+• Voz masculina o femenina
+• Duración: 15 seg, 30 seg, 1 min, etc.
+• Estilo: divertido, cumpleaños, anuncio de negocio, iglesia, bienes raíces, historia infantil, etc.
+• Música o baile preferido, si tiene
+
+También puede enviar fotos, logos, enlaces, documentos o notas de voz.
+
+Nuestro equipo se comunicará con usted pronto por WhatsApp.
+
+Para volver al menú principal en cualquier momento, escriba Hello.`,
+    fr: `🤖🎬 Création de vidéo cartoon IA sélectionnée.
+
+Veuillez écrire les détails avec vos propres mots.
+
+Incluez :
+• Idée ou nom du personnage cartoon
+• Ce que le personnage doit dire
+• Voix masculine ou féminine
+• Durée : 15 s, 30 s, 1 min, etc.
+• Style : drôle, anniversaire, publicité, église, immobilier, histoire pour enfants, etc.
+• Musique ou danse souhaitée, si besoin
+
+Vous pouvez aussi envoyer des photos, logos, liens, documents ou messages vocaux.
+
+Notre équipe vous contactera bientôt sur WhatsApp.
+
+Pour revenir au menu principal à tout moment, tapez Hello.`,
+    de: `🤖🎬 KI-Cartoon-Videoerstellung ausgewählt.
+
+Bitte schreiben Sie die Details mit Ihren eigenen Worten.
+
+Bitte angeben:
+• Cartoon-Figur-Idee oder Name
+• Was die Figur sagen soll
+• Männliche oder weibliche Stimme
+• Videolänge: 15 Sek., 30 Sek., 1 Min. usw.
+• Stil: lustig, Geburtstag, Geschäftswerbung, Kirche, Immobilien, Kindergeschichte usw.
+• Musik- oder Tanzwunsch, falls vorhanden
+
+Sie können auch Bilder, Logos, Links, Dokumente oder Sprachnachrichten senden.
+
+Unser Team wird Sie in Kürze per WhatsApp kontaktieren.
+
+Um jederzeit zum Hauptmenü zurückzukehren, schreiben Sie Hello.`,
+    pt: `🤖🎬 Criação de vídeo cartoon com IA selecionada.
+
+Digite os detalhes com suas próprias palavras.
+
+Inclua:
+• Ideia ou nome do personagem
+• O que o personagem deve dizer
+• Voz masculina ou feminina
+• Duração: 15 seg, 30 seg, 1 min, etc.
+• Estilo: engraçado, aniversário, anúncio de negócio, igreja, imóveis, história infantil, etc.
+• Preferência de música ou dança, se houver
+
+Você também pode enviar fotos, logos, links, documentos ou mensagens de voz.
+
+Nossa equipe entrará em contato em breve pelo WhatsApp.
+
+Para voltar ao menu principal a qualquer momento, digite Hello.`,
+    ar: `🤖🎬 تم اختيار إنشاء فيديو كرتون بالذكاء الاصطناعي.
+
+يرجى كتابة التفاصيل بكلماتك الخاصة.
+
+اذكر:
+• فكرة أو اسم الشخصية الكرتونية
+• ماذا يجب أن تقول الشخصية
+• صوت ذكر أو أنثى
+• مدة الفيديو: 15 ثانية أو 30 ثانية أو دقيقة وغيرها
+• الأسلوب: مضحك أو عيد ميلاد أو إعلان تجاري أو كنيسة أو عقار أو قصة أطفال وغيرها
+• تفضيل الموسيقى أو الرقص إن وجد
+
+يمكنك أيضًا إرسال الصور أو الشعارات أو الروابط أو المستندات أو الرسائل الصوتية.
+
+سيتواصل معك فريقنا قريبًا عبر واتساب.
+
+للعودة إلى القائمة الرئيسية في أي وقت، اكتب Hello.`,
+    zh: `🤖🎬 已选择 AI 卡通视频制作。
+
+请用您自己的话填写详细信息。
+
+请包括：
+• 卡通角色想法或名字
+• 角色需要说的话
+• 男声或女声
+• 视频长度：15 秒、30 秒、1 分钟等
+• 风格：搞笑、生日、商业广告、教会、房地产、儿童故事等
+• 是否需要音乐或跳舞
+
+您也可以发送图片、logo、链接、文件或语音消息。
+
+我们的团队会很快通过 WhatsApp 联系您。
+
+如需随时返回主菜单，请输入 Hello。`
+  }));
+  return res.sendStatus(200);
+}
+
+if (lower === "31") {
+  session.selectedService = "AI_SOCIAL_MEDIA_CONTENT";
+  session.pendingFile = null;
+  session.lastServiceJobId = null;
+  session.stage = "SERVICE_WAITING_EXTRA_NOTES";
+  await sendMessage(from, pickText(session.language, {
+    en: `🤖📱 AI Social Media Content selected.
+
+Please type the details in your own words.
+
+Include:
+• Business, product, service, or event name
+• What you want to promote
+• Platform: Facebook, Instagram, TikTok, WhatsApp, YouTube, etc.
+• Tone: professional, funny, emotional, luxury, urgent, etc.
+• Any phone number, link, or location to include
+
+You may also send pictures, links, documents, or voice notes.
+
+Our team will contact you shortly on WhatsApp.
+
+To return to the main menu anytime, type Hello.`,
+    es: `🤖📱 Contenido para redes sociales con IA seleccionado.
+
+Por favor escriba los detalles con sus propias palabras.
+
+Incluya:
+• Nombre del negocio, producto, servicio o evento
+• Qué desea promocionar
+• Plataforma: Facebook, Instagram, TikTok, WhatsApp, YouTube, etc.
+• Tono: profesional, divertido, emocional, lujo, urgente, etc.
+• Teléfono, enlace o ubicación para incluir
+
+También puede enviar fotos, enlaces, documentos o notas de voz.
+
+Nuestro equipo se comunicará con usted pronto por WhatsApp.
+
+Para volver al menú principal en cualquier momento, escriba Hello.`,
+    fr: `🤖📱 Contenu réseaux sociaux IA sélectionné.
+
+Veuillez écrire les détails avec vos propres mots.
+
+Incluez :
+• Nom de l'entreprise, du produit, du service ou de l'événement
+• Ce que vous voulez promouvoir
+• Plateforme : Facebook, Instagram, TikTok, WhatsApp, YouTube, etc.
+• Ton : professionnel, drôle, émotionnel, luxe, urgent, etc.
+• Numéro, lien ou lieu à inclure
+
+Vous pouvez aussi envoyer des photos, liens, documents ou messages vocaux.
+
+Notre équipe vous contactera bientôt sur WhatsApp.
+
+Pour revenir au menu principal à tout moment, tapez Hello.`,
+    de: `🤖📱 KI-Social-Media-Inhalte ausgewählt.
+
+Bitte schreiben Sie die Details mit Ihren eigenen Worten.
+
+Bitte angeben:
+• Geschäfts-, Produkt-, Service- oder Eventname
+• Was Sie bewerben möchten
+• Plattform: Facebook, Instagram, TikTok, WhatsApp, YouTube usw.
+• Ton: professionell, lustig, emotional, luxuriös, dringend usw.
+• Telefonnummer, Link oder Standort zum Einfügen
+
+Sie können auch Bilder, Links, Dokumente oder Sprachnachrichten senden.
+
+Unser Team wird Sie in Kürze per WhatsApp kontaktieren.
+
+Um jederzeit zum Hauptmenü zurückzukehren, schreiben Sie Hello.`,
+    pt: `🤖📱 Conteúdo de mídia social com IA selecionado.
+
+Digite os detalhes com suas próprias palavras.
+
+Inclua:
+• Nome do negócio, produto, serviço ou evento
+• O que deseja promover
+• Plataforma: Facebook, Instagram, TikTok, WhatsApp, YouTube, etc.
+• Tom: profissional, engraçado, emocional, luxo, urgente, etc.
+• Telefone, link ou localização para incluir
+
+Você também pode enviar fotos, links, documentos ou mensagens de voz.
+
+Nossa equipe entrará em contato em breve pelo WhatsApp.
+
+Para voltar ao menu principal a qualquer momento, digite Hello.`,
+    ar: `🤖📱 تم اختيار محتوى وسائل التواصل بالذكاء الاصطناعي.
+
+يرجى كتابة التفاصيل بكلماتك الخاصة.
+
+اذكر:
+• اسم النشاط أو المنتج أو الخدمة أو الحدث
+• ما الذي تريد الترويج له
+• المنصة: Facebook أو Instagram أو TikTok أو WhatsApp أو YouTube وغيرها
+• الأسلوب: احترافي أو مضحك أو عاطفي أو فاخر أو عاجل وغيرها
+• رقم الهاتف أو الرابط أو الموقع لإضافته
+
+يمكنك أيضًا إرسال صور أو روابط أو مستندات أو رسائل صوتية.
+
+سيتواصل معك فريقنا قريبًا عبر واتساب.
+
+للعودة إلى القائمة الرئيسية في أي وقت، اكتب Hello.`,
+    zh: `🤖📱 已选择 AI 社交媒体内容。
+
+请用您自己的话填写详细信息。
+
+请包括：
+• 商家、产品、服务或活动名称
+• 您想推广的内容
+• 平台：Facebook、Instagram、TikTok、WhatsApp、YouTube 等
+• 语气：专业、搞笑、感人、高端、紧急等
+• 需要加入的电话号码、链接或位置
+
+您也可以发送图片、链接、文件或语音消息。
+
+我们的团队会很快通过 WhatsApp 联系您。
+
+如需随时返回主菜单，请输入 Hello。`
+  }));
+  return res.sendStatus(200);
+}
+
+if (lower === "32") {
+  session.selectedService = "AI_RESUME_CV";
+  session.pendingFile = null;
+  session.lastServiceJobId = null;
+  session.stage = "SERVICE_WAITING_EXTRA_NOTES";
+  await sendMessage(from, pickText(session.language, {
+    en: `🤖📄 Resume / CV Creation selected.
+
+Please type the details in your own words.
+
+Include:
+• Job position you want
+• Work experience
+• Education
+• Skills
+• Country or job market you are applying for
+• Any old CV/resume, if available
+
+You may also send documents, pictures, links, or voice notes.
+
+Our team will contact you shortly on WhatsApp.
+
+To return to the main menu anytime, type Hello.`,
+    es: `🤖📄 Creación de CV / Resume seleccionado.
+
+Por favor escriba los detalles con sus propias palabras.
+
+Incluya:
+• Puesto que desea
+• Experiencia laboral
+• Educación
+• Habilidades
+• País o mercado laboral donde aplica
+• CV anterior, si tiene
+
+También puede enviar documentos, fotos, enlaces o notas de voz.
+
+Nuestro equipo se comunicará con usted pronto por WhatsApp.
+
+Para volver al menú principal en cualquier momento, escriba Hello.`,
+    fr: `🤖📄 Création de CV / résumé sélectionnée.
+
+Veuillez écrire les détails avec vos propres mots.
+
+Incluez :
+• Poste souhaité
+• Expérience professionnelle
+• Formation
+• Compétences
+• Pays ou marché d'emploi visé
+• Ancien CV, si disponible
+
+Vous pouvez aussi envoyer des documents, photos, liens ou messages vocaux.
+
+Notre équipe vous contactera bientôt sur WhatsApp.
+
+Pour revenir au menu principal à tout moment, tapez Hello.`,
+    de: `🤖📄 Lebenslauf-Erstellung ausgewählt.
+
+Bitte schreiben Sie die Details mit Ihren eigenen Worten.
+
+Bitte angeben:
+• Gewünschte Stelle
+• Berufserfahrung
+• Ausbildung
+• Fähigkeiten
+• Land oder Arbeitsmarkt, für den Sie sich bewerben
+• Alter Lebenslauf, falls vorhanden
+
+Sie können auch Dokumente, Bilder, Links oder Sprachnachrichten senden.
+
+Unser Team wird Sie in Kürze per WhatsApp kontaktieren.
+
+Um jederzeit zum Hauptmenü zurückzukehren, schreiben Sie Hello.`,
+    pt: `🤖📄 Criação de currículo / CV selecionada.
+
+Digite os detalhes com suas próprias palavras.
+
+Inclua:
+• Cargo desejado
+• Experiência profissional
+• Educação
+• Habilidades
+• País ou mercado de trabalho onde vai se candidatar
+• Currículo antigo, se tiver
+
+Você também pode enviar documentos, fotos, links ou mensagens de voz.
+
+Nossa equipe entrará em contato em breve pelo WhatsApp.
+
+Para voltar ao menu principal a qualquer momento, digite Hello.`,
+    ar: `🤖📄 تم اختيار إنشاء السيرة الذاتية.
+
+يرجى كتابة التفاصيل بكلماتك الخاصة.
+
+اذكر:
+• الوظيفة التي تريدها
+• الخبرة العملية
+• التعليم
+• المهارات
+• الدولة أو سوق العمل الذي تقدم فيه
+• سيرة ذاتية قديمة إن وجدت
+
+يمكنك أيضًا إرسال مستندات أو صور أو روابط أو رسائل صوتية.
+
+سيتواصل معك فريقنا قريبًا عبر واتساب.
+
+للعودة إلى القائمة الرئيسية في أي وقت، اكتب Hello.`,
+    zh: `🤖📄 已选择简历 / CV 制作。
+
+请用您自己的话填写详细信息。
+
+请包括：
+• 您想申请的职位
+• 工作经验
+• 教育背景
+• 技能
+• 申请的国家或就业市场
+• 如有旧简历也可以发送
+
+您也可以发送文件、图片、链接或语音消息。
+
+我们的团队会很快通过 WhatsApp 联系您。
+
+如需随时返回主菜单，请输入 Hello。`
+  }));
+  return res.sendStatus(200);
+}
+
 
 
 
