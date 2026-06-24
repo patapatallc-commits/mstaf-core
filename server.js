@@ -1579,6 +1579,616 @@ ${serviceMenu(session.language)}`
 
   return res.sendStatus(200);
 }
+
+// ===== DIRECT HANDLER FOR NEW SERVICES 33–37 =====
+// This catches the new service numbers immediately so they work from the main menu
+// and also avoids the message being ignored if the session stage was not reset.
+if (type === "text" && ["33", "34", "35", "36", "37"].includes(lower)) {
+  const newServiceMap = {
+    "33": {
+      serviceType: "SHIPPING_DELIVERY",
+      prompt: {
+        en: `🚚 Shipping / Delivery selected.
+
+Please type the details in your own words.
+
+Include:
+• Pickup location
+• Delivery destination
+• Item type and quantity
+• Preferred pickup/delivery date and time
+• Sender and receiver phone number
+• Any special instruction
+
+You may also send pictures, links, documents, or voice notes.
+
+Our team will contact you shortly on WhatsApp.
+
+To return to the main menu anytime, type Hello.`,
+        es: `🚚 Envío / Entrega seleccionado.
+
+Por favor escriba los detalles con sus propias palabras.
+
+Incluya:
+• Lugar de recogida
+• Destino de entrega
+• Tipo de artículo y cantidad
+• Fecha y hora preferidas de recogida/entrega
+• Teléfono del remitente y del receptor
+• Cualquier instrucción especial
+
+También puede enviar fotos, enlaces, documentos o notas de voz.
+
+Nuestro equipo se comunicará con usted pronto por WhatsApp.
+
+Para volver al menú principal en cualquier momento, escriba Hello.`,
+        fr: `🚚 Expédition / Livraison sélectionnée.
+
+Veuillez écrire les détails avec vos propres mots.
+
+Incluez :
+• Lieu de collecte
+• Destination de livraison
+• Type d’article et quantité
+• Date et heure souhaitées pour la collecte/livraison
+• Numéro de téléphone de l’expéditeur et du destinataire
+• Toute instruction spéciale
+
+Vous pouvez aussi envoyer des photos, liens, documents ou messages vocaux.
+
+Notre équipe vous contactera bientôt sur WhatsApp.
+
+Pour revenir au menu principal à tout moment, tapez Hello.`,
+        de: `🚚 Versand / Lieferung ausgewählt.
+
+Bitte schreiben Sie die Details mit Ihren eigenen Worten.
+
+Bitte angeben:
+• Abholort
+• Lieferziel
+• Artikeltyp und Menge
+• Gewünschtes Abhol-/Lieferdatum und Uhrzeit
+• Telefonnummer von Absender und Empfänger
+• Besondere Anweisungen
+
+Sie können auch Bilder, Links, Dokumente oder Sprachnachrichten senden.
+
+Unser Team wird Sie in Kürze per WhatsApp kontaktieren.
+
+Um jederzeit zum Hauptmenü zurückzukehren, schreiben Sie Hello.`,
+        pt: `🚚 Envio / Entrega selecionado.
+
+Digite os detalhes com suas próprias palavras.
+
+Inclua:
+• Local de retirada
+• Destino da entrega
+• Tipo de item e quantidade
+• Data e horário preferidos para retirada/entrega
+• Telefone do remetente e do destinatário
+• Qualquer instrução especial
+
+Você também pode enviar fotos, links, documentos ou mensagens de voz.
+
+Nossa equipe entrará em contato em breve pelo WhatsApp.
+
+Para voltar ao menu principal a qualquer momento, digite Hello.`,
+        ar: `🚚 تم اختيار الشحن / التوصيل.
+
+يرجى كتابة التفاصيل بكلماتك الخاصة.
+
+اذكر:
+• موقع الاستلام
+• وجهة التوصيل
+• نوع السلعة والكمية
+• التاريخ والوقت المفضلان للاستلام/التوصيل
+• رقم هاتف المرسل والمستلم
+• أي تعليمات خاصة
+
+يمكنك أيضًا إرسال صور أو روابط أو مستندات أو رسائل صوتية.
+
+سيتواصل معك فريقنا قريبًا عبر واتساب.
+
+للعودة إلى القائمة الرئيسية في أي وقت، اكتب Hello.`,
+        zh: `🚚 已选择运输 / 配送。
+
+请用您自己的话填写详细信息。
+
+请包括：
+• 取件地点
+• 配送目的地
+• 物品类型和数量
+• 首选取件/配送日期和时间
+• 寄件人和收件人电话号码
+• 任何特殊说明
+
+您也可以发送图片、链接、文件或语音消息。
+
+我们的团队会很快通过 WhatsApp 联系您。
+
+如需随时返回主菜单，请输入 Hello。`
+      }
+    },
+    "34": {
+      serviceType: "HELPER_SERVICES",
+      prompt: {
+        en: `🧰 Helper Services selected.
+
+Please type the details in your own words.
+
+Include:
+• Type of helper needed
+• Indoor, outdoor, moving, cleaning, store, office, or general work
+• Your location
+• Preferred date and time
+• How many helpers are needed
+
+You may also send pictures, links, documents, or voice notes.
+
+Our team will contact you shortly on WhatsApp.
+
+To return to the main menu anytime, type Hello.`,
+        es: `🧰 Servicios de ayudante seleccionado.
+
+Por favor escriba los detalles con sus propias palabras.
+
+Incluya:
+• Tipo de ayudante necesario
+• Trabajo interior, exterior, mudanza, limpieza, tienda, oficina o trabajo general
+• Su ubicación
+• Fecha y hora preferidas
+• Cuántos ayudantes necesita
+
+También puede enviar fotos, enlaces, documentos o notas de voz.
+
+Nuestro equipo se comunicará con usted pronto por WhatsApp.
+
+Para volver al menú principal en cualquier momento, escriba Hello.`,
+        fr: `🧰 Services d’aide sélectionnés.
+
+Veuillez écrire les détails avec vos propres mots.
+
+Incluez :
+• Type d’aide nécessaire
+• Travail intérieur, extérieur, déménagement, nettoyage, magasin, bureau ou travail général
+• Votre position
+• Date et heure souhaitées
+• Nombre d’aides nécessaires
+
+Vous pouvez aussi envoyer des photos, liens, documents ou messages vocaux.
+
+Notre équipe vous contactera bientôt sur WhatsApp.
+
+Pour revenir au menu principal à tout moment, tapez Hello.`,
+        de: `🧰 Helfer-Services ausgewählt.
+
+Bitte schreiben Sie die Details mit Ihren eigenen Worten.
+
+Bitte angeben:
+• Art der benötigten Hilfe
+• Innenarbeit, Außenarbeit, Umzug, Reinigung, Laden, Büro oder allgemeine Arbeit
+• Ihren Standort
+• Gewünschtes Datum und Uhrzeit
+• Wie viele Helfer benötigt werden
+
+Sie können auch Bilder, Links, Dokumente oder Sprachnachrichten senden.
+
+Unser Team wird Sie in Kürze per WhatsApp kontaktieren.
+
+Um jederzeit zum Hauptmenü zurückzukehren, schreiben Sie Hello.`,
+        pt: `🧰 Serviços de ajudante selecionado.
+
+Digite os detalhes com suas próprias palavras.
+
+Inclua:
+• Tipo de ajudante necessário
+• Trabalho interno, externo, mudança, limpeza, loja, escritório ou trabalho geral
+• Sua localização
+• Data e horário preferidos
+• Quantos ajudantes são necessários
+
+Você também pode enviar fotos, links, documentos ou mensagens de voz.
+
+Nossa equipe entrará em contato em breve pelo WhatsApp.
+
+Para voltar ao menu principal a qualquer momento, digite Hello.`,
+        ar: `🧰 تم اختيار خدمات المساعدة.
+
+يرجى كتابة التفاصيل بكلماتك الخاصة.
+
+اذكر:
+• نوع المساعدة المطلوبة
+• عمل داخلي أو خارجي أو نقل أو تنظيف أو متجر أو مكتب أو عمل عام
+• موقعك
+• التاريخ والوقت المفضلان
+• عدد المساعدين المطلوبين
+
+يمكنك أيضًا إرسال صور أو روابط أو مستندات أو رسائل صوتية.
+
+سيتواصل معك فريقنا قريبًا عبر واتساب.
+
+للعودة إلى القائمة الرئيسية في أي وقت، اكتب Hello.`,
+        zh: `🧰 已选择帮工服务。
+
+请用您自己的话填写详细信息。
+
+请包括：
+• 需要的帮工类型
+• 室内、室外、搬家、清洁、商店、办公室或普通工作
+• 您的位置
+• 首选日期和时间
+• 需要多少名帮工
+
+您也可以发送图片、链接、文件或语音消息。
+
+我们的团队会很快通过 WhatsApp 联系您。
+
+如需随时返回主菜单，请输入 Hello。`
+      }
+    },
+    "35": {
+      serviceType: "BOOK_APP_TESTER",
+      prompt: {
+        en: `📱 Book App Tester selected.
+
+Please type the details in your own words.
+
+Include:
+• App name or link
+• Android, iPhone, or both
+• What you want tested
+• Preferred testing date/time
+• Any login details or instructions if needed
+
+You may also send screenshots, links, documents, or voice notes.
+
+Our team will contact you shortly on WhatsApp.
+
+To return to the main menu anytime, type Hello.`,
+        es: `📱 Reservar probador de app seleccionado.
+
+Por favor escriba los detalles con sus propias palabras.
+
+Incluya:
+• Nombre o enlace de la app
+• Android, iPhone o ambos
+• Qué desea probar
+• Fecha/hora preferida para la prueba
+• Datos de acceso o instrucciones si son necesarios
+
+También puede enviar capturas, enlaces, documentos o notas de voz.
+
+Nuestro equipo se comunicará con usted pronto por WhatsApp.
+
+Para volver al menú principal en cualquier momento, escriba Hello.`,
+        fr: `📱 Réserver un testeur d’application sélectionné.
+
+Veuillez écrire les détails avec vos propres mots.
+
+Incluez :
+• Nom ou lien de l’application
+• Android, iPhone ou les deux
+• Ce que vous voulez tester
+• Date/heure souhaitée pour le test
+• Identifiants ou instructions si nécessaire
+
+Vous pouvez aussi envoyer captures d’écran, liens, documents ou messages vocaux.
+
+Notre équipe vous contactera bientôt sur WhatsApp.
+
+Pour revenir au menu principal à tout moment, tapez Hello.`,
+        de: `📱 App-Tester buchen ausgewählt.
+
+Bitte schreiben Sie die Details mit Ihren eigenen Worten.
+
+Bitte angeben:
+• App-Name oder Link
+• Android, iPhone oder beides
+• Was getestet werden soll
+• Gewünschtes Testdatum und Uhrzeit
+• Login-Daten oder Anweisungen, falls nötig
+
+Sie können auch Screenshots, Links, Dokumente oder Sprachnachrichten senden.
+
+Unser Team wird Sie in Kürze per WhatsApp kontaktieren.
+
+Um jederzeit zum Hauptmenü zurückzukehren, schreiben Sie Hello.`,
+        pt: `📱 Reservar testador de aplicativo selecionado.
+
+Digite os detalhes com suas próprias palavras.
+
+Inclua:
+• Nome ou link do aplicativo
+• Android, iPhone ou ambos
+• O que você quer testar
+• Data/horário preferido para o teste
+• Dados de login ou instruções, se necessário
+
+Você também pode enviar capturas de tela, links, documentos ou mensagens de voz.
+
+Nossa equipe entrará em contato em breve pelo WhatsApp.
+
+Para voltar ao menu principal a qualquer momento, digite Hello.`,
+        ar: `📱 تم اختيار حجز مختبر تطبيق.
+
+يرجى كتابة التفاصيل بكلماتك الخاصة.
+
+اذكر:
+• اسم التطبيق أو الرابط
+• Android أو iPhone أو كلاهما
+• ما الذي تريد اختباره
+• التاريخ والوقت المفضلان للاختبار
+• بيانات تسجيل الدخول أو التعليمات إذا لزم الأمر
+
+يمكنك أيضًا إرسال لقطات شاشة أو روابط أو مستندات أو رسائل صوتية.
+
+سيتواصل معك فريقنا قريبًا عبر واتساب.
+
+للعودة إلى القائمة الرئيسية في أي وقت، اكتب Hello.`,
+        zh: `📱 已选择预约应用测试员。
+
+请用您自己的话填写详细信息。
+
+请包括：
+• 应用名称或链接
+• Android、iPhone 或两者都要
+• 您想测试的内容
+• 首选测试日期/时间
+• 如需要，请提供登录信息或说明
+
+您也可以发送截图、链接、文件或语音消息。
+
+我们的团队会很快通过 WhatsApp 联系您。
+
+如需随时返回主菜单，请输入 Hello。`
+      }
+    },
+    "36": {
+      serviceType: "SOLAR_INSTALLATION",
+      prompt: {
+        en: `☀️ Solar Installation selected.
+
+Please type the details in your own words.
+
+Include:
+• Home, office, shop, farm, or project location
+• What you want solar to power
+• Your current electricity issue
+• Preferred date/time for inspection
+• Budget range if available
+
+You may also send pictures, videos, documents, or voice notes.
+
+Our team will contact you shortly on WhatsApp.
+
+To return to the main menu anytime, type Hello.`,
+        es: `☀️ Instalación solar seleccionada.
+
+Por favor escriba los detalles con sus propias palabras.
+
+Incluya:
+• Casa, oficina, tienda, granja o ubicación del proyecto
+• Qué desea alimentar con energía solar
+• Su problema eléctrico actual
+• Fecha/hora preferida para inspección
+• Presupuesto si está disponible
+
+También puede enviar fotos, videos, documentos o notas de voz.
+
+Nuestro equipo se comunicará con usted pronto por WhatsApp.
+
+Para volver al menú principal en cualquier momento, escriba Hello.`,
+        fr: `☀️ Installation solaire sélectionnée.
+
+Veuillez écrire les détails avec vos propres mots.
+
+Incluez :
+• Maison, bureau, magasin, ferme ou lieu du projet
+• Ce que vous voulez alimenter avec le solaire
+• Votre problème électrique actuel
+• Date/heure souhaitée pour l’inspection
+• Budget si disponible
+
+Vous pouvez aussi envoyer photos, vidéos, documents ou messages vocaux.
+
+Notre équipe vous contactera bientôt sur WhatsApp.
+
+Pour revenir au menu principal à tout moment, tapez Hello.`,
+        de: `☀️ Solarinstallation ausgewählt.
+
+Bitte schreiben Sie die Details mit Ihren eigenen Worten.
+
+Bitte angeben:
+• Zuhause, Büro, Geschäft, Farm oder Projektstandort
+• Was mit Solarstrom betrieben werden soll
+• Ihr aktuelles Stromproblem
+• Gewünschtes Datum/Uhrzeit für Besichtigung
+• Budgetrahmen, falls vorhanden
+
+Sie können auch Bilder, Videos, Dokumente oder Sprachnachrichten senden.
+
+Unser Team wird Sie in Kürze per WhatsApp kontaktieren.
+
+Um jederzeit zum Hauptmenü zurückzukehren, schreiben Sie Hello.`,
+        pt: `☀️ Instalação solar selecionada.
+
+Digite os detalhes com suas próprias palavras.
+
+Inclua:
+• Casa, escritório, loja, fazenda ou local do projeto
+• O que você deseja alimentar com energia solar
+• Seu problema atual de eletricidade
+• Data/horário preferido para inspeção
+• Faixa de orçamento, se disponível
+
+Você também pode enviar fotos, vídeos, documentos ou mensagens de voz.
+
+Nossa equipe entrará em contato em breve pelo WhatsApp.
+
+Para voltar ao menu principal a qualquer momento, digite Hello.`,
+        ar: `☀️ تم اختيار تركيب الطاقة الشمسية.
+
+يرجى كتابة التفاصيل بكلماتك الخاصة.
+
+اذكر:
+• المنزل أو المكتب أو المتجر أو المزرعة أو موقع المشروع
+• ما الذي تريد تشغيله بالطاقة الشمسية
+• مشكلة الكهرباء الحالية لديك
+• التاريخ والوقت المفضلان للفحص
+• نطاق الميزانية إن وجد
+
+يمكنك أيضًا إرسال صور أو فيديوهات أو مستندات أو رسائل صوتية.
+
+سيتواصل معك فريقنا قريبًا عبر واتساب.
+
+للعودة إلى القائمة الرئيسية في أي وقت، اكتب Hello.`,
+        zh: `☀️ 已选择太阳能安装。
+
+请用您自己的话填写详细信息。
+
+请包括：
+• 家庭、办公室、商店、农场或项目位置
+• 您想用太阳能供电的设备
+• 您目前的用电问题
+• 首选检查日期/时间
+• 如有预算范围请填写
+
+您也可以发送图片、视频、文件或语音消息。
+
+我们的团队会很快通过 WhatsApp 联系您。
+
+如需随时返回主菜单，请输入 Hello。`
+      }
+    },
+    "37": {
+      serviceType: "WORK_MAINTENANCE",
+      prompt: {
+        en: `🛠️ Work Maintenance selected.
+
+Please type the details in your own words.
+
+Include:
+• Type of maintenance needed
+• Home, office, shop, equipment, electrical, plumbing, cleaning, or general work
+• Your location
+• Preferred date and time
+• Urgent or regular service
+
+You may also send pictures, videos, documents, or voice notes.
+
+Our team will contact you shortly on WhatsApp.
+
+To return to the main menu anytime, type Hello.`,
+        es: `🛠️ Mantenimiento de trabajo seleccionado.
+
+Por favor escriba los detalles con sus propias palabras.
+
+Incluya:
+• Tipo de mantenimiento necesario
+• Casa, oficina, tienda, equipo, electricidad, plomería, limpieza o trabajo general
+• Su ubicación
+• Fecha y hora preferidas
+• Servicio urgente o regular
+
+También puede enviar fotos, videos, documentos o notas de voz.
+
+Nuestro equipo se comunicará con usted pronto por WhatsApp.
+
+Para volver al menú principal en cualquier momento, escriba Hello.`,
+        fr: `🛠️ Maintenance de travail sélectionnée.
+
+Veuillez écrire les détails avec vos propres mots.
+
+Incluez :
+• Type de maintenance nécessaire
+• Maison, bureau, magasin, équipement, électricité, plomberie, nettoyage ou travail général
+• Votre position
+• Date et heure souhaitées
+• Service urgent ou régulier
+
+Vous pouvez aussi envoyer photos, vidéos, documents ou messages vocaux.
+
+Notre équipe vous contactera bientôt sur WhatsApp.
+
+Pour revenir au menu principal à tout moment, tapez Hello.`,
+        de: `🛠️ Arbeitswartung ausgewählt.
+
+Bitte schreiben Sie die Details mit Ihren eigenen Worten.
+
+Bitte angeben:
+• Art der benötigten Wartung
+• Zuhause, Büro, Geschäft, Gerät, Elektrik, Sanitär, Reinigung oder allgemeine Arbeit
+• Ihren Standort
+• Gewünschtes Datum und Uhrzeit
+• Dringender oder regulärer Service
+
+Sie können auch Bilder, Videos, Dokumente oder Sprachnachrichten senden.
+
+Unser Team wird Sie in Kürze per WhatsApp kontaktieren.
+
+Um jederzeit zum Hauptmenü zurückzukehren, schreiben Sie Hello.`,
+        pt: `🛠️ Manutenção de trabalho selecionada.
+
+Digite os detalhes com suas próprias palavras.
+
+Inclua:
+• Tipo de manutenção necessária
+• Casa, escritório, loja, equipamento, elétrica, encanamento, limpeza ou trabalho geral
+• Sua localização
+• Data e horário preferidos
+• Serviço urgente ou regular
+
+Você também pode enviar fotos, vídeos, documentos ou mensagens de voz.
+
+Nossa equipe entrará em contato em breve pelo WhatsApp.
+
+Para voltar ao menu principal a qualquer momento, digite Hello.`,
+        ar: `🛠️ تم اختيار صيانة الأعمال.
+
+يرجى كتابة التفاصيل بكلماتك الخاصة.
+
+اذكر:
+• نوع الصيانة المطلوبة
+• منزل أو مكتب أو متجر أو معدات أو كهرباء أو سباكة أو تنظيف أو عمل عام
+• موقعك
+• التاريخ والوقت المفضلان
+• خدمة عاجلة أو عادية
+
+يمكنك أيضًا إرسال صور أو فيديوهات أو مستندات أو رسائل صوتية.
+
+سيتواصل معك فريقنا قريبًا عبر واتساب.
+
+للعودة إلى القائمة الرئيسية في أي وقت، اكتب Hello.`,
+        zh: `🛠️ 已选择工作维护。
+
+请用您自己的话填写详细信息。
+
+请包括：
+• 需要的维护类型
+• 家庭、办公室、商店、设备、电气、管道、清洁或普通工作
+• 您的位置
+• 首选日期和时间
+• 紧急服务或普通服务
+
+您也可以发送图片、视频、文件或语音消息。
+
+我们的团队会很快通过 WhatsApp 联系您。
+
+如需随时返回主菜单，请输入 Hello。`
+      }
+    }
+  };
+
+  const selected = newServiceMap[lower];
+  session.selectedService = selected.serviceType;
+  session.pendingFile = null;
+  session.lastServiceJobId = null;
+  session.stage = "SERVICE_WAITING_EXTRA_NOTES";
+
+  await sendMessage(from, pickText(session.language, selected.prompt));
+  return res.sendStatus(200);
+}
+
 // ===== LANDING PAGE WHATSAPP REQUESTS → WORKER DASHBOARD =====
 if (
   lower.includes("upload and print") ||
@@ -1589,7 +2199,13 @@ if (
   lower.includes("submit cv") ||
   lower.includes("shipping") ||
   lower.includes("delivery") ||
-  lower.includes("helper")
+  lower.includes("helper") ||
+  lower.includes("book app tester") ||
+  lower.includes("app tester") ||
+  lower.includes("solar installation") ||
+  lower.includes("solar") ||
+  lower.includes("work maintenance") ||
+  lower.includes("maintenance")
 ) {
   let serviceType = "WHATSAPP_REQUEST";
 
@@ -1601,11 +2217,18 @@ if (
     serviceType = "IMAGE_EDITING";
   } else if (lower.includes("video editing")) {
     serviceType = "VIDEO_EDITING";
-  } else if (lower.includes("submit cv") ||
-  lower.includes("shipping") ||
-  lower.includes("delivery") ||
-  lower.includes("helper")) {
+  } else if (lower.includes("submit cv")) {
     serviceType = "JOB_APPLICATION";
+  } else if (lower.includes("shipping") || lower.includes("delivery")) {
+    serviceType = "SHIPPING_DELIVERY";
+  } else if (lower.includes("helper")) {
+    serviceType = "HELPER_SERVICES";
+  } else if (lower.includes("book app tester") || lower.includes("app tester")) {
+    serviceType = "BOOK_APP_TESTER";
+  } else if (lower.includes("solar installation") || lower.includes("solar")) {
+    serviceType = "SOLAR_INSTALLATION";
+  } else if (lower.includes("work maintenance") || lower.includes("maintenance")) {
+    serviceType = "WORK_MAINTENANCE";
   }
 
   await pool.query(
