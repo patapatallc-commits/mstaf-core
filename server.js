@@ -233,7 +233,8 @@ Example: 1, 4, 15
 34 - Helper Services
 35 - Book App Tester
 36 - Solar Installation
-37 - Work Maintenance`,
+37 - Work Maintenance
+38 - 🛍️ Digital Services & Downloads`,
 
     es: `📌 Elige un número de servicio.
 
@@ -275,7 +276,8 @@ Ejemplo: 1, 4, 15
 34 - Servicios de ayudante
 35 - Reservar probador de app
 36 - Instalación solar
-37 - Mantenimiento de trabajo`,
+37 - Mantenimiento de trabajo
+38 - 🛍️ Servicios digitales y descargas`,
 
     fr: `📌 Choisissez un numéro de service.
 
@@ -317,7 +319,8 @@ Exemple : 1, 4, 15
 34 - Services d’aide
 35 - Réserver un testeur d’application
 36 - Installation solaire
-37 - Maintenance de travail`,
+37 - Maintenance de travail
+38 - 🛍️ Services numériques et téléchargements`,
 
     de: `📌 Wählen Sie eine Servicenummer.
 
@@ -359,7 +362,8 @@ Beispiel: 1, 4, 15
 34 - Helfer-Services
 35 - App-Tester buchen
 36 - Solarinstallation
-37 - Arbeitswartung`,
+37 - Arbeitswartung
+38 - 🛍️ Digitale Dienste & Downloads`,
 
     pt: `📌 Escolha um número de serviço.
 
@@ -401,7 +405,8 @@ Exemplo: 1, 4, 15
 34 - Serviços de ajudante
 35 - Reservar testador de aplicativo
 36 - Instalação solar
-37 - Manutenção de trabalho`,
+37 - Manutenção de trabalho
+38 - 🛍️ Serviços digitais e downloads`,
 
     ar: `📌 اختر رقم الخدمة.
 
@@ -443,7 +448,8 @@ Exemplo: 1, 4, 15
 34 - خدمات المساعدة
 35 - حجز مختبر تطبيق
 36 - تركيب الطاقة الشمسية
-37 - صيانة الأعمال`,
+37 - صيانة الأعمال
+38 - 🛍️ الخدمات الرقمية والتنزيلات`,
 
     zh: `📌 请选择服务编号。
 
@@ -485,7 +491,8 @@ Exemplo: 1, 4, 15
 34 - 帮工服务
 35 - 预约应用测试员
 36 - 太阳能安装
-37 - 工作维护`
+37 - 工作维护
+38 - 🛍️ 数字服务和下载`
   };
 
   return menus[language] || menus.en;
@@ -1346,6 +1353,163 @@ ${serviceMenu(language)}` }
   return pickText(language, dict[key] || dict.menu_invalid);
 }
 
+
+// =========================
+// DIGITAL SERVICES & DOWNLOADS
+// =========================
+function digitalServicesMenuText(language = "en") {
+  return pickText(language, {
+    en: `🛍️ Printto Digital Services & Downloads
+
+Choose a category:
+
+1 - 🎁 Free Downloads
+2 - 💼 Business Templates
+3 - 🎨 Flyers & Logos
+4 - 📄 CV / Resume Templates
+5 - 🎓 Courses & Study Notes
+6 - 🎬 Video Editing Assets
+7 - 🤖 AI Tools & Prompts
+8 - 🧾 Forms & Documents
+9 - 🎵 Music & Sound Effects
+10 - 📚 eBooks
+0 - Back to Main Menu
+
+Reply with a number.`,
+    es: `🛍️ Servicios digitales y descargas de Printto
+
+Elige una categoría:
+
+1 - 🎁 Descargas gratis
+2 - 💼 Plantillas de negocios
+3 - 🎨 Flyers y logos
+4 - 📄 Plantillas de CV / Resume
+5 - 🎓 Cursos y apuntes de estudio
+6 - 🎬 Recursos para edición de video
+7 - 🤖 Herramientas y prompts de IA
+8 - 🧾 Formularios y documentos
+9 - 🎵 Música y efectos de sonido
+10 - 📚 eBooks
+0 - Volver al menú principal
+
+Responde con un número.`,
+    fr: `🛍️ Services numériques et téléchargements Printto
+
+Choisissez une catégorie :
+
+1 - 🎁 Téléchargements gratuits
+2 - 💼 Modèles business
+3 - 🎨 Flyers et logos
+4 - 📄 Modèles de CV / résumé
+5 - 🎓 Cours et notes d'étude
+6 - 🎬 Ressources de montage vidéo
+7 - 🤖 Outils et prompts IA
+8 - 🧾 Formulaires et documents
+9 - 🎵 Musique et effets sonores
+10 - 📚 eBooks
+0 - Retour au menu principal
+
+Répondez avec un numéro.`,
+    de: `🛍️ Printto Digitale Dienste & Downloads
+
+Wählen Sie eine Kategorie:
+
+1 - 🎁 Kostenlose Downloads
+2 - 💼 Business-Vorlagen
+3 - 🎨 Flyer & Logos
+4 - 📄 Lebenslauf-Vorlagen
+5 - 🎓 Kurse & Lernnotizen
+6 - 🎬 Video-Bearbeitungs-Assets
+7 - 🤖 KI-Tools & Prompts
+8 - 🧾 Formulare & Dokumente
+9 - 🎵 Musik & Soundeffekte
+10 - 📚 eBooks
+0 - Zurück zum Hauptmenü
+
+Antworten Sie mit einer Nummer.`,
+    pt: `🛍️ Serviços digitais e downloads Printto
+
+Escolha uma categoria:
+
+1 - 🎁 Downloads grátis
+2 - 💼 Modelos de negócios
+3 - 🎨 Flyers e logos
+4 - 📄 Modelos de currículo / CV
+5 - 🎓 Cursos e notas de estudo
+6 - 🎬 Recursos de edição de vídeo
+7 - 🤖 Ferramentas e prompts de IA
+8 - 🧾 Formulários e documentos
+9 - 🎵 Música e efeitos sonoros
+10 - 📚 eBooks
+0 - Voltar ao menu principal
+
+Responda com um número.`,
+    ar: `🛍️ خدمات وتنزيلات Printto الرقمية
+
+اختر الفئة:
+
+1 - 🎁 تنزيلات مجانية
+2 - 💼 قوالب أعمال
+3 - 🎨 منشورات وشعارات
+4 - 📄 قوالب السيرة الذاتية
+5 - 🎓 دورات وملاحظات دراسية
+6 - 🎬 ملفات تحرير الفيديو
+7 - 🤖 أدوات وموجهات الذكاء الاصطناعي
+8 - 🧾 نماذج ومستندات
+9 - 🎵 موسيقى ومؤثرات صوتية
+10 - 📚 كتب إلكترونية
+0 - العودة إلى القائمة الرئيسية
+
+رد برقم.`,
+    zh: `🛍️ Printto 数字服务和下载
+
+请选择类别：
+
+1 - 🎁 免费下载
+2 - 💼 商业模板
+3 - 🎨 传单和标志
+4 - 📄 简历 / CV 模板
+5 - 🎓 课程和学习资料
+6 - 🎬 视频编辑素材
+7 - 🤖 AI 工具和提示词
+8 - 🧾 表格和文件
+9 - 🎵 音乐和音效
+10 - 📚 电子书
+0 - 返回主菜单
+
+请回复编号。`
+  });
+}
+
+function digitalServiceSelectedText(language = "en", category = "") {
+  return pickText(language, {
+    en: `✅ Digital Services selected: ${category}\n\nPlease type what you need. You may also send a file, photo, link, document, or voice note.\n\nA Printto team member will review it and reply here on WhatsApp.`,
+    es: `✅ Servicio digital seleccionado: ${category}\n\nEscriba lo que necesita. También puede enviar archivo, foto, enlace, documento o nota de voz.\n\nUn miembro del equipo Printto lo revisará y responderá aquí en WhatsApp.`,
+    fr: `✅ Service numérique sélectionné : ${category}\n\nVeuillez écrire ce dont vous avez besoin. Vous pouvez aussi envoyer un fichier, une photo, un lien, un document ou un message vocal.\n\nUn membre de l'équipe Printto l'examinera et répondra ici sur WhatsApp.`,
+    de: `✅ Digitaler Dienst ausgewählt: ${category}\n\nBitte schreiben Sie, was Sie benötigen. Sie können auch Datei, Foto, Link, Dokument oder Sprachnachricht senden.\n\nEin Printto-Teammitglied prüft es und antwortet hier auf WhatsApp.`,
+    pt: `✅ Serviço digital selecionado: ${category}\n\nDigite o que você precisa. Você também pode enviar arquivo, foto, link, documento ou mensagem de voz.\n\nUm membro da equipe Printto analisará e responderá aqui no WhatsApp.`,
+    ar: `✅ تم اختيار خدمة رقمية: ${category}\n\nيرجى كتابة ما تحتاجه. يمكنك أيضًا إرسال ملف أو صورة أو رابط أو مستند أو رسالة صوتية.\n\nسيقوم أحد أعضاء فريق Printto بالمراجعة والرد هنا على واتساب.`,
+    zh: `✅ 已选择数字服务：${category}\n\n请写下您需要的内容。您也可以发送文件、照片、链接、文档或语音消息。\n\nPrintto 团队成员会审核并在 WhatsApp 上回复您。`
+  });
+}
+
+function getDigitalCategoryName(choice, language = "en") {
+  const categories = {
+    "1": { en: "Free Downloads", es: "Descargas gratis", fr: "Téléchargements gratuits", de: "Kostenlose Downloads", pt: "Downloads grátis", ar: "تنزيلات مجانية", zh: "免费下载" },
+    "2": { en: "Business Templates", es: "Plantillas de negocios", fr: "Modèles business", de: "Business-Vorlagen", pt: "Modelos de negócios", ar: "قوالب أعمال", zh: "商业模板" },
+    "3": { en: "Flyers & Logos", es: "Flyers y logos", fr: "Flyers et logos", de: "Flyer & Logos", pt: "Flyers e logos", ar: "منشورات وشعارات", zh: "传单和标志" },
+    "4": { en: "CV / Resume Templates", es: "Plantillas de CV / Resume", fr: "Modèles de CV / résumé", de: "Lebenslauf-Vorlagen", pt: "Modelos de currículo / CV", ar: "قوالب السيرة الذاتية", zh: "简历 / CV 模板" },
+    "5": { en: "Courses & Study Notes", es: "Cursos y apuntes", fr: "Cours et notes d'étude", de: "Kurse & Lernnotizen", pt: "Cursos e notas de estudo", ar: "دورات وملاحظات دراسية", zh: "课程和学习资料" },
+    "6": { en: "Video Editing Assets", es: "Recursos para edición de video", fr: "Ressources de montage vidéo", de: "Video-Bearbeitungs-Assets", pt: "Recursos de edição de vídeo", ar: "ملفات تحرير الفيديو", zh: "视频编辑素材" },
+    "7": { en: "AI Tools & Prompts", es: "Herramientas y prompts de IA", fr: "Outils et prompts IA", de: "KI-Tools & Prompts", pt: "Ferramentas e prompts de IA", ar: "أدوات وموجهات الذكاء الاصطناعي", zh: "AI 工具和提示词" },
+    "8": { en: "Forms & Documents", es: "Formularios y documentos", fr: "Formulaires et documents", de: "Formulare & Dokumente", pt: "Formulários e documentos", ar: "نماذج ومستندات", zh: "表格和文件" },
+    "9": { en: "Music & Sound Effects", es: "Música y efectos de sonido", fr: "Musique et effets sonores", de: "Musik & Soundeffekte", pt: "Música e efeitos sonoros", ar: "موسيقى ومؤثرات صوتية", zh: "音乐和音效" },
+    "10": { en: "eBooks", es: "eBooks", fr: "eBooks", de: "eBooks", pt: "eBooks", ar: "كتب إلكترونية", zh: "电子书" }
+  };
+  const c = categories[String(choice)] || null;
+  return c ? pickText(language, c) : "";
+}
+
 // =========================
 // SHOPIFY VARIANT HELPERS
 // =========================
@@ -1577,6 +1741,25 @@ if (langMatch) {
 ${serviceMenu(session.language)}`
 );
 
+  return res.sendStatus(200);
+}
+
+// ===== DIRECT HANDLER FOR DIGITAL SERVICES FROM MOBILE APP / MAIN MENU =====
+if (
+  type === "text" &&
+  (
+    lower === "38" ||
+    lower.includes("service=digital_downloads") ||
+    lower.includes("digital_downloads") ||
+    lower.includes("digital services") ||
+    lower.includes("digital store")
+  )
+) {
+  session.selectedService = "DIGITAL_SERVICES_DOWNLOADS";
+  session.lastServiceJobId = null;
+  session.pendingFile = null;
+  session.stage = "DIGITAL_SERVICES_MENU";
+  await sendMessage(from, digitalServicesMenuText(session.language));
   return res.sendStatus(200);
 }
 
@@ -2205,7 +2388,11 @@ if (
   lower.includes("solar installation") ||
   lower.includes("solar") ||
   lower.includes("work maintenance") ||
-  lower.includes("maintenance")
+  lower.includes("maintenance") ||
+  lower.includes("digital services") ||
+  lower.includes("digital store") ||
+  lower.includes("digital downloads") ||
+  lower.includes("service=digital_downloads")
 ) {
   let serviceType = "WHATSAPP_REQUEST";
 
@@ -2229,6 +2416,8 @@ if (
     serviceType = "SOLAR_INSTALLATION";
   } else if (lower.includes("work maintenance") || lower.includes("maintenance")) {
     serviceType = "WORK_MAINTENANCE";
+  } else if (lower.includes("digital services") || lower.includes("digital store") || lower.includes("digital downloads") || lower.includes("service=digital_downloads")) {
+    serviceType = "DIGITAL_SERVICES_DOWNLOADS";
   }
 
   await pool.query(
@@ -2408,6 +2597,39 @@ async function attachMediaToExistingJob(jobId, mediaId, originalName, mimeType) 
       );
 
       return result.rows[0] || null;
+    }
+
+
+    if (session.stage === "DIGITAL_SERVICES_MENU" && type === "text") {
+      if (lower === "0" || lower === "menu" || lower === "back") {
+        session.stage = "MENU";
+        await sendMessage(from, `${welcomeText(session.language)}
+
+${serviceMenu(session.language)}`);
+        return res.sendStatus(200);
+      }
+
+      const selectedDigitalCategory = getDigitalCategoryName(lower, session.language);
+      if (!selectedDigitalCategory) {
+        await sendMessage(from, digitalServicesMenuText(session.language));
+        return res.sendStatus(200);
+      }
+
+      session.selectedService = "DIGITAL_SERVICES_DOWNLOADS";
+      session.digitalCategory = selectedDigitalCategory;
+      session.pendingFile = null;
+      session.lastServiceJobId = null;
+      session.stage = "SERVICE_WAITING_EXTRA_NOTES";
+
+      await createTextOnlyServiceJob(
+        "DIGITAL_SERVICES_DOWNLOADS",
+        `Digital Services category selected: ${selectedDigitalCategory}`
+      ).then((job) => {
+        if (job?.id) session.lastServiceJobId = job.id;
+      }).catch((err) => console.error("Digital service job create error:", err.message));
+
+      await sendMessage(from, digitalServiceSelectedText(session.language, selectedDigitalCategory));
+      return res.sendStatus(200);
     }
 
     if (type === "text" && ["hi", "hello", "hey", "menu", "start"].includes(lower)) {
