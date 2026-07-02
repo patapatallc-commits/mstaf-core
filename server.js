@@ -2409,8 +2409,10 @@ if (
 }
 
 // ===== PRINTTO GREETING STUDIO STEP-BY-STEP FLOW =====
-// Customers do not need to type special separators like | or /.
-// The bot asks one question at a time and stores the answers in session.greetingSpec.
+// Customers can either answer one question at a time OR send everything together.
+// Supported full formats:
+// Birthday | Mary | John | Wishing you joy and blessings
+// Birthday/Mary/John/Wishing you joy and blessings
 if (
   type === "text" &&
   session.selectedService === "GREETING_CARD" &&
@@ -2426,7 +2428,76 @@ if (
     return res.sendStatus(200);
   }
 
+  async function finishGreetingDetailsAndAskPayment(spec) {
+    const checkoutUrl = buildGreetingCheckoutUrl(spec.packageType || "STANDARD", 1);
+
+    const job = await createGreetingDashboardJob({
+      templateId: spec.templateId || "birthday",
+      occasion: spec.occasion || "Birthday",
+      recipientName: spec.recipientName,
+      senderName: spec.senderName,
+      message: spec.message,
+      language: session.language,
+      customerPhone: from,
+      checkoutUrl,
+      status: "pending"
+    });
+
+    session.greetingSpec = {
+      ...session.greetingSpec,
+      ...spec,
+      checkoutUrl
+    };
+    session.lastServiceJobId = job?.id || null;
+    session.stage = "GREETING_PAYMENT";
+
+    await sendMessage(
+      from,
+      `✅ Printto Greeting Studio request received.
+
+Occasion: ${spec.occasion || "Birthday"}
+Recipient: ${spec.recipientName}
+Sender: ${spec.senderName}
+
+Message:
+${spec.message}
+
+Please choose payment method:
+
+1 - Shopify Checkout
+2 - Africa Payment
+3 - Continue with Agent
+
+To start over, type 39.`
+    );
+
+    return res.sendStatus(200);
+  }
+
   if (session.stage === "GREETING_STUDIO" || session.stage === "GREETING_OCCASION") {
+    const parsedFullRequest = parseGreetingRequest(text);
+
+    // Accept full details sent in one message, including slash format.
+    if (
+      parsedFullRequest.occasion &&
+      parsedFullRequest.recipientName &&
+      parsedFullRequest.senderName &&
+      parsedFullRequest.message
+    ) {
+      const selectedOccasion =
+        getGreetingOccasionFromInput(parsedFullRequest.occasion) ||
+        getGreetingOccasionFromInput("birthday") ||
+        { occasion: parsedFullRequest.occasion, templateId: "birthday", packageType: "STANDARD" };
+
+      return await finishGreetingDetailsAndAskPayment({
+        ...selectedOccasion,
+        occasion: selectedOccasion.occasion || parsedFullRequest.occasion,
+        recipientName: parsedFullRequest.recipientName,
+        senderName: parsedFullRequest.senderName,
+        message: parsedFullRequest.message
+      });
+    }
+
     const selectedOccasion = getGreetingOccasionFromInput(text);
 
     if (!selectedOccasion) {
@@ -2482,68 +2553,54 @@ if (
       return res.sendStatus(200);
     }
 
-    session.greetingSpec.message = greetingMessage;
+    const spec = {
+      ...session.greetingSpec,
+      message: greetingMessage
+    };
 
-    const spec = session.greetingSpec;
-    const checkoutUrl = buildGreetingCheckoutUrl(spec.packageType || "STANDARD", 1);
-    const job = await createGreetingDashboardJob({
-      templateId: spec.templateId || "birthday",
-      occasion: spec.occasion || "Birthday",
-      recipientName: spec.recipientName,
-      senderName: spec.senderName,
-      message: spec.message,
-      language: session.language,
-      customerPhone: from,
-      checkoutUrl,
-      status: "pending"
-    });
-
-    session.lastServiceJobId = job?.id || null;
-    session.stage = "GREETING_PAYMENT";
-
-    await sendMessage(
-      from,
-      `✅ Printto Greeting Studio request received.
-
-Occasion: ${spec.occasion || "Birthday"}
-Recipient: ${spec.recipientName}
-Sender: ${spec.senderName}
-
-Message:
-${spec.message}
-
-Shopify Checkout:
-${checkoutUrl || "Shopify greeting card product is not configured yet."}
-
-Africa Payment:
-https://www.patapata.us/pages/africa-payment
-
-Reply:
-1 - I paid with Shopify
-2 - I paid with Africa Payment
-3 - Continue with Agent
-
-To start over, type 39.`
-    );
-
-    return res.sendStatus(200);
+    return await finishGreetingDetailsAndAskPayment(spec);
   }
 
   if (session.stage === "GREETING_PAYMENT") {
+    const spec = session.greetingSpec || {};
+
     if (lower === "1") {
+      const checkoutUrl = spec.checkoutUrl || buildGreetingCheckoutUrl(spec.packageType || "STANDARD", 1);
+
+      if (session.lastServiceJobId) {
+        await attachTextToExistingJob(session.lastServiceJobId, "Greeting Studio payment choice: Shopify checkout selected by customer");
+      }
+
+      session.stage = "DONE";
+
       await sendMessage(
         from,
-        `✅ Thank you. Your Shopify payment note has been received.
+        checkoutUrl
+          ? `✅ Shopify Checkout selected.
+
+Please complete payment here:
+${checkoutUrl}
 
 A Printto team member will confirm the order and continue the greeting card video process.`
+          : `✅ Shopify Checkout selected.
+
+The Shopify greeting card product is not configured yet.
+
+A Printto team member will contact you here on WhatsApp to complete the order.`
       );
       return res.sendStatus(200);
     }
 
     if (lower === "2") {
+      if (session.lastServiceJobId) {
+        await attachTextToExistingJob(session.lastServiceJobId, "Greeting Studio payment choice: Africa Payment selected by customer");
+      }
+
+      session.stage = "DONE";
+
       await sendMessage(
         from,
-        `✅ Thank you. Your Africa Payment note has been received.
+        `✅ Africa Payment selected.
 
 Please complete payment here:
 https://www.patapata.us/pages/africa-payment
@@ -2554,6 +2611,12 @@ A Printto team member will confirm the order and continue the greeting card vide
     }
 
     if (lower === "3") {
+      if (session.lastServiceJobId) {
+        await attachTextToExistingJob(session.lastServiceJobId, "Greeting Studio payment choice: Continue with Agent");
+      }
+
+      session.stage = "DONE";
+
       await sendMessage(
         from,
         `✅ You are now connected to an agent for your Printto Greeting Studio request.
@@ -2567,7 +2630,6 @@ A team member will reply here shortly.`
     return res.sendStatus(200);
   }
 }
-
 
 // ===== DIRECT HANDLER FOR NEW SERVICES 33–37 =====
 // This catches the new service numbers immediately so they work from the main menu
