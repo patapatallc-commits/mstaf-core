@@ -2075,6 +2075,88 @@ function buildGreetingDownloadUrl(req, fileName) {
   return `${base}/generated/${encodeURIComponent(fileName)}`;
 }
 
+function createGreetingDownloadRecord(req, {
+  templateId = "birthday",
+  occasion = "Birthday",
+  recipientName = "",
+  senderName = "",
+  message = "",
+  language = "en"
+} = {}) {
+  const template = getGreetingTemplate(templateId || occasion);
+  const greetingId = `PG-${Date.now()}`;
+  const safeFileName = `${greetingId}_${safeBaseName(template.id)}.txt`;
+  const outputPath = path.join(generatedDir, safeFileName);
+
+  const content = `PRINTTO GREETING STUDIO
+Greeting ID: ${greetingId}
+Occasion: ${occasion || template.occasion}
+Template: ${template.id}
+Recipient: ${recipientName}
+Sender: ${senderName}
+Language: ${language || "en"}
+
+Message:
+${message}
+
+DOWNLOAD STATUS:
+This is your automatic downloadable greeting card record.
+
+NEXT STEP:
+The full animated MP4 video download will be activated after the Printto master video templates are added to the master-videos folder and FFmpeg rendering is enabled.
+
+PATAPATA / PRINTTO TEAM:
+Use these details to create or approve the customer's final greeting video.`;
+
+  fs.writeFileSync(outputPath, content, "utf8");
+
+  return {
+    greetingId,
+    template,
+    fileName: safeFileName,
+    downloadUrl: buildGreetingDownloadUrl(req, safeFileName)
+  };
+}
+
+function greetingPaymentPromptText(spec = {}) {
+  return `✅ Your Printto Greeting Studio request has been received.
+
+Occasion: ${spec.occasion || "Birthday"}
+Recipient: ${spec.recipientName || ""}
+Sender: ${spec.senderName || ""}
+
+Message:
+${spec.message || ""}
+
+✅ Your greeting card record is ready for download:
+${spec.downloadUrl || "Download link will be created shortly."}
+
+Please choose payment method.
+
+Reply with number only:
+
+1 - Shopify Checkout (coming next)
+2 - Africa Payment
+3 - Continue with Agent
+
+To start over, type 39.`;
+}
+
+function isGreetingShopifyChoice(value = "") {
+  const v = String(value || "").trim().toLowerCase();
+  return v === "1" || v.includes("shopify");
+}
+
+function isGreetingAfricaChoice(value = "") {
+  const v = String(value || "").trim().toLowerCase();
+  return v === "2" || v.includes("africa") || v.includes("naira") || v.includes("₦");
+}
+
+function isGreetingAgentChoice(value = "") {
+  const v = String(value || "").trim().toLowerCase();
+  return v === "3" || v.includes("agent") || v.includes("person") || v.includes("human");
+}
+
 async function createGreetingDashboardJob({
   templateId,
   occasion,
@@ -2429,50 +2511,48 @@ if (
   }
 
   async function finishGreetingDetailsAndAskPayment(spec) {
-    const checkoutUrl = buildGreetingCheckoutUrl(spec.packageType || "STANDARD", 1);
-
-    const job = await createGreetingDashboardJob({
+    const downloadRecord = createGreetingDownloadRecord(req, {
       templateId: spec.templateId || "birthday",
       occasion: spec.occasion || "Birthday",
       recipientName: spec.recipientName,
       senderName: spec.senderName,
       message: spec.message,
+      language: session.language
+    });
+
+    const checkoutUrl = buildGreetingCheckoutUrl(spec.packageType || "STANDARD", 1);
+
+    const finalSpec = {
+      ...session.greetingSpec,
+      ...spec,
+      greetingId: downloadRecord.greetingId,
+      templateId: downloadRecord.template.id,
+      downloadUrl: downloadRecord.downloadUrl,
+      generatedFileName: downloadRecord.fileName,
+      checkoutUrl
+    };
+
+    const job = await createGreetingDashboardJob({
+      templateId: finalSpec.templateId || "birthday",
+      occasion: finalSpec.occasion || "Birthday",
+      recipientName: finalSpec.recipientName,
+      senderName: finalSpec.senderName,
+      message: finalSpec.message,
       language: session.language,
       customerPhone: from,
       checkoutUrl,
+      downloadUrl: finalSpec.downloadUrl,
       status: "pending"
     });
 
-    session.greetingSpec = {
-      ...session.greetingSpec,
-      ...spec,
-      checkoutUrl
-    };
+    session.greetingSpec = finalSpec;
     session.lastServiceJobId = job?.id || null;
     session.stage = "GREETING_PAYMENT";
 
-    await sendMessage(
-      from,
-      `✅ Printto Greeting Studio request received.
-
-Occasion: ${spec.occasion || "Birthday"}
-Recipient: ${spec.recipientName}
-Sender: ${spec.senderName}
-
-Message:
-${spec.message}
-
-Please choose payment method:
-
-1 - Shopify Checkout
-2 - Africa Payment
-3 - Continue with Agent
-
-To start over, type 39.`
-    );
-
+    await sendMessage(from, greetingPaymentPromptText(finalSpec));
     return res.sendStatus(200);
   }
+
 
   if (session.stage === "GREETING_STUDIO" || session.stage === "GREETING_OCCASION") {
     const parsedFullRequest = parseGreetingRequest(text);
@@ -2564,7 +2644,7 @@ To start over, type 39.`
   if (session.stage === "GREETING_PAYMENT") {
     const spec = session.greetingSpec || {};
 
-    if (lower === "1") {
+    if (isGreetingShopifyChoice(text)) {
       const checkoutUrl = spec.checkoutUrl || buildGreetingCheckoutUrl(spec.packageType || "STANDARD", 1);
 
       if (session.lastServiceJobId) {
@@ -2581,17 +2661,23 @@ To start over, type 39.`
 Please complete payment here:
 ${checkoutUrl}
 
+Your greeting card download record:
+${spec.downloadUrl || "Download link already created."}
+
 A Printto team member will confirm the order and continue the greeting card video process.`
           : `✅ Shopify Checkout selected.
 
-The Shopify greeting card product is not configured yet.
+Shopify Greeting Studio checkout is coming next.
 
-A Printto team member will contact you here on WhatsApp to complete the order.`
+Your greeting card download record:
+${spec.downloadUrl || "Download link already created."}
+
+For now, a Printto team member will contact you here on WhatsApp to complete the order.`
       );
       return res.sendStatus(200);
     }
 
-    if (lower === "2") {
+    if (isGreetingAfricaChoice(text)) {
       if (session.lastServiceJobId) {
         await attachTextToExistingJob(session.lastServiceJobId, "Greeting Studio payment choice: Africa Payment selected by customer");
       }
@@ -2605,12 +2691,15 @@ A Printto team member will contact you here on WhatsApp to complete the order.`
 Please complete payment here:
 https://www.patapata.us/pages/africa-payment
 
+Your greeting card download record:
+${spec.downloadUrl || "Download link already created."}
+
 A Printto team member will confirm the order and continue the greeting card video process.`
       );
       return res.sendStatus(200);
     }
 
-    if (lower === "3") {
+    if (isGreetingAgentChoice(text)) {
       if (session.lastServiceJobId) {
         await attachTextToExistingJob(session.lastServiceJobId, "Greeting Studio payment choice: Continue with Agent");
       }
@@ -2621,12 +2710,15 @@ A Printto team member will confirm the order and continue the greeting card vide
         from,
         `✅ You are now connected to an agent for your Printto Greeting Studio request.
 
+Your greeting card download record:
+${spec.downloadUrl || "Download link already created."}
+
 A team member will reply here shortly.`
       );
       return res.sendStatus(200);
     }
 
-    await sendMessage(from, paymentChoiceInvalidText(session.language));
+    await sendMessage(from, `Please reply with number only:\n\n1 - Shopify Checkout (coming next)\n2 - Africa Payment\n3 - Continue with Agent\n\nTo start over, type 39.`);
     return res.sendStatus(200);
   }
 }
