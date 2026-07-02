@@ -182,7 +182,8 @@ function createSession() {
     printSpec: {},
     laminateSpec: {},
     pendingFile: null,
-    lastServiceJobId: null
+    lastServiceJobId: null,
+    greetingSpec: {}
   };
 }
 
@@ -1759,7 +1760,7 @@ function greetingStudioMenuText(language = "en") {
 
 Create personalized animated Printto video greeting cards.
 
-Choose occasion:
+Choose the occasion:
 1 - Birthday
 2 - Wedding
 3 - Graduation
@@ -1767,11 +1768,9 @@ Choose occasion:
 5 - Christmas
 6 - Business Greeting
 
-Reply with the occasion number, then send:
-Recipient name, sender name, and your greeting message.
+Reply with only the occasion number.
 
-Example:
-Birthday | Mary | John | Wishing you joy, laughter, and blessings.`,
+You do NOT need to use | or /. The bot will ask one question at a time.`,
     es: `🎬 Printto Greeting Studio
 
 Crea tarjetas de video animadas personalizadas de Printto.
@@ -1784,11 +1783,9 @@ Elige la ocasión:
 5 - Navidad
 6 - Saludo de negocio
 
-Responde con el número de la ocasión y luego envía:
-Nombre del destinatario, nombre del remitente y tu mensaje.
+Responde solo con el número de la ocasión.
 
-Ejemplo:
-Birthday | Mary | John | Wishing you joy, laughter, and blessings.`,
+No necesitas usar | ni /. El bot preguntará paso a paso.`,
     fr: `🎬 Printto Greeting Studio
 
 Créez des cartes vidéo animées personnalisées avec Printto.
@@ -1797,12 +1794,13 @@ Choisissez l'occasion :
 1 - Anniversaire
 2 - Mariage
 3 - Remise de diplôme
-4 - Anniversaire de mariage
+4 - Anniversaire
 5 - Noël
 6 - Message professionnel
 
-Répondez avec le numéro, puis envoyez :
-Nom du destinataire, nom de l'expéditeur et votre message.`,
+Répondez uniquement avec le numéro.
+
+Vous n'avez pas besoin d'utiliser | ou /. Le bot posera les questions une par une.`,
     de: `🎬 Printto Greeting Studio
 
 Erstellen Sie personalisierte animierte Printto-Video-Grußkarten.
@@ -1815,8 +1813,9 @@ Wählen Sie den Anlass:
 5 - Weihnachten
 6 - Geschäftlicher Gruß
 
-Antworten Sie mit der Nummer und senden Sie dann:
-Empfängername, Absendername und Ihre Nachricht.`,
+Antworten Sie nur mit der Nummer.
+
+Sie müssen | oder / nicht verwenden. Der Bot fragt Schritt für Schritt.`,
     pt: `🎬 Printto Greeting Studio
 
 Crie cartões de vídeo animados personalizados com Printto.
@@ -1829,8 +1828,9 @@ Escolha a ocasião:
 5 - Natal
 6 - Saudação empresarial
 
-Responda com o número e envie:
-Nome do destinatário, nome do remetente e sua mensagem.`,
+Responda apenas com o número.
+
+Você não precisa usar | ou /. O bot perguntará uma coisa de cada vez.`,
     ar: `🎬 Printto Greeting Studio
 
 أنشئ بطاقات تهنئة فيديو متحركة ومخصصة مع Printto.
@@ -1843,8 +1843,9 @@ Nome do destinatário, nome do remetente e sua mensagem.`,
 5 - عيد الميلاد
 6 - تهنئة أعمال
 
-رد برقم المناسبة ثم أرسل:
-اسم المستلم، اسم المرسل، ورسالة التهنئة.`,
+رد برقم المناسبة فقط.
+
+لا تحتاج إلى استخدام | أو /. سيطرح البوت سؤالاً واحدًا في كل مرة.`,
     zh: `🎬 Printto Greeting Studio
 
 创建个性化 Printto 动画视频贺卡。
@@ -1857,13 +1858,186 @@ Nome do destinatário, nome do remetente e sua mensagem.`,
 5 - 圣诞节
 6 - 商务问候
 
-请回复编号，然后发送：
-收件人姓名、发件人姓名和祝福内容。`
+请只回复编号。
+
+不需要使用 | 或 /。机器人会一步一步询问。`
   });
 }
 
+function greetingQuestionText(language = "en", key = "recipient", spec = {}) {
+  const occasion = spec.occasion || "Greeting";
+  const questions = {
+    recipient: {
+      en: `✅ ${occasion} selected.
+
+Who is receiving the greeting card?
+
+Please type the recipient's name only.
+
+Example: Mary`,
+      es: `✅ ${occasion} seleccionado.
+
+¿Quién recibirá la tarjeta?
+
+Escriba solo el nombre del destinatario.
+
+Ejemplo: Mary`,
+      fr: `✅ ${occasion} sélectionné.
+
+Qui reçoit la carte de vœux ?
+
+Veuillez écrire uniquement le nom du destinataire.
+
+Exemple : Mary`,
+      de: `✅ ${occasion} ausgewählt.
+
+Wer erhält die Grußkarte?
+
+Bitte geben Sie nur den Namen des Empfängers ein.
+
+Beispiel: Mary`,
+      pt: `✅ ${occasion} selecionado.
+
+Quem receberá o cartão?
+
+Digite apenas o nome do destinatário.
+
+Exemplo: Mary`,
+      ar: `✅ تم اختيار ${occasion}.
+
+من سيستلم بطاقة التهنئة؟
+
+اكتب اسم المستلم فقط.
+
+مثال: Mary`,
+      zh: `✅ 已选择 ${occasion}。
+
+谁会收到这张贺卡？
+
+请只输入收件人姓名。
+
+示例：Mary`
+    },
+    sender: {
+      en: `Great. Who is sending the greeting?
+
+Please type the sender's name only.
+
+Example: John`,
+      es: `Bien. ¿Quién envía la tarjeta?
+
+Escriba solo el nombre del remitente.
+
+Ejemplo: John`,
+      fr: `Très bien. Qui envoie la carte ?
+
+Veuillez écrire uniquement le nom de l'expéditeur.
+
+Exemple : John`,
+      de: `Gut. Wer sendet die Grußkarte?
+
+Bitte geben Sie nur den Namen des Absenders ein.
+
+Beispiel: John`,
+      pt: `Ótimo. Quem está enviando o cartão?
+
+Digite apenas o nome do remetente.
+
+Exemplo: John`,
+      ar: `جيد. من يرسل التهنئة؟
+
+اكتب اسم المرسل فقط.
+
+مثال: John`,
+      zh: `很好。谁发送这张贺卡？
+
+请只输入发送人姓名。
+
+示例：John`
+    },
+    message: {
+      en: `Perfect.
+
+Please type the exact greeting message you want Printto to use.
+
+Example:
+Wishing you joy, good health, and many more happy years.`,
+      es: `Perfecto.
+
+Escriba el mensaje exacto que desea que Printto use.
+
+Ejemplo:
+Te deseo alegría, buena salud y muchos años felices más.`,
+      fr: `Parfait.
+
+Veuillez écrire le message exact que vous voulez que Printto utilise.
+
+Exemple :
+Je te souhaite joie, bonne santé et beaucoup d'années heureuses.`,
+      de: `Perfekt.
+
+Bitte schreiben Sie die genaue Nachricht, die Printto verwenden soll.
+
+Beispiel:
+Ich wünsche dir Freude, Gesundheit und viele glückliche Jahre.`,
+      pt: `Perfeito.
+
+Digite a mensagem exata que deseja que o Printto use.
+
+Exemplo:
+Desejo alegria, boa saúde e muitos anos felizes.`,
+      ar: `ممتاز.
+
+اكتب رسالة التهنئة بالضبط كما تريد أن يستخدمها Printto.
+
+مثال:
+أتمنى لك الفرح والصحة الجيدة والمزيد من السنوات السعيدة.`,
+      zh: `很好。
+
+请输入您希望 Printto 使用的准确祝福语。
+
+示例：
+祝你快乐、健康，并拥有更多幸福的岁月。`
+    }
+  };
+
+  return pickText(language, questions[key] || questions.recipient);
+}
+
+function getGreetingOccasionFromInput(input = "") {
+  const value = String(input || "").trim().toLowerCase();
+  const occasionMap = {
+    "1": { occasion: "Birthday", templateId: "birthday", packageType: "STANDARD" },
+    "birthday": { occasion: "Birthday", templateId: "birthday", packageType: "STANDARD" },
+    "birth day": { occasion: "Birthday", templateId: "birthday", packageType: "STANDARD" },
+    "2": { occasion: "Wedding", templateId: "wedding", packageType: "STANDARD" },
+    "wedding": { occasion: "Wedding", templateId: "wedding", packageType: "STANDARD" },
+    "3": { occasion: "Graduation", templateId: "graduation", packageType: "STANDARD" },
+    "graduation": { occasion: "Graduation", templateId: "graduation", packageType: "STANDARD" },
+    "graduate": { occasion: "Graduation", templateId: "graduation", packageType: "STANDARD" },
+    "4": { occasion: "Anniversary", templateId: "anniversary", packageType: "STANDARD" },
+    "anniversary": { occasion: "Anniversary", templateId: "anniversary", packageType: "STANDARD" },
+    "5": { occasion: "Christmas", templateId: "christmas", packageType: "STANDARD" },
+    "christmas": { occasion: "Christmas", templateId: "christmas", packageType: "STANDARD" },
+    "xmas": { occasion: "Christmas", templateId: "christmas", packageType: "STANDARD" },
+    "6": { occasion: "Business", templateId: "business", packageType: "PREMIUM" },
+    "business": { occasion: "Business", templateId: "business", packageType: "PREMIUM" },
+    "business greeting": { occasion: "Business", templateId: "business", packageType: "PREMIUM" }
+  };
+
+  return occasionMap[value] || null;
+}
+
 function parseGreetingRequest(rawText = "") {
-  const parts = String(rawText || "").split("|").map((p) => p.trim()).filter(Boolean);
+  const normalized = String(rawText || "")
+    .replace(/\r?\n+/g, " | ")
+    .replace(/[\/;,]+/g, " | ");
+
+  const parts = normalized
+    .split("|")
+    .map((p) => p.trim())
+    .filter(Boolean);
+
   if (parts.length >= 4) {
     return {
       occasion: parts[0],
@@ -1874,7 +2048,7 @@ function parseGreetingRequest(rawText = "") {
   }
 
   return {
-    occasion: "Birthday",
+    occasion: "",
     recipientName: "",
     senderName: "",
     message: String(rawText || "").trim()
@@ -2228,67 +2402,118 @@ if (
   session.selectedService = "GREETING_CARD";
   session.lastServiceJobId = null;
   session.pendingFile = null;
-  session.stage = "GREETING_STUDIO";
+  session.greetingSpec = {};
+  session.stage = "GREETING_OCCASION";
   await sendMessage(from, greetingStudioMenuText(session.language));
   return res.sendStatus(200);
 }
 
-if (session.stage === "GREETING_STUDIO" && type === "text") {
-  const occasionMap = {
-    "1": "Birthday",
-    "2": "Wedding",
-    "3": "Graduation",
-    "4": "Anniversary",
-    "5": "Christmas",
-    "6": "Business"
-  };
+// ===== PRINTTO GREETING STUDIO STEP-BY-STEP FLOW =====
+// Customers do not need to type special separators like | or /.
+// The bot asks one question at a time and stores the answers in session.greetingSpec.
+if (
+  type === "text" &&
+  session.selectedService === "GREETING_CARD" &&
+  ["GREETING_STUDIO", "GREETING_OCCASION", "GREETING_RECIPIENT", "GREETING_SENDER", "GREETING_MESSAGE", "GREETING_PAYMENT"].includes(session.stage)
+) {
+  session.greetingSpec = session.greetingSpec || {};
 
-  if (occasionMap[lower]) {
+  if (lower === "0" || lower === "cancel" || lower === "back") {
+    session.selectedService = null;
+    session.greetingSpec = {};
+    session.stage = "MENU";
+    await sendMessage(from, serviceMenu(session.language));
+    return res.sendStatus(200);
+  }
+
+  if (session.stage === "GREETING_STUDIO" || session.stage === "GREETING_OCCASION") {
+    const selectedOccasion = getGreetingOccasionFromInput(text);
+
+    if (!selectedOccasion) {
+      await sendMessage(from, greetingStudioMenuText(session.language));
+      return res.sendStatus(200);
+    }
+
+    session.greetingSpec = {
+      ...session.greetingSpec,
+      ...selectedOccasion
+    };
+    session.stage = "GREETING_RECIPIENT";
+
+    await sendMessage(from, greetingQuestionText(session.language, "recipient", session.greetingSpec));
+    return res.sendStatus(200);
+  }
+
+  if (session.stage === "GREETING_RECIPIENT") {
+    const recipientName = String(text || "").trim();
+
+    if (!recipientName || recipientName.length < 2) {
+      await sendMessage(from, "Please type the recipient's name.");
+      return res.sendStatus(200);
+    }
+
+    session.greetingSpec.recipientName = recipientName;
+    session.stage = "GREETING_SENDER";
+
+    await sendMessage(from, greetingQuestionText(session.language, "sender", session.greetingSpec));
+    return res.sendStatus(200);
+  }
+
+  if (session.stage === "GREETING_SENDER") {
+    const senderName = String(text || "").trim();
+
+    if (!senderName || senderName.length < 2) {
+      await sendMessage(from, "Please type the sender's name.");
+      return res.sendStatus(200);
+    }
+
+    session.greetingSpec.senderName = senderName;
+    session.stage = "GREETING_MESSAGE";
+
+    await sendMessage(from, greetingQuestionText(session.language, "message", session.greetingSpec));
+    return res.sendStatus(200);
+  }
+
+  if (session.stage === "GREETING_MESSAGE") {
+    const greetingMessage = String(text || "").trim();
+
+    if (!greetingMessage || greetingMessage.length < 3) {
+      await sendMessage(from, "Please type the greeting message you want Printto to use.");
+      return res.sendStatus(200);
+    }
+
+    session.greetingSpec.message = greetingMessage;
+
+    const spec = session.greetingSpec;
+    const checkoutUrl = buildGreetingCheckoutUrl(spec.packageType || "STANDARD", 1);
+    const job = await createGreetingDashboardJob({
+      templateId: spec.templateId || "birthday",
+      occasion: spec.occasion || "Birthday",
+      recipientName: spec.recipientName,
+      senderName: spec.senderName,
+      message: spec.message,
+      language: session.language,
+      customerPhone: from,
+      checkoutUrl,
+      status: "pending"
+    });
+
+    session.lastServiceJobId = job?.id || null;
+    session.stage = "GREETING_PAYMENT";
+
     await sendMessage(
       from,
-      `🎬 ${occasionMap[lower]} selected.
+      `✅ Printto Greeting Studio request received.
 
-Please send your details like this:
+Occasion: ${spec.occasion || "Birthday"}
+Recipient: ${spec.recipientName}
+Sender: ${spec.senderName}
 
-${occasionMap[lower]} | Recipient Name | Sender Name | Your greeting message
-
-Example:
-${occasionMap[lower]} | Mary | John | Wishing you joy, laughter, and blessings.`
-    );
-    return res.sendStatus(200);
-  }
-
-  const parsedGreeting = parseGreetingRequest(text);
-  if (!parsedGreeting.recipientName || !parsedGreeting.senderName || !parsedGreeting.message) {
-    await sendMessage(from, greetingStudioMenuText(session.language));
-    return res.sendStatus(200);
-  }
-
-  const checkoutUrl = buildGreetingCheckoutUrl("STANDARD", 1);
-  const job = await createGreetingDashboardJob({
-    templateId: String(parsedGreeting.occasion || "birthday").toLowerCase(),
-    occasion: parsedGreeting.occasion || "Birthday",
-    recipientName: parsedGreeting.recipientName,
-    senderName: parsedGreeting.senderName,
-    message: parsedGreeting.message,
-    language: session.language,
-    customerPhone: from,
-    checkoutUrl,
-    status: "pending"
-  });
-
-  session.lastServiceJobId = job?.id || null;
-
-  await sendMessage(
-    from,
-    `✅ Printto Greeting Studio request received.
-
-Occasion: ${parsedGreeting.occasion}
-Recipient: ${parsedGreeting.recipientName}
-Sender: ${parsedGreeting.senderName}
+Message:
+${spec.message}
 
 Shopify Checkout:
-${checkoutUrl || "Checkout variant not configured yet."}
+${checkoutUrl || "Shopify greeting card product is not configured yet."}
 
 Africa Payment:
 https://www.patapata.us/pages/africa-payment
@@ -2296,10 +2521,51 @@ https://www.patapata.us/pages/africa-payment
 Reply:
 1 - I paid with Shopify
 2 - I paid with Africa Payment
-3 - Continue with Agent`
-  );
+3 - Continue with Agent
 
-  return res.sendStatus(200);
+To start over, type 39.`
+    );
+
+    return res.sendStatus(200);
+  }
+
+  if (session.stage === "GREETING_PAYMENT") {
+    if (lower === "1") {
+      await sendMessage(
+        from,
+        `✅ Thank you. Your Shopify payment note has been received.
+
+A Printto team member will confirm the order and continue the greeting card video process.`
+      );
+      return res.sendStatus(200);
+    }
+
+    if (lower === "2") {
+      await sendMessage(
+        from,
+        `✅ Thank you. Your Africa Payment note has been received.
+
+Please complete payment here:
+https://www.patapata.us/pages/africa-payment
+
+A Printto team member will confirm the order and continue the greeting card video process.`
+      );
+      return res.sendStatus(200);
+    }
+
+    if (lower === "3") {
+      await sendMessage(
+        from,
+        `✅ You are now connected to an agent for your Printto Greeting Studio request.
+
+A team member will reply here shortly.`
+      );
+      return res.sendStatus(200);
+    }
+
+    await sendMessage(from, paymentChoiceInvalidText(session.language));
+    return res.sendStatus(200);
+  }
 }
 
 
