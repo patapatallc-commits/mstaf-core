@@ -2647,10 +2647,6 @@ if (
     if (isGreetingShopifyChoice(text)) {
       const checkoutUrl = spec.checkoutUrl || buildGreetingCheckoutUrl(spec.packageType || "STANDARD", 1);
 
-      if (session.lastServiceJobId) {
-        await attachTextToExistingJob(session.lastServiceJobId, "Greeting Studio payment choice: Shopify checkout selected by customer");
-      }
-
       session.stage = "DONE";
 
       await sendMessage(
@@ -2672,53 +2668,60 @@ Shopify Greeting Studio checkout is coming next.
 Your greeting card download record:
 ${spec.downloadUrl || "Download link already created."}
 
-For now, a Printto team member will contact you here on WhatsApp to complete the order.`
+For now, please use Africa Payment or continue with an agent.
+
+Reply:
+2 - Africa Payment
+3 - Continue with Agent`
       );
+
       return res.sendStatus(200);
     }
 
     if (isGreetingAfricaChoice(text)) {
-      if (session.lastServiceJobId) {
-        await attachTextToExistingJob(session.lastServiceJobId, "Greeting Studio payment choice: Africa Payment selected by customer");
-      }
-
       session.stage = "DONE";
 
       await sendMessage(
         from,
-        `✅ Africa Payment selected.
+        `✅ Africa Payment selected for Printto Greeting Studio.
 
 Please complete payment here:
 https://www.patapata.us/pages/africa-payment
+
+After payment, send your payment receipt here.
 
 Your greeting card download record:
 ${spec.downloadUrl || "Download link already created."}
 
 A Printto team member will confirm the order and continue the greeting card video process.`
       );
+
       return res.sendStatus(200);
     }
 
     if (isGreetingAgentChoice(text)) {
-      if (session.lastServiceJobId) {
-        await attachTextToExistingJob(session.lastServiceJobId, "Greeting Studio payment choice: Continue with Agent");
-      }
-
       session.stage = "DONE";
 
       await sendMessage(
         from,
-        `✅ You are now connected to an agent for your Printto Greeting Studio request.
+        `✅ Continue with Agent selected.
 
 Your greeting card download record:
 ${spec.downloadUrl || "Download link already created."}
 
-A team member will reply here shortly.`
+A Printto team member will review your Greeting Studio order and reply here shortly.`
       );
+
       return res.sendStatus(200);
     }
 
-    await sendMessage(from, `Please reply with number only:\n\n1 - Shopify Checkout (coming next)\n2 - Africa Payment\n3 - Continue with Agent\n\nTo start over, type 39.`);
+    await sendMessage(from, `Please reply with number only:
+
+1 - Shopify Checkout (coming next)
+2 - Africa Payment
+3 - Continue with Agent
+
+To start over, type 39.`);
     return res.sendStatus(200);
   }
 }
