@@ -82,9 +82,17 @@ const path = require("path");
 // Multer storage
 
 const uploadsDir = path.resolve("uploads");
+const generatedDir = path.resolve("generated");
+const masterVideosDir = path.resolve("master-videos");
 
 if (!fs.existsSync(uploadsDir)) {
   fs.mkdirSync(uploadsDir, { recursive: true });
+}
+if (!fs.existsSync(generatedDir)) {
+  fs.mkdirSync(generatedDir, { recursive: true });
+}
+if (!fs.existsSync(masterVideosDir)) {
+  fs.mkdirSync(masterVideosDir, { recursive: true });
 }
 
 const storage = multer.diskStorage({
@@ -106,6 +114,7 @@ const app = express();
 
 
 app.use("/uploads", express.static(uploadsDir));
+app.use("/generated", express.static(generatedDir));
 
 app.use(express.static("public"));
 app.get("/", (req, res) => {
@@ -234,7 +243,8 @@ Example: 1, 4, 15
 35 - Book App Tester
 36 - Solar Installation
 37 - Work Maintenance
-38 - 🛍️ Digital Services & Downloads`,
+38 - 🛍️ Digital Services & Downloads
+39 - 🎬 Printto Greeting Studio`,
 
     es: `📌 Elige un número de servicio.
 
@@ -277,7 +287,8 @@ Ejemplo: 1, 4, 15
 35 - Reservar probador de app
 36 - Instalación solar
 37 - Mantenimiento de trabajo
-38 - 🛍️ Servicios digitales y descargas`,
+38 - 🛍️ Servicios digitales y descargas
+39 - 🎬 Printto Greeting Studio`,
 
     fr: `📌 Choisissez un numéro de service.
 
@@ -320,7 +331,8 @@ Exemple : 1, 4, 15
 35 - Réserver un testeur d’application
 36 - Installation solaire
 37 - Maintenance de travail
-38 - 🛍️ Services numériques et téléchargements`,
+38 - 🛍️ Services numériques et téléchargements
+39 - 🎬 Printto Greeting Studio`,
 
     de: `📌 Wählen Sie eine Servicenummer.
 
@@ -363,7 +375,8 @@ Beispiel: 1, 4, 15
 35 - App-Tester buchen
 36 - Solarinstallation
 37 - Arbeitswartung
-38 - 🛍️ Digitale Dienste & Downloads`,
+38 - 🛍️ Digitale Dienste & Downloads
+39 - 🎬 Printto Greeting Studio`,
 
     pt: `📌 Escolha um número de serviço.
 
@@ -406,7 +419,8 @@ Exemplo: 1, 4, 15
 35 - Reservar testador de aplicativo
 36 - Instalação solar
 37 - Manutenção de trabalho
-38 - 🛍️ Serviços digitais e downloads`,
+38 - 🛍️ Serviços digitais e downloads
+39 - 🎬 Printto Greeting Studio`,
 
     ar: `📌 اختر رقم الخدمة.
 
@@ -449,7 +463,8 @@ Exemplo: 1, 4, 15
 35 - حجز مختبر تطبيق
 36 - تركيب الطاقة الشمسية
 37 - صيانة الأعمال
-38 - 🛍️ الخدمات الرقمية والتنزيلات`,
+38 - 🛍️ الخدمات الرقمية والتنزيلات
+39 - 🎬 Printto Greeting Studio`,
 
     zh: `📌 请选择服务编号。
 
@@ -492,7 +507,8 @@ Exemplo: 1, 4, 15
 35 - 预约应用测试员
 36 - 太阳能安装
 37 - 工作维护
-38 - 🛍️ 数字服务和下载`
+38 - 🛍️ 数字服务和下载
+39 - 🎬 Printto Greeting Studio`
   };
 
   return menus[language] || menus.en;
@@ -1548,6 +1564,8 @@ VIDEO_SOCIAL: process.env.SHOPIFY_VARIANT_VIDEO_SOCIAL || "52582037094699",
 VIDEO_STANDARD: process.env.SHOPIFY_VARIANT_VIDEO_STANDARD || "52582037127467",
 VIDEO_ADVANCED: process.env.SHOPIFY_VARIANT_VIDEO_ADVANCED || "52582037160235",
   ID_PRINT: process.env.SHOPIFY_VARIANT_ID_PRINT || "52746952278315",
+  GREETING_STANDARD: process.env.SHOPIFY_VARIANT_GREETING_STANDARD || "",
+  GREETING_PREMIUM: process.env.SHOPIFY_VARIANT_GREETING_PREMIUM || "",
 };
 
 // =========================
@@ -1587,7 +1605,10 @@ function getNigeriaServicePrice(serviceType) {
     VIDEO_SHORT: 1000,
     VIDEO_SOCIAL: 1000,
     VIDEO_STANDARD: 1000,
-    VIDEO_ADVANCED: 1000
+    VIDEO_ADVANCED: 1000,
+    GREETING_CARD: 2000,
+    GREETING_STANDARD: 2000,
+    GREETING_PREMIUM: 5000
   };
 
   return map[String(serviceType || "").toUpperCase()] || 1000;
@@ -1678,6 +1699,435 @@ function getLaminateVariantId(size) {
   return "";
 }
 
+
+// =========================
+// PRINTTO GREETING STUDIO
+// =========================
+const GREETING_TEMPLATES = [
+  {
+    id: "birthday",
+    name: "Birthday Greeting",
+    occasion: "Birthday",
+    masterVideo: "birthday-master.mp4",
+    priceLabel: "Standard"
+  },
+  {
+    id: "wedding",
+    name: "Wedding Greeting",
+    occasion: "Wedding",
+    masterVideo: "wedding-master.mp4",
+    priceLabel: "Standard"
+  },
+  {
+    id: "graduation",
+    name: "Graduation Greeting",
+    occasion: "Graduation",
+    masterVideo: "graduation-master.mp4",
+    priceLabel: "Standard"
+  },
+  {
+    id: "anniversary",
+    name: "Anniversary Greeting",
+    occasion: "Anniversary",
+    masterVideo: "anniversary-master.mp4",
+    priceLabel: "Standard"
+  },
+  {
+    id: "christmas",
+    name: "Christmas Greeting",
+    occasion: "Christmas",
+    masterVideo: "christmas-master.mp4",
+    priceLabel: "Standard"
+  },
+  {
+    id: "business",
+    name: "Business Greeting",
+    occasion: "Business",
+    masterVideo: "business-master.mp4",
+    priceLabel: "Premium"
+  }
+];
+
+function getGreetingTemplate(templateId = "birthday") {
+  const id = String(templateId || "birthday").trim().toLowerCase();
+  return GREETING_TEMPLATES.find((item) => item.id === id) || GREETING_TEMPLATES[0];
+}
+
+function greetingStudioMenuText(language = "en") {
+  return pickText(language, {
+    en: `🎬 Printto Greeting Studio
+
+Create personalized animated Printto video greeting cards.
+
+Choose occasion:
+1 - Birthday
+2 - Wedding
+3 - Graduation
+4 - Anniversary
+5 - Christmas
+6 - Business Greeting
+
+Reply with the occasion number, then send:
+Recipient name, sender name, and your greeting message.
+
+Example:
+Birthday | Mary | John | Wishing you joy, laughter, and blessings.`,
+    es: `🎬 Printto Greeting Studio
+
+Crea tarjetas de video animadas personalizadas de Printto.
+
+Elige la ocasión:
+1 - Cumpleaños
+2 - Boda
+3 - Graduación
+4 - Aniversario
+5 - Navidad
+6 - Saludo de negocio
+
+Responde con el número de la ocasión y luego envía:
+Nombre del destinatario, nombre del remitente y tu mensaje.
+
+Ejemplo:
+Birthday | Mary | John | Wishing you joy, laughter, and blessings.`,
+    fr: `🎬 Printto Greeting Studio
+
+Créez des cartes vidéo animées personnalisées avec Printto.
+
+Choisissez l'occasion :
+1 - Anniversaire
+2 - Mariage
+3 - Remise de diplôme
+4 - Anniversaire de mariage
+5 - Noël
+6 - Message professionnel
+
+Répondez avec le numéro, puis envoyez :
+Nom du destinataire, nom de l'expéditeur et votre message.`,
+    de: `🎬 Printto Greeting Studio
+
+Erstellen Sie personalisierte animierte Printto-Video-Grußkarten.
+
+Wählen Sie den Anlass:
+1 - Geburtstag
+2 - Hochzeit
+3 - Abschluss
+4 - Jubiläum
+5 - Weihnachten
+6 - Geschäftlicher Gruß
+
+Antworten Sie mit der Nummer und senden Sie dann:
+Empfängername, Absendername und Ihre Nachricht.`,
+    pt: `🎬 Printto Greeting Studio
+
+Crie cartões de vídeo animados personalizados com Printto.
+
+Escolha a ocasião:
+1 - Aniversário
+2 - Casamento
+3 - Formatura
+4 - Comemoração
+5 - Natal
+6 - Saudação empresarial
+
+Responda com o número e envie:
+Nome do destinatário, nome do remetente e sua mensagem.`,
+    ar: `🎬 Printto Greeting Studio
+
+أنشئ بطاقات تهنئة فيديو متحركة ومخصصة مع Printto.
+
+اختر المناسبة:
+1 - عيد ميلاد
+2 - زفاف
+3 - تخرج
+4 - ذكرى
+5 - عيد الميلاد
+6 - تهنئة أعمال
+
+رد برقم المناسبة ثم أرسل:
+اسم المستلم، اسم المرسل، ورسالة التهنئة.`,
+    zh: `🎬 Printto Greeting Studio
+
+创建个性化 Printto 动画视频贺卡。
+
+请选择场合：
+1 - 生日
+2 - 婚礼
+3 - 毕业
+4 - 周年纪念
+5 - 圣诞节
+6 - 商务问候
+
+请回复编号，然后发送：
+收件人姓名、发件人姓名和祝福内容。`
+  });
+}
+
+function parseGreetingRequest(rawText = "") {
+  const parts = String(rawText || "").split("|").map((p) => p.trim()).filter(Boolean);
+  if (parts.length >= 4) {
+    return {
+      occasion: parts[0],
+      recipientName: parts[1],
+      senderName: parts[2],
+      message: parts.slice(3).join(" | ")
+    };
+  }
+
+  return {
+    occasion: "Birthday",
+    recipientName: "",
+    senderName: "",
+    message: String(rawText || "").trim()
+  };
+}
+
+function getGreetingVariantId(packageType = "STANDARD") {
+  const type = String(packageType || "STANDARD").toUpperCase();
+  if (type === "PREMIUM") return SHOPIFY_VARIANTS.GREETING_PREMIUM;
+  return SHOPIFY_VARIANTS.GREETING_STANDARD;
+}
+
+function buildGreetingCheckoutUrl(packageType = "STANDARD", quantity = 1) {
+  const variantId = getGreetingVariantId(packageType);
+  return buildShopifyCartUrl(variantId, Math.max(1, parseInt(quantity, 10) || 1));
+}
+
+function buildGreetingDownloadUrl(req, fileName) {
+  const base =
+    process.env.PUBLIC_BASE_URL ||
+    process.env.RENDER_EXTERNAL_URL ||
+    `${req.protocol}://${req.get("host")}`;
+
+  return `${base}/generated/${encodeURIComponent(fileName)}`;
+}
+
+async function createGreetingDashboardJob({
+  templateId,
+  occasion,
+  recipientName,
+  senderName,
+  message,
+  language,
+  customerName,
+  customerEmail,
+  customerPhone,
+  checkoutUrl,
+  downloadUrl,
+  status = "pending"
+}) {
+  const instructions = `PRINTTO GREETING STUDIO
+
+Occasion: ${occasion}
+Template: ${templateId}
+Recipient: ${recipientName}
+Sender: ${senderName}
+Language: ${language || "en"}
+
+Message:
+${message}
+
+Checkout:
+${checkoutUrl || "Not configured"}
+
+Download:
+${downloadUrl || "Not generated yet"}`;
+
+  try {
+    const result = await pool.query(
+      `
+      INSERT INTO print_jobs (
+        printer_id,
+        queue_type,
+        status,
+        service_type,
+        customer_name,
+        customer_email,
+        customer_phone,
+        original_name,
+        instructions,
+        copies,
+        pages,
+        total_cost,
+        created_at,
+        updated_at
+      )
+      VALUES ($1, 'AGENT', $2, 'GREETING_CARD', $3, $4, $5, $6, $7, 1, 1, 0, NOW(), NOW())
+      RETURNING *
+      `,
+      [
+        process.env.AGENT_QUEUE_ID || "AGENT",
+        status,
+        customerName || senderName || "",
+        customerEmail || "",
+        customerPhone || "",
+        `Printto Greeting - ${occasion}`,
+        instructions
+      ]
+    );
+
+    return result.rows[0] || null;
+  } catch (err) {
+    console.error("Greeting dashboard job insert skipped:", err.message);
+    return null;
+  }
+}
+
+app.get("/api/greeting-studio/health", (req, res) => {
+  res.json({
+    ok: true,
+    service: "Printto Greeting Studio",
+    status: "ready"
+  });
+});
+
+app.get("/api/greeting-studio/templates", (req, res) => {
+  res.json({
+    ok: true,
+    templates: GREETING_TEMPLATES
+  });
+});
+
+app.post("/api/greeting-studio/create", async (req, res) => {
+  try {
+    const {
+      templateId = "birthday",
+      occasion,
+      recipientName,
+      senderName,
+      message,
+      language = "en",
+      customerName = "",
+      customerEmail = "",
+      customerPhone = "",
+      packageType = "STANDARD"
+    } = req.body || {};
+
+    if (!recipientName || !senderName || !message) {
+      return res.status(400).json({
+        ok: false,
+        error: "Missing recipientName, senderName, or message."
+      });
+    }
+
+    const template = getGreetingTemplate(templateId || occasion);
+    const greetingId = `PG-${Date.now()}`;
+    const checkoutUrl = buildGreetingCheckoutUrl(packageType, 1);
+
+    const job = await createGreetingDashboardJob({
+      templateId: template.id,
+      occasion: occasion || template.occasion,
+      recipientName,
+      senderName,
+      message,
+      language,
+      customerName,
+      customerEmail,
+      customerPhone,
+      checkoutUrl,
+      status: "pending"
+    });
+
+    res.json({
+      ok: true,
+      greetingId,
+      job_id: job?.id || null,
+      service_type: "GREETING_CARD",
+      template,
+      occasion: occasion || template.occasion,
+      recipientName,
+      senderName,
+      message,
+      language,
+      packageType,
+      checkoutUrl,
+      africaPaymentUrl: "https://www.patapata.us/pages/africa-payment",
+      status: "created",
+      next_step: "payment"
+    });
+  } catch (err) {
+    console.error("Greeting Studio create error:", err);
+    res.status(500).json({
+      ok: false,
+      error: "Failed to create greeting request."
+    });
+  }
+});
+
+app.post("/api/greeting-studio/render", async (req, res) => {
+  try {
+    const {
+      templateId = "birthday",
+      occasion,
+      recipientName,
+      senderName,
+      message,
+      language = "en",
+      customerEmail = "",
+      customerPhone = ""
+    } = req.body || {};
+
+    if (!recipientName || !senderName || !message) {
+      return res.status(400).json({
+        ok: false,
+        error: "Missing recipientName, senderName, or message."
+      });
+    }
+
+    const template = getGreetingTemplate(templateId || occasion);
+    const greetingId = `PG-${Date.now()}`;
+    const safeFileName = `${greetingId}_${safeBaseName(template.id)}.txt`;
+    const outputPath = path.join(generatedDir, safeFileName);
+
+    const content = `PRINTTO GREETING STUDIO
+Greeting ID: ${greetingId}
+Occasion: ${occasion || template.occasion}
+Template: ${template.id}
+Recipient: ${recipientName}
+Sender: ${senderName}
+Language: ${language}
+
+Message:
+${message}
+
+NOTE:
+This first automatic version creates the paid greeting order and a downloadable greeting record.
+Add master MP4 files inside /master-videos to enable full MP4 rendering in the next deployment step.`;
+
+    fs.writeFileSync(outputPath, content, "utf8");
+
+    const downloadUrl = buildGreetingDownloadUrl(req, safeFileName);
+    const job = await createGreetingDashboardJob({
+      templateId: template.id,
+      occasion: occasion || template.occasion,
+      recipientName,
+      senderName,
+      message,
+      language,
+      customerEmail,
+      customerPhone,
+      downloadUrl,
+      status: "pending"
+    });
+
+    res.json({
+      ok: true,
+      greetingId,
+      job_id: job?.id || null,
+      status: "rendered_placeholder",
+      template,
+      downloadUrl,
+      note: "Greeting request created. Full MP4 rendering will activate after master videos are added."
+    });
+  } catch (err) {
+    console.error("Greeting Studio render error:", err);
+    res.status(500).json({
+      ok: false,
+      error: "Failed to render greeting."
+    });
+  }
+});
+
+
 // =========================
 // WEBHOOK VERIFY
 // =========================
@@ -1762,6 +2212,96 @@ if (
   await sendMessage(from, digitalServicesMenuText(session.language));
   return res.sendStatus(200);
 }
+
+
+// ===== DIRECT HANDLER FOR PRINTTO GREETING STUDIO =====
+if (
+  type === "text" &&
+  (
+    lower === "39" ||
+    lower.includes("service=greeting_studio") ||
+    lower.includes("greeting studio") ||
+    lower.includes("video greeting") ||
+    lower.includes("greeting card")
+  )
+) {
+  session.selectedService = "GREETING_CARD";
+  session.lastServiceJobId = null;
+  session.pendingFile = null;
+  session.stage = "GREETING_STUDIO";
+  await sendMessage(from, greetingStudioMenuText(session.language));
+  return res.sendStatus(200);
+}
+
+if (session.stage === "GREETING_STUDIO" && type === "text") {
+  const occasionMap = {
+    "1": "Birthday",
+    "2": "Wedding",
+    "3": "Graduation",
+    "4": "Anniversary",
+    "5": "Christmas",
+    "6": "Business"
+  };
+
+  if (occasionMap[lower]) {
+    await sendMessage(
+      from,
+      `🎬 ${occasionMap[lower]} selected.
+
+Please send your details like this:
+
+${occasionMap[lower]} | Recipient Name | Sender Name | Your greeting message
+
+Example:
+${occasionMap[lower]} | Mary | John | Wishing you joy, laughter, and blessings.`
+    );
+    return res.sendStatus(200);
+  }
+
+  const parsedGreeting = parseGreetingRequest(text);
+  if (!parsedGreeting.recipientName || !parsedGreeting.senderName || !parsedGreeting.message) {
+    await sendMessage(from, greetingStudioMenuText(session.language));
+    return res.sendStatus(200);
+  }
+
+  const checkoutUrl = buildGreetingCheckoutUrl("STANDARD", 1);
+  const job = await createGreetingDashboardJob({
+    templateId: String(parsedGreeting.occasion || "birthday").toLowerCase(),
+    occasion: parsedGreeting.occasion || "Birthday",
+    recipientName: parsedGreeting.recipientName,
+    senderName: parsedGreeting.senderName,
+    message: parsedGreeting.message,
+    language: session.language,
+    customerPhone: from,
+    checkoutUrl,
+    status: "pending"
+  });
+
+  session.lastServiceJobId = job?.id || null;
+
+  await sendMessage(
+    from,
+    `✅ Printto Greeting Studio request received.
+
+Occasion: ${parsedGreeting.occasion}
+Recipient: ${parsedGreeting.recipientName}
+Sender: ${parsedGreeting.senderName}
+
+Shopify Checkout:
+${checkoutUrl || "Checkout variant not configured yet."}
+
+Africa Payment:
+https://www.patapata.us/pages/africa-payment
+
+Reply:
+1 - I paid with Shopify
+2 - I paid with Africa Payment
+3 - Continue with Agent`
+  );
+
+  return res.sendStatus(200);
+}
+
 
 // ===== DIRECT HANDLER FOR NEW SERVICES 33–37 =====
 // This catches the new service numbers immediately so they work from the main menu
