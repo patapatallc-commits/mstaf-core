@@ -2647,6 +2647,13 @@ if (
     if (isGreetingShopifyChoice(text)) {
       const checkoutUrl = spec.checkoutUrl || buildGreetingCheckoutUrl(spec.packageType || "STANDARD", 1);
 
+      if (session.lastServiceJobId) {
+        await attachTextToExistingJob(
+          session.lastServiceJobId,
+          "Greeting Studio payment choice: Shopify Checkout selected by customer"
+        );
+      }
+
       session.stage = "DONE";
 
       await sendMessage(
@@ -2660,6 +2667,8 @@ ${checkoutUrl}
 Your greeting card download record:
 ${spec.downloadUrl || "Download link already created."}
 
+After payment, please send your payment receipt here on WhatsApp for confirmation.
+
 A Printto team member will confirm the order and continue the greeting card video process.`
           : `✅ Shopify Checkout selected.
 
@@ -2670,7 +2679,7 @@ ${spec.downloadUrl || "Download link already created."}
 
 For now, please use Africa Payment or continue with an agent.
 
-Reply:
+Reply with number only:
 2 - Africa Payment
 3 - Continue with Agent`
       );
@@ -2679,6 +2688,13 @@ Reply:
     }
 
     if (isGreetingAfricaChoice(text)) {
+      if (session.lastServiceJobId) {
+        await attachTextToExistingJob(
+          session.lastServiceJobId,
+          "Greeting Studio payment choice: Africa Payment selected by customer"
+        );
+      }
+
       session.stage = "DONE";
 
       await sendMessage(
@@ -2688,7 +2704,7 @@ Reply:
 Please complete payment here:
 https://www.patapata.us/pages/africa-payment
 
-After payment, send your payment receipt here.
+After payment, please send your payment receipt here on WhatsApp for confirmation.
 
 Your greeting card download record:
 ${spec.downloadUrl || "Download link already created."}
@@ -2700,6 +2716,13 @@ A Printto team member will confirm the order and continue the greeting card vide
     }
 
     if (isGreetingAgentChoice(text)) {
+      if (session.lastServiceJobId) {
+        await attachTextToExistingJob(
+          session.lastServiceJobId,
+          "Greeting Studio payment choice: Continue with Agent selected by customer"
+        );
+      }
+
       session.stage = "DONE";
 
       await sendMessage(
