@@ -173,9 +173,6 @@ async function sendMessage(to, text) {
 // IN-MEMORY SESSIONS
 // =========================
 const sessions = new Map();
-// Keeps the last Greeting Studio payment request per WhatsApp number.
-// This catches payment replies even if the normal session stage is reset or overwritten.
-const greetingPaymentFallbacks = new Map();
 
 function createSession() {
   return {
@@ -2191,8 +2188,6 @@ async function handleGreetingPaymentChoice({ from, text, session, spec = {} }) {
     if (checkoutUrl) {
       session.stage = "DONE";
       session.selectedService = null;
-      greetingPaymentFallbacks.delete(from);
-
       await sendMessage(
         from,
         `✅ Shopify Checkout selected.
@@ -2212,8 +2207,6 @@ A Printto team member will confirm the order and continue the greeting card vide
 
     session.stage = "GREETING_PAYMENT";
     session.selectedService = "GREETING_CARD";
-    greetingPaymentFallbacks.set(from, finalSpec);
-
     await sendMessage(
       from,
       `✅ Shopify Checkout selected.
@@ -2236,8 +2229,6 @@ For now, please choose:
 
     session.stage = "DONE";
     session.selectedService = null;
-    greetingPaymentFallbacks.delete(from);
-
     await sendMessage(
       from,
       `✅ Africa Payment selected for Printto Greeting Studio.
@@ -2260,8 +2251,6 @@ A Printto team member will confirm the order and continue the greeting card vide
 
     session.stage = "DONE";
     session.selectedService = null;
-    greetingPaymentFallbacks.delete(from);
-
     await sendMessage(
       from,
       `✅ Continue with Agent selected.
@@ -2571,36 +2560,6 @@ ${serviceMenu(session.language)}`
 }
 
 
-// ===== STRONG FALLBACK FOR GREETING STUDIO PAYMENT =====
-// This must run before normal menu/payment logic.
-// It catches 1/2/3 after the Greeting Studio payment menu even if session.stage was lost.
-if (
-  type === "text" &&
-  ["1", "2", "3"].includes(lower) &&
-  (
-    session.stage === "GREETING_PAYMENT" ||
-    session.selectedService === "GREETING_CARD" ||
-    Boolean(session.greetingSpec && session.greetingSpec.downloadUrl) ||
-    greetingPaymentFallbacks.has(from)
-  )
-) {
-  const spec =
-    greetingPaymentFallbacks.get(from) ||
-    session.greetingSpec ||
-    {};
-
-  const handled = await handleGreetingPaymentChoice({
-    from,
-    text,
-    session,
-    spec
-  });
-
-  if (handled) {
-    return res.sendStatus(200);
-  }
-}
-
 // ===== DIRECT HANDLER FOR DIGITAL SERVICES FROM MOBILE APP / MAIN MENU =====
 if (
   type === "text" &&
@@ -2702,8 +2661,6 @@ if (
     session.selectedService = "GREETING_CARD";
     session.lastServiceJobId = job?.id || null;
     session.stage = "GREETING_PAYMENT";
-    greetingPaymentFallbacks.set(from, finalSpec);
-
     await sendMessage(from, greetingPaymentPromptText(finalSpec));
     return res.sendStatus(200);
   }
@@ -2797,7 +2754,7 @@ if (
   }
 
   if (session.stage === "GREETING_PAYMENT") {
-    const spec = session.greetingSpec || greetingPaymentFallbacks.get(from) || {};
+    const spec = session.greetingSpec || {};
     const handledPaymentChoice = await handleGreetingPaymentChoice({ from, text, session, spec });
     if (handledPaymentChoice) {
       return res.sendStatus(200);
