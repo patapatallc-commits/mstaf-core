@@ -2499,8 +2499,10 @@ if (
 // Birthday/Mary/John/Wishing you joy and blessings
 if (
   type === "text" &&
-  session.selectedService === "GREETING_CARD" &&
-  ["GREETING_STUDIO", "GREETING_OCCASION", "GREETING_RECIPIENT", "GREETING_SENDER", "GREETING_MESSAGE", "GREETING_PAYMENT"].includes(session.stage)
+  (
+    session.selectedService === "GREETING_CARD" ||
+    ["GREETING_STUDIO", "GREETING_OCCASION", "GREETING_RECIPIENT", "GREETING_SENDER", "GREETING_MESSAGE", "GREETING_PAYMENT"].includes(session.stage)
+  )
 ) {
   session.greetingSpec = session.greetingSpec || {};
 
