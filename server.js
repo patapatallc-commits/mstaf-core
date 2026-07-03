@@ -108,6 +108,7 @@ const storage = multer.diskStorage({
 const upload = multer({ storage });
 const express = require("express");
 const axios = require("axios");
+const { execFile } = require("child_process");
 require("dotenv").config();
 
 const app = express();
@@ -2118,6 +2119,133 @@ Use these details to create or approve the customer's final greeting video.`;
   };
 }
 
+
+function getFfmpegPath() {
+  return process.env.FFMPEG_PATH || "ffmpeg";
+}
+
+function textForDrawtext(value = "") {
+  return String(value || "")
+    .replace(/\\/g, "\\\\")
+    .replace(/:/g, "\\:")
+    .replace(/'/g, "\\'")
+    .replace(/\n/g, " ")
+    .slice(0, 180);
+}
+
+function wrapGreetingMessage(message = "", maxChars = 34, maxLines = 3) {
+  const words = String(message || "").replace(/\s+/g, " ").trim().split(" ").filter(Boolean);
+  const lines = [];
+  let current = "";
+
+  for (const word of words) {
+    const next = current ? `${current} ${word}` : word;
+    if (next.length > maxChars && current) {
+      lines.push(current);
+      current = word;
+      if (lines.length >= maxLines) break;
+    } else {
+      current = next;
+    }
+  }
+
+  if (current && lines.length < maxLines) lines.push(current);
+  return lines.join("\\n");
+}
+
+function buildGreetingVideoName(spec = {}) {
+  const templateId = safeBaseName(spec.templateId || "birthday");
+  const recipient = safeBaseName(spec.recipientName || "recipient").slice(0, 32);
+  return `PG-${Date.now()}_${templateId}_${recipient}.mp4`;
+}
+
+async function renderGreetingVideo(req, spec = {}) {
+  const template = getGreetingTemplate(spec.templateId || spec.occasion || "birthday");
+  const masterPath = path.join(masterVideosDir, template.masterVideo);
+
+  if (!fs.existsSync(masterPath)) {
+    return {
+      ok: false,
+      reason: "missing_master_video",
+      message: `Missing master video: ${template.masterVideo}. Add it inside the master-videos folder.`,
+      template
+    };
+  }
+
+  const outputFileName = buildGreetingVideoName({ ...spec, templateId: template.id });
+  const outputPath = path.join(generatedDir, outputFileName);
+  const titleText = textForDrawtext(`Happy ${spec.occasion || template.occasion}, ${spec.recipientName || ""}!`);
+  const messageText = textForDrawtext(wrapGreetingMessage(spec.message || ""));
+  const senderText = textForDrawtext(`From ${spec.senderName || "Printto"}`);
+  const brandText = textForDrawtext("Created with Printto Greeting Studio");
+
+  const drawFilter = [
+    `drawtext=text='${titleText}':x=(w-text_w)/2:y=h*0.16:fontsize=52:fontcolor=white:borderw=4:bordercolor=black`,
+    `drawtext=text='${messageText}':x=(w-text_w)/2:y=h*0.34:fontsize=34:fontcolor=white:borderw=3:bordercolor=black:line_spacing=10`,
+    `drawtext=text='${senderText}':x=(w-text_w)/2:y=h*0.62:fontsize=38:fontcolor=white:borderw=3:bordercolor=black`,
+    `drawtext=text='${brandText}':x=(w-text_w)/2:y=h*0.88:fontsize=24:fontcolor=white:borderw=2:bordercolor=black`
+  ].join(",");
+
+  const args = [
+    "-y",
+    "-i", masterPath,
+    "-vf", drawFilter,
+    "-c:v", "libx264",
+    "-preset", "veryfast",
+    "-crf", "23",
+    "-c:a", "aac",
+    "-movflags", "+faststart",
+    outputPath
+  ];
+
+  await new Promise((resolve, reject) => {
+    execFile(getFfmpegPath(), args, { timeout: 120000 }, (error, stdout, stderr) => {
+      if (error) {
+        error.stdout = stdout;
+        error.stderr = stderr;
+        return reject(error);
+      }
+      resolve();
+    });
+  });
+
+  return {
+    ok: true,
+    template,
+    fileName: outputFileName,
+    downloadUrl: buildGreetingDownloadUrl(req, outputFileName),
+    outputPath
+  };
+}
+
+async function tryRenderGreetingVideoForWhatsApp(req, from, session, spec = {}) {
+  try {
+    const renderResult = await renderGreetingVideo(req, spec);
+
+    if (!renderResult.ok) {
+      return `\n\n🎬 Video rendering is ready, but the master video is not uploaded yet.\n${renderResult.message}\n\nFor now, use the greeting record link:\n${spec.downloadUrl || "Download link already created."}`;
+    }
+
+    session.greetingSpec = {
+      ...(session.greetingSpec || {}),
+      videoDownloadUrl: renderResult.downloadUrl,
+      videoFileName: renderResult.fileName
+    };
+
+    if (session.lastServiceJobId) {
+      await attachTextToExistingJob(
+        session.lastServiceJobId,
+        `Greeting Studio MP4 generated: ${renderResult.downloadUrl}`
+      );
+    }
+
+    return `\n\n🎉 Your personalized Printto greeting video is ready!\n\n📥 Download MP4:\n${renderResult.downloadUrl}\n\n📱 You can share this video on WhatsApp, Facebook, Instagram, and TikTok.\n\nThank you for using Printto Greeting Studio.`;
+  } catch (err) {
+    console.error("Greeting MP4 render failed:", err.stderr || err.message);
+    return `\n\n⚠️ The greeting order was received, but automatic MP4 rendering could not complete yet. A Printto team member will continue it.\n\nGreeting record:\n${spec.downloadUrl || "Download link already created."}`;
+  }
+}
+
 function greetingPaymentPromptText(spec = {}) {
   return `✅ Your Printto Greeting Studio request has been received.
 
@@ -2159,7 +2287,7 @@ function isGreetingAgentChoice(value = "") {
   return v === "3" || v.includes("agent") || v.includes("person") || v.includes("human");
 }
 
-async function handleGreetingPaymentChoice({ from, text, session, spec = {} }) {
+async function handleGreetingPaymentChoice({ req, from, text, session, spec = {} }) {
   const choice = String(text || "").trim();
 
   session.greetingSpec = {
@@ -2188,6 +2316,7 @@ async function handleGreetingPaymentChoice({ from, text, session, spec = {} }) {
     if (checkoutUrl) {
       session.stage = "DONE";
       session.selectedService = null;
+      const renderNote = await tryRenderGreetingVideoForWhatsApp(req, from, session, finalSpec);
       await sendMessage(
         from,
         `✅ Shopify Checkout selected.
@@ -2200,7 +2329,7 @@ ${finalSpec.downloadUrl || "Download link already created."}
 
 After payment, please send your payment receipt here on WhatsApp for confirmation.
 
-A Printto team member will confirm the order and continue the greeting card video process.`
+A Printto team member will confirm the order and continue the greeting card video process.${renderNote}`
       );
       return true;
     }
@@ -2229,6 +2358,7 @@ For now, please choose:
 
     session.stage = "DONE";
     session.selectedService = null;
+    const renderNote = await tryRenderGreetingVideoForWhatsApp(req, from, session, finalSpec);
     await sendMessage(
       from,
       `✅ Africa Payment selected for Printto Greeting Studio.
@@ -2241,7 +2371,7 @@ After payment, please send your payment receipt here on WhatsApp for confirmatio
 Your greeting card download record:
 ${finalSpec.downloadUrl || "Download link already created."}
 
-A Printto team member will confirm the order and continue the greeting card video process.`
+A Printto team member will confirm the order and continue the greeting card video process.${renderNote}`
     );
     return true;
   }
@@ -2251,6 +2381,7 @@ A Printto team member will confirm the order and continue the greeting card vide
 
     session.stage = "DONE";
     session.selectedService = null;
+    const renderNote = await tryRenderGreetingVideoForWhatsApp(req, from, session, finalSpec);
     await sendMessage(
       from,
       `✅ Continue with Agent selected.
@@ -2258,7 +2389,7 @@ A Printto team member will confirm the order and continue the greeting card vide
 Your greeting card download record:
 ${finalSpec.downloadUrl || "Download link already created."}
 
-A Printto team member will review your Greeting Studio order and reply here shortly.`
+A Printto team member will review your Greeting Studio order and reply here shortly.${renderNote}`
     );
     return true;
   }
@@ -2439,28 +2570,25 @@ app.post("/api/greeting-studio/render", async (req, res) => {
     }
 
     const template = getGreetingTemplate(templateId || occasion);
-    const greetingId = `PG-${Date.now()}`;
-    const safeFileName = `${greetingId}_${safeBaseName(template.id)}.txt`;
-    const outputPath = path.join(generatedDir, safeFileName);
+    const record = createGreetingDownloadRecord(req, {
+      templateId: template.id,
+      occasion: occasion || template.occasion,
+      recipientName,
+      senderName,
+      message,
+      language
+    });
 
-    const content = `PRINTTO GREETING STUDIO
-Greeting ID: ${greetingId}
-Occasion: ${occasion || template.occasion}
-Template: ${template.id}
-Recipient: ${recipientName}
-Sender: ${senderName}
-Language: ${language}
+    const renderResult = await renderGreetingVideo(req, {
+      templateId: template.id,
+      occasion: occasion || template.occasion,
+      recipientName,
+      senderName,
+      message,
+      language,
+      downloadUrl: record.downloadUrl
+    });
 
-Message:
-${message}
-
-NOTE:
-This first automatic version creates the paid greeting order and a downloadable greeting record.
-Add master MP4 files inside /master-videos to enable full MP4 rendering in the next deployment step.`;
-
-    fs.writeFileSync(outputPath, content, "utf8");
-
-    const downloadUrl = buildGreetingDownloadUrl(req, safeFileName);
     const job = await createGreetingDashboardJob({
       templateId: template.id,
       occasion: occasion || template.occasion,
@@ -2470,24 +2598,26 @@ Add master MP4 files inside /master-videos to enable full MP4 rendering in the n
       language,
       customerEmail,
       customerPhone,
-      downloadUrl,
-      status: "pending"
+      downloadUrl: renderResult.ok ? renderResult.downloadUrl : record.downloadUrl,
+      status: renderResult.ok ? "completed" : "pending"
     });
 
     res.json({
       ok: true,
-      greetingId,
+      greetingId: record.greetingId,
       job_id: job?.id || null,
-      status: "rendered_placeholder",
+      status: renderResult.ok ? "mp4_rendered" : "record_created_master_missing",
       template,
-      downloadUrl,
-      note: "Greeting request created. Full MP4 rendering will activate after master videos are added."
+      downloadUrl: renderResult.ok ? renderResult.downloadUrl : record.downloadUrl,
+      recordDownloadUrl: record.downloadUrl,
+      videoDownloadUrl: renderResult.ok ? renderResult.downloadUrl : "",
+      note: renderResult.ok ? "MP4 greeting video rendered." : renderResult.message
     });
   } catch (err) {
-    console.error("Greeting Studio render error:", err);
+    console.error("Greeting Studio render error:", err.stderr || err.message || err);
     res.status(500).json({
       ok: false,
-      error: "Failed to render greeting."
+      error: "Failed to render greeting video."
     });
   }
 });
@@ -2755,7 +2885,7 @@ if (
 
   if (session.stage === "GREETING_PAYMENT") {
     const spec = session.greetingSpec || {};
-    const handledPaymentChoice = await handleGreetingPaymentChoice({ from, text, session, spec });
+    const handledPaymentChoice = await handleGreetingPaymentChoice({ req, from, text, session, spec });
     if (handledPaymentChoice) {
       return res.sendStatus(200);
     }
