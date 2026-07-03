@@ -2139,6 +2139,8 @@ Reply with number only:
 2 - Africa Payment
 3 - Continue with Agent
 
+After payment, please send your payment receipt here on WhatsApp for confirmation.
+
 To start over, type 39.`;
 }
 
