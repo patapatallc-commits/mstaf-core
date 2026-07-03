@@ -2193,7 +2193,11 @@ async function renderGreetingVideo(req, spec = {}) {
     "-c:v", "libx264",
     "-preset", "veryfast",
     "-crf", "23",
+    "-pix_fmt", "yuv420p",
+    "-profile:v", "high",
+    "-level", "4.0",
     "-c:a", "aac",
+    "-b:a", "192k",
     "-movflags", "+faststart",
     outputPath
   ];
