@@ -173,6 +173,9 @@ async function sendMessage(to, text) {
 // IN-MEMORY SESSIONS
 // =========================
 const sessions = new Map();
+// Keeps the last Greeting Studio payment request per WhatsApp number.
+// This catches payment replies even if the normal session stage is reset or overwritten.
+const greetingPaymentFallbacks = new Map();
 
 function createSession() {
   return {
@@ -2159,6 +2162,121 @@ function isGreetingAgentChoice(value = "") {
   return v === "3" || v.includes("agent") || v.includes("person") || v.includes("human");
 }
 
+async function handleGreetingPaymentChoice({ from, text, session, spec = {} }) {
+  const choice = String(text || "").trim();
+
+  session.greetingSpec = {
+    ...(session.greetingSpec || {}),
+    ...(spec || {})
+  };
+
+  const finalSpec = session.greetingSpec || {};
+  const checkoutUrl =
+    finalSpec.checkoutUrl ||
+    buildGreetingCheckoutUrl(finalSpec.packageType || "STANDARD", 1);
+
+  async function safeAttach(note) {
+    try {
+      if (session.lastServiceJobId) {
+        await attachTextToExistingJob(session.lastServiceJobId, note);
+      }
+    } catch (err) {
+      console.error("Greeting payment note attach skipped:", err.message);
+    }
+  }
+
+  if (isGreetingShopifyChoice(choice)) {
+    await safeAttach("Greeting Studio payment choice: Shopify Checkout selected by customer");
+
+    if (checkoutUrl) {
+      session.stage = "DONE";
+      session.selectedService = null;
+      greetingPaymentFallbacks.delete(from);
+
+      await sendMessage(
+        from,
+        `✅ Shopify Checkout selected.
+
+Please complete payment here:
+${checkoutUrl}
+
+Your greeting card download record:
+${finalSpec.downloadUrl || "Download link already created."}
+
+After payment, please send your payment receipt here on WhatsApp for confirmation.
+
+A Printto team member will confirm the order and continue the greeting card video process.`
+      );
+      return true;
+    }
+
+    session.stage = "GREETING_PAYMENT";
+    session.selectedService = "GREETING_CARD";
+    greetingPaymentFallbacks.set(from, finalSpec);
+
+    await sendMessage(
+      from,
+      `✅ Shopify Checkout selected.
+
+Shopify Greeting Studio checkout is coming next.
+
+Your greeting card download record:
+${finalSpec.downloadUrl || "Download link already created."}
+
+For now, please choose:
+
+2 - Africa Payment
+3 - Continue with Agent`
+    );
+    return true;
+  }
+
+  if (isGreetingAfricaChoice(choice)) {
+    await safeAttach("Greeting Studio payment choice: Africa Payment selected by customer");
+
+    session.stage = "DONE";
+    session.selectedService = null;
+    greetingPaymentFallbacks.delete(from);
+
+    await sendMessage(
+      from,
+      `✅ Africa Payment selected for Printto Greeting Studio.
+
+Please complete payment here:
+https://www.patapata.us/pages/africa-payment
+
+After payment, please send your payment receipt here on WhatsApp for confirmation.
+
+Your greeting card download record:
+${finalSpec.downloadUrl || "Download link already created."}
+
+A Printto team member will confirm the order and continue the greeting card video process.`
+    );
+    return true;
+  }
+
+  if (isGreetingAgentChoice(choice)) {
+    await safeAttach("Greeting Studio payment choice: Continue with Agent selected by customer");
+
+    session.stage = "DONE";
+    session.selectedService = null;
+    greetingPaymentFallbacks.delete(from);
+
+    await sendMessage(
+      from,
+      `✅ Continue with Agent selected.
+
+Your greeting card download record:
+${finalSpec.downloadUrl || "Download link already created."}
+
+A Printto team member will review your Greeting Studio order and reply here shortly.`
+    );
+    return true;
+  }
+
+  return false;
+}
+
 async function createGreetingDashboardJob({
   templateId,
   occasion,
@@ -2452,6 +2570,37 @@ ${serviceMenu(session.language)}`
   return res.sendStatus(200);
 }
 
+
+// ===== STRONG FALLBACK FOR GREETING STUDIO PAYMENT =====
+// This must run before normal menu/payment logic.
+// It catches 1/2/3 after the Greeting Studio payment menu even if session.stage was lost.
+if (
+  type === "text" &&
+  ["1", "2", "3"].includes(lower) &&
+  (
+    session.stage === "GREETING_PAYMENT" ||
+    session.selectedService === "GREETING_CARD" ||
+    Boolean(session.greetingSpec && session.greetingSpec.downloadUrl) ||
+    greetingPaymentFallbacks.has(from)
+  )
+) {
+  const spec =
+    greetingPaymentFallbacks.get(from) ||
+    session.greetingSpec ||
+    {};
+
+  const handled = await handleGreetingPaymentChoice({
+    from,
+    text,
+    session,
+    spec
+  });
+
+  if (handled) {
+    return res.sendStatus(200);
+  }
+}
+
 // ===== DIRECT HANDLER FOR DIGITAL SERVICES FROM MOBILE APP / MAIN MENU =====
 if (
   type === "text" &&
@@ -2550,8 +2699,10 @@ if (
     });
 
     session.greetingSpec = finalSpec;
+    session.selectedService = "GREETING_CARD";
     session.lastServiceJobId = job?.id || null;
     session.stage = "GREETING_PAYMENT";
+    greetingPaymentFallbacks.set(from, finalSpec);
 
     await sendMessage(from, greetingPaymentPromptText(finalSpec));
     return res.sendStatus(200);
@@ -2646,7 +2797,11 @@ if (
   }
 
   if (session.stage === "GREETING_PAYMENT") {
-    const spec = session.greetingSpec || {};
+    const spec = session.greetingSpec || greetingPaymentFallbacks.get(from) || {};
+    const handledPaymentChoice = await handleGreetingPaymentChoice({ from, text, session, spec });
+    if (handledPaymentChoice) {
+      return res.sendStatus(200);
+    }
 
     if (isGreetingShopifyChoice(text)) {
       const checkoutUrl = spec.checkoutUrl || buildGreetingCheckoutUrl(spec.packageType || "STANDARD", 1);
