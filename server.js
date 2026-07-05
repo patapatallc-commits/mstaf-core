@@ -244,7 +244,7 @@ Example: 1, 4, 15
 34 - Helper Services
 35 - Book App Tester
 36 - Solar Installation
-37 - Work Maintenance
+37 - Work Maintenance`,
 
     es: `📌 Elige un número de servicio.
 
@@ -286,7 +286,7 @@ Ejemplo: 1, 4, 15
 34 - Servicios de ayudante
 35 - Reservar probador de app
 36 - Instalación solar
-37 - Mantenimiento de trabajo
+37 - Mantenimiento de trabajo`,
 
     fr: `📌 Choisissez un numéro de service.
 
@@ -328,7 +328,7 @@ Exemple : 1, 4, 15
 34 - Services d’aide
 35 - Réserver un testeur d’application
 36 - Installation solaire
-37 - Maintenance de travail
+37 - Maintenance de travail`,
 
     de: `📌 Wählen Sie eine Servicenummer.
 
@@ -370,7 +370,7 @@ Beispiel: 1, 4, 15
 34 - Helfer-Services
 35 - App-Tester buchen
 36 - Solarinstallation
-37 - Arbeitswartung
+37 - Arbeitswartung`,
 
     pt: `📌 Escolha um número de serviço.
 
@@ -412,7 +412,7 @@ Exemplo: 1, 4, 15
 34 - Serviços de ajudante
 35 - Reservar testador de aplicativo
 36 - Instalação solar
-37 - Manutenção de trabalho
+37 - Manutenção de trabalho`,
 
     ar: `📌 اختر رقم الخدمة.
 
@@ -454,7 +454,7 @@ Exemplo: 1, 4, 15
 34 - خدمات المساعدة
 35 - حجز مختبر تطبيق
 36 - تركيب الطاقة الشمسية
-37 - صيانة الأعمال
+37 - صيانة الأعمال`,
 
     zh: `📌 请选择服务编号。
 
@@ -496,7 +496,7 @@ Exemplo: 1, 4, 15
 34 - 帮工服务
 35 - 预约应用测试员
 36 - 太阳能安装
-37 - 工作维护
+37 - 工作维护`
   };
 
   return menus[language] || menus.en;
@@ -3228,109 +3228,46 @@ if (
   }
 
   async function finishGreetingDetailsAndAskPayment(spec) {
-    try {
-      let downloadRecord = null;
-      let checkoutUrl = "";
-      let finalSpec = {
-        ...session.greetingSpec,
-        ...spec
-      };
+    const downloadRecord = createGreetingDownloadRecord(req, {
+      templateId: spec.templateId || "birthday",
+      occasion: spec.occasion || "Birthday",
+      recipientName: spec.recipientName,
+      senderName: spec.senderName,
+      message: spec.message,
+      language: session.language
+    });
 
-      try {
-        downloadRecord = createGreetingDownloadRecord(req, {
-          templateId: spec.templateId || "birthday",
-          occasion: spec.occasion || "Birthday",
-          recipientName: spec.recipientName,
-          senderName: spec.senderName,
-          message: spec.message,
-          language: session.language
-        });
+    const checkoutUrl = buildGreetingCheckoutUrl(spec.packageType || "STANDARD", 1);
 
-        checkoutUrl = buildGreetingCheckoutUrl(spec.packageType || "STANDARD", 1);
+    const finalSpec = {
+      ...session.greetingSpec,
+      ...spec,
+      greetingId: downloadRecord.greetingId,
+      templateId: downloadRecord.template.id,
+      downloadUrl: downloadRecord.downloadUrl,
+      generatedFileName: downloadRecord.fileName,
+      checkoutUrl
+    };
 
-        finalSpec = {
-          ...finalSpec,
-          greetingId: downloadRecord?.greetingId || finalSpec.greetingId || "",
-          templateId: downloadRecord?.template?.id || finalSpec.templateId || "birthday",
-          downloadUrl: downloadRecord?.downloadUrl || finalSpec.downloadUrl || "",
-          generatedFileName: downloadRecord?.fileName || finalSpec.generatedFileName || "",
-          checkoutUrl
-        };
-      } catch (downloadErr) {
-        console.error("Greeting download record error:", downloadErr.message);
-        checkoutUrl = buildGreetingCheckoutUrl(spec.packageType || "STANDARD", 1);
-        finalSpec = {
-          ...finalSpec,
-          templateId: finalSpec.templateId || "birthday",
-          checkoutUrl
-        };
-      }
+    const job = await createGreetingDashboardJob({
+      templateId: finalSpec.templateId || "birthday",
+      occasion: finalSpec.occasion || "Birthday",
+      recipientName: finalSpec.recipientName,
+      senderName: finalSpec.senderName,
+      message: finalSpec.message,
+      language: session.language,
+      customerPhone: from,
+      checkoutUrl,
+      downloadUrl: finalSpec.downloadUrl,
+      status: "pending"
+    });
 
-      let job = null;
-      try {
-        job = await createGreetingDashboardJob({
-          templateId: finalSpec.templateId || "birthday",
-          occasion: finalSpec.occasion || "Birthday",
-          recipientName: finalSpec.recipientName,
-          senderName: finalSpec.senderName,
-          message: finalSpec.message,
-          language: session.language,
-          customerPhone: from,
-          checkoutUrl: finalSpec.checkoutUrl || checkoutUrl,
-          downloadUrl: finalSpec.downloadUrl || "",
-          status: "pending"
-        });
-      } catch (jobErr) {
-        console.error("Greeting dashboard job error:", jobErr.message);
-      }
-
-      session.greetingSpec = finalSpec;
-      session.selectedService = "GREETING_CARD";
-      session.lastServiceJobId = job?.id || null;
-      session.stage = "GREETING_PAYMENT";
-
-      await sendMessage(
-        from,
-        greetingPaymentPromptText(finalSpec) ||
-          `✅ Greeting details received.
-
-Recipient: ${finalSpec.recipientName}
-Sender: ${finalSpec.senderName}
-Message: ${finalSpec.message}
-
-Choose payment option:
-1 - Shopify Checkout
-2 - Africa Payment
-3 - Continue with Agent`
-      );
-
-      return res.sendStatus(200);
-    } catch (err) {
-      console.error("Greeting finish error:", err.message);
-
-      session.selectedService = "GREETING_CARD";
-      session.greetingSpec = {
-        ...session.greetingSpec,
-        ...spec
-      };
-      session.stage = "GREETING_PAYMENT";
-
-      await sendMessage(
-        from,
-        `✅ Greeting message received.
-
-Recipient: ${session.greetingSpec.recipientName || ""}
-Sender: ${session.greetingSpec.senderName || ""}
-Message: ${session.greetingSpec.message || spec.message || ""}
-
-Choose payment option:
-1 - Shopify Checkout
-2 - Africa Payment
-3 - Continue with Agent`
-      );
-
-      return res.sendStatus(200);
-    }
+    session.greetingSpec = finalSpec;
+    session.selectedService = "GREETING_CARD";
+    session.lastServiceJobId = job?.id || null;
+    session.stage = "GREETING_PAYMENT";
+    await sendMessage(from, greetingPaymentPromptText(finalSpec));
+    return res.sendStatus(200);
   }
 
 
