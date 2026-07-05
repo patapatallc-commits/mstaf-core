@@ -515,6 +515,178 @@ Exemplo: 1, 4, 15
 
   return menus[language] || menus.en;
 }
+
+// =========================
+// MOBILE APP SERVICE HELPERS
+// =========================
+function normalizeMobileAppText(text = "") {
+  return String(text || "")
+    .toLowerCase()
+    .replace(/print-o-matic/g, "printomatic")
+    .replace(/printo/g, "printo")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function extractLanguageFromAppMessage(rawText = "") {
+  const original = String(rawText || "");
+  const match = original.match(/^\s*Language\s*:\s*(en|es|fr|de|pt|ar|zh)\s*\n+/i);
+
+  if (!match) {
+    return {
+      language: "",
+      text: original
+    };
+  }
+
+  return {
+    language: match[1].toLowerCase(),
+    text: original.replace(match[0], "").trim()
+  };
+}
+
+function detectMobileAppService(text = "") {
+  const v = normalizeMobileAppText(text);
+
+  if (!v) return null;
+
+  if (
+    v.includes("buy printo music") ||
+    v.includes("printo music") ||
+    v.includes("comprar música") ||
+    v.includes("acheter de la musique") ||
+    v.includes("printo musik kaufen") ||
+    v.includes("comprar música printo") ||
+    v.includes("شراء موسيقى") ||
+    v.includes("购买 printo 音乐")
+  ) {
+    return "PRINTO_MUSIC";
+  }
+
+  if (
+    v.includes("greeting video card") ||
+    v.includes("video greeting") ||
+    v.includes("greeting card") ||
+    v.includes("tarjeta de video") ||
+    v.includes("carte vidéo") ||
+    v.includes("grußvideo") ||
+    v.includes("cartão de vídeo") ||
+    v.includes("بطاقة فيديو") ||
+    v.includes("祝福视频")
+  ) {
+    return "GREETING_CARD";
+  }
+
+  if (
+    v.includes("personalized printo video") ||
+    v.includes("personalised printo video") ||
+    v.includes("video personalizado") ||
+    v.includes("vidéo printo personnalisée") ||
+    v.includes("personalisiertes printo video") ||
+    v.includes("vídeo printo personalizado") ||
+    v.includes("فيديو printo") ||
+    v.includes("个性化 printo 视频")
+  ) {
+    return "PERSONALIZED_PRINTO_VIDEO";
+  }
+
+  if (
+    v.includes("ai video creation") ||
+    v.includes("creación de video con ia") ||
+    v.includes("création vidéo ia") ||
+    v.includes("ki-videoerstellung") ||
+    v.includes("criação de vídeo com ia") ||
+    v.includes("إنشاء فيديو بالذكاء") ||
+    v.includes("ai 视频制作")
+  ) {
+    return "AI_VIDEO_CREATION";
+  }
+
+  if (
+    v.includes("music or voice") ||
+    v.includes("music & voice") ||
+    v.includes("music and voice") ||
+    v.includes("música o voz") ||
+    v.includes("musique ou de voix") ||
+    v.includes("musik- oder sprach") ||
+    v.includes("música ou voz") ||
+    v.includes("موسيقى أو صوت") ||
+    v.includes("音乐或语音")
+  ) {
+    return "MUSIC_VOICE_STUDIO";
+  }
+
+  if (
+    v.includes("digital downloads") ||
+    v.includes("descargas digitales") ||
+    v.includes("téléchargements numériques") ||
+    v.includes("digitale downloads") ||
+    v.includes("downloads digitais") ||
+    v.includes("تنزيلات رقمية") ||
+    v.includes("数字下载")
+  ) {
+    return "DIGITAL_SERVICES_DOWNLOADS";
+  }
+
+  if (
+    v.includes("printomatic services") ||
+    v.includes("printomatic") ||
+    v.includes("print-o-matic services") ||
+    v.includes("servicios print-o-matic") ||
+    v.includes("services print-o-matic") ||
+    v.includes("serviços print-o-matic") ||
+    v.includes("خدمات print-o-matic") ||
+    v.includes("print-o-matic 服务")
+  ) {
+    return "PRINTOMATIC_SERVICES";
+  }
+
+  return null;
+}
+
+function mobileAppServicePromptText(language = "en", serviceType = "AGENT_REQUEST") {
+  const prompts = {
+    PRINTO_MUSIC: {
+      en: `🎵 Printo Music selected.\n\nPlease tell us what you want:\n• Buy a Printo song, beat, instrumental, or album\n• License music for video/social media\n• Request a custom song or jingle\n\nYou may send text, voice note, file, photo, or link.`,
+      es: `🎵 Música de Printo seleccionada.\n\nDíganos lo que necesita:\n• Comprar una canción, beat, instrumental o álbum de Printo\n• Licenciar música para video/redes sociales\n• Solicitar una canción o jingle personalizado\n\nPuede enviar texto, nota de voz, archivo, foto o enlace.`,
+      fr: `🎵 Musique Printo sélectionnée.\n\nDites-nous ce dont vous avez besoin :\n• Acheter une chanson, un beat, un instrumental ou un album Printo\n• Utiliser la musique pour vidéo/réseaux sociaux\n• Demander une chanson ou un jingle personnalisé\n\nVous pouvez envoyer texte, vocal, fichier, photo ou lien.`,
+      de: `🎵 Printo Musik ausgewählt.\n\nBitte sagen Sie uns, was Sie möchten:\n• Printo Song, Beat, Instrumental oder Album kaufen\n• Musik für Video/Social Media lizenzieren\n• Einen eigenen Song oder Jingle anfragen\n\nSie können Text, Sprachnachricht, Datei, Foto oder Link senden.`,
+      pt: `🎵 Música Printo selecionada.\n\nDiga o que você deseja:\n• Comprar música, beat, instrumental ou álbum Printo\n• Licenciar música para vídeo/redes sociais\n• Solicitar música ou jingle personalizado\n\nVocê pode enviar texto, áudio, arquivo, foto ou link.`,
+      ar: `🎵 تم اختيار موسيقى Printo.\n\nيرجى إخبارنا بما تريد:\n• شراء أغنية أو إيقاع أو موسيقى أو ألبوم Printo\n• استخدام الموسيقى للفيديو أو وسائل التواصل\n• طلب أغنية أو إعلان صوتي مخصص\n\nيمكنك إرسال نص أو صوت أو ملف أو صورة أو رابط.`,
+      zh: `🎵 已选择 Printo 音乐。\n\n请告诉我们您需要什么：\n• 购买 Printo 歌曲、节拍、伴奏或专辑\n• 为视频/社交媒体授权音乐\n• 定制歌曲或广告歌\n\n您可以发送文字、语音、文件、图片或链接。`
+    },
+    AI_VIDEO_CREATION: {
+      en: `🎬 AI Video Creation selected.\n\nPlease describe the video you want. Include style, length, character, text, voice, and where you want to post it. You may also send photos, videos, audio, or links.`,
+      es: `🎬 Creación de video con IA seleccionada.\n\nDescriba el video que desea. Incluya estilo, duración, personaje, texto, voz y dónde desea publicarlo. También puede enviar fotos, videos, audio o enlaces.`,
+      fr: `🎬 Création vidéo IA sélectionnée.\n\nDécrivez la vidéo souhaitée : style, durée, personnage, texte, voix et plateforme de publication. Vous pouvez aussi envoyer photos, vidéos, audio ou liens.`,
+      de: `🎬 KI-Videoerstellung ausgewählt.\n\nBeschreiben Sie das gewünschte Video: Stil, Länge, Figur, Text, Stimme und Plattform. Sie können auch Fotos, Videos, Audio oder Links senden.`,
+      pt: `🎬 Criação de vídeo com IA selecionada.\n\nDescreva o vídeo desejado. Inclua estilo, duração, personagem, texto, voz e onde deseja publicar. Você também pode enviar fotos, vídeos, áudio ou links.`,
+      ar: `🎬 تم اختيار إنشاء فيديو بالذكاء الاصطناعي.\n\nصف الفيديو الذي تريده: الأسلوب، المدة، الشخصية، النص، الصوت، ومكان النشر. يمكنك أيضًا إرسال صور أو فيديوهات أو صوت أو روابط.`,
+      zh: `🎬 已选择 AI 视频制作。\n\n请描述您想要的视频：风格、时长、角色、文字、声音以及发布平台。您也可以发送照片、视频、音频或链接。`
+    },
+    MUSIC_VOICE_STUDIO: {
+      en: `🎤 Music & Voice Studio selected.\n\nPlease tell us what you need: song, jingle, voice-over, voice clone, sound effect, or audio cleanup. You may send lyrics, script, audio, video, or voice note.`,
+      es: `🎤 Estudio de música y voz seleccionado.\n\nDíganos qué necesita: canción, jingle, voz en off, clonación de voz, efecto de sonido o limpieza de audio. Puede enviar letra, guion, audio, video o nota de voz.`,
+      fr: `🎤 Studio musique et voix sélectionné.\n\nDites-nous ce dont vous avez besoin : chanson, jingle, voix off, clonage vocal, effet sonore ou nettoyage audio. Vous pouvez envoyer paroles, script, audio, vidéo ou vocal.`,
+      de: `🎤 Musik- & Sprachstudio ausgewählt.\n\nBitte sagen Sie uns, was Sie brauchen: Song, Jingle, Voice-over, Stimmklon, Soundeffekt oder Audioreinigung. Sie können Text, Skript, Audio, Video oder Sprachnachricht senden.`,
+      pt: `🎤 Estúdio de música e voz selecionado.\n\nDiga o que você precisa: música, jingle, narração, clonagem de voz, efeito sonoro ou limpeza de áudio. Você pode enviar letra, roteiro, áudio, vídeo ou mensagem de voz.`,
+      ar: `🎤 تم اختيار استوديو الموسيقى والصوت.\n\nأخبرنا بما تحتاجه: أغنية، إعلان صوتي، تعليق صوتي، استنساخ صوت، مؤثرات صوتية أو تنظيف صوت. يمكنك إرسال كلمات أو نص أو صوت أو فيديو أو رسالة صوتية.`,
+      zh: `🎤 已选择音乐与语音工作室。\n\n请告诉我们您需要什么：歌曲、广告歌、配音、声音克隆、音效或音频清理。您可以发送歌词、脚本、音频、视频或语音。`
+    },
+    DEFAULT: {
+      en: `✅ Service selected.\n\nPlease type the details of what you need. You may also send a photo, video, document, audio, or voice note. A Printo team member will review it and reply here on WhatsApp.`,
+      es: `✅ Servicio seleccionado.\n\nEscriba los detalles de lo que necesita. También puede enviar foto, video, documento, audio o nota de voz. Un miembro del equipo Printo revisará y responderá aquí en WhatsApp.`,
+      fr: `✅ Service sélectionné.\n\nÉcrivez les détails de ce dont vous avez besoin. Vous pouvez aussi envoyer photo, vidéo, document, audio ou vocal. Un membre de l'équipe Printo répondra ici sur WhatsApp.`,
+      de: `✅ Service ausgewählt.\n\nBitte schreiben Sie die Details. Sie können auch Foto, Video, Dokument, Audio oder Sprachnachricht senden. Ein Printo-Teammitglied antwortet hier auf WhatsApp.`,
+      pt: `✅ Serviço selecionado.\n\nDigite os detalhes do que você precisa. Você também pode enviar foto, vídeo, documento, áudio ou mensagem de voz. Um membro da equipe Printo responderá aqui no WhatsApp.`,
+      ar: `✅ تم اختيار الخدمة.\n\nاكتب تفاصيل ما تحتاجه. يمكنك أيضًا إرسال صورة أو فيديو أو مستند أو صوت أو رسالة صوتية. سيراجع فريق Printo طلبك ويرد هنا على واتساب.`,
+      zh: `✅ 已选择服务。\n\n请写下您需要的详细信息。您也可以发送照片、视频、文件、音频或语音消息。Printo 团队成员会在 WhatsApp 上回复您。`
+    }
+  };
+
+  return pickText(language, prompts[serviceType] || prompts.DEFAULT);
+}
+
 function printSizeMenuText(language = "en") {
   return pickText(language, {
     en: `Print selected.
@@ -2657,7 +2829,20 @@ app.post("/webhook", async (req, res) => {
 
     let text = "";
     if (type === "text") text = message.text?.body || "";
-    const lower = text.toLowerCase().trim();
+
+    // Mobile app messages arrive like:
+    // Language: en
+    // I want to buy Printo music.
+    // This keeps the user's selected app language inside the WhatsApp session.
+    if (type === "text" && text) {
+      const appLanguageMessage = extractLanguageFromAppMessage(text);
+      if (appLanguageMessage.language) {
+        session.language = appLanguageMessage.language;
+        text = appLanguageMessage.text;
+      }
+    }
+
+    const lower = String(text || "").toLowerCase().trim();
     if (
   type === "text" &&
   ["hello", "hi", "hey", "menu", "start"].includes(lower)
@@ -2691,6 +2876,53 @@ ${serviceMenu(session.language)}`
 );
 
   return res.sendStatus(200);
+}
+
+
+// ===== DIRECT HANDLER FOR PRINTO MOBILE APP SERVICES =====
+// Handles WhatsApp messages sent from index.tsx service cards.
+if (type === "text") {
+  const mobileAppService = detectMobileAppService(text);
+
+  if (mobileAppService === "DIGITAL_SERVICES_DOWNLOADS") {
+    session.selectedService = "DIGITAL_SERVICES_DOWNLOADS";
+    session.lastServiceJobId = null;
+    session.pendingFile = null;
+    session.stage = "DIGITAL_SERVICES_MENU";
+    await sendMessage(from, digitalServicesMenuText(session.language));
+    return res.sendStatus(200);
+  }
+
+  if (mobileAppService === "GREETING_CARD" || mobileAppService === "PERSONALIZED_PRINTO_VIDEO") {
+    session.selectedService = "GREETING_CARD";
+    session.lastServiceJobId = null;
+    session.pendingFile = null;
+    session.greetingSpec = {};
+    session.stage = "GREETING_OCCASION";
+    await sendMessage(from, greetingStudioMenuText(session.language));
+    return res.sendStatus(200);
+  }
+
+  if (mobileAppService === "PRINTOMATIC_SERVICES") {
+    session.selectedService = null;
+    session.lastServiceJobId = null;
+    session.pendingFile = null;
+    session.stage = "MENU";
+    await sendMessage(
+      from,
+      `${welcomeText(session.language)}\n\n${serviceMenu(session.language)}`
+    );
+    return res.sendStatus(200);
+  }
+
+  if (mobileAppService === "PRINTO_MUSIC" || mobileAppService === "AI_VIDEO_CREATION" || mobileAppService === "MUSIC_VOICE_STUDIO") {
+    session.selectedService = mobileAppService;
+    session.lastServiceJobId = null;
+    session.pendingFile = null;
+    session.stage = "SERVICE_WAITING_EXTRA_NOTES";
+    await sendMessage(from, mobileAppServicePromptText(session.language, mobileAppService));
+    return res.sendStatus(200);
+  }
 }
 
 
