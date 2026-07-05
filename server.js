@@ -2248,6 +2248,15 @@ function buildGreetingDownloadUrl(req, fileName) {
   return `${base}/generated/${encodeURIComponent(fileName)}`;
 }
 
+function escapeHtml(value = "") {
+  return String(value || "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
+
 function createGreetingDownloadRecord(req, {
   templateId = "birthday",
   occasion = "Birthday",
@@ -2258,28 +2267,275 @@ function createGreetingDownloadRecord(req, {
 } = {}) {
   const template = getGreetingTemplate(templateId || occasion);
   const greetingId = `PG-${Date.now()}`;
-  const safeFileName = `${greetingId}_${safeBaseName(template.id)}.txt`;
+  const safeFileName = `${greetingId}_${safeBaseName(template.id)}.html`;
   const outputPath = path.join(generatedDir, safeFileName);
 
-  const content = `PRINTTO GREETING STUDIO
-Greeting ID: ${greetingId}
-Occasion: ${occasion || template.occasion}
-Template: ${template.id}
-Recipient: ${recipientName}
-Sender: ${senderName}
-Language: ${language || "en"}
+  const safeGreetingId = escapeHtml(greetingId);
+  const safeOccasion = escapeHtml(occasion || template.occasion);
+  const safeTemplate = escapeHtml(template.id);
+  const safeRecipient = escapeHtml(recipientName);
+  const safeSender = escapeHtml(senderName);
+  const safeLanguage = escapeHtml(language || "en");
+  const safeMessage = escapeHtml(message).replace(/\n/g, "<br />");
+  const whatsappSupportUrl = `https://wa.me/${PHONE}?text=${encodeURIComponent(
+    `Hello Printto Studio, I need help with greeting order ${greetingId}.`
+  )}`;
 
-Message:
-${message}
+  const content = `<!doctype html>
+<html lang="${safeLanguage}">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Printto Greeting Order ${safeGreetingId}</title>
+  <style>
+    :root {
+      --blue: #0b63ce;
+      --dark: #05081d;
+      --yellow: #ffd21f;
+      --green: #25d366;
+      --soft: #f3f7ff;
+      --text: #172033;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: Arial, Helvetica, sans-serif;
+      background: linear-gradient(135deg, var(--blue), #05265f);
+      color: var(--text);
+      min-height: 100vh;
+      padding: 22px;
+    }
+    .page {
+      max-width: 900px;
+      margin: 0 auto;
+    }
+    .hero {
+      background: var(--dark);
+      color: white;
+      border-radius: 28px;
+      padding: 30px 22px;
+      text-align: center;
+      border: 3px solid var(--yellow);
+      box-shadow: 0 20px 50px rgba(0,0,0,.25);
+    }
+    .brand-mark {
+      width: 96px;
+      height: 96px;
+      border-radius: 24px;
+      margin: 0 auto 16px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: radial-gradient(circle at top left, #24c6ff, #7f2cff 45%, #ff8b24 78%, #ffd21f);
+      font-size: 56px;
+      font-weight: 900;
+      color: white;
+      box-shadow: 0 0 28px rgba(255,210,31,.45);
+    }
+    h1 {
+      margin: 0;
+      font-size: 34px;
+      line-height: 1.1;
+    }
+    .hero p {
+      margin: 10px auto 0;
+      max-width: 650px;
+      color: #dbe8ff;
+      font-size: 16px;
+      line-height: 1.5;
+    }
+    .status-strip {
+      margin-top: 18px;
+      display: inline-flex;
+      gap: 8px;
+      align-items: center;
+      background: var(--yellow);
+      color: #111;
+      padding: 10px 16px;
+      border-radius: 999px;
+      font-weight: 900;
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 18px;
+      margin-top: 22px;
+    }
+    .card {
+      background: white;
+      border-radius: 24px;
+      padding: 22px;
+      border: 2px solid rgba(255,210,31,.9);
+      box-shadow: 0 14px 35px rgba(0,0,0,.16);
+    }
+    .card.full { grid-column: 1 / -1; }
+    .label {
+      color: #5d6b86;
+      font-size: 13px;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: .06em;
+      margin-bottom: 7px;
+    }
+    .value {
+      font-size: 22px;
+      font-weight: 900;
+      color: var(--blue);
+      word-break: break-word;
+    }
+    .message-box {
+      background: var(--soft);
+      border-left: 6px solid var(--yellow);
+      border-radius: 16px;
+      padding: 18px;
+      font-size: 18px;
+      line-height: 1.55;
+      color: #172033;
+    }
+    .timeline {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 12px;
+      margin-top: 12px;
+    }
+    .step {
+      background: var(--soft);
+      border-radius: 18px;
+      padding: 14px;
+      text-align: center;
+      font-weight: 800;
+      min-height: 92px;
+    }
+    .step .icon {
+      font-size: 24px;
+      display: block;
+      margin-bottom: 8px;
+    }
+    .step.active {
+      background: #fff6ca;
+      border: 2px solid var(--yellow);
+    }
+    .actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      margin-top: 18px;
+    }
+    .btn {
+      appearance: none;
+      border: none;
+      border-radius: 16px;
+      padding: 14px 18px;
+      font-size: 16px;
+      font-weight: 900;
+      text-decoration: none;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 48px;
+    }
+    .btn.primary {
+      background: var(--yellow);
+      color: #111;
+    }
+    .btn.whatsapp {
+      background: var(--green);
+      color: white;
+    }
+    .btn.disabled {
+      background: #d9e1ef;
+      color: #66738d;
+      cursor: not-allowed;
+    }
+    .footer {
+      color: #eaf2ff;
+      text-align: center;
+      margin: 22px 0 8px;
+      font-weight: 800;
+    }
+    @media (max-width: 720px) {
+      body { padding: 14px; }
+      h1 { font-size: 28px; }
+      .grid { grid-template-columns: 1fr; }
+      .timeline { grid-template-columns: 1fr 1fr; }
+      .card { padding: 18px; }
+      .value { font-size: 20px; }
+    }
+  </style>
+</head>
+<body>
+  <main class="page">
+    <section class="hero">
+      <div class="brand-mark">P</div>
+      <h1>Greeting Order Received</h1>
+      <p>Your Printto Greeting Studio order has been received. We are preparing your personalized greeting video details and payment confirmation.</p>
+      <div class="status-strip">✅ Order Status: Received / Processing</div>
+    </section>
 
-DOWNLOAD STATUS:
-This is your automatic downloadable greeting card record.
+    <section class="grid">
+      <div class="card">
+        <div class="label">Greeting ID</div>
+        <div class="value">${safeGreetingId}</div>
+      </div>
 
-NEXT STEP:
-The full animated MP4 video download will be activated after the Printto master video templates are added to the master-videos folder and FFmpeg rendering is enabled.
+      <div class="card">
+        <div class="label">Occasion</div>
+        <div class="value">${safeOccasion}</div>
+      </div>
 
-PATAPATA / PRINTTO TEAM:
-Use these details to create or approve the customer's final greeting video.`;
+      <div class="card">
+        <div class="label">Recipient</div>
+        <div class="value">${safeRecipient || "Not provided"}</div>
+      </div>
+
+      <div class="card">
+        <div class="label">Sender</div>
+        <div class="value">${safeSender || "Not provided"}</div>
+      </div>
+
+      <div class="card">
+        <div class="label">Template</div>
+        <div class="value">${safeTemplate}</div>
+      </div>
+
+      <div class="card">
+        <div class="label">Language</div>
+        <div class="value">${safeLanguage}</div>
+      </div>
+
+      <div class="card full">
+        <div class="label">Greeting Message</div>
+        <div class="message-box">${safeMessage || "No message provided yet."}</div>
+      </div>
+
+      <div class="card full">
+        <div class="label">Order Progress</div>
+        <div class="timeline">
+          <div class="step"><span class="icon">✅</span>Order received</div>
+          <div class="step active"><span class="icon">🔄</span>Preparing video</div>
+          <div class="step"><span class="icon">⏳</span>Rendering MP4</div>
+          <div class="step"><span class="icon">📥</span>Ready to download</div>
+        </div>
+
+        <div class="actions">
+          <span class="btn disabled">⬇️ MP4 download activates when ready</span>
+          <a class="btn whatsapp" href="${whatsappSupportUrl}">📲 Contact Printto on WhatsApp</a>
+          <a class="btn primary" href="https://www.patapata.us/pages/africa-payment">💳 Africa Payment</a>
+        </div>
+      </div>
+
+      <div class="card full">
+        <div class="label">Next Step</div>
+        <div class="message-box">
+          Please complete payment and send your receipt on WhatsApp. After confirmation, the Printto team will continue the greeting video process. When automatic MP4 rendering is enabled and the master video template is ready, this order can be connected to the final video download.
+        </div>
+      </div>
+    </section>
+
+    <div class="footer">Powered by Patapata LLC • Printto Greeting Studio</div>
+  </main>
+</body>
+</html>`;
 
   fs.writeFileSync(outputPath, content, "utf8");
 
@@ -2290,7 +2546,6 @@ Use these details to create or approve the customer's final greeting video.`;
     downloadUrl: buildGreetingDownloadUrl(req, safeFileName)
   };
 }
-
 
 function getFfmpegPath() {
   return process.env.FFMPEG_PATH || "ffmpeg";
@@ -2399,7 +2654,7 @@ async function tryRenderGreetingVideoForWhatsApp(req, from, session, spec = {}) 
     const renderResult = await renderGreetingVideo(req, spec);
 
     if (!renderResult.ok) {
-      return `\n\n🎬 Video rendering is ready, but the master video is not uploaded yet.\n${renderResult.message}\n\nFor now, use the greeting record link:\n${spec.downloadUrl || "Download link already created."}`;
+      return `\n\n🎬 Video rendering is ready, but the master video is not uploaded yet.\n${renderResult.message}\n\nFor now, use the Greeting Order Portal link:\n${spec.downloadUrl || "Download link already created."}`;
     }
 
     session.greetingSpec = {
@@ -2418,7 +2673,7 @@ async function tryRenderGreetingVideoForWhatsApp(req, from, session, spec = {}) 
     return `\n\n🎉 Your personalized Printto greeting video is ready!\n\n📥 Download MP4:\n${renderResult.downloadUrl}\n\n📱 You can share this video on WhatsApp, Facebook, Instagram, and TikTok.\n\nThank you for using Printto Greeting Studio.`;
   } catch (err) {
     console.error("Greeting MP4 render failed:", err.stderr || err.message);
-    return `\n\n⚠️ The greeting order was received, but automatic MP4 rendering could not complete yet. A Printto team member will continue it.\n\nGreeting record:\n${spec.downloadUrl || "Download link already created."}`;
+    return `\n\n⚠️ The greeting order was received, but automatic MP4 rendering could not complete yet. A Printto team member will continue it.\n\nGreeting Order Portal:\n${spec.downloadUrl || "Download link already created."}`;
   }
 }
 
@@ -2432,7 +2687,7 @@ Sender: ${spec.senderName || ""}
 Message:
 ${spec.message || ""}
 
-✅ Your greeting card record is ready for download:
+✅ Your Greeting Order Portal is ready:
 ${spec.downloadUrl || "Download link will be created shortly."}
 
 Please choose payment method.
@@ -2500,7 +2755,7 @@ async function handleGreetingPaymentChoice({ req, from, text, session, spec = {}
 Please complete payment here:
 ${checkoutUrl}
 
-Your greeting card download record:
+Your Greeting Order Portal:
 ${finalSpec.downloadUrl || "Download link already created."}
 
 After payment, please send your payment receipt here on WhatsApp for confirmation.
@@ -2518,7 +2773,7 @@ A Printto team member will confirm the order and continue the greeting card vide
 
 Shopify Greeting Studio checkout is coming next.
 
-Your greeting card download record:
+Your Greeting Order Portal:
 ${finalSpec.downloadUrl || "Download link already created."}
 
 For now, please choose:
@@ -2544,7 +2799,7 @@ https://www.patapata.us/pages/africa-payment
 
 After payment, please send your payment receipt here on WhatsApp for confirmation.
 
-Your greeting card download record:
+Your Greeting Order Portal:
 ${finalSpec.downloadUrl || "Download link already created."}
 
 A Printto team member will confirm the order and continue the greeting card video process.${renderNote}`
@@ -2562,7 +2817,7 @@ A Printto team member will confirm the order and continue the greeting card vide
       from,
       `✅ Continue with Agent selected.
 
-Your greeting card download record:
+Your Greeting Order Portal:
 ${finalSpec.downloadUrl || "Download link already created."}
 
 A Printto team member will review your Greeting Studio order and reply here shortly.${renderNote}`
@@ -3146,7 +3401,7 @@ if (
 Please complete payment here:
 ${checkoutUrl}
 
-Your greeting card download record:
+Your Greeting Order Portal:
 ${spec.downloadUrl || "Download link already created."}
 
 After payment, please send your payment receipt here on WhatsApp for confirmation.
@@ -3156,7 +3411,7 @@ A Printto team member will confirm the order and continue the greeting card vide
 
 Shopify Greeting Studio checkout is coming next.
 
-Your greeting card download record:
+Your Greeting Order Portal:
 ${spec.downloadUrl || "Download link already created."}
 
 For now, please use Africa Payment or continue with an agent.
@@ -3188,7 +3443,7 @@ https://www.patapata.us/pages/africa-payment
 
 After payment, please send your payment receipt here on WhatsApp for confirmation.
 
-Your greeting card download record:
+Your Greeting Order Portal:
 ${spec.downloadUrl || "Download link already created."}
 
 A Printto team member will confirm the order and continue the greeting card video process.`
@@ -3211,7 +3466,7 @@ A Printto team member will confirm the order and continue the greeting card vide
         from,
         `✅ Continue with Agent selected.
 
-Your greeting card download record:
+Your Greeting Order Portal:
 ${spec.downloadUrl || "Download link already created."}
 
 A Printto team member will review your Greeting Studio order and reply here shortly.`
