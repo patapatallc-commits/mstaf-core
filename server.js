@@ -245,8 +245,6 @@ Example: 1, 4, 15
 35 - Book App Tester
 36 - Solar Installation
 37 - Work Maintenance
-38 - 🛍️ Digital Services & Downloads
-39 - 🎬 Printto Greeting Studio`,
 
     es: `📌 Elige un número de servicio.
 
@@ -289,8 +287,6 @@ Ejemplo: 1, 4, 15
 35 - Reservar probador de app
 36 - Instalación solar
 37 - Mantenimiento de trabajo
-38 - 🛍️ Servicios digitales y descargas
-39 - 🎬 Printto Greeting Studio`,
 
     fr: `📌 Choisissez un numéro de service.
 
@@ -333,8 +329,6 @@ Exemple : 1, 4, 15
 35 - Réserver un testeur d’application
 36 - Installation solaire
 37 - Maintenance de travail
-38 - 🛍️ Services numériques et téléchargements
-39 - 🎬 Printto Greeting Studio`,
 
     de: `📌 Wählen Sie eine Servicenummer.
 
@@ -377,8 +371,6 @@ Beispiel: 1, 4, 15
 35 - App-Tester buchen
 36 - Solarinstallation
 37 - Arbeitswartung
-38 - 🛍️ Digitale Dienste & Downloads
-39 - 🎬 Printto Greeting Studio`,
 
     pt: `📌 Escolha um número de serviço.
 
@@ -421,8 +413,6 @@ Exemplo: 1, 4, 15
 35 - Reservar testador de aplicativo
 36 - Instalação solar
 37 - Manutenção de trabalho
-38 - 🛍️ Serviços digitais e downloads
-39 - 🎬 Printto Greeting Studio`,
 
     ar: `📌 اختر رقم الخدمة.
 
@@ -465,8 +455,6 @@ Exemplo: 1, 4, 15
 35 - حجز مختبر تطبيق
 36 - تركيب الطاقة الشمسية
 37 - صيانة الأعمال
-38 - 🛍️ الخدمات الرقمية والتنزيلات
-39 - 🎬 Printto Greeting Studio`,
 
     zh: `📌 请选择服务编号。
 
@@ -509,8 +497,6 @@ Exemplo: 1, 4, 15
 35 - 预约应用测试员
 36 - 太阳能安装
 37 - 工作维护
-38 - 🛍️ 数字服务和下载
-39 - 🎬 Printto Greeting Studio`
   };
 
   return menus[language] || menus.en;
@@ -1549,7 +1535,7 @@ ${serviceMenu(language)}` }
 // =========================
 function digitalServicesMenuText(language = "en") {
   return pickText(language, {
-    en: `🛍️ Printto Digital Services & Downloads
+    en: `🛍️ Printo Digital Services & Downloads
 
 Choose a category:
 
@@ -1566,7 +1552,7 @@ Choose a category:
 0 - Back to Main Menu
 
 Reply with a number.`,
-    es: `🛍️ Servicios digitales y descargas de Printto
+    es: `🛍️ Servicios digitales y descargas de Printo
 
 Elige una categoría:
 
@@ -1583,7 +1569,7 @@ Elige una categoría:
 0 - Volver al menú principal
 
 Responde con un número.`,
-    fr: `🛍️ Services numériques et téléchargements Printto
+    fr: `🛍️ Services numériques et téléchargements Printo
 
 Choisissez une catégorie :
 
@@ -1600,7 +1586,7 @@ Choisissez une catégorie :
 0 - Retour au menu principal
 
 Répondez avec un numéro.`,
-    de: `🛍️ Printto Digitale Dienste & Downloads
+    de: `🛍️ Printo Digitale Dienste & Downloads
 
 Wählen Sie eine Kategorie:
 
@@ -1617,7 +1603,7 @@ Wählen Sie eine Kategorie:
 0 - Zurück zum Hauptmenü
 
 Antworten Sie mit einer Nummer.`,
-    pt: `🛍️ Serviços digitais e downloads Printto
+    pt: `🛍️ Serviços digitais e downloads Printo
 
 Escolha uma categoria:
 
@@ -1634,7 +1620,7 @@ Escolha uma categoria:
 0 - Voltar ao menu principal
 
 Responda com um número.`,
-    ar: `🛍️ خدمات وتنزيلات Printto الرقمية
+    ar: `🛍️ خدمات وتنزيلات Printo الرقمية
 
 اختر الفئة:
 
@@ -1651,7 +1637,7 @@ Responda com um número.`,
 0 - العودة إلى القائمة الرئيسية
 
 رد برقم.`,
-    zh: `🛍️ Printto 数字服务和下载
+    zh: `🛍️ Printo 数字服务和下载
 
 请选择类别：
 
@@ -1673,13 +1659,13 @@ Responda com um número.`,
 
 function digitalServiceSelectedText(language = "en", category = "") {
   return pickText(language, {
-    en: `✅ Digital Services selected: ${category}\n\nPlease type what you need. You may also send a file, photo, link, document, or voice note.\n\nA Printto team member will review it and reply here on WhatsApp.`,
-    es: `✅ Servicio digital seleccionado: ${category}\n\nEscriba lo que necesita. También puede enviar archivo, foto, enlace, documento o nota de voz.\n\nUn miembro del equipo Printto lo revisará y responderá aquí en WhatsApp.`,
-    fr: `✅ Service numérique sélectionné : ${category}\n\nVeuillez écrire ce dont vous avez besoin. Vous pouvez aussi envoyer un fichier, une photo, un lien, un document ou un message vocal.\n\nUn membre de l'équipe Printto l'examinera et répondra ici sur WhatsApp.`,
-    de: `✅ Digitaler Dienst ausgewählt: ${category}\n\nBitte schreiben Sie, was Sie benötigen. Sie können auch Datei, Foto, Link, Dokument oder Sprachnachricht senden.\n\nEin Printto-Teammitglied prüft es und antwortet hier auf WhatsApp.`,
-    pt: `✅ Serviço digital selecionado: ${category}\n\nDigite o que você precisa. Você também pode enviar arquivo, foto, link, documento ou mensagem de voz.\n\nUm membro da equipe Printto analisará e responderá aqui no WhatsApp.`,
-    ar: `✅ تم اختيار خدمة رقمية: ${category}\n\nيرجى كتابة ما تحتاجه. يمكنك أيضًا إرسال ملف أو صورة أو رابط أو مستند أو رسالة صوتية.\n\nسيقوم أحد أعضاء فريق Printto بالمراجعة والرد هنا على واتساب.`,
-    zh: `✅ 已选择数字服务：${category}\n\n请写下您需要的内容。您也可以发送文件、照片、链接、文档或语音消息。\n\nPrintto 团队成员会审核并在 WhatsApp 上回复您。`
+    en: `✅ Digital Services selected: ${category}\n\nPlease type what you need. You may also send a file, photo, link, document, or voice note.\n\nA Printo team member will review it and reply here on WhatsApp.`,
+    es: `✅ Servicio digital seleccionado: ${category}\n\nEscriba lo que necesita. También puede enviar archivo, foto, enlace, documento o nota de voz.\n\nUn miembro del equipo Printo lo revisará y responderá aquí en WhatsApp.`,
+    fr: `✅ Service numérique sélectionné : ${category}\n\nVeuillez écrire ce dont vous avez besoin. Vous pouvez aussi envoyer un fichier, une photo, un lien, un document ou un message vocal.\n\nUn membre de l'équipe Printo l'examinera et répondra ici sur WhatsApp.`,
+    de: `✅ Digitaler Dienst ausgewählt: ${category}\n\nBitte schreiben Sie, was Sie benötigen. Sie können auch Datei, Foto, Link, Dokument oder Sprachnachricht senden.\n\nEin Printo-Teammitglied prüft es und antwortet hier auf WhatsApp.`,
+    pt: `✅ Serviço digital selecionado: ${category}\n\nDigite o que você precisa. Você também pode enviar arquivo, foto, link, documento ou mensagem de voz.\n\nUm membro da equipe Printo analisará e responderá aqui no WhatsApp.`,
+    ar: `✅ تم اختيار خدمة رقمية: ${category}\n\nيرجى كتابة ما تحتاجه. يمكنك أيضًا إرسال ملف أو صورة أو رابط أو مستند أو رسالة صوتية.\n\nسيقوم أحد أعضاء فريق Printo بالمراجعة والرد هنا على واتساب.`,
+    zh: `✅ 已选择数字服务：${category}\n\n请写下您需要的内容。您也可以发送文件、照片、链接、文档或语音消息。\n\nPrinto 团队成员会审核并在 WhatsApp 上回复您。`
   });
 }
 
@@ -1875,7 +1861,7 @@ function getLaminateVariantId(size) {
 
 
 // =========================
-// PRINTTO GREETING STUDIO
+// PRINTO GREETING STUDIO
 // =========================
 const GREETING_TEMPLATES = [
   {
@@ -1929,9 +1915,9 @@ function getGreetingTemplate(templateId = "birthday") {
 
 function greetingStudioMenuText(language = "en") {
   return pickText(language, {
-    en: `🎬 Printto Greeting Studio
+    en: `🎬 Printo Greeting Studio
 
-Create personalized animated Printto video greeting cards.
+Create personalized animated Printo video greeting cards.
 
 Choose the occasion:
 1 - Birthday
@@ -1944,9 +1930,9 @@ Choose the occasion:
 Reply with only the occasion number.
 
 You do NOT need to use | or /. The bot will ask one question at a time.`,
-    es: `🎬 Printto Greeting Studio
+    es: `🎬 Printo Greeting Studio
 
-Crea tarjetas de video animadas personalizadas de Printto.
+Crea tarjetas de video animadas personalizadas de Printo.
 
 Elige la ocasión:
 1 - Cumpleaños
@@ -1959,9 +1945,9 @@ Elige la ocasión:
 Responde solo con el número de la ocasión.
 
 No necesitas usar | ni /. El bot preguntará paso a paso.`,
-    fr: `🎬 Printto Greeting Studio
+    fr: `🎬 Printo Greeting Studio
 
-Créez des cartes vidéo animées personnalisées avec Printto.
+Créez des cartes vidéo animées personnalisées avec Printo.
 
 Choisissez l'occasion :
 1 - Anniversaire
@@ -1974,9 +1960,9 @@ Choisissez l'occasion :
 Répondez uniquement avec le numéro.
 
 Vous n'avez pas besoin d'utiliser | ou /. Le bot posera les questions une par une.`,
-    de: `🎬 Printto Greeting Studio
+    de: `🎬 Printo Greeting Studio
 
-Erstellen Sie personalisierte animierte Printto-Video-Grußkarten.
+Erstellen Sie personalisierte animierte Printo-Video-Grußkarten.
 
 Wählen Sie den Anlass:
 1 - Geburtstag
@@ -1989,9 +1975,9 @@ Wählen Sie den Anlass:
 Antworten Sie nur mit der Nummer.
 
 Sie müssen | oder / nicht verwenden. Der Bot fragt Schritt für Schritt.`,
-    pt: `🎬 Printto Greeting Studio
+    pt: `🎬 Printo Greeting Studio
 
-Crie cartões de vídeo animados personalizados com Printto.
+Crie cartões de vídeo animados personalizados com Printo.
 
 Escolha a ocasião:
 1 - Aniversário
@@ -2004,9 +1990,9 @@ Escolha a ocasião:
 Responda apenas com o número.
 
 Você não precisa usar | ou /. O bot perguntará uma coisa de cada vez.`,
-    ar: `🎬 Printto Greeting Studio
+    ar: `🎬 Printo Greeting Studio
 
-أنشئ بطاقات تهنئة فيديو متحركة ومخصصة مع Printto.
+أنشئ بطاقات تهنئة فيديو متحركة ومخصصة مع Printo.
 
 اختر المناسبة:
 1 - عيد ميلاد
@@ -2019,9 +2005,9 @@ Você não precisa usar | ou /. O bot perguntará uma coisa de cada vez.`,
 رد برقم المناسبة فقط.
 
 لا تحتاج إلى استخدام | أو /. سيطرح البوت سؤالاً واحدًا في كل مرة.`,
-    zh: `🎬 Printto Greeting Studio
+    zh: `🎬 Printo Greeting Studio
 
-创建个性化 Printto 动画视频贺卡。
+创建个性化 Printo 动画视频贺卡。
 
 请选择场合：
 1 - 生日
@@ -2131,43 +2117,43 @@ Exemplo: John`,
     message: {
       en: `Perfect.
 
-Please type the exact greeting message you want Printto to use.
+Please type the exact greeting message you want Printo to use.
 
 Example:
 Wishing you joy, good health, and many more happy years.`,
       es: `Perfecto.
 
-Escriba el mensaje exacto que desea que Printto use.
+Escriba el mensaje exacto que desea que Printo use.
 
 Ejemplo:
 Te deseo alegría, buena salud y muchos años felices más.`,
       fr: `Parfait.
 
-Veuillez écrire le message exact que vous voulez que Printto utilise.
+Veuillez écrire le message exact que vous voulez que Printo utilise.
 
 Exemple :
 Je te souhaite joie, bonne santé et beaucoup d'années heureuses.`,
       de: `Perfekt.
 
-Bitte schreiben Sie die genaue Nachricht, die Printto verwenden soll.
+Bitte schreiben Sie die genaue Nachricht, die Printo verwenden soll.
 
 Beispiel:
 Ich wünsche dir Freude, Gesundheit und viele glückliche Jahre.`,
       pt: `Perfeito.
 
-Digite a mensagem exata que deseja que o Printto use.
+Digite a mensagem exata que deseja que o Printo use.
 
 Exemplo:
 Desejo alegria, boa saúde e muitos anos felizes.`,
       ar: `ممتاز.
 
-اكتب رسالة التهنئة بالضبط كما تريد أن يستخدمها Printto.
+اكتب رسالة التهنئة بالضبط كما تريد أن يستخدمها Printo.
 
 مثال:
 أتمنى لك الفرح والصحة الجيدة والمزيد من السنوات السعيدة.`,
       zh: `很好。
 
-请输入您希望 Printto 使用的准确祝福语。
+请输入您希望 Printo 使用的准确祝福语。
 
 示例：
 祝你快乐、健康，并拥有更多幸福的岁月。`
@@ -2278,7 +2264,7 @@ function createGreetingDownloadRecord(req, {
   const safeLanguage = escapeHtml(language || "en");
   const safeMessage = escapeHtml(message).replace(/\n/g, "<br />");
   const whatsappSupportUrl = `https://wa.me/${PHONE}?text=${encodeURIComponent(
-    `Hello Printto Studio, I need help with greeting order ${greetingId}.`
+    `Hello Printo Studio, I need help with greeting order ${greetingId}.`
   )}`;
 
   const content = `<!doctype html>
@@ -2286,7 +2272,7 @@ function createGreetingDownloadRecord(req, {
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Printto Greeting Order ${safeGreetingId}</title>
+  <title>Printo Greeting Order ${safeGreetingId}</title>
   <style>
     :root {
       --blue: #0b63ce;
@@ -2468,7 +2454,7 @@ function createGreetingDownloadRecord(req, {
     <section class="hero">
       <div class="brand-mark">P</div>
       <h1>Greeting Order Received</h1>
-      <p>Your Printto Greeting Studio order has been received. We are preparing your personalized greeting video details and payment confirmation.</p>
+      <p>Your Printo Greeting Studio order has been received. We are preparing your personalized greeting video details and payment confirmation.</p>
       <div class="status-strip">✅ Order Status: Received / Processing</div>
     </section>
 
@@ -2519,7 +2505,7 @@ function createGreetingDownloadRecord(req, {
 
         <div class="actions">
           <span class="btn disabled">⬇️ MP4 download activates when ready</span>
-          <a class="btn whatsapp" href="${whatsappSupportUrl}">📲 Contact Printto on WhatsApp</a>
+          <a class="btn whatsapp" href="${whatsappSupportUrl}">📲 Contact Printo on WhatsApp</a>
           <a class="btn primary" href="https://www.patapata.us/pages/africa-payment">💳 Africa Payment</a>
         </div>
       </div>
@@ -2527,12 +2513,12 @@ function createGreetingDownloadRecord(req, {
       <div class="card full">
         <div class="label">Next Step</div>
         <div class="message-box">
-          Please complete payment and send your receipt on WhatsApp. After confirmation, the Printto team will continue the greeting video process. When automatic MP4 rendering is enabled and the master video template is ready, this order can be connected to the final video download.
+          Please complete payment and send your receipt on WhatsApp. After confirmation, the Printo team will continue the greeting video process. When automatic MP4 rendering is enabled and the master video template is ready, this order can be connected to the final video download.
         </div>
       </div>
     </section>
 
-    <div class="footer">Powered by Patapata LLC • Printto Greeting Studio</div>
+    <div class="footer">Powered by Patapata LLC • Printo Greeting Studio</div>
   </main>
 </body>
 </html>`;
@@ -2603,8 +2589,8 @@ async function renderGreetingVideo(req, spec = {}) {
   const outputPath = path.join(generatedDir, outputFileName);
   const titleText = textForDrawtext(`Happy ${spec.occasion || template.occasion}, ${spec.recipientName || ""}!`);
   const messageText = textForDrawtext(wrapGreetingMessage(spec.message || ""));
-  const senderText = textForDrawtext(`From ${spec.senderName || "Printto"}`);
-  const brandText = textForDrawtext("Created with Printto Greeting Studio");
+  const senderText = textForDrawtext(`From ${spec.senderName || "Printo"}`);
+  const brandText = textForDrawtext("Created with Printo Greeting Studio");
 
   const drawFilter = [
     `drawtext=text='${titleText}':x=(w-text_w)/2:y=h*0.16:fontsize=52:fontcolor=white:borderw=4:bordercolor=black`,
@@ -2670,15 +2656,15 @@ async function tryRenderGreetingVideoForWhatsApp(req, from, session, spec = {}) 
       );
     }
 
-    return `\n\n🎉 Your personalized Printto greeting video is ready!\n\n📥 Download MP4:\n${renderResult.downloadUrl}\n\n📱 You can share this video on WhatsApp, Facebook, Instagram, and TikTok.\n\nThank you for using Printto Greeting Studio.`;
+    return `\n\n🎉 Your personalized Printo greeting video is ready!\n\n📥 Download MP4:\n${renderResult.downloadUrl}\n\n📱 You can share this video on WhatsApp, Facebook, Instagram, and TikTok.\n\nThank you for using Printo Greeting Studio.`;
   } catch (err) {
     console.error("Greeting MP4 render failed:", err.stderr || err.message);
-    return `\n\n⚠️ The greeting order was received, but automatic MP4 rendering could not complete yet. A Printto team member will continue it.\n\nGreeting Order Portal:\n${spec.downloadUrl || "Download link already created."}`;
+    return `\n\n⚠️ The greeting order was received, but automatic MP4 rendering could not complete yet. A Printo team member will continue it.\n\nGreeting Order Portal:\n${spec.downloadUrl || "Download link already created."}`;
   }
 }
 
 function greetingPaymentPromptText(spec = {}) {
-  return `✅ Your Printto Greeting Studio request has been received.
+  return `✅ Your Printo Greeting Studio request has been received.
 
 Occasion: ${spec.occasion || "Birthday"}
 Recipient: ${spec.recipientName || ""}
@@ -2760,7 +2746,7 @@ ${finalSpec.downloadUrl || "Download link already created."}
 
 After payment, please send your payment receipt here on WhatsApp for confirmation.
 
-A Printto team member will confirm the order and continue the greeting card video process.${renderNote}`
+A Printo team member will confirm the order and continue the greeting card video process.${renderNote}`
       );
       return true;
     }
@@ -2792,7 +2778,7 @@ For now, please choose:
     const renderNote = await tryRenderGreetingVideoForWhatsApp(req, from, session, finalSpec);
     await sendMessage(
       from,
-      `✅ Africa Payment selected for Printto Greeting Studio.
+      `✅ Africa Payment selected for Printo Greeting Studio.
 
 Please complete payment here:
 https://www.patapata.us/pages/africa-payment
@@ -2802,7 +2788,7 @@ After payment, please send your payment receipt here on WhatsApp for confirmatio
 Your Greeting Order Portal:
 ${finalSpec.downloadUrl || "Download link already created."}
 
-A Printto team member will confirm the order and continue the greeting card video process.${renderNote}`
+A Printo team member will confirm the order and continue the greeting card video process.${renderNote}`
     );
     return true;
   }
@@ -2820,7 +2806,7 @@ A Printto team member will confirm the order and continue the greeting card vide
 Your Greeting Order Portal:
 ${finalSpec.downloadUrl || "Download link already created."}
 
-A Printto team member will review your Greeting Studio order and reply here shortly.${renderNote}`
+A Printo team member will review your Greeting Studio order and reply here shortly.${renderNote}`
     );
     return true;
   }
@@ -2842,7 +2828,7 @@ async function createGreetingDashboardJob({
   downloadUrl,
   status = "pending"
 }) {
-  const instructions = `PRINTTO GREETING STUDIO
+  const instructions = `PRINTO GREETING STUDIO
 
 Occasion: ${occasion}
 Template: ${templateId}
@@ -2887,7 +2873,7 @@ ${downloadUrl || "Not generated yet"}`;
         customerName || senderName || "",
         customerEmail || "",
         customerPhone || "",
-        `Printto Greeting - ${occasion}`,
+        `Printo Greeting - ${occasion}`,
         instructions
       ]
     );
@@ -2902,7 +2888,7 @@ ${downloadUrl || "Not generated yet"}`;
 app.get("/api/greeting-studio/health", (req, res) => {
   res.json({
     ok: true,
-    service: "Printto Greeting Studio",
+    service: "Printo Greeting Studio",
     status: "ready"
   });
 });
@@ -3185,7 +3171,6 @@ if (type === "text") {
 if (
   type === "text" &&
   (
-    lower === "38" ||
     lower.includes("service=digital_downloads") ||
     lower.includes("digital_downloads") ||
     lower.includes("digital services") ||
@@ -3201,11 +3186,10 @@ if (
 }
 
 
-// ===== DIRECT HANDLER FOR PRINTTO GREETING STUDIO =====
+// ===== DIRECT HANDLER FOR PRINTO GREETING STUDIO =====
 if (
   type === "text" &&
   (
-    lower === "39" ||
     lower.includes("service=greeting_studio") ||
     lower.includes("greeting studio") ||
     lower.includes("video greeting") ||
@@ -3221,7 +3205,7 @@ if (
   return res.sendStatus(200);
 }
 
-// ===== PRINTTO GREETING STUDIO STEP-BY-STEP FLOW =====
+// ===== PRINTO GREETING STUDIO STEP-BY-STEP FLOW =====
 // Customers can either answer one question at a time OR send everything together.
 // Supported full formats:
 // Birthday | Mary | John | Wishing you joy and blessings
@@ -3244,46 +3228,109 @@ if (
   }
 
   async function finishGreetingDetailsAndAskPayment(spec) {
-    const downloadRecord = createGreetingDownloadRecord(req, {
-      templateId: spec.templateId || "birthday",
-      occasion: spec.occasion || "Birthday",
-      recipientName: spec.recipientName,
-      senderName: spec.senderName,
-      message: spec.message,
-      language: session.language
-    });
+    try {
+      let downloadRecord = null;
+      let checkoutUrl = "";
+      let finalSpec = {
+        ...session.greetingSpec,
+        ...spec
+      };
 
-    const checkoutUrl = buildGreetingCheckoutUrl(spec.packageType || "STANDARD", 1);
+      try {
+        downloadRecord = createGreetingDownloadRecord(req, {
+          templateId: spec.templateId || "birthday",
+          occasion: spec.occasion || "Birthday",
+          recipientName: spec.recipientName,
+          senderName: spec.senderName,
+          message: spec.message,
+          language: session.language
+        });
 
-    const finalSpec = {
-      ...session.greetingSpec,
-      ...spec,
-      greetingId: downloadRecord.greetingId,
-      templateId: downloadRecord.template.id,
-      downloadUrl: downloadRecord.downloadUrl,
-      generatedFileName: downloadRecord.fileName,
-      checkoutUrl
-    };
+        checkoutUrl = buildGreetingCheckoutUrl(spec.packageType || "STANDARD", 1);
 
-    const job = await createGreetingDashboardJob({
-      templateId: finalSpec.templateId || "birthday",
-      occasion: finalSpec.occasion || "Birthday",
-      recipientName: finalSpec.recipientName,
-      senderName: finalSpec.senderName,
-      message: finalSpec.message,
-      language: session.language,
-      customerPhone: from,
-      checkoutUrl,
-      downloadUrl: finalSpec.downloadUrl,
-      status: "pending"
-    });
+        finalSpec = {
+          ...finalSpec,
+          greetingId: downloadRecord?.greetingId || finalSpec.greetingId || "",
+          templateId: downloadRecord?.template?.id || finalSpec.templateId || "birthday",
+          downloadUrl: downloadRecord?.downloadUrl || finalSpec.downloadUrl || "",
+          generatedFileName: downloadRecord?.fileName || finalSpec.generatedFileName || "",
+          checkoutUrl
+        };
+      } catch (downloadErr) {
+        console.error("Greeting download record error:", downloadErr.message);
+        checkoutUrl = buildGreetingCheckoutUrl(spec.packageType || "STANDARD", 1);
+        finalSpec = {
+          ...finalSpec,
+          templateId: finalSpec.templateId || "birthday",
+          checkoutUrl
+        };
+      }
 
-    session.greetingSpec = finalSpec;
-    session.selectedService = "GREETING_CARD";
-    session.lastServiceJobId = job?.id || null;
-    session.stage = "GREETING_PAYMENT";
-    await sendMessage(from, greetingPaymentPromptText(finalSpec));
-    return res.sendStatus(200);
+      let job = null;
+      try {
+        job = await createGreetingDashboardJob({
+          templateId: finalSpec.templateId || "birthday",
+          occasion: finalSpec.occasion || "Birthday",
+          recipientName: finalSpec.recipientName,
+          senderName: finalSpec.senderName,
+          message: finalSpec.message,
+          language: session.language,
+          customerPhone: from,
+          checkoutUrl: finalSpec.checkoutUrl || checkoutUrl,
+          downloadUrl: finalSpec.downloadUrl || "",
+          status: "pending"
+        });
+      } catch (jobErr) {
+        console.error("Greeting dashboard job error:", jobErr.message);
+      }
+
+      session.greetingSpec = finalSpec;
+      session.selectedService = "GREETING_CARD";
+      session.lastServiceJobId = job?.id || null;
+      session.stage = "GREETING_PAYMENT";
+
+      await sendMessage(
+        from,
+        greetingPaymentPromptText(finalSpec) ||
+          `✅ Greeting details received.
+
+Recipient: ${finalSpec.recipientName}
+Sender: ${finalSpec.senderName}
+Message: ${finalSpec.message}
+
+Choose payment option:
+1 - Shopify Checkout
+2 - Africa Payment
+3 - Continue with Agent`
+      );
+
+      return res.sendStatus(200);
+    } catch (err) {
+      console.error("Greeting finish error:", err.message);
+
+      session.selectedService = "GREETING_CARD";
+      session.greetingSpec = {
+        ...session.greetingSpec,
+        ...spec
+      };
+      session.stage = "GREETING_PAYMENT";
+
+      await sendMessage(
+        from,
+        `✅ Greeting message received.
+
+Recipient: ${session.greetingSpec.recipientName || ""}
+Sender: ${session.greetingSpec.senderName || ""}
+Message: ${session.greetingSpec.message || spec.message || ""}
+
+Choose payment option:
+1 - Shopify Checkout
+2 - Africa Payment
+3 - Continue with Agent`
+      );
+
+      return res.sendStatus(200);
+    }
   }
 
 
@@ -3362,7 +3409,7 @@ if (
     const greetingMessage = String(text || "").trim();
 
     if (!greetingMessage || greetingMessage.length < 3) {
-      await sendMessage(from, "Please type the greeting message you want Printto to use.");
+      await sendMessage(from, "Please type the greeting message you want Printo to use.");
       return res.sendStatus(200);
     }
 
@@ -3406,7 +3453,7 @@ ${spec.downloadUrl || "Download link already created."}
 
 After payment, please send your payment receipt here on WhatsApp for confirmation.
 
-A Printto team member will confirm the order and continue the greeting card video process.`
+A Printo team member will confirm the order and continue the greeting card video process.`
           : `✅ Shopify Checkout selected.
 
 Shopify Greeting Studio checkout is coming next.
@@ -3436,7 +3483,7 @@ Reply with number only:
 
       await sendMessage(
         from,
-        `✅ Africa Payment selected for Printto Greeting Studio.
+        `✅ Africa Payment selected for Printo Greeting Studio.
 
 Please complete payment here:
 https://www.patapata.us/pages/africa-payment
@@ -3446,7 +3493,7 @@ After payment, please send your payment receipt here on WhatsApp for confirmatio
 Your Greeting Order Portal:
 ${spec.downloadUrl || "Download link already created."}
 
-A Printto team member will confirm the order and continue the greeting card video process.`
+A Printo team member will confirm the order and continue the greeting card video process.`
       );
 
       return res.sendStatus(200);
@@ -3469,7 +3516,7 @@ A Printto team member will confirm the order and continue the greeting card vide
 Your Greeting Order Portal:
 ${spec.downloadUrl || "Download link already created."}
 
-A Printto team member will review your Greeting Studio order and reply here shortly.`
+A Printo team member will review your Greeting Studio order and reply here shortly.`
       );
 
       return res.sendStatus(200);
