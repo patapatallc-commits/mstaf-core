@@ -26,6 +26,7 @@ const TEXT = {
     tap: "Tap to continue ›",
     talk: "📲 Talk to Printo on WhatsApp",
     change: "Change Language",
+    backToLanguage: "⬅ Back to Language Selection",
     powered: "Powered by Patapata LLC",
     scanTitle: "Scan to download our Google Play Store app",
     scanSub: "Open the Print-O-Matic app from Google Play.",
@@ -42,6 +43,7 @@ const TEXT = {
     tap: "Toca para continuar ›",
     talk: "📲 Hablar con Printo por WhatsApp",
     change: "Cambiar idioma",
+    backToLanguage: "⬅ Volver a seleccionar idioma",
     powered: "Desarrollado por Patapata LLC",
     scanTitle: "Escanea para descargar nuestra app en Google Play",
     scanSub: "Abre la app Print-O-Matic desde Google Play.",
@@ -58,6 +60,7 @@ const TEXT = {
     tap: "Touchez pour continuer ›",
     talk: "📲 Parler à Printo sur WhatsApp",
     change: "Changer de langue",
+    backToLanguage: "⬅ Retour au choix de la langue",
     powered: "Propulsé par Patapata LLC",
     scanTitle: "Scannez pour télécharger notre application Google Play",
     scanSub: "Ouvrez l’application Print-O-Matic sur Google Play.",
@@ -74,6 +77,7 @@ const TEXT = {
     tap: "Tippen zum Fortfahren ›",
     talk: "📲 Mit Printo auf WhatsApp sprechen",
     change: "Sprache ändern",
+    backToLanguage: "⬅ Zur Sprachauswahl zurück",
     powered: "Bereitgestellt von Patapata LLC",
     scanTitle: "Scannen, um unsere Google Play Store App herunterzuladen",
     scanSub: "Öffne die Print-O-Matic App bei Google Play.",
@@ -90,6 +94,7 @@ const TEXT = {
     tap: "Toque para continuar ›",
     talk: "📲 Falar com Printo no WhatsApp",
     change: "Mudar idioma",
+    backToLanguage: "⬅ Voltar para seleção de idioma",
     powered: "Desenvolvido por Patapata LLC",
     scanTitle: "Escaneie para baixar nosso app na Google Play Store",
     scanSub: "Abra o app Print-O-Matic na Google Play.",
@@ -106,6 +111,7 @@ const TEXT = {
     tap: "اضغط للمتابعة ›",
     talk: "📲 تحدث مع برينتو على واتساب",
     change: "تغيير اللغة",
+    backToLanguage: "⬅ الرجوع لاختيار اللغة",
     powered: "بدعم من Patapata LLC",
     scanTitle: "امسح لتنزيل تطبيقنا من متجر Google Play",
     scanSub: "افتح تطبيق Print-O-Matic من Google Play.",
@@ -122,6 +128,7 @@ const TEXT = {
     tap: "点击继续 ›",
     talk: "📲 在 WhatsApp 上联系 Printo",
     change: "更改语言",
+    backToLanguage: "⬅ 返回语言选择",
     powered: "由 Patapata LLC 提供支持",
     scanTitle: "扫码下载我们的 Google Play 商店应用",
     scanSub: "从 Google Play 打开 Print-O-Matic 应用。",
@@ -294,6 +301,13 @@ export default function HomeScreen() {
         <Text style={styles.title}>{t.studioTitle}</Text>
         <Text style={styles.subtitle}>{t.subtitle}</Text>
 
+        <TouchableOpacity
+          style={styles.backButton}
+          onPress={() => setShowStudio(false)}
+        >
+          <Text style={styles.backButtonText}>{t.backToLanguage}</Text>
+        </TouchableOpacity>
+
         {services.map((item) => (
           <TouchableOpacity
             key={item.title}
@@ -439,6 +453,19 @@ const styles = StyleSheet.create({
     color: "#ffffff",
     fontWeight: "800",
     marginTop: 22,
+  },
+  backButton: {
+    backgroundColor: "#ffd21f",
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+    borderRadius: 16,
+    marginBottom: 16,
+  },
+  backButtonText: {
+    color: "#111111",
+    fontSize: 15,
+    fontWeight: "900",
+    textAlign: "center",
   },
   card: {
     width: "100%",
