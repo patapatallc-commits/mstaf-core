@@ -7,12 +7,10 @@
     "icon": "./assets/images/icon.png",
     "scheme": "patapata",
     "userInterfaceStyle": "automatic",
-
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.patapata.printomatic"
     },
-
     "android": {
       "package": "com.patapata.printomatic",
       "versionCode": 11,
@@ -21,22 +19,19 @@
         "backgroundColor": "#ffffff"
       }
     },
-
     "web": {
       "favicon": "./assets/images/favicon.png"
     },
-
     "plugins": [
       [
         "expo-splash-screen",
         {
-          "image": "./assets/images/splash.png",
+          "image": "./assets/images/printomatic-logo.png",
           "resizeMode": "contain",
           "backgroundColor": "#ffffff"
         }
       ]
     ],
-
     "extra": {
       "eas": {
         "projectId": "5a3f5b63-e4a8-4832-893d-d1ab738c4aa3"
