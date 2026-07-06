@@ -145,6 +145,7 @@ app.get("/uploads/:file", (req, res) => {
   res.sendFile(filePath);
 });
 const PORT = process.env.PORT || 10000;
+const SUPPORT_PHONE = process.env.SUPPORT_PHONE || process.env.PATAPATA_PHONE || "18622306637";
 
 // =========================
 // WHATSAPP SEND MESSAGE
@@ -2263,7 +2264,7 @@ function createGreetingDownloadRecord(req, {
   const safeSender = escapeHtml(senderName);
   const safeLanguage = escapeHtml(language || "en");
   const safeMessage = escapeHtml(message).replace(/\n/g, "<br />");
-  const whatsappSupportUrl = `https://wa.me/${PHONE}?text=${encodeURIComponent(
+  const whatsappSupportUrl = `https://wa.me/${SUPPORT_PHONE}?text=${encodeURIComponent(
     `Hello Printo Studio, I need help with greeting order ${greetingId}.`
   )}`;
 
