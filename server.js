@@ -11267,6 +11267,61 @@ app.post("/api/greeting/birthday/generate", async (req, res) => {
     res.status(500).json({ ok: false, error: err.message });
   }
 });
+app.get("/greeting-test", (req, res) => {
+  res.send(`<!DOCTYPE html>
+<html>
+<head>
+  <title>Printo Birthday Generator Test</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    body { font-family: Arial; max-width: 600px; margin: 30px auto; padding: 20px; }
+    input, textarea, button { width: 100%; padding: 12px; margin: 8px 0; font-size: 16px; }
+    button { background: #6c2bd9; color: white; border: 0; border-radius: 8px; }
+    a { display: block; margin-top: 20px; font-size: 18px; }
+  </style>
+</head>
+<body>
+  <h1>🎂 Printo Birthday Generator</h1>
+
+  <input id="to" placeholder="Recipient name e.g. Mary" />
+  <input id="from" placeholder="Sender name e.g. John" />
+  <textarea id="message" placeholder="Birthday message">Wishing you happiness, laughter, and a wonderful celebration!</textarea>
+
+  <button onclick="generate()">Generate Birthday Video</button>
+
+  <p id="status"></p>
+  <div id="result"></div>
+
+<script>
+async function generate() {
+  document.getElementById("status").innerText = "Generating video... please wait.";
+  document.getElementById("result").innerHTML = "";
+
+  const res = await fetch("/api/greeting/birthday/generate", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      to: document.getElementById("to").value || "Mary",
+      from: document.getElementById("from").value || "John",
+      message: document.getElementById("message").value
+    })
+  });
+
+  const data = await res.json();
+
+  if (!data.ok) {
+    document.getElementById("status").innerText = "Failed: " + (data.error || "Unknown error");
+    return;
+  }
+
+  document.getElementById("status").innerText = "Video ready!";
+  document.getElementById("result").innerHTML =
+    '<a href="' + data.downloadUrl + '" target="_blank">Download Birthday Video</a>';
+}
+</script>
+</body>
+</html>`);
+});
 app.listen(PORT, "0.0.0.0", () => {
   console.log(`Server running on port ${PORT}`);
 });
