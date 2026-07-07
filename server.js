@@ -11214,6 +11214,7 @@ function safeGreetingText(value = "") {
 
 app.post("/api/greeting/birthday/generate", async (req, res) => {
   try {
+    console.log("Birthday generator request received:", req.body);
     const toName = safeGreetingText(req.body.to || "Mary");
     const fromName = safeGreetingText(req.body.from || "John");
     const message = safeGreetingText(req.body.message || "Wishing you happiness, laughter, and a wonderful celebration!");
