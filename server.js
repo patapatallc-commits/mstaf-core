@@ -11194,7 +11194,79 @@ app.get("/api/greeting/birthday/assets", (req, res) => {
   });
 });
 
- 
+ function buildGeneratedUrl(req, fileName) {
+  const base =
+    process.env.PUBLIC_BASE_URL ||
+    process.env.RENDER_EXTERNAL_URL ||
+    `${req.protocol}://${req.get("host")}`;
+
+  return `${base}/generated/${encodeURIComponent(fileName)}`;
+}
+
+function safeGreetingText(value = "") {
+  return String(value || "")
+    .replace(/\\/g, "\\\\")
+    .replace(/:/g, "\\:")
+    .replace(/'/g, "\\'")
+    .replace(/\n/g, " ")
+    .slice(0, 80);
+}
+
+app.post("/api/greeting/birthday/generate", async (req, res) => {
+  try {
+    const toName = safeGreetingText(req.body.to || "Mary");
+    const fromName = safeGreetingText(req.body.from || "John");
+    const message = safeGreetingText(req.body.message || "Wishing you happiness, laughter, and a wonderful celebration!");
+
+    const birthdayDir = path.join(__dirname, "templates", "birthday");
+    const framePath = path.join(birthdayDir, "frame.png");
+    const masterPath = path.join(birthdayDir, "master.mp4");
+
+    if (!fs.existsSync(framePath) || !fs.existsSync(masterPath)) {
+      return res.status(400).json({ ok: false, error: "Birthday template assets missing." });
+    }
+
+    const fileName = `birthday_${Date.now()}.mp4`;
+    const outputPath = path.join(generatedDir, fileName);
+
+    const filter =
+      `[0:v]scale=1536:1024[bg];` +
+      `[1:v]scale=690:430:force_original_aspect_ratio=decrease,pad=690:430:(ow-iw)/2:(oh-ih)/2:black[vid];` +
+      `[bg][vid]overlay=425:315,` +
+      `drawtext=text='${toName}':x=115:y=275:fontsize=54:fontcolor=#d63384,` +
+      `drawtext=text='${fromName}':x=1190:y=350:fontsize=48:fontcolor=#7b2cbf,` +
+      `drawtext=text='${message}':x=105:y=565:fontsize=34:fontcolor=#3b1f8f:line_spacing=8[outv]`;
+
+    execFile("ffmpeg", [
+      "-y",
+      "-loop", "1",
+      "-i", framePath,
+      "-i", masterPath,
+      "-filter_complex", filter,
+      "-map", "[outv]",
+      "-map", "1:a?",
+      "-shortest",
+      "-c:v", "libx264",
+      "-pix_fmt", "yuv420p",
+      "-c:a", "aac",
+      outputPath
+    ], (err) => {
+      if (err) {
+        console.error("Birthday render error:", err.message);
+        return res.status(500).json({ ok: false, error: "Video render failed. FFmpeg may be missing on Render." });
+      }
+
+      res.json({
+        ok: true,
+        downloadUrl: buildGeneratedUrl(req, fileName),
+        file: fileName
+      });
+    });
+  } catch (err) {
+    console.error("Birthday generate route error:", err);
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
 app.listen(PORT, "0.0.0.0", () => {
   console.log(`Server running on port ${PORT}`);
 });
