@@ -11181,7 +11181,18 @@ setInterval(() => {
  * WORKER + AGENT DASHBOARD END
  ******************************************************************/
 
-   
+   const path = require("path");
+
+app.get("/api/greeting/birthday/assets", (req, res) => {
+  const base = path.join(__dirname, "templates", "birthday");
+
+  res.json({
+    frame: require("fs").existsSync(path.join(base, "frame.png")),
+    printo: require("fs").existsSync(path.join(base, "printo.png")),
+    master: require("fs").existsSync(path.join(base, "master.mp4")),
+    folder: base
+  });
+});
 
  
 app.listen(PORT, "0.0.0.0", () => {
