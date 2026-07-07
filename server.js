@@ -11181,7 +11181,7 @@ setInterval(() => {
  * WORKER + AGENT DASHBOARD END
  ******************************************************************/
 
-   const path = require("path");
+  
 
 app.get("/api/greeting/birthday/assets", (req, res) => {
   const base = path.join(__dirname, "templates", "birthday");
