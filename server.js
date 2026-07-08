@@ -11215,20 +11215,31 @@ function safeGreetingText(value = "") {
 app.post("/api/greeting/birthday/generate", async (req, res) => {
   try {
     console.log("Birthday generator request received:", req.body);
+
     const toName = safeGreetingText(req.body.to || "Mary");
     const fromName = safeGreetingText(req.body.from || "John");
-    const message = safeGreetingText(req.body.message || "Wishing you happiness, laughter, and a wonderful celebration!");
+    const message = safeGreetingText(
+      req.body.message || "Wishing you happiness, laughter, and a wonderful celebration!"
+    );
 
     const birthdayDir = path.join(__dirname, "templates", "birthday");
     const framePath = path.join(birthdayDir, "frame.png");
-const masterPath = path.join(birthdayDir, "master.mp4");
+    const masterPath = path.join(birthdayDir, "master.mp4");
 
-console.log("Birthday frame path:", framePath, fs.existsSync(framePath));
-console.log("Birthday master path:", masterPath, fs.existsSync(masterPath));
+    console.log("Birthday frame path:", framePath, fs.existsSync(framePath));
+    console.log("Birthday master path:", masterPath, fs.existsSync(masterPath));
 
     if (!fs.existsSync(framePath) || !fs.existsSync(masterPath)) {
-      return res.status(400).json({ ok: false, error: "Birthday template assets missing." });
+      return res.status(400).json({
+        ok: false,
+        error: "Birthday template assets missing."
+      });
     }
+
+    const renderSeconds = Math.max(
+      5,
+      Math.min(30, Number(process.env.BIRTHDAY_RENDER_SECONDS || 10))
+    );
 
     const fileName = `birthday_${Date.now()}.mp4`;
     const outputPath = path.join(generatedDir, fileName);
@@ -11236,47 +11247,110 @@ console.log("Birthday master path:", masterPath, fs.existsSync(masterPath));
     const filter =
       `[0:v]scale=1536:1024[bg];` +
       `[1:v]scale=690:430:force_original_aspect_ratio=decrease,pad=690:430:(ow-iw)/2:(oh-ih)/2:black[vid];` +
-      `[bg][vid]overlay=425:315,` +
+      `[bg][vid]overlay=425:315:shortest=1,` +
       `drawtext=text='${toName}':x=115:y=275:fontsize=54:fontcolor=#d63384,` +
       `drawtext=text='${fromName}':x=1190:y=350:fontsize=48:fontcolor=#7b2cbf,` +
       `drawtext=text='${message}':x=105:y=565:fontsize=34:fontcolor=#3b1f8f:line_spacing=8[outv]`;
 
-    console.log("Starting FFmpeg birthday render...");
-    console.log("Birthday output path:", outputPath);
-
-    execFile("ffmpeg", [
+    const ffmpegArgs = [
       "-y",
       "-loop", "1",
       "-i", framePath,
       "-i", masterPath,
+      "-t", String(renderSeconds),
       "-filter_complex", filter,
       "-map", "[outv]",
       "-map", "1:a?",
       "-shortest",
       "-c:v", "libx264",
+      "-preset", "veryfast",
       "-pix_fmt", "yuv420p",
       "-c:a", "aac",
+      "-movflags", "+faststart",
       outputPath
-    ], (err, stdout, stderr) => {
-      console.log("FFmpeg stdout:", stdout || "");
-      console.log("FFmpeg stderr:", stderr || "");
-      console.log("Birthday output exists:", fs.existsSync(outputPath));
+    ];
 
-      if (err) {
-        console.error("FFmpeg error:", err);
-        console.error("Birthday render error:", err.message);
-        return res.status(500).json({ ok: false, error: "Video render failed. Check Render logs for FFmpeg error details." });
+    console.log("Starting FFmpeg birthday render...");
+    console.log("Birthday render seconds:", renderSeconds);
+    console.log("Birthday output path:", outputPath);
+    console.log("FFmpeg command:", "ffmpeg " + ffmpegArgs.map((v) => `"${v}"`).join(" "));
+
+    let replied = false;
+    function sendOnce(statusCode, payload) {
+      if (replied) return;
+      replied = true;
+      return res.status(statusCode).json(payload);
+    }
+
+    execFile(
+      "ffmpeg",
+      ffmpegArgs,
+      {
+        timeout: 120000,
+        maxBuffer: 50 * 1024 * 1024
+      },
+      (err, stdout, stderr) => {
+        try {
+          console.log("FFmpeg callback reached.");
+          console.log("FFmpeg stdout:", stdout || "");
+          console.log("FFmpeg stderr:", stderr || "");
+          console.log("Birthday output exists:", fs.existsSync(outputPath));
+
+          if (err) {
+            console.error("FFmpeg error object:", err);
+            console.error("FFmpeg error message:", err.message);
+            console.error("FFmpeg error code:", err.code);
+            console.error("FFmpeg error signal:", err.signal);
+            console.error("Birthday render failed for output:", outputPath);
+
+            return sendOnce(500, {
+              ok: false,
+              error: "Video render failed. Check Render logs for FFmpeg error details."
+            });
+          }
+
+          if (!fs.existsSync(outputPath)) {
+            console.error("FFmpeg finished but output file is missing:", outputPath);
+            return sendOnce(500, {
+              ok: false,
+              error: "Video render finished but output file was not created."
+            });
+          }
+
+          const stats = fs.statSync(outputPath);
+          console.log("Birthday output size bytes:", stats.size);
+
+          if (!stats.size || stats.size < 1000) {
+            console.error("Birthday output file is too small:", stats.size);
+            return sendOnce(500, {
+              ok: false,
+              error: "Video render output was invalid or too small."
+            });
+          }
+
+          const downloadUrl = buildGeneratedUrl(req, fileName);
+          console.log("Birthday render success:", downloadUrl);
+
+          return sendOnce(200, {
+            ok: true,
+            downloadUrl,
+            file: fileName
+          });
+        } catch (callbackErr) {
+          console.error("Birthday FFmpeg callback crash:", callbackErr);
+          return sendOnce(500, {
+            ok: false,
+            error: "Birthday render callback failed. Check Render logs."
+          });
+        }
       }
-
-      res.json({
-        ok: true,
-        downloadUrl: buildGeneratedUrl(req, fileName),
-        file: fileName
-      });
-    });
+    );
   } catch (err) {
     console.error("Birthday generate route error:", err);
-    res.status(500).json({ ok: false, error: err.message });
+    return res.status(500).json({
+      ok: false,
+      error: err.message || "Birthday generator failed."
+    });
   }
 });
 app.get("/greeting-test", (req, res) => {
