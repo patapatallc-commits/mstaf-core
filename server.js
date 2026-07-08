@@ -11241,6 +11241,9 @@ console.log("Birthday master path:", masterPath, fs.existsSync(masterPath));
       `drawtext=text='${fromName}':x=1190:y=350:fontsize=48:fontcolor=#7b2cbf,` +
       `drawtext=text='${message}':x=105:y=565:fontsize=34:fontcolor=#3b1f8f:line_spacing=8[outv]`;
 
+    console.log("Starting FFmpeg birthday render...");
+    console.log("Birthday output path:", outputPath);
+
     execFile("ffmpeg", [
       "-y",
       "-loop", "1",
@@ -11254,10 +11257,15 @@ console.log("Birthday master path:", masterPath, fs.existsSync(masterPath));
       "-pix_fmt", "yuv420p",
       "-c:a", "aac",
       outputPath
-    ], (err) => {
+    ], (err, stdout, stderr) => {
+      console.log("FFmpeg stdout:", stdout || "");
+      console.log("FFmpeg stderr:", stderr || "");
+      console.log("Birthday output exists:", fs.existsSync(outputPath));
+
       if (err) {
+        console.error("FFmpeg error:", err);
         console.error("Birthday render error:", err.message);
-        return res.status(500).json({ ok: false, error: "Video render failed. FFmpeg may be missing on Render." });
+        return res.status(500).json({ ok: false, error: "Video render failed. Check Render logs for FFmpeg error details." });
       }
 
       res.json({
