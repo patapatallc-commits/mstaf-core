@@ -11220,8 +11220,8 @@ app.post("/api/greeting/birthday/generate", async (req, res) => {
     const message = safeGreetingText(req.body.message || "Wishing you happiness, laughter, and a wonderful celebration!");
 
     const birthdayDir = path.join(__dirname, "templates", "birthday");
-    const framePath = path.join(birthdayDir, "frame_birthday.png");
-const masterPath = path.join(birthdayDir, "birthday_master.mp4");
+    const framePath = path.join(birthdayDir, "frame.png");
+const masterPath = path.join(birthdayDir, "master.mp4");
 
 console.log("Birthday frame path:", framePath, fs.existsSync(framePath));
 console.log("Birthday master path:", masterPath, fs.existsSync(masterPath));
