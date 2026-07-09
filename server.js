@@ -11255,11 +11255,18 @@ app.post("/api/greeting/birthday/generate", async (req, res) => {
   try {
     console.log("Birthday generator request received:", req.body);
 
-    const toName = safeGreetingText(req.body.to || "Mary");
-    const fromName = safeGreetingText(req.body.from || "John");
+    const toNameRaw = req.body.to || "Mary";
+    const fromNameRaw = req.body.from || "John";
+
+    const toName = safeGreetingText(toNameRaw);
+    const fromName = safeGreetingText(fromNameRaw);
+
+    const toFontSize = String(toNameRaw || "").length > 12 ? 34 : String(toNameRaw || "").length > 8 ? 38 : 42;
+    const fromFontSize = String(fromNameRaw || "").length > 12 ? 32 : String(fromNameRaw || "").length > 8 ? 36 : 40;
+
     const messageLines = wrapBirthdayMessage(
       req.body.message || "Wishing you happiness, laughter, and a wonderful celebration!",
-      34,
+      26,
       3
     ).map((line) => safeGreetingText(line));
 
@@ -11280,18 +11287,24 @@ app.post("/api/greeting/birthday/generate", async (req, res) => {
     const fileName = `birthday_${Date.now()}.mp4`;
     const outputPath = path.join(generatedDir, fileName);
 
-    // Production birthday frame layout for the new portrait template.
-    // Output is portrait 1024x1536 to match the final birthday card design.
-    // The server writes names into the blank To/From spaces and message into the Personal Message box.
+    // Final Printo Birthday production layout.
+    // The frame stays stable, the central Printo dance video moves,
+    // and the customer text appears in stages for a simple animated feel.
     const filter =
       `[0:v]scale=1024:1536[bg];` +
-      `[1:v]scale=390:585:force_original_aspect_ratio=decrease,pad=390:585:(ow-iw)/2:(oh-ih)/2:black[vid];` +
-      `[bg][vid]overlay=317:355,` +
-      `drawtext=text='${toName}':x=60+(210-text_w)/2:y=470:fontsize=46:fontcolor=#d63384,` +
-      `drawtext=text='${fromName}':x=765+(210-text_w)/2:y=470:fontsize=42:fontcolor=#7b2cbf,` +
-      `drawtext=text='${messageLines[0]}':x=(w-text_w)/2:y=1110:fontsize=32:fontcolor=#3b1f8f,` +
-      `drawtext=text='${messageLines[1]}':x=(w-text_w)/2:y=1160:fontsize=32:fontcolor=#3b1f8f,` +
-      `drawtext=text='${messageLines[2]}':x=(w-text_w)/2:y=1210:fontsize=32:fontcolor=#3b1f8f[outv]`;
+      `[1:v]scale=415:620:force_original_aspect_ratio=decrease,pad=415:620:(ow-iw)/2:(oh-ih)/2:black[vid];` +
+      `[bg][vid]overlay=305:335,` +
+
+      // Recipient name in the left TO panel.
+      `drawtext=text='${toName}':x=58+(215-text_w)/2:y=475:fontsize=${toFontSize}:fontcolor=#d63384:borderw=2:bordercolor=white@0.45:enable='gte(t,0.35)',` +
+
+      // Sender name in the right FROM panel.
+      `drawtext=text='${fromName}':x=770+(205-text_w)/2:y=475:fontsize=${fromFontSize}:fontcolor=#7b2cbf:borderw=2:bordercolor=white@0.45:enable='gte(t,0.65)',` +
+
+      // Customer personal message inside the bottom PERSONAL MESSAGE box.
+      `drawtext=text='${messageLines[0]}':x=350+(360-text_w)/2:y=1125:fontsize=28:fontcolor=#3b1f8f:borderw=1:bordercolor=white@0.35:enable='gte(t,1.00)',` +
+      `drawtext=text='${messageLines[1]}':x=350+(360-text_w)/2:y=1168:fontsize=28:fontcolor=#3b1f8f:borderw=1:bordercolor=white@0.35:enable='gte(t,1.30)',` +
+      `drawtext=text='${messageLines[2]}':x=350+(360-text_w)/2:y=1211:fontsize=28:fontcolor=#3b1f8f:borderw=1:bordercolor=white@0.35:enable='gte(t,1.60)'[outv]`;
 
     const ffmpegArgs = [
       "-y",
@@ -11314,7 +11327,12 @@ app.post("/api/greeting/birthday/generate", async (req, res) => {
       outputPath
     ];
 
-    console.log("Starting stable FFmpeg birthday render...");
+    console.log("Starting animated FFmpeg birthday render...");
+    console.log("Birthday layout:", {
+      toFontSize,
+      fromFontSize,
+      messageLines
+    });
     console.log("Birthday output path:", outputPath);
     console.log("FFmpeg command:", "ffmpeg " + ffmpegArgs.join(" "));
 
@@ -11331,7 +11349,7 @@ app.post("/api/greeting/birthday/generate", async (req, res) => {
         console.log("Birthday output exists:", fs.existsSync(outputPath));
 
         if (err) {
-          console.error("Birthday stable render error:", err);
+          console.error("Birthday animated render error:", err);
           return res.status(500).json({
             ok: false,
             error: "Video render failed. Check Render logs for FFmpeg details."
@@ -11346,7 +11364,7 @@ app.post("/api/greeting/birthday/generate", async (req, res) => {
           });
         }
 
-        console.log("Birthday stable render completed:", fileName);
+        console.log("Birthday animated render completed:", fileName);
 
         return res.json({
           ok: true,
