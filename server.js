@@ -11287,12 +11287,12 @@ app.post("/api/greeting/birthday/generate", async (req, res) => {
     const fileName = `birthday_${Date.now()}.mp4`;
     const outputPath = path.join(generatedDir, fileName);
 
-    // Final Printo Birthday production layout WITHOUT animation.
-    // This keeps the render stable on Render and avoids fragile FFmpeg timing filters.
-    // The frame, names, message, and master video are composited in fixed positions.
+    // Stable Printo Birthday production layout.
+    // No animation filters. The master video is scaled/cropped safely
+    // into the center window so FFmpeg does not fail on pad dimensions.
     const filter =
       `[0:v]scale=1024:1536[bg];` +
-      `[1:v]scale=415:620:force_original_aspect_ratio=decrease,pad=415:620:(ow-iw)/2:(oh-ih)/2:black[vid];` +
+      `[1:v]scale=415:620:force_original_aspect_ratio=increase,crop=415:620[vid];` +
       `[bg][vid]overlay=305:335,` +
 
       // Recipient name in the left TO panel.
@@ -11327,7 +11327,7 @@ app.post("/api/greeting/birthday/generate", async (req, res) => {
       outputPath
     ];
 
-    console.log("Starting stable FFmpeg birthday render without animation...");
+    console.log("Starting stable FFmpeg birthday render...");
     console.log("Birthday layout:", {
       toFontSize,
       fromFontSize,
