@@ -11215,79 +11215,107 @@ function safeGreetingText(value = "") {
 app.post("/api/greeting/birthday/generate", async (req, res) => {
   try {
     console.log("Birthday generator request received:", req.body);
+
     const toName = safeGreetingText(req.body.to || "Mary");
     const fromName = safeGreetingText(req.body.from || "John");
     const message = safeGreetingText(req.body.message || "Wishing you happiness, laughter, and a wonderful celebration!");
 
     const birthdayDir = path.join(__dirname, "templates", "birthday");
     const framePath = path.join(birthdayDir, "frame.png");
-const masterPath = path.join(birthdayDir, "master.mp4");
+    const masterPath = path.join(birthdayDir, "master.mp4");
 
-console.log("Birthday frame path:", framePath, fs.existsSync(framePath));
-console.log("Birthday master path:", masterPath, fs.existsSync(masterPath));
+    console.log("Birthday frame path:", framePath, fs.existsSync(framePath));
+    console.log("Birthday master path:", masterPath, fs.existsSync(masterPath));
 
     if (!fs.existsSync(framePath) || !fs.existsSync(masterPath)) {
-      return res.status(400).json({ ok: false, error: "Birthday template assets missing." });
+      return res.status(400).json({
+        ok: false,
+        error: "Birthday template assets missing."
+      });
     }
 
     const fileName = `birthday_${Date.now()}.mp4`;
     const outputPath = path.join(generatedDir, fileName);
 
-    // Production birthday text placement fix:
-    // 1) Cover the old template placeholder words ("Your Name") with cream boxes.
-    // 2) Draw the real customer names centered inside the blank spaces.
-    // 3) Use smaller font automatically for longer names.
-    const toFontSize = toName.length > 18 ? 34 : toName.length > 12 ? 42 : 54;
-    const fromFontSize = fromName.length > 18 ? 32 : fromName.length > 12 ? 38 : 48;
-
+    // Stable fixed-position layout.
+    // This avoids heavy dynamic text calculations that can make Render restart.
+    // For the permanent production version, use a clean frame.png with blank To/From areas.
     const filter =
       `[0:v]scale=1536:1024[bg];` +
       `[1:v]scale=690:430:force_original_aspect_ratio=decrease,pad=690:430:(ow-iw)/2:(oh-ih)/2:black[vid];` +
       `[bg][vid]overlay=425:315,` +
-      `drawbox=x=70:y=250:w=440:h=95:color=0xFFF1DC@0.96:t=fill,` +
-      `drawbox=x=1120:y=300:w=360:h=90:color=0xFFF1DC@0.96:t=fill,` +
-      `drawbox=x=80:y=390:w=430:h=215:color=0xFFF1DC@0.88:t=fill,` +
-      `drawtext=text='${toName}':x=70+(440-text_w)/2:y=282:fontsize=${toFontSize}:fontcolor=#d63384:borderw=2:bordercolor=white,` +
-      `drawtext=text='${fromName}':x=1120+(360-text_w)/2:y=332:fontsize=${fromFontSize}:fontcolor=#7b2cbf:borderw=2:bordercolor=white,` +
-      `drawtext=text='${message}':x=105:y=430:fontsize=30:fontcolor=#3b1f8f:borderw=1:bordercolor=white:line_spacing=8[outv]`;
+      `drawtext=text='${toName}':x=115:y=275:fontsize=54:fontcolor=#d63384,` +
+      `drawtext=text='${fromName}':x=1190:y=350:fontsize=48:fontcolor=#7b2cbf,` +
+      `drawtext=text='${message}':x=105:y=565:fontsize=34:fontcolor=#3b1f8f:line_spacing=8[outv]`;
 
-    console.log("Birthday centered text layout enabled:", { toFontSize, fromFontSize });
-    console.log("Starting FFmpeg birthday render...");
-    console.log("Birthday output path:", outputPath);
-
-    execFile("ffmpeg", [
+    const ffmpegArgs = [
       "-y",
+      "-nostdin",
+      "-loglevel", "error",
       "-loop", "1",
       "-i", framePath,
       "-i", masterPath,
+      "-t", "10",
       "-filter_complex", filter,
       "-map", "[outv]",
       "-map", "1:a?",
       "-shortest",
       "-c:v", "libx264",
+      "-preset", "veryfast",
+      "-crf", "24",
       "-pix_fmt", "yuv420p",
       "-c:a", "aac",
+      "-movflags", "+faststart",
       outputPath
-    ], (err, stdout, stderr) => {
-      console.log("FFmpeg stdout:", stdout || "");
-      console.log("FFmpeg stderr:", stderr || "");
-      console.log("Birthday output exists:", fs.existsSync(outputPath));
+    ];
 
-      if (err) {
-        console.error("FFmpeg error:", err);
-        console.error("Birthday render error:", err.message);
-        return res.status(500).json({ ok: false, error: "Video render failed. Check Render logs for FFmpeg error details." });
+    console.log("Starting stable FFmpeg birthday render...");
+    console.log("Birthday output path:", outputPath);
+    console.log("FFmpeg command:", "ffmpeg " + ffmpegArgs.join(" "));
+
+    execFile(
+      "ffmpeg",
+      ffmpegArgs,
+      {
+        timeout: 120000,
+        maxBuffer: 1024 * 1024 * 5
+      },
+      (err, stdout, stderr) => {
+        console.log("FFmpeg stdout:", stdout || "");
+        console.log("FFmpeg stderr:", stderr || "");
+        console.log("Birthday output exists:", fs.existsSync(outputPath));
+
+        if (err) {
+          console.error("Birthday stable render error:", err);
+          return res.status(500).json({
+            ok: false,
+            error: "Video render failed. Check Render logs for FFmpeg details."
+          });
+        }
+
+        if (!fs.existsSync(outputPath)) {
+          console.error("Birthday render finished but output file is missing:", outputPath);
+          return res.status(500).json({
+            ok: false,
+            error: "Video render finished but output file was not created."
+          });
+        }
+
+        console.log("Birthday stable render completed:", fileName);
+
+        return res.json({
+          ok: true,
+          downloadUrl: buildGeneratedUrl(req, fileName),
+          file: fileName
+        });
       }
-
-      res.json({
-        ok: true,
-        downloadUrl: buildGeneratedUrl(req, fileName),
-        file: fileName
-      });
-    });
+    );
   } catch (err) {
     console.error("Birthday generate route error:", err);
-    res.status(500).json({ ok: false, error: err.message });
+    return res.status(500).json({
+      ok: false,
+      error: err.message
+    });
   }
 });
 app.get("/greeting-test", (req, res) => {
