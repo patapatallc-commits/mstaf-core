@@ -11295,16 +11295,24 @@ app.post("/api/greeting/birthday/generate", async (req, res) => {
       `[1:v]scale=415:620:force_original_aspect_ratio=increase,crop=415:620[vid];` +
       `[bg][vid]overlay=305:335,` +
 
+      // Clean the name areas so old decorative heart/line artwork does not cover names.
+      // Then place one small heart below each name, lower than the text.
+      `drawbox=x=66:y=428:w=178:h=116:color=#f8ddb7@0.96:t=fill,` +
+      `drawbox=x=805:y=428:w=160:h=116:color=#f8ddb7@0.96:t=fill,` +
+
       // Recipient name in the left TO panel.
-      `drawtext=text='${toName}':x=58+(215-text_w)/2:y=475:fontsize=${toFontSize}:fontcolor=#d63384:borderw=2:bordercolor=white@0.45,` +
+      `drawtext=text='${toName}':x=66+(178-text_w)/2:y=452:fontsize=${toFontSize}:fontcolor=#d63384:borderw=2:bordercolor=white@0.45,` +
+      `drawtext=text='♥':x=66+(178-text_w)/2:y=512:fontsize=26:fontcolor=#d63384:borderw=1:bordercolor=white@0.35,` +
 
       // Sender name in the right FROM panel.
-      `drawtext=text='${fromName}':x=770+(205-text_w)/2:y=475:fontsize=${fromFontSize}:fontcolor=#7b2cbf:borderw=2:bordercolor=white@0.45,` +
+      `drawtext=text='${fromName}':x=805+(160-text_w)/2:y=452:fontsize=${fromFontSize}:fontcolor=#7b2cbf:borderw=2:bordercolor=white@0.45,` +
+      `drawtext=text='♥':x=805+(160-text_w)/2:y=512:fontsize=26:fontcolor=#7b2cbf:borderw=1:bordercolor=white@0.35,` +
 
       // Customer personal message inside the bottom PERSONAL MESSAGE box.
-      `drawtext=text='${messageLines[0]}':x=350+(360-text_w)/2:y=1125:fontsize=28:fontcolor=#3b1f8f:borderw=1:bordercolor=white@0.35,` +
-      `drawtext=text='${messageLines[1]}':x=350+(360-text_w)/2:y=1168:fontsize=28:fontcolor=#3b1f8f:borderw=1:bordercolor=white@0.35,` +
-      `drawtext=text='${messageLines[2]}':x=350+(360-text_w)/2:y=1211:fontsize=28:fontcolor=#3b1f8f:borderw=1:bordercolor=white@0.35[outv]`;
+      // Shifted slightly right and reduced a little so it does not begin at the far-left edge.
+      `drawtext=text='${messageLines[0]}':x=385+(325-text_w)/2:y=1120:fontsize=26:fontcolor=#3b1f8f:borderw=1:bordercolor=white@0.35,` +
+      `drawtext=text='${messageLines[1]}':x=385+(325-text_w)/2:y=1162:fontsize=26:fontcolor=#3b1f8f:borderw=1:bordercolor=white@0.35,` +
+      `drawtext=text='${messageLines[2]}':x=385+(325-text_w)/2:y=1204:fontsize=26:fontcolor=#3b1f8f:borderw=1:bordercolor=white@0.35[outv]`;
 
     const ffmpegArgs = [
       "-y",
