@@ -11212,13 +11212,56 @@ function safeGreetingText(value = "") {
     .slice(0, 80);
 }
 
+function wrapBirthdayMessage(value = "", maxChars = 34, maxLines = 3) {
+  const words = String(value || "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .split(" ")
+    .filter(Boolean);
+
+  const lines = [];
+  let current = "";
+
+  for (const word of words) {
+    const next = current ? `${current} ${word}` : word;
+    if (next.length > maxChars && current) {
+      lines.push(current);
+      current = word;
+      if (lines.length >= maxLines) break;
+    } else {
+      current = next;
+    }
+  }
+
+  if (lines.length < maxLines && current) lines.push(current);
+
+  if (lines.length > maxLines) lines.length = maxLines;
+
+  while (lines.length < maxLines) lines.push("");
+
+  const usedText = lines.join(" ").trim();
+  const originalText = String(value || "").replace(/\s+/g, " ").trim();
+  if (originalText.length > usedText.length && lines[maxLines - 1]) {
+    lines[maxLines - 1] = lines[maxLines - 1].replace(/\.{3}$/g, "");
+    if (lines[maxLines - 1].length > 3) {
+      lines[maxLines - 1] = lines[maxLines - 1].slice(0, Math.max(0, maxChars - 3)).trim() + "...";
+    }
+  }
+
+  return lines;
+}
+
 app.post("/api/greeting/birthday/generate", async (req, res) => {
   try {
     console.log("Birthday generator request received:", req.body);
 
     const toName = safeGreetingText(req.body.to || "Mary");
     const fromName = safeGreetingText(req.body.from || "John");
-    const message = safeGreetingText(req.body.message || "Wishing you happiness, laughter, and a wonderful celebration!");
+    const messageLines = wrapBirthdayMessage(
+      req.body.message || "Wishing you happiness, laughter, and a wonderful celebration!",
+      34,
+      3
+    ).map((line) => safeGreetingText(line));
 
     const birthdayDir = path.join(__dirname, "templates", "birthday");
     const framePath = path.join(birthdayDir, "frame.png");
@@ -11237,16 +11280,18 @@ app.post("/api/greeting/birthday/generate", async (req, res) => {
     const fileName = `birthday_${Date.now()}.mp4`;
     const outputPath = path.join(generatedDir, fileName);
 
-    // Stable fixed-position layout.
-    // This avoids heavy dynamic text calculations that can make Render restart.
-    // For the permanent production version, use a clean frame.png with blank To/From areas.
+    // Production birthday frame layout for the new portrait template.
+    // Output is portrait 1024x1536 to match the final birthday card design.
+    // The server writes names into the blank To/From spaces and message into the Personal Message box.
     const filter =
-      `[0:v]scale=1536:1024[bg];` +
-      `[1:v]scale=690:430:force_original_aspect_ratio=decrease,pad=690:430:(ow-iw)/2:(oh-ih)/2:black[vid];` +
-      `[bg][vid]overlay=425:315,` +
-      `drawtext=text='${toName}':x=115:y=275:fontsize=54:fontcolor=#d63384,` +
-      `drawtext=text='${fromName}':x=1190:y=350:fontsize=48:fontcolor=#7b2cbf,` +
-      `drawtext=text='${message}':x=105:y=565:fontsize=34:fontcolor=#3b1f8f:line_spacing=8[outv]`;
+      `[0:v]scale=1024:1536[bg];` +
+      `[1:v]scale=390:585:force_original_aspect_ratio=decrease,pad=390:585:(ow-iw)/2:(oh-ih)/2:black[vid];` +
+      `[bg][vid]overlay=317:355,` +
+      `drawtext=text='${toName}':x=60+(210-text_w)/2:y=470:fontsize=46:fontcolor=#d63384,` +
+      `drawtext=text='${fromName}':x=765+(210-text_w)/2:y=470:fontsize=42:fontcolor=#7b2cbf,` +
+      `drawtext=text='${messageLines[0]}':x=(w-text_w)/2:y=1110:fontsize=32:fontcolor=#3b1f8f,` +
+      `drawtext=text='${messageLines[1]}':x=(w-text_w)/2:y=1160:fontsize=32:fontcolor=#3b1f8f,` +
+      `drawtext=text='${messageLines[2]}':x=(w-text_w)/2:y=1210:fontsize=32:fontcolor=#3b1f8f[outv]`;
 
     const ffmpegArgs = [
       "-y",
