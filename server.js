@@ -11263,96 +11263,26 @@ function limitGreetingInput(value = "", maxLength = 80) {
 }
 
 
-async function resolveElevenLabsVoiceId(apiKey) {
-  const configuredVoiceId = String(process.env.ELEVENLABS_VOICE_ID || "").trim();
-  if (configuredVoiceId) return configuredVoiceId;
-
-  try {
-    const response = await axios.get("https://api.elevenlabs.io/v1/voices", {
-      timeout: 30000,
-      headers: {
-        "xi-api-key": apiKey,
-        Accept: "application/json"
-      }
-    });
-
-    const voices = Array.isArray(response?.data?.voices) ? response.data.voices : [];
-    if (!voices.length) return "";
-
-    const preferredName = String(process.env.ELEVENLABS_VOICE_NAME || "Printo")
-      .trim()
-      .toLowerCase();
-
-    const preferredVoice =
-      voices.find((voice) => String(voice?.name || "").trim().toLowerCase() === preferredName) ||
-      voices.find((voice) => String(voice?.name || "").toLowerCase().includes(preferredName)) ||
-      voices[0];
-
-    const resolvedVoiceId = String(preferredVoice?.voice_id || "").trim();
-
-    if (resolvedVoiceId) {
-      console.log(
-        `ElevenLabs voice selected automatically: ${preferredVoice?.name || "Unnamed voice"} (${resolvedVoiceId})`
-      );
-    }
-
-    return resolvedVoiceId;
-  } catch (err) {
-    console.error(
-      "Unable to retrieve ElevenLabs voices:",
-      err.response?.data || err.message
-    );
-    return "";
-  }
-}
-
-function buildPrintoBirthdayVoiceText(recipientName, senderName, message) {
-  const recipient = limitGreetingInput(recipientName || "Friend", BIRTHDAY_NAME_MAX);
-  const sender = limitGreetingInput(senderName || "Someone special", BIRTHDAY_NAME_MAX);
-  const wish = limitGreetingInput(
-    message || "Wishing you happiness and a wonderful celebration!",
-    BIRTHDAY_MESSAGE_MAX
-  );
-
-  return `Happy Birthday, ${recipient}! With love from ${sender}. ${wish}`;
-}
-
 async function generatePrintoBirthdayVoice({ recipientName, senderName, message, outputPath }) {
-  const apiKey = String(process.env.ELEVENLABS_API_KEY || "").trim();
+  const apiKey = process.env.ELEVENLABS_API_KEY;
+  const voiceId = process.env.ELEVENLABS_VOICE_ID;
 
-  if (!apiKey) {
-    console.log("Printo voice skipped: ELEVENLABS_API_KEY is missing.");
-    return { ok: false, reason: "missing_elevenlabs_api_key" };
+  if (!apiKey || !voiceId) {
+    console.log("Printo voice skipped: ELEVENLABS_API_KEY or ELEVENLABS_VOICE_ID is missing.");
+    return { ok: false, reason: "missing_elevenlabs_config" };
   }
 
-  const voiceId = await resolveElevenLabsVoiceId(apiKey);
-
-  if (!voiceId) {
-    console.log(
-      "Printo voice skipped: no ElevenLabs voice was available. Add ELEVENLABS_VOICE_ID or ELEVENLABS_VOICE_NAME in Render."
-    );
-    return { ok: false, reason: "missing_elevenlabs_voice" };
-  }
-
-  const voiceText = buildPrintoBirthdayVoiceText(
-    recipientName,
-    senderName,
-    message
-  );
+  const voiceText = `Happy Birthday, ${recipientName}! This special greeting comes with love from ${senderName}. ${message}`;
 
   try {
     const response = await axios.post(
-      `https://api.elevenlabs.io/v1/text-to-speech/${encodeURIComponent(
-        voiceId
-      )}?output_format=mp3_44100_128`,
+      `https://api.elevenlabs.io/v1/text-to-speech/${encodeURIComponent(voiceId)}`,
       {
         text: voiceText,
         model_id: process.env.ELEVENLABS_MODEL_ID || "eleven_multilingual_v2",
         voice_settings: {
           stability: Number(process.env.ELEVENLABS_STABILITY || 0.5),
-          similarity_boost: Number(
-            process.env.ELEVENLABS_SIMILARITY_BOOST || 0.75
-          ),
+          similarity_boost: Number(process.env.ELEVENLABS_SIMILARITY_BOOST || 0.75),
           style: Number(process.env.ELEVENLABS_STYLE || 0.2),
           use_speaker_boost: true
         }
@@ -11368,40 +11298,11 @@ async function generatePrintoBirthdayVoice({ recipientName, senderName, message,
       }
     );
 
-    const audioBuffer = Buffer.from(response.data || []);
-
-    if (!audioBuffer.length) {
-      throw new Error("ElevenLabs returned an empty audio file.");
-    }
-
-    fs.writeFileSync(outputPath, audioBuffer);
-
-    return {
-      ok: true,
-      outputPath,
-      text: voiceText,
-      voiceId
-    };
+    fs.writeFileSync(outputPath, Buffer.from(response.data));
+    return { ok: true, outputPath, text: voiceText };
   } catch (err) {
-    let details = err.message;
-
-    if (err.response?.data) {
-      try {
-        details = Buffer.isBuffer(err.response.data)
-          ? err.response.data.toString("utf8")
-          : JSON.stringify(err.response.data);
-      } catch (_) {
-        details = err.message;
-      }
-    }
-
-    console.error("Printo ElevenLabs voice generation failed:", details);
-
-    return {
-      ok: false,
-      reason: "voice_generation_failed",
-      error: details
-    };
+    console.error("Printo ElevenLabs voice generation failed:", err.response?.data || err.message);
+    return { ok: false, reason: "voice_generation_failed", error: err.message };
   }
 }
 
@@ -11594,6 +11495,105 @@ app.post("/api/greeting/birthday/generate", async (req, res) => {
       error: err.message
     });
   }
+});
+
+
+// =========================
+// PUBLIC PRINTO GREETING STUDIO PAGES
+// =========================
+function buildGreetingStudioHomePage() {
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Printo Greeting Studio</title>
+  <style>
+    *{box-sizing:border-box}body{margin:0;font-family:Arial,sans-serif;background:linear-gradient(180deg,#071b61,#0b63ce);color:#fff;min-height:100vh;padding:24px}.wrap{max-width:1050px;margin:auto}.hero{text-align:center;padding:24px 12px}.hero h1{font-size:38px;margin:0 0 10px}.hero p{font-size:18px;opacity:.92}.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:18px}.card{background:#fff;color:#13234a;border-radius:20px;padding:22px;text-decoration:none;box-shadow:0 12px 30px rgba(0,0,0,.25);min-height:180px;display:flex;flex-direction:column;justify-content:center;align-items:center;text-align:center;border:4px solid transparent}.card:hover{border-color:#ffd21f;transform:translateY(-2px)}.emoji{font-size:52px}.title{font-size:22px;font-weight:900;margin:10px 0 6px}.sub{font-size:14px;line-height:20px;color:#53617f}.ready{background:#7b2cbf;color:#fff;padding:8px 13px;border-radius:999px;margin-top:12px;font-weight:800}.soon{background:#e2e8f0;color:#475569;padding:8px 13px;border-radius:999px;margin-top:12px;font-weight:800}.bottom{text-align:center;margin-top:22px}.btn{display:inline-block;background:#25D366;color:#fff;text-decoration:none;font-weight:900;padding:14px 20px;border-radius:14px}@media(max-width:800px){.grid{grid-template-columns:repeat(2,1fr)}}@media(max-width:520px){body{padding:14px}.grid{grid-template-columns:1fr}.hero h1{font-size:31px}}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="hero"><h1>🎉 Printo Greeting Studio</h1><p>Create personalized video greetings with Printo music, voice, names and messages.</p></div>
+    <div class="grid">
+      <a class="card" href="/birthday"><div class="emoji">🎂</div><div class="title">Birthday</div><div class="sub">Create a personalized birthday video with Printo music and voice.</div><div class="ready">Create Now</div></a>
+      <div class="card"><div class="emoji">💍</div><div class="title">Wedding</div><div class="sub">Celebrate a couple with a personalized Printo wedding greeting.</div><div class="soon">Coming Soon</div></div>
+      <div class="card"><div class="emoji">🎓</div><div class="title">Graduation</div><div class="sub">Honor a graduate with a memorable personalized video.</div><div class="soon">Coming Soon</div></div>
+      <div class="card"><div class="emoji">❤️</div><div class="title">Anniversary</div><div class="sub">Share love and memories with a special anniversary greeting.</div><div class="soon">Coming Soon</div></div>
+      <div class="card"><div class="emoji">👶</div><div class="title">New Baby</div><div class="sub">Welcome a new baby with a joyful Printo greeting.</div><div class="soon">Coming Soon</div></div>
+      <div class="card"><div class="emoji">🎄</div><div class="title">Christmas</div><div class="sub">Send a festive personalized Christmas video.</div><div class="soon">Coming Soon</div></div>
+    </div>
+    <div class="bottom"><a class="btn" href="https://wa.me/18622306637?text=I%20want%20to%20order%20a%20Printo%20greeting%20video">📱 Talk to Printo on WhatsApp</a></div>
+  </div>
+</body>
+</html>`;
+}
+
+function buildBirthdayGeneratorPage() {
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Printo Birthday Generator</title>
+  <style>
+    *{box-sizing:border-box}body{margin:0;font-family:Arial,sans-serif;background:linear-gradient(180deg,#071b61,#0b63ce);color:#fff;min-height:100vh;padding:20px}.wrap{max-width:760px;margin:auto}.top{text-align:center;margin-bottom:18px}.top h1{font-size:34px;margin:7px 0}.top p{opacity:.92;line-height:23px}.panel{background:#fff;color:#172554;border-radius:22px;padding:22px;box-shadow:0 14px 38px rgba(0,0,0,.32)}label{display:block;font-weight:900;margin:13px 0 7px}.row{display:grid;grid-template-columns:1fr 1fr;gap:14px}.field{position:relative}input,textarea{width:100%;border:2px solid #cbd5e1;border-radius:13px;padding:13px 15px;font-size:17px;outline:none}input:focus,textarea:focus{border-color:#7b2cbf;box-shadow:0 0 0 3px rgba(123,44,191,.14)}textarea{min-height:120px;resize:vertical}.counter{text-align:right;font-size:13px;font-weight:800;color:#64748b;margin-top:5px}.counter.warn{color:#dc2626}.generate{width:100%;border:0;border-radius:15px;padding:16px;background:linear-gradient(90deg,#7b2cbf,#d63384);color:#fff;font-size:19px;font-weight:900;cursor:pointer;margin-top:18px}.generate:disabled{opacity:.55;cursor:not-allowed}.status{text-align:center;min-height:28px;margin-top:13px;font-weight:800;color:#7b2cbf}.payments{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:15px}.pay{display:block;text-align:center;text-decoration:none;color:#fff;font-weight:900;padding:13px;border-radius:13px}.shopify{background:#4f772d}.nigeria{background:#008751}.back{display:inline-block;color:#ffd21f;text-decoration:none;font-weight:900;margin-bottom:10px}.note{font-size:13px;line-height:19px;color:#475569;background:#f1f5f9;padding:12px;border-radius:12px;margin-top:14px}@media(max-width:580px){body{padding:12px}.row,.payments{grid-template-columns:1fr}.top h1{font-size:29px}}
+  </style>
+</head>
+<body>
+<div class="wrap">
+  <a class="back" href="/greetings">← All Greeting Cards</a>
+  <div class="top"><h1>🎂 Printo Birthday Generator</h1><p>Enter the recipient, sender and personal message. Printo will create the finished video with music and personalized voice.</p></div>
+  <div class="panel">
+    <form id="birthdayForm">
+      <div class="row">
+        <div class="field"><label for="toName">Recipient Name</label><input id="toName" maxlength="16" required placeholder="Example: Michael" /><div id="toCount" class="counter">0 / 16</div></div>
+        <div class="field"><label for="fromName">Sender Name</label><input id="fromName" maxlength="16" required placeholder="Example: Ana" /><div id="fromCount" class="counter">0 / 16</div></div>
+      </div>
+      <label for="message">Personal Message</label>
+      <textarea id="message" maxlength="78" required placeholder="Write a short birthday message..."></textarea>
+      <div id="messageCount" class="counter">0 / 78</div>
+      <button id="generateBtn" class="generate" type="submit">✨ Generate Birthday Video</button>
+      <div id="status" class="status"></div>
+    </form>
+    <div class="payments">
+      <a class="pay shopify" href="https://www.patapata.us/" target="_blank" rel="noopener">🛒 Buy via Shopify</a>
+      <a class="pay nigeria" href="https://www.patapata.us/pages/africa-payment" target="_blank" rel="noopener">🇳🇬 Nigeria Payment</a>
+    </div>
+    <div class="note">Your generated page will include a large Play button, Download, WhatsApp, Facebook, Instagram, TikTok, YouTube, Email and Copy Link options.</div>
+  </div>
+</div>
+<script>
+  const limits={name:16,message:78};
+  const to=document.getElementById('toName'),from=document.getElementById('fromName'),message=document.getElementById('message');
+  const toCount=document.getElementById('toCount'),fromCount=document.getElementById('fromCount'),messageCount=document.getElementById('messageCount');
+  const statusBox=document.getElementById('status'),button=document.getElementById('generateBtn');
+  function updateCounter(input,output,max){const n=input.value.length;output.textContent=n+' / '+max;output.classList.toggle('warn',n>=max)}
+  to.addEventListener('input',()=>updateCounter(to,toCount,limits.name));
+  from.addEventListener('input',()=>updateCounter(from,fromCount,limits.name));
+  message.addEventListener('input',()=>updateCounter(message,messageCount,limits.message));
+  document.getElementById('birthdayForm').addEventListener('submit',async function(e){
+    e.preventDefault();
+    button.disabled=true;button.textContent='⏳ Generating...';statusBox.textContent='Printo is creating your birthday video. Please wait.';
+    try{
+      const response=await fetch('/api/greeting/birthday/generate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({to:to.value.trim(),from:from.value.trim(),message:message.value.trim()})});
+      const data=await response.json();
+      if(!response.ok||!data.ok)throw new Error(data.error||'Generation failed.');
+      statusBox.textContent=data.hasPrintoVoice?'✅ Video and Printo voice are ready!':'✅ Video is ready. Music was used because voice was unavailable.';
+      window.location.href=data.resultUrl||data.downloadUrl;
+    }catch(error){statusBox.textContent='❌ '+error.message;button.disabled=false;button.textContent='✨ Generate Birthday Video'}
+  });
+</script>
+</body>
+</html>`;
+}
+
+app.get(["/greetings", "/greeting"], (req, res) => {
+  res.type("html").send(buildGreetingStudioHomePage());
+});
+
+app.get(["/birthday", "/birthday-generator", "/generate-birthday"], (req, res) => {
+  res.type("html").send(buildBirthdayGeneratorPage());
 });
 
 app.get("/greeting-result", (req, res) => {
