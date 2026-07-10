@@ -11190,6 +11190,7 @@ app.get("/api/greeting/birthday/assets", (req, res) => {
     frame: require("fs").existsSync(path.join(base, "frame.png")),
     printo: require("fs").existsSync(path.join(base, "printo.png")),
     master: require("fs").existsSync(path.join(base, "master.mp4")),
+    audio: require("fs").existsSync(path.join(base, "birthday_audio.m4a")),
     folder: base
   });
 });
@@ -11251,12 +11252,26 @@ function wrapBirthdayMessage(value = "", maxChars = 34, maxLines = 3) {
   return lines;
 }
 
+const BIRTHDAY_NAME_MAX = 16;
+const BIRTHDAY_MESSAGE_MAX = 78;
+
+function limitGreetingInput(value = "", maxLength = 80) {
+  return String(value || "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, maxLength);
+}
+
 app.post("/api/greeting/birthday/generate", async (req, res) => {
   try {
     console.log("Birthday generator request received:", req.body);
 
-    const toNameRaw = req.body.to || "Mary";
-    const fromNameRaw = req.body.from || "John";
+    const toNameRaw = limitGreetingInput(req.body.to || "Mary", BIRTHDAY_NAME_MAX);
+    const fromNameRaw = limitGreetingInput(req.body.from || "John", BIRTHDAY_NAME_MAX);
+    const messageRaw = limitGreetingInput(
+      req.body.message || "Wishing you happiness, laughter, and a wonderful celebration!",
+      BIRTHDAY_MESSAGE_MAX
+    );
 
     const toName = safeGreetingText(toNameRaw);
     const fromName = safeGreetingText(fromNameRaw);
@@ -11265,7 +11280,7 @@ app.post("/api/greeting/birthday/generate", async (req, res) => {
     const fromFontSize = String(fromNameRaw || "").length > 12 ? 32 : String(fromNameRaw || "").length > 8 ? 36 : 40;
 
     const messageLines = wrapBirthdayMessage(
-      req.body.message || "Wishing you happiness, laughter, and a wonderful celebration!",
+      messageRaw,
       26,
       3
     ).map((line) => safeGreetingText(line));
@@ -11273,14 +11288,20 @@ app.post("/api/greeting/birthday/generate", async (req, res) => {
     const birthdayDir = path.join(__dirname, "templates", "birthday");
     const framePath = path.join(birthdayDir, "frame.png");
     const masterPath = path.join(birthdayDir, "master.mp4");
+    const audioPath = path.join(birthdayDir, "birthday_audio.m4a");
 
     console.log("Birthday frame path:", framePath, fs.existsSync(framePath));
     console.log("Birthday master path:", masterPath, fs.existsSync(masterPath));
+    console.log("Birthday audio path:", audioPath, fs.existsSync(audioPath));
 
-    if (!fs.existsSync(framePath) || !fs.existsSync(masterPath)) {
+    if (
+      !fs.existsSync(framePath) ||
+      !fs.existsSync(masterPath) ||
+      !fs.existsSync(audioPath)
+    ) {
       return res.status(400).json({
         ok: false,
-        error: "Birthday template assets missing."
+        error: "Birthday template assets missing. frame.png, master.mp4, and birthday_audio.m4a are required."
       });
     }
 
@@ -11312,7 +11333,8 @@ app.post("/api/greeting/birthday/generate", async (req, res) => {
       // Shifted slightly right and reduced a little so it does not begin at the far-left edge.
       `drawtext=text='${messageLines[0]}':x=385+(325-text_w)/2:y=1120:fontsize=26:fontcolor=#3b1f8f:borderw=1:bordercolor=white@0.35,` +
       `drawtext=text='${messageLines[1]}':x=385+(325-text_w)/2:y=1162:fontsize=26:fontcolor=#3b1f8f:borderw=1:bordercolor=white@0.35,` +
-      `drawtext=text='${messageLines[2]}':x=385+(325-text_w)/2:y=1204:fontsize=26:fontcolor=#3b1f8f:borderw=1:bordercolor=white@0.35[outv]`;
+      `drawtext=text='${messageLines[2]}':x=385+(325-text_w)/2:y=1204:fontsize=26:fontcolor=#3b1f8f:borderw=1:bordercolor=white@0.35[outv];` +
+      `[2:a]apad=pad_dur=10,atrim=0:10[aout]`;
 
     const ffmpegArgs = [
       "-y",
@@ -11321,10 +11343,11 @@ app.post("/api/greeting/birthday/generate", async (req, res) => {
       "-loop", "1",
       "-i", framePath,
       "-i", masterPath,
+      "-i", audioPath,
       "-t", "10",
       "-filter_complex", filter,
       "-map", "[outv]",
-      "-map", "1:a?",
+      "-map", "[aout]",
       "-shortest",
       "-c:v", "libx264",
       "-preset", "veryfast",
@@ -11397,17 +11420,31 @@ app.get("/greeting-test", (req, res) => {
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <style>
     body { font-family: Arial; max-width: 600px; margin: 30px auto; padding: 20px; }
-    input, textarea, button { width: 100%; padding: 12px; margin: 8px 0; font-size: 16px; }
-    button { background: #6c2bd9; color: white; border: 0; border-radius: 8px; }
+    input, textarea, button { width: 100%; box-sizing: border-box; padding: 12px; margin: 8px 0; font-size: 16px; }
+    button { background: #6c2bd9; color: white; border: 0; border-radius: 8px; cursor: pointer; }
     a { display: block; margin-top: 20px; font-size: 18px; }
+    .field { margin-bottom: 12px; }
+    .counter { text-align: right; font-size: 13px; color: #666; margin-top: -4px; }
+    .counter.limit { color: #b42318; font-weight: bold; }
   </style>
 </head>
 <body>
   <h1>🎂 Printo Birthday Generator</h1>
 
-  <input id="to" placeholder="Recipient name e.g. Mary" />
-  <input id="from" placeholder="Sender name e.g. John" />
-  <textarea id="message" placeholder="Birthday message">Wishing you happiness, laughter, and a wonderful celebration!</textarea>
+  <div class="field">
+    <input id="to" maxlength="${BIRTHDAY_NAME_MAX}" placeholder="Recipient name e.g. Mary" />
+    <div id="toCount" class="counter">0 / ${BIRTHDAY_NAME_MAX}</div>
+  </div>
+
+  <div class="field">
+    <input id="from" maxlength="${BIRTHDAY_NAME_MAX}" placeholder="Sender name e.g. John" />
+    <div id="fromCount" class="counter">0 / ${BIRTHDAY_NAME_MAX}</div>
+  </div>
+
+  <div class="field">
+    <textarea id="message" maxlength="${BIRTHDAY_MESSAGE_MAX}" rows="4" placeholder="Birthday message">Wishing you happiness, laughter, and a wonderful celebration!</textarea>
+    <div id="messageCount" class="counter">0 / ${BIRTHDAY_MESSAGE_MAX}</div>
+  </div>
 
   <button onclick="generate()">Generate Birthday Video</button>
 
@@ -11415,6 +11452,24 @@ app.get("/greeting-test", (req, res) => {
   <div id="result"></div>
 
 <script>
+function setupCounter(inputId, counterId, maxLength) {
+  const input = document.getElementById(inputId);
+  const counter = document.getElementById(counterId);
+
+  function updateCounter() {
+    const count = input.value.length;
+    counter.innerText = count + " / " + maxLength;
+    counter.classList.toggle("limit", count >= maxLength);
+  }
+
+  input.addEventListener("input", updateCounter);
+  updateCounter();
+}
+
+setupCounter("to", "toCount", ${BIRTHDAY_NAME_MAX});
+setupCounter("from", "fromCount", ${BIRTHDAY_NAME_MAX});
+setupCounter("message", "messageCount", ${BIRTHDAY_MESSAGE_MAX});
+
 async function generate() {
   document.getElementById("status").innerText = "Generating video... please wait.";
   document.getElementById("result").innerHTML = "";
