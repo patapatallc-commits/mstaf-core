@@ -11507,24 +11507,46 @@ function buildGreetingStudioHomePage() {
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <meta name="theme-color" content="#082a8f" />
   <title>Printo Greeting Studio</title>
   <style>
-    *{box-sizing:border-box}body{margin:0;font-family:Arial,sans-serif;background:linear-gradient(180deg,#071b61,#0b63ce);color:#fff;min-height:100vh;padding:24px}.wrap{max-width:1050px;margin:auto}.hero{text-align:center;padding:24px 12px}.hero h1{font-size:38px;margin:0 0 10px}.hero p{font-size:18px;opacity:.92}.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:18px}.card{background:#fff;color:#13234a;border-radius:20px;padding:22px;text-decoration:none;box-shadow:0 12px 30px rgba(0,0,0,.25);min-height:180px;display:flex;flex-direction:column;justify-content:center;align-items:center;text-align:center;border:4px solid transparent}.card:hover{border-color:#ffd21f;transform:translateY(-2px)}.emoji{font-size:52px}.title{font-size:22px;font-weight:900;margin:10px 0 6px}.sub{font-size:14px;line-height:20px;color:#53617f}.ready{background:#7b2cbf;color:#fff;padding:8px 13px;border-radius:999px;margin-top:12px;font-weight:800}.soon{background:#e2e8f0;color:#475569;padding:8px 13px;border-radius:999px;margin-top:12px;font-weight:800}.bottom{text-align:center;margin-top:22px}.btn{display:inline-block;background:#25D366;color:#fff;text-decoration:none;font-weight:900;padding:14px 20px;border-radius:14px}@media(max-width:800px){.grid{grid-template-columns:repeat(2,1fr)}}@media(max-width:520px){body{padding:14px}.grid{grid-template-columns:1fr}.hero h1{font-size:31px}}
+    *{box-sizing:border-box}html{scroll-behavior:smooth}body{margin:0;font-family:Arial,sans-serif;background:radial-gradient(circle at top,#164ec1 0,#082a8f 38%,#041443 100%);color:#fff;min-height:100vh;overflow-x:hidden}.wrap{max-width:1120px;margin:auto;padding:22px 18px 56px;position:relative;z-index:2}.hero{text-align:center;padding:34px 12px 24px}.logo-badge{width:86px;height:86px;margin:0 auto 14px;border-radius:50%;display:grid;place-items:center;background:linear-gradient(145deg,#ffd83d,#ff8a00);font-size:46px;box-shadow:0 14px 34px rgba(0,0,0,.35);animation:bounce 2.8s ease-in-out infinite}.hero h1{font-size:42px;margin:0 0 10px;text-shadow:0 4px 14px rgba(0,0,0,.3)}.hero p{font-size:18px;opacity:.94;max-width:760px;margin:0 auto;line-height:1.55}.hero-actions{display:flex;gap:12px;justify-content:center;flex-wrap:wrap;margin-top:20px}.hero-btn{border:0;border-radius:999px;padding:13px 20px;font-weight:900;font-size:15px;cursor:pointer;text-decoration:none;display:inline-flex;align-items:center;gap:8px}.music-btn{background:#fff;color:#0b2f89}.playstore-btn{background:#111;color:#fff}.section-title{text-align:center;font-size:26px;margin:18px 0 20px}.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:20px}.card{background:#fff;color:#13234a;border-radius:22px;padding:0 0 22px;text-decoration:none;box-shadow:0 14px 34px rgba(0,0,0,.28);min-height:300px;display:flex;flex-direction:column;align-items:center;text-align:center;overflow:hidden;border:3px solid transparent;opacity:0;transform:translateY(24px);animation:rise .65s ease forwards}.card:nth-child(2){animation-delay:.08s}.card:nth-child(3){animation-delay:.16s}.card:nth-child(4){animation-delay:.24s}.card:nth-child(5){animation-delay:.32s}.card:nth-child(6){animation-delay:.40s}.card:hover{border-color:#ffd21f;transform:translateY(-6px);transition:.22s}.preview{width:100%;height:138px;display:flex;align-items:center;justify-content:center;font-size:62px;background:linear-gradient(135deg,#eef4ff,#dbeafe);position:relative;overflow:hidden}.preview.birthday{background-image:linear-gradient(rgba(7,27,97,.12),rgba(7,27,97,.12)),url('/templates/birthday/frame.png');background-size:cover;background-position:center}.preview:after{content:'';position:absolute;inset:0;background:linear-gradient(180deg,transparent 55%,rgba(0,0,0,.12))}.content{padding:18px 18px 0}.title{font-size:23px;font-weight:900;margin:0 0 7px}.sub{font-size:14px;line-height:20px;color:#53617f;min-height:42px}.ready{background:linear-gradient(90deg,#7b2cbf,#d63384);color:#fff;padding:11px 18px;border-radius:999px;margin-top:14px;font-weight:900;box-shadow:0 8px 18px rgba(123,44,191,.3);animation:pulse 2s infinite}.soon{background:#e2e8f0;color:#475569;padding:9px 15px;border-radius:999px;margin-top:14px;font-weight:800}.support-row{display:flex;gap:12px;justify-content:center;flex-wrap:wrap;margin-top:28px}.support{display:inline-flex;align-items:center;gap:8px;color:#fff;text-decoration:none;font-weight:900;padding:14px 20px;border-radius:14px}.whatsapp{background:#25D366}.home{background:#f59e0b}.floating-wa{position:fixed;right:18px;bottom:18px;width:62px;height:62px;border-radius:50%;display:grid;place-items:center;background:#25D366;color:#fff;text-decoration:none;font-size:30px;box-shadow:0 10px 28px rgba(0,0,0,.35);z-index:5}.footer{text-align:center;margin-top:28px;color:#dbeafe;font-size:14px}.confetti{position:fixed;top:-20px;width:10px;height:18px;border-radius:3px;z-index:1;animation:fall linear infinite}.c1{left:8%;background:#ffd21f;animation-duration:8s}.c2{left:24%;background:#ff4d8d;animation-duration:10s;animation-delay:1s}.c3{left:42%;background:#3ddc97;animation-duration:9s;animation-delay:2s}.c4{left:63%;background:#7dd3fc;animation-duration:11s}.c5{left:82%;background:#f97316;animation-duration:8.5s;animation-delay:3s}@keyframes rise{to{opacity:1;transform:translateY(0)}}@keyframes pulse{0%,100%{transform:scale(1)}50%{transform:scale(1.06)}}@keyframes bounce{0%,100%{transform:translateY(0)}50%{transform:translateY(-8px)}}@keyframes fall{to{transform:translateY(110vh) rotate(720deg)}}@media(max-width:820px){.grid{grid-template-columns:repeat(2,1fr)}.hero h1{font-size:35px}}@media(max-width:540px){.wrap{padding:14px 12px 44px}.grid{grid-template-columns:1fr}.hero{padding-top:22px}.hero h1{font-size:30px}.preview{height:155px}.card{min-height:292px}}
   </style>
 </head>
 <body>
+  <span class="confetti c1"></span><span class="confetti c2"></span><span class="confetti c3"></span><span class="confetti c4"></span><span class="confetti c5"></span>
   <div class="wrap">
-    <div class="hero"><h1>🎉 Printo Greeting Studio</h1><p>Create personalized video greetings with Printo music, voice, names and messages.</p></div>
-    <div class="grid">
-      <a class="card" href="/birthday"><div class="emoji">🎂</div><div class="title">Birthday</div><div class="sub">Create a personalized birthday video with Printo music and voice.</div><div class="ready">Create Now</div></a>
-      <div class="card"><div class="emoji">💍</div><div class="title">Wedding</div><div class="sub">Celebrate a couple with a personalized Printo wedding greeting.</div><div class="soon">Coming Soon</div></div>
-      <div class="card"><div class="emoji">🎓</div><div class="title">Graduation</div><div class="sub">Honor a graduate with a memorable personalized video.</div><div class="soon">Coming Soon</div></div>
-      <div class="card"><div class="emoji">❤️</div><div class="title">Anniversary</div><div class="sub">Share love and memories with a special anniversary greeting.</div><div class="soon">Coming Soon</div></div>
-      <div class="card"><div class="emoji">👶</div><div class="title">New Baby</div><div class="sub">Welcome a new baby with a joyful Printo greeting.</div><div class="soon">Coming Soon</div></div>
-      <div class="card"><div class="emoji">🎄</div><div class="title">Christmas</div><div class="sub">Send a festive personalized Christmas video.</div><div class="soon">Coming Soon</div></div>
+    <header class="hero">
+      <div class="logo-badge">🎉</div>
+      <h1>Printo Greeting Studio</h1>
+      <p>Create personalized video greetings with Printo music, voice, names and messages. Choose a greeting below and make a special moment in minutes.</p>
+      <div class="hero-actions">
+        <button id="themeBtn" class="hero-btn music-btn" type="button">🔊 Play Printo Theme</button>
+        <a class="hero-btn playstore-btn" href="https://play.google.com/store/apps/details?id=com.patapata.printomatic" target="_blank" rel="noopener">▶ Get Print-O-Matic</a>
+      </div>
+      <audio id="themeAudio" preload="none" src="/templates/birthday/birthday_audio.m4a"></audio>
+    </header>
+    <h2 class="section-title">Choose Your Greeting</h2>
+    <section class="grid">
+      <a class="card" href="/birthday"><div class="preview birthday" aria-label="Birthday greeting preview"></div><div class="content"><div class="title">🎂 Birthday</div><div class="sub">Create a personalized birthday video with Printo music and voice.</div><div class="ready">Create Now</div></div></a>
+      <div class="card"><div class="preview">💍</div><div class="content"><div class="title">Wedding</div><div class="sub">Celebrate a couple with a personalized Printo wedding greeting.</div><div class="soon">Coming Soon</div></div></div>
+      <div class="card"><div class="preview">🎓</div><div class="content"><div class="title">Graduation</div><div class="sub">Honor a graduate with a memorable personalized video.</div><div class="soon">Coming Soon</div></div></div>
+      <div class="card"><div class="preview">❤️</div><div class="content"><div class="title">Anniversary</div><div class="sub">Share love and memories with a special anniversary greeting.</div><div class="soon">Coming Soon</div></div></div>
+      <div class="card"><div class="preview">👶</div><div class="content"><div class="title">New Baby</div><div class="sub">Welcome a new baby with a joyful Printo greeting.</div><div class="soon">Coming Soon</div></div></div>
+      <div class="card"><div class="preview">🎄</div><div class="content"><div class="title">Christmas</div><div class="sub">Send a festive personalized Christmas video.</div><div class="soon">Coming Soon</div></div></div>
+    </section>
+    <div class="support-row">
+      <a class="support whatsapp" href="https://wa.me/18622306637?text=I%20want%20to%20order%20a%20Printo%20greeting%20video">📱 Talk to Printo</a>
+      <a class="support home" href="/">🏠 Print-O-Matic Home</a>
     </div>
-    <div class="bottom"><a class="btn" href="https://wa.me/18622306637?text=I%20want%20to%20order%20a%20Printo%20greeting%20video">📱 Talk to Printo on WhatsApp</a></div>
+    <div class="footer">Powered by Patapata LLC • Original Printo Greeting Studio</div>
   </div>
+  <a class="floating-wa" href="https://wa.me/18622306637?text=I%20need%20help%20with%20Printo%20Greeting%20Studio" aria-label="WhatsApp support">💬</a>
+<script>
+  const audio=document.getElementById('themeAudio');const btn=document.getElementById('themeBtn');
+  btn.addEventListener('click',async()=>{try{if(audio.paused){await audio.play();btn.textContent='⏸ Pause Printo Theme'}else{audio.pause();btn.textContent='🔊 Play Printo Theme'}}catch(e){btn.textContent='Tap again to play'}});
+  audio.addEventListener('ended',()=>{btn.textContent='🔊 Play Printo Theme'});
+</script>
 </body>
 </html>`;
 }
