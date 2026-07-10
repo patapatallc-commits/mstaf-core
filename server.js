@@ -11263,26 +11263,96 @@ function limitGreetingInput(value = "", maxLength = 80) {
 }
 
 
-async function generatePrintoBirthdayVoice({ recipientName, senderName, message, outputPath }) {
-  const apiKey = process.env.ELEVENLABS_API_KEY;
-  const voiceId = process.env.ELEVENLABS_VOICE_ID;
+async function resolveElevenLabsVoiceId(apiKey) {
+  const configuredVoiceId = String(process.env.ELEVENLABS_VOICE_ID || "").trim();
+  if (configuredVoiceId) return configuredVoiceId;
 
-  if (!apiKey || !voiceId) {
-    console.log("Printo voice skipped: ELEVENLABS_API_KEY or ELEVENLABS_VOICE_ID is missing.");
-    return { ok: false, reason: "missing_elevenlabs_config" };
+  try {
+    const response = await axios.get("https://api.elevenlabs.io/v1/voices", {
+      timeout: 30000,
+      headers: {
+        "xi-api-key": apiKey,
+        Accept: "application/json"
+      }
+    });
+
+    const voices = Array.isArray(response?.data?.voices) ? response.data.voices : [];
+    if (!voices.length) return "";
+
+    const preferredName = String(process.env.ELEVENLABS_VOICE_NAME || "Printo")
+      .trim()
+      .toLowerCase();
+
+    const preferredVoice =
+      voices.find((voice) => String(voice?.name || "").trim().toLowerCase() === preferredName) ||
+      voices.find((voice) => String(voice?.name || "").toLowerCase().includes(preferredName)) ||
+      voices[0];
+
+    const resolvedVoiceId = String(preferredVoice?.voice_id || "").trim();
+
+    if (resolvedVoiceId) {
+      console.log(
+        `ElevenLabs voice selected automatically: ${preferredVoice?.name || "Unnamed voice"} (${resolvedVoiceId})`
+      );
+    }
+
+    return resolvedVoiceId;
+  } catch (err) {
+    console.error(
+      "Unable to retrieve ElevenLabs voices:",
+      err.response?.data || err.message
+    );
+    return "";
+  }
+}
+
+function buildPrintoBirthdayVoiceText(recipientName, senderName, message) {
+  const recipient = limitGreetingInput(recipientName || "Friend", BIRTHDAY_NAME_MAX);
+  const sender = limitGreetingInput(senderName || "Someone special", BIRTHDAY_NAME_MAX);
+  const wish = limitGreetingInput(
+    message || "Wishing you happiness and a wonderful celebration!",
+    BIRTHDAY_MESSAGE_MAX
+  );
+
+  return `Happy Birthday, ${recipient}! With love from ${sender}. ${wish}`;
+}
+
+async function generatePrintoBirthdayVoice({ recipientName, senderName, message, outputPath }) {
+  const apiKey = String(process.env.ELEVENLABS_API_KEY || "").trim();
+
+  if (!apiKey) {
+    console.log("Printo voice skipped: ELEVENLABS_API_KEY is missing.");
+    return { ok: false, reason: "missing_elevenlabs_api_key" };
   }
 
-  const voiceText = `Happy Birthday, ${recipientName}! This special greeting comes with love from ${senderName}. ${message}`;
+  const voiceId = await resolveElevenLabsVoiceId(apiKey);
+
+  if (!voiceId) {
+    console.log(
+      "Printo voice skipped: no ElevenLabs voice was available. Add ELEVENLABS_VOICE_ID or ELEVENLABS_VOICE_NAME in Render."
+    );
+    return { ok: false, reason: "missing_elevenlabs_voice" };
+  }
+
+  const voiceText = buildPrintoBirthdayVoiceText(
+    recipientName,
+    senderName,
+    message
+  );
 
   try {
     const response = await axios.post(
-      `https://api.elevenlabs.io/v1/text-to-speech/${encodeURIComponent(voiceId)}`,
+      `https://api.elevenlabs.io/v1/text-to-speech/${encodeURIComponent(
+        voiceId
+      )}?output_format=mp3_44100_128`,
       {
         text: voiceText,
         model_id: process.env.ELEVENLABS_MODEL_ID || "eleven_multilingual_v2",
         voice_settings: {
           stability: Number(process.env.ELEVENLABS_STABILITY || 0.5),
-          similarity_boost: Number(process.env.ELEVENLABS_SIMILARITY_BOOST || 0.75),
+          similarity_boost: Number(
+            process.env.ELEVENLABS_SIMILARITY_BOOST || 0.75
+          ),
           style: Number(process.env.ELEVENLABS_STYLE || 0.2),
           use_speaker_boost: true
         }
@@ -11298,11 +11368,40 @@ async function generatePrintoBirthdayVoice({ recipientName, senderName, message,
       }
     );
 
-    fs.writeFileSync(outputPath, Buffer.from(response.data));
-    return { ok: true, outputPath, text: voiceText };
+    const audioBuffer = Buffer.from(response.data || []);
+
+    if (!audioBuffer.length) {
+      throw new Error("ElevenLabs returned an empty audio file.");
+    }
+
+    fs.writeFileSync(outputPath, audioBuffer);
+
+    return {
+      ok: true,
+      outputPath,
+      text: voiceText,
+      voiceId
+    };
   } catch (err) {
-    console.error("Printo ElevenLabs voice generation failed:", err.response?.data || err.message);
-    return { ok: false, reason: "voice_generation_failed", error: err.message };
+    let details = err.message;
+
+    if (err.response?.data) {
+      try {
+        details = Buffer.isBuffer(err.response.data)
+          ? err.response.data.toString("utf8")
+          : JSON.stringify(err.response.data);
+      } catch (_) {
+        details = err.message;
+      }
+    }
+
+    console.error("Printo ElevenLabs voice generation failed:", details);
+
+    return {
+      ok: false,
+      reason: "voice_generation_failed",
+      error: details
+    };
   }
 }
 
