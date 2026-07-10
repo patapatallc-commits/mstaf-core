@@ -11262,6 +11262,65 @@ function limitGreetingInput(value = "", maxLength = 80) {
     .slice(0, maxLength);
 }
 
+
+async function generatePrintoBirthdayVoice({ recipientName, senderName, message, outputPath }) {
+  const apiKey = process.env.ELEVENLABS_API_KEY;
+  const voiceId = process.env.ELEVENLABS_VOICE_ID;
+
+  if (!apiKey || !voiceId) {
+    console.log("Printo voice skipped: ELEVENLABS_API_KEY or ELEVENLABS_VOICE_ID is missing.");
+    return { ok: false, reason: "missing_elevenlabs_config" };
+  }
+
+  const voiceText = `Happy Birthday, ${recipientName}! This special greeting comes with love from ${senderName}. ${message}`;
+
+  try {
+    const response = await axios.post(
+      `https://api.elevenlabs.io/v1/text-to-speech/${encodeURIComponent(voiceId)}`,
+      {
+        text: voiceText,
+        model_id: process.env.ELEVENLABS_MODEL_ID || "eleven_multilingual_v2",
+        voice_settings: {
+          stability: Number(process.env.ELEVENLABS_STABILITY || 0.5),
+          similarity_boost: Number(process.env.ELEVENLABS_SIMILARITY_BOOST || 0.75),
+          style: Number(process.env.ELEVENLABS_STYLE || 0.2),
+          use_speaker_boost: true
+        }
+      },
+      {
+        responseType: "arraybuffer",
+        timeout: 60000,
+        headers: {
+          "xi-api-key": apiKey,
+          "Content-Type": "application/json",
+          Accept: "audio/mpeg"
+        }
+      }
+    );
+
+    fs.writeFileSync(outputPath, Buffer.from(response.data));
+    return { ok: true, outputPath, text: voiceText };
+  } catch (err) {
+    console.error("Printo ElevenLabs voice generation failed:", err.response?.data || err.message);
+    return { ok: false, reason: "voice_generation_failed", error: err.message };
+  }
+}
+
+function buildGreetingResultUrl(req, videoUrl, toName = "", fromName = "") {
+  const base =
+    process.env.PUBLIC_BASE_URL ||
+    process.env.RENDER_EXTERNAL_URL ||
+    `${req.protocol}://${req.get("host")}`;
+
+  const params = new URLSearchParams({
+    video: videoUrl,
+    to: String(toName || ""),
+    from: String(fromName || "")
+  });
+
+  return `${base}/greeting-result?${params.toString()}`;
+}
+
 app.post("/api/greeting/birthday/generate", async (req, res) => {
   try {
     console.log("Birthday generator request received:", req.body);
@@ -11307,34 +11366,39 @@ app.post("/api/greeting/birthday/generate", async (req, res) => {
 
     const fileName = `birthday_${Date.now()}.mp4`;
     const outputPath = path.join(generatedDir, fileName);
+    const voicePath = path.join(generatedDir, `birthday_voice_${Date.now()}.mp3`);
+
+    const voiceResult = await generatePrintoBirthdayVoice({
+      recipientName: toNameRaw,
+      senderName: fromNameRaw,
+      message: messageRaw,
+      outputPath: voicePath
+    });
+    const hasPrintoVoice = Boolean(voiceResult.ok && fs.existsSync(voicePath));
 
     // Stable Printo Birthday production layout.
     // No animation filters. The master video is scaled/cropped safely
     // into the center window so FFmpeg does not fail on pad dimensions.
-    const filter =
+    const videoFilter =
       `[0:v]scale=1024:1536[bg];` +
       `[1:v]scale=415:620:force_original_aspect_ratio=increase,crop=415:620[vid];` +
       `[bg][vid]overlay=305:335,` +
-
-      // Clean the name areas so old decorative heart/line artwork does not cover names.
-      // Then place one small heart below each name, lower than the text.
       `drawbox=x=66:y=428:w=178:h=116:color=#f8ddb7@0.96:t=fill,` +
       `drawbox=x=805:y=428:w=160:h=116:color=#f8ddb7@0.96:t=fill,` +
-
-      // Recipient name in the left TO panel.
       `drawtext=text='${toName}':x=66+(178-text_w)/2:y=452:fontsize=${toFontSize}:fontcolor=#d63384:borderw=2:bordercolor=white@0.45,` +
       `drawtext=text='♥':x=66+(178-text_w)/2:y=512:fontsize=26:fontcolor=#d63384:borderw=1:bordercolor=white@0.35,` +
-
-      // Sender name in the right FROM panel.
       `drawtext=text='${fromName}':x=805+(160-text_w)/2:y=452:fontsize=${fromFontSize}:fontcolor=#7b2cbf:borderw=2:bordercolor=white@0.45,` +
       `drawtext=text='♥':x=805+(160-text_w)/2:y=512:fontsize=26:fontcolor=#7b2cbf:borderw=1:bordercolor=white@0.35,` +
-
-      // Customer personal message inside the bottom PERSONAL MESSAGE box.
-      // Shifted slightly right and reduced a little so it does not begin at the far-left edge.
       `drawtext=text='${messageLines[0]}':x=385+(325-text_w)/2:y=1120:fontsize=26:fontcolor=#3b1f8f:borderw=1:bordercolor=white@0.35,` +
       `drawtext=text='${messageLines[1]}':x=385+(325-text_w)/2:y=1162:fontsize=26:fontcolor=#3b1f8f:borderw=1:bordercolor=white@0.35,` +
-      `drawtext=text='${messageLines[2]}':x=385+(325-text_w)/2:y=1204:fontsize=26:fontcolor=#3b1f8f:borderw=1:bordercolor=white@0.35[outv];` +
-      `[2:a]apad=pad_dur=10,atrim=0:10[aout]`;
+      `drawtext=text='${messageLines[2]}':x=385+(325-text_w)/2:y=1204:fontsize=26:fontcolor=#3b1f8f:borderw=1:bordercolor=white@0.35[outv]`;
+
+    const audioFilter = hasPrintoVoice
+      ? `[2:a]volume=0.30,apad=pad_dur=10,atrim=0:10[music];` +
+        `[3:a]adelay=900|900,volume=1.25,apad=pad_dur=10,atrim=0:10[voice];` +
+        `[music][voice]amix=inputs=2:duration=longest:dropout_transition=2,` +
+        `loudnorm=I=-16:TP=-1.5:LRA=11,atrim=0:10[aout]`
+      : `[2:a]apad=pad_dur=10,atrim=0:10[aout]`;
 
     const ffmpegArgs = [
       "-y",
@@ -11344,8 +11408,9 @@ app.post("/api/greeting/birthday/generate", async (req, res) => {
       "-i", framePath,
       "-i", masterPath,
       "-i", audioPath,
+      ...(hasPrintoVoice ? ["-i", voicePath] : []),
       "-t", "10",
-      "-filter_complex", filter,
+      "-filter_complex", `${videoFilter};${audioFilter}`,
       "-map", "[outv]",
       "-map", "[aout]",
       "-shortest",
@@ -11354,6 +11419,7 @@ app.post("/api/greeting/birthday/generate", async (req, res) => {
       "-crf", "24",
       "-pix_fmt", "yuv420p",
       "-c:a", "aac",
+      "-b:a", "192k",
       "-movflags", "+faststart",
       outputPath
     ];
@@ -11397,10 +11463,28 @@ app.post("/api/greeting/birthday/generate", async (req, res) => {
 
         console.log("Birthday stable render completed:", fileName);
 
+        const downloadUrl = buildGeneratedUrl(req, fileName);
+        const resultUrl = buildGreetingResultUrl(req, downloadUrl, toNameRaw, fromNameRaw);
+
+        if (hasPrintoVoice && fs.existsSync(voicePath)) {
+          fs.unlink(voicePath, () => {});
+        }
+
         return res.json({
           ok: true,
-          downloadUrl: buildGeneratedUrl(req, fileName),
-          file: fileName
+          downloadUrl,
+          resultUrl,
+          shareUrl: resultUrl,
+          file: fileName,
+          hasPrintoVoice,
+          limits: {
+            name: BIRTHDAY_NAME_MAX,
+            message: BIRTHDAY_MESSAGE_MAX
+          },
+          payment: {
+            shopify: process.env.GREETING_SHOPIFY_URL || "https://www.patapata.us/",
+            nigeria: "https://www.patapata.us/pages/africa-payment"
+          }
         });
       }
     );
@@ -11412,6 +11496,81 @@ app.post("/api/greeting/birthday/generate", async (req, res) => {
     });
   }
 });
+
+app.get("/greeting-result", (req, res) => {
+  const videoUrl = String(req.query.video || "");
+  const toName = String(req.query.to || "");
+  const fromName = String(req.query.from || "");
+  const shopifyUrl = process.env.GREETING_SHOPIFY_URL || "https://www.patapata.us/";
+  const nigeriaUrl = "https://www.patapata.us/pages/africa-payment";
+
+  if (!videoUrl.startsWith("http")) {
+    return res.status(400).send("Invalid or missing greeting video link.");
+  }
+
+  const safeVideo = videoUrl.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;");
+  const title = `A special Printo greeting${toName ? ` for ${toName}` : ""}`;
+
+  res.send(`<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>${title}</title>
+  <meta property="og:title" content="${title}" />
+  <meta property="og:description" content="Watch this personalized Printo Greeting Studio video." />
+  <meta property="og:video" content="${safeVideo}" />
+  <style>
+    *{box-sizing:border-box} body{margin:0;font-family:Arial,sans-serif;background:linear-gradient(180deg,#071b61,#0b63ce);color:#fff;min-height:100vh;padding:22px}
+    .wrap{max-width:680px;margin:auto;text-align:center}.brand{font-size:28px;font-weight:900;margin:8px 0}.sub{opacity:.9;margin-bottom:18px}
+    .player{position:relative;border:4px solid #ffd21f;border-radius:22px;overflow:hidden;background:#000;box-shadow:0 12px 35px rgba(0,0,0,.35)}
+    video{display:block;width:100%;max-height:75vh;background:#000}.bigPlay{position:absolute;inset:0;margin:auto;width:110px;height:110px;border-radius:55px;border:5px solid #fff;background:rgba(11,99,206,.86);color:#fff;font-size:54px;line-height:96px;padding-left:9px;cursor:pointer;box-shadow:0 8px 25px rgba(0,0,0,.45)}
+    .actions{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin-top:18px}.btn{display:block;padding:14px 10px;border-radius:14px;text-decoration:none;color:#fff;font-weight:900;border:0;font-size:15px;cursor:pointer}.download{background:#7b2cbf}.whatsapp{background:#25D366}.facebook{background:#1877F2}.copy{background:#334155}.social{background:#d63384}.youtube{background:#ff0000}.tiktok{background:#111}.email{background:#0f766e}.shopify{background:#4f772d}.nigeria{background:#008751}.full{grid-column:1/-1}
+    .note{font-size:13px;line-height:19px;background:rgba(255,255,255,.12);padding:12px;border-radius:12px;margin-top:14px}.toast{min-height:22px;color:#ffd21f;font-weight:800;margin-top:10px}
+    @media(max-width:480px){.actions{grid-template-columns:1fr}.full{grid-column:auto}.bigPlay{width:92px;height:92px;font-size:46px;line-height:80px}}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="brand">🎉 Printo Greeting Studio</div>
+    <div class="sub">${toName ? `Created for <strong>${toName}</strong>` : "Your personalized greeting is ready"}${fromName ? ` from <strong>${fromName}</strong>` : ""}</div>
+    <div class="player">
+      <video id="greetingVideo" playsinline preload="metadata" src="${safeVideo}"></video>
+      <button id="bigPlay" class="bigPlay" aria-label="Play greeting">▶</button>
+    </div>
+    <div id="toast" class="toast"></div>
+    <div class="actions">
+      <a class="btn download full" href="${safeVideo}" download>📥 Download Video</a>
+      <button class="btn whatsapp" onclick="shareWhatsApp()">📱 WhatsApp</button>
+      <button class="btn facebook" onclick="shareFacebook()">📘 Facebook</button>
+      <button class="btn social" onclick="downloadThenOpen('https://www.instagram.com/')">📸 Instagram</button>
+      <button class="btn youtube" onclick="downloadThenOpen('https://www.youtube.com/upload')">▶ YouTube</button>
+      <button class="btn tiktok" onclick="downloadThenOpen('https://www.tiktok.com/upload')">🎵 TikTok</button>
+      <button class="btn email" onclick="shareEmail()">📧 Email</button>
+      <button class="btn copy full" onclick="copyLink()">🔗 Copy Greeting Link</button>
+      <a class="btn shopify" href="${shopifyUrl}" target="_blank" rel="noopener">🛒 Buy via Shopify</a>
+      <a class="btn nigeria" href="${nigeriaUrl}" target="_blank" rel="noopener">🇳🇬 Nigeria Payment</a>
+    </div>
+    <div class="note">Instagram, YouTube and TikTok normally require you to download the video first and then select it inside their app or upload page.</div>
+  </div>
+<script>
+  const video=document.getElementById('greetingVideo'); const play=document.getElementById('bigPlay'); const toast=document.getElementById('toast');
+  const pageUrl=window.location.href; const videoUrl=${JSON.stringify(videoUrl)};
+  const shareText=${JSON.stringify(`🎉 Watch my personalized Printo greeting! Create yours with Printo Greeting Studio. Shopify: ${shopifyUrl} Nigeria payment: ${nigeriaUrl}`)};
+  play.onclick=async()=>{try{await video.play();play.style.display='none'}catch(e){toast.textContent='Tap the video controls to play.'}};
+  video.onclick=()=>{if(video.paused){video.play();play.style.display='none'}else video.pause()};
+  video.onended=()=>{play.textContent='↻';play.style.display='block'};
+  function shareWhatsApp(){window.open('https://wa.me/?text='+encodeURIComponent(shareText+' '+pageUrl),'_blank')}
+  function shareFacebook(){window.open('https://www.facebook.com/sharer/sharer.php?u='+encodeURIComponent(pageUrl),'_blank')}
+  function shareEmail(){location.href='mailto:?subject='+encodeURIComponent('My Printo greeting')+'&body='+encodeURIComponent(shareText+' '+pageUrl)}
+  async function copyLink(){try{await navigator.clipboard.writeText(pageUrl);toast.textContent='Greeting link copied!'}catch(e){prompt('Copy this link:',pageUrl)}}
+  function downloadThenOpen(url){const a=document.createElement('a');a.href=videoUrl;a.download='printo-greeting.mp4';document.body.appendChild(a);a.click();a.remove();setTimeout(()=>window.open(url,'_blank'),700)}
+  if(navigator.share){document.querySelector('.copy').textContent='📤 Share / Copy Greeting Link';document.querySelector('.copy').onclick=async()=>{try{await navigator.share({title:'Printo Greeting',text:shareText,url:pageUrl})}catch(e){copyLink()}}}
+</script>
+</body>
+</html>`);
+});
+
 app.get("/greeting-test", (req, res) => {
   res.send(`<!DOCTYPE html>
 <html>
@@ -11493,7 +11652,7 @@ async function generate() {
 
   document.getElementById("status").innerText = "Video ready!";
   document.getElementById("result").innerHTML =
-    '<a href="' + data.downloadUrl + '" target="_blank">Download Birthday Video</a>';
+    '<a href="' + (data.resultUrl || data.downloadUrl) + '" target="_blank">▶ Open, Play, Share & Download Birthday Video</a>';
 }
 </script>
 </body>
