@@ -11164,50 +11164,47 @@ function safeGreetingText(value = "") {
     .replace(/:/g, "\\:")
     .replace(/'/g, "\\'")
     .replace(/\n/g, " ")
-    .slice(0, 80);
+    .slice(0, 220);
 }
 
-function wrapBirthdayMessage(value = "", maxChars = 34, maxLines = 3) {
-  const words = String(value || "")
-    .replace(/\s+/g, " ")
-    .trim()
-    .split(" ")
-    .filter(Boolean);
-
+function wrapBirthdayMessage(value = "", maxChars = 28, maxLines = 5) {
+  const normalized = String(value || "").replace(/\s+/g, " ").trim();
+  const words = normalized.split(" ").filter(Boolean);
   const lines = [];
   let current = "";
 
   for (const word of words) {
     const next = current ? `${current} ${word}` : word;
-    if (next.length > maxChars && current) {
+    if (Array.from(next).length > maxChars && current) {
       lines.push(current);
       current = word;
-      if (lines.length >= maxLines) break;
     } else {
       current = next;
     }
   }
 
-  if (lines.length < maxLines && current) lines.push(current);
+  if (current) lines.push(current);
 
-  if (lines.length > maxLines) lines.length = maxLines;
-
-  while (lines.length < maxLines) lines.push("");
-
-  const usedText = lines.join(" ").trim();
-  const originalText = String(value || "").replace(/\s+/g, " ").trim();
-  if (originalText.length > usedText.length && lines[maxLines - 1]) {
-    lines[maxLines - 1] = lines[maxLines - 1].replace(/\.{3}$/g, "");
-    if (lines[maxLines - 1].length > 3) {
-      lines[maxLines - 1] = lines[maxLines - 1].slice(0, Math.max(0, maxChars - 3)).trim() + "...";
+  // Split an unusually long word safely by Unicode characters.
+  const fitted = [];
+  for (const line of lines) {
+    const chars = Array.from(line);
+    if (chars.length <= maxChars) {
+      fitted.push(line);
+    } else {
+      for (let i = 0; i < chars.length; i += maxChars) {
+        fitted.push(chars.slice(i, i + maxChars).join(""));
+      }
     }
   }
 
-  return lines;
+  const result = fitted.slice(0, maxLines);
+  while (result.length < maxLines) result.push("");
+  return result;
 }
 
 const BIRTHDAY_NAME_MAX = 16;
-const BIRTHDAY_MESSAGE_MAX = 78;
+const BIRTHDAY_MESSAGE_MAX = 140;
 
 function limitGreetingInput(value = "", maxLength = 80) {
   return String(value || "")
@@ -11260,7 +11257,7 @@ async function generatePrintoBirthdayVoice({ recipientName, senderName, message,
   }
 }
 
-function buildGreetingResultUrl(req, videoUrl, toName = "", fromName = "") {
+function buildGreetingResultUrl(req, videoUrl, toName = "", fromName = "", posterUrl = "", language = "en") {
   const base =
     process.env.PUBLIC_BASE_URL ||
     process.env.RENDER_EXTERNAL_URL ||
@@ -11269,7 +11266,9 @@ function buildGreetingResultUrl(req, videoUrl, toName = "", fromName = "") {
   const params = new URLSearchParams({
     video: videoUrl,
     to: String(toName || ""),
-    from: String(fromName || "")
+    from: String(fromName || ""),
+    poster: String(posterUrl || ""),
+    lang: String(language || "en")
   });
 
   return `${base}/greeting-result?${params.toString()}`;
@@ -11279,6 +11278,9 @@ app.post("/api/greeting/birthday/generate", async (req, res) => {
   try {
     console.log("Birthday generator request received:", req.body);
 
+    const requestLanguage = ["en", "es", "fr", "de", "pt", "ar", "zh"].includes(String(req.body.lang || "en").toLowerCase())
+      ? String(req.body.lang || "en").toLowerCase()
+      : "en";
     const toNameRaw = limitGreetingInput(req.body.to || "Mary", BIRTHDAY_NAME_MAX);
     const fromNameRaw = limitGreetingInput(req.body.from || "John", BIRTHDAY_NAME_MAX);
     const messageRaw = limitGreetingInput(
@@ -11294,9 +11296,11 @@ app.post("/api/greeting/birthday/generate", async (req, res) => {
 
     const messageLines = wrapBirthdayMessage(
       messageRaw,
-      26,
-      3
+      28,
+      5
     ).map((line) => safeGreetingText(line));
+    const messageLength = Array.from(messageRaw).length;
+    const messageFontSize = messageLength > 115 ? 18 : messageLength > 85 ? 20 : messageLength > 55 ? 22 : 24;
 
     const birthdayDir = path.join(__dirname, "templates", "birthday");
     const framePath = path.join(birthdayDir, "frame.png");
@@ -11343,9 +11347,11 @@ app.post("/api/greeting/birthday/generate", async (req, res) => {
       `drawtext=text='♥':x=66+(178-text_w)/2:y=512:fontsize=26:fontcolor=#d63384:borderw=1:bordercolor=white@0.35,` +
       `drawtext=text='${fromName}':x=805+(160-text_w)/2:y=452:fontsize=${fromFontSize}:fontcolor=#7b2cbf:borderw=2:bordercolor=white@0.45,` +
       `drawtext=text='♥':x=805+(160-text_w)/2:y=512:fontsize=26:fontcolor=#7b2cbf:borderw=1:bordercolor=white@0.35,` +
-      `drawtext=text='${messageLines[0]}':x=385+(325-text_w)/2:y=1120:fontsize=26:fontcolor=#3b1f8f:borderw=1:bordercolor=white@0.35,` +
-      `drawtext=text='${messageLines[1]}':x=385+(325-text_w)/2:y=1162:fontsize=26:fontcolor=#3b1f8f:borderw=1:bordercolor=white@0.35,` +
-      `drawtext=text='${messageLines[2]}':x=385+(325-text_w)/2:y=1204:fontsize=26:fontcolor=#3b1f8f:borderw=1:bordercolor=white@0.35[outv]`;
+      `drawtext=text='${messageLines[0]}':x=385+(325-text_w)/2:y=1096:fontsize=${messageFontSize}:fontcolor=#3b1f8f:borderw=1:bordercolor=white@0.35,` +
+      `drawtext=text='${messageLines[1]}':x=385+(325-text_w)/2:y=1130:fontsize=${messageFontSize}:fontcolor=#3b1f8f:borderw=1:bordercolor=white@0.35,` +
+      `drawtext=text='${messageLines[2]}':x=385+(325-text_w)/2:y=1164:fontsize=${messageFontSize}:fontcolor=#3b1f8f:borderw=1:bordercolor=white@0.35,` +
+      `drawtext=text='${messageLines[3]}':x=385+(325-text_w)/2:y=1198:fontsize=${messageFontSize}:fontcolor=#3b1f8f:borderw=1:bordercolor=white@0.35,` +
+      `drawtext=text='${messageLines[4]}':x=385+(325-text_w)/2:y=1232:fontsize=${messageFontSize}:fontcolor=#3b1f8f:borderw=1:bordercolor=white@0.35[outv]`;
 
     const audioFilter = hasPrintoVoice
       ? `[2:a]volume=0.30,apad=pad_dur=10,atrim=0:10[music];` +
@@ -11382,7 +11388,8 @@ app.post("/api/greeting/birthday/generate", async (req, res) => {
     console.log("Birthday layout:", {
       toFontSize,
       fromFontSize,
-      messageLines
+      messageLines,
+      messageFontSize
     });
     console.log("Birthday output path:", outputPath);
     console.log("FFmpeg command:", "ffmpeg " + ffmpegArgs.join(" "));
@@ -11418,27 +11425,45 @@ app.post("/api/greeting/birthday/generate", async (req, res) => {
         console.log("Birthday stable render completed:", fileName);
 
         const downloadUrl = buildGeneratedUrl(req, fileName);
-        const resultUrl = buildGreetingResultUrl(req, downloadUrl, toNameRaw, fromNameRaw);
+        const posterName = fileName.replace(/\.mp4$/i, ".jpg");
+        const posterPath = path.join(generatedDir, posterName);
 
-        if (hasPrintoVoice && fs.existsSync(voicePath)) {
-          fs.unlink(voicePath, () => {});
-        }
+        const finishResponse = () => {
+          const posterUrl = fs.existsSync(posterPath) ? buildGeneratedUrl(req, posterName) : "";
+          const resultUrl = buildGreetingResultUrl(req, downloadUrl, toNameRaw, fromNameRaw, posterUrl, requestLanguage);
 
-        return res.json({
-          ok: true,
-          downloadUrl,
-          resultUrl,
-          shareUrl: resultUrl,
-          file: fileName,
-          hasPrintoVoice,
-          limits: {
-            name: BIRTHDAY_NAME_MAX,
-            message: BIRTHDAY_MESSAGE_MAX
-          },
-          payment: {
-            shopify: process.env.GREETING_SHOPIFY_URL || "https://www.patapata.us/",
-            nigeria: "https://www.patapata.us/pages/africa-payment"
+          if (hasPrintoVoice && fs.existsSync(voicePath)) {
+            fs.unlink(voicePath, () => {});
           }
+
+          return res.json({
+            ok: true,
+            downloadUrl,
+            posterUrl,
+            resultUrl,
+            shareUrl: resultUrl,
+            file: fileName,
+            hasPrintoVoice,
+            limits: {
+              name: BIRTHDAY_NAME_MAX,
+              message: BIRTHDAY_MESSAGE_MAX
+            },
+            payment: {
+              shopify: process.env.GREETING_SHOPIFY_URL || "https://www.patapata.us/",
+              nigeria: "https://www.patapata.us/pages/africa-payment"
+            }
+          });
+        };
+
+        // Create a social-sharing thumbnail from the finished personalized video.
+        execFile("ffmpeg", [
+          "-y", "-nostdin", "-loglevel", "error",
+          "-ss", "1.2", "-i", outputPath,
+          "-frames:v", "1", "-vf", "scale=720:-2",
+          "-q:v", "2", posterPath
+        ], { timeout: 30000, maxBuffer: 1024 * 1024 * 2 }, (posterErr) => {
+          if (posterErr) console.error("Greeting poster generation failed:", posterErr.message);
+          finishResponse();
         });
       }
     );
@@ -11459,6 +11484,7 @@ function findPrintoThemeFile() {
   const configured = String(process.env.PRINTO_THEME_FILE || "").trim();
   const candidates = [
     configured,
+    path.join(templatesDir, "birthday", "birthday_audio.m4a"),
     path.join(templatesDir, "birthday", "music.mp3"),
     path.join(templatesDir, "birthday", "theme.mp3"),
     path.join(templatesDir, "birthday", "printo-theme.mp3"),
@@ -11511,14 +11537,17 @@ function buildGreetingStudioHomePage(language = "en") {
     const previewClass = ready ? "preview birthday" : "preview";
     const localizedOccasion = getGreetingLocalizedOccasion(item, lang);
     const localizedDescription = getGreetingLocalizedDescription(item, lang);
-    const cardBody = `<div class="${previewClass}">${ready ? "" : item.emoji}</div><div class="content"><div class="title">${item.emoji} ${localizedOccasion}</div><div class="sub">${localizedDescription}</div><div class="${ready ? "ready" : "soon"}">${ready ? t.create : t.soon}</div></div>`;
-    return ready ? `<a class="card" href="/birthday?lang=${lang}">${cardBody}</a>` : `<div class="card">${cardBody}</div>`;
+    const action = ready
+      ? `<a class="ready" href="/birthday?lang=${encodeURIComponent(lang)}" aria-label="${t.create}: ${localizedOccasion}">${t.create}</a>`
+      : `<span class="soon">${t.soon}</span>`;
+    const cardBody = `<div class="${previewClass}">${ready ? "" : item.emoji}</div><div class="content"><div class="title">${item.emoji} ${localizedOccasion}</div><div class="sub">${localizedDescription}</div>${action}</div>`;
+    return `<div class="card">${cardBody}</div>`;
   }).join("");
 
   return `<!DOCTYPE html>
 <html lang="${lang}" dir="${dir}">
 <head><meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/><meta name="theme-color" content="#082a8f"/><title>${t.title}</title>
-<style>*{box-sizing:border-box}body{margin:0;font-family:Arial,sans-serif;background:radial-gradient(circle at top,#164ec1 0,#082a8f 38%,#041443 100%);color:#fff;min-height:100vh}.wrap{max-width:1120px;margin:auto;padding:22px 18px 56px}.hero{text-align:center;padding:25px 12px}.hero h1{font-size:42px;margin:0 0 10px}.hero p{font-size:18px;line-height:1.55;max-width:780px;margin:auto}.language{margin:16px auto 0;padding:10px 14px;border-radius:12px;border:0;font-weight:700}.actions{display:flex;gap:12px;justify-content:center;flex-wrap:wrap;margin-top:18px}.btn{border:0;border-radius:999px;padding:13px 20px;font-weight:900;text-decoration:none;cursor:pointer}.music{background:#fff;color:#0b2f89}.app{background:#111;color:#fff}.section-title{text-align:center;font-size:27px;margin:17px 0 20px}.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:20px}.card{background:#fff;color:#13234a;border-radius:22px;overflow:hidden;text-align:center;box-shadow:0 14px 34px rgba(0,0,0,.28);min-height:300px;text-decoration:none}.preview{height:155px;display:grid;place-items:center;font-size:62px;background:linear-gradient(135deg,#eef4ff,#dbeafe)}.preview.birthday{background-image:url('/templates/birthday/frame.png');background-size:cover;background-position:center}.content{padding:18px}.title{font-size:21px;font-weight:900}.sub{font-size:14px;line-height:20px;color:#53617f;min-height:44px;margin-top:8px}.ready,.soon{display:inline-block;padding:10px 18px;border-radius:999px;margin-top:14px;font-weight:900}.ready{background:linear-gradient(90deg,#7b2cbf,#d63384);color:#fff}.soon{background:#e2e8f0;color:#475569}.support{display:flex;gap:12px;justify-content:center;flex-wrap:wrap;margin-top:28px}.support a{color:#fff;text-decoration:none;font-weight:900;padding:14px 20px;border-radius:14px;background:#25D366}.support a:last-child{background:#f59e0b}.footer{text-align:center;margin-top:28px;color:#dbeafe}@media(max-width:820px){.grid{grid-template-columns:repeat(2,1fr)}}@media(max-width:540px){.grid{grid-template-columns:1fr}.hero h1{font-size:30px}.preview{height:165px}}</style></head>
+<style>*{box-sizing:border-box}body{margin:0;font-family:Arial,sans-serif;background:radial-gradient(circle at top,#164ec1 0,#082a8f 38%,#041443 100%);color:#fff;min-height:100vh}.wrap{max-width:1120px;margin:auto;padding:22px 18px 56px}.hero{text-align:center;padding:25px 12px}.hero h1{font-size:42px;margin:0 0 10px}.hero p{font-size:18px;line-height:1.55;max-width:780px;margin:auto}.language{margin:16px auto 0;padding:10px 14px;border-radius:12px;border:0;font-weight:700}.actions{display:flex;gap:12px;justify-content:center;flex-wrap:wrap;margin-top:18px}.btn{border:0;border-radius:999px;padding:13px 20px;font-weight:900;text-decoration:none;cursor:pointer}.music{background:#fff;color:#0b2f89}.app{background:#111;color:#fff}.section-title{text-align:center;font-size:27px;margin:17px 0 20px}.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:20px}.card{background:#fff;color:#13234a;border-radius:22px;overflow:hidden;text-align:center;box-shadow:0 14px 34px rgba(0,0,0,.28);min-height:300px;text-decoration:none}.preview{height:155px;display:grid;place-items:center;font-size:62px;background:linear-gradient(135deg,#eef4ff,#dbeafe)}.preview.birthday{background-image:url('/templates/birthday/frame.png');background-size:cover;background-position:center}.content{padding:18px}.title{font-size:21px;font-weight:900}.sub{font-size:14px;line-height:20px;color:#53617f;min-height:44px;margin-top:8px}.ready,.soon{display:inline-block;padding:10px 18px;border-radius:999px;margin-top:14px;font-weight:900}.ready{display:inline-block;background:linear-gradient(90deg,#7b2cbf,#d63384);color:#fff;text-decoration:none}.soon{background:#e2e8f0;color:#475569}.support{display:flex;gap:12px;justify-content:center;flex-wrap:wrap;margin-top:28px}.support a{color:#fff;text-decoration:none;font-weight:900;padding:14px 20px;border-radius:14px;background:#25D366}.support a:last-child{background:#f59e0b}.footer{text-align:center;margin-top:28px;color:#dbeafe}@media(max-width:820px){.grid{grid-template-columns:repeat(2,1fr)}}@media(max-width:540px){.grid{grid-template-columns:1fr}.hero h1{font-size:30px}.preview{height:165px}}</style></head>
 <body><main class="wrap"><section class="hero"><h1>🎬 ${t.title}</h1><p>${t.hero}</p><select class="language" onchange="location.href='/greetings?lang='+this.value"><option value="en" ${lang==='en'?'selected':''}>English</option><option value="es" ${lang==='es'?'selected':''}>Español</option><option value="fr" ${lang==='fr'?'selected':''}>Français</option><option value="de" ${lang==='de'?'selected':''}>Deutsch</option><option value="pt" ${lang==='pt'?'selected':''}>Português</option><option value="ar" ${lang==='ar'?'selected':''}>العربية</option><option value="zh" ${lang==='zh'?'selected':''}>中文</option></select><div class="actions"><button id="musicBtn" class="btn music">▶ ${t.play}</button><a class="btn app" href="https://play.google.com/store/search?q=Patapata&c=apps" target="_blank" rel="noopener">📱 ${t.app}</a></div></section><h2 class="section-title">${t.choose}</h2><section class="grid">${cards}</section><div class="support"><a href="https://wa.me/18622306637?text=Hello%20Printo%2C%20I%20need%20help%20with%20a%20greeting%20video" target="_blank" rel="noopener">💬 ${t.help}</a><a href="/">🏠 ${t.home}</a></div><div class="footer">Printo Greeting Studio • Powered by PATAPATA LLC</div><audio id="theme" preload="metadata" loop src="/printo-theme"></audio></main><script>const audio=document.getElementById('theme'),btn=document.getElementById('musicBtn');audio.addEventListener('error',()=>{btn.disabled=true;btn.textContent='⚠ ${t.play}'});btn.onclick=async()=>{if(audio.paused){try{audio.load();await audio.play();btn.textContent='⏸ ${t.pause}'}catch(e){btn.textContent='⚠ ${t.play}';alert('Printo theme music could not be played. Please confirm that music.mp3 exists in templates/birthday.')}}else{audio.pause();btn.textContent='▶ ${t.play}'}}</script></body></html>`;
 }
 
@@ -11610,6 +11639,10 @@ app.get("/greeting-result", (req, res) => {
   const videoUrl = String(req.query.video || "");
   const toName = String(req.query.to || "");
   const fromName = String(req.query.from || "");
+  const posterUrl = String(req.query.poster || "");
+  const language = ["en", "es", "fr", "de", "pt", "ar", "zh"].includes(String(req.query.lang || "en").toLowerCase())
+    ? String(req.query.lang || "en").toLowerCase()
+    : "en";
   const shopifyUrl = process.env.GREETING_SHOPIFY_URL || "https://www.patapata.us/";
   const nigeriaUrl = "https://www.patapata.us/pages/africa-payment";
 
@@ -11617,18 +11650,30 @@ app.get("/greeting-result", (req, res) => {
     return res.status(400).send("Invalid or missing greeting video link.");
   }
 
-  const safeVideo = videoUrl.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;");
+  const escapeHtml = (value = "") => String(value).replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  const safeVideo = escapeHtml(videoUrl);
+  const safePoster = posterUrl.startsWith("http") ? escapeHtml(posterUrl) : "";
+  const pageUrl = `${req.protocol}://${req.get("host")}${req.originalUrl}`;
   const title = `A special Printo greeting${toName ? ` for ${toName}` : ""}`;
 
   res.send(`<!DOCTYPE html>
-<html lang="en">
+<html lang="${language}" dir="${language === "ar" ? "rtl" : "ltr"}">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>${title}</title>
-  <meta property="og:title" content="${title}" />
+  <meta property="og:type" content="video.other" />
+  <meta property="og:url" content="${escapeHtml(pageUrl)}" />
+  <meta property="og:title" content="${escapeHtml(title)}" />
   <meta property="og:description" content="Watch this personalized Printo Greeting Studio video." />
+  ${safePoster ? `<meta property="og:image" content="${safePoster}" /><meta property="og:image:width" content="720" /><meta property="og:image:height" content="1080" />` : ""}
   <meta property="og:video" content="${safeVideo}" />
+  <meta property="og:video:secure_url" content="${safeVideo}" />
+  <meta property="og:video:type" content="video/mp4" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="${escapeHtml(title)}" />
+  <meta name="twitter:description" content="Watch this personalized Printo greeting." />
+  ${safePoster ? `<meta name="twitter:image" content="${safePoster}" />` : ""}
   <style>
     *{box-sizing:border-box} body{margin:0;font-family:Arial,sans-serif;background:linear-gradient(180deg,#071b61,#0b63ce);color:#fff;min-height:100vh;padding:22px}
     .wrap{max-width:680px;margin:auto;text-align:center}.brand{font-size:28px;font-weight:900;margin:8px 0}.sub{opacity:.9;margin-bottom:18px}
@@ -11644,7 +11689,7 @@ app.get("/greeting-result", (req, res) => {
     <div class="brand">🎉 Printo Greeting Studio</div>
     <div class="sub">${toName ? `Created for <strong>${toName}</strong>` : "Your personalized greeting is ready"}${fromName ? ` from <strong>${fromName}</strong>` : ""}</div>
     <div class="player">
-      <video id="greetingVideo" playsinline preload="metadata" src="${safeVideo}"></video>
+      <video id="greetingVideo" playsinline preload="metadata" ${safePoster ? `poster="${safePoster}"` : ""} src="${safeVideo}"></video>
       <button id="bigPlay" class="bigPlay" aria-label="Play greeting">▶</button>
     </div>
     <div id="toast" class="toast"></div>
@@ -11664,7 +11709,7 @@ app.get("/greeting-result", (req, res) => {
   </div>
 <script>
   const video=document.getElementById('greetingVideo'); const play=document.getElementById('bigPlay'); const toast=document.getElementById('toast');
-  const pageUrl=window.location.href; const videoUrl=${JSON.stringify(videoUrl)};
+  const pageUrl=${JSON.stringify(pageUrl)}; const videoUrl=${JSON.stringify(videoUrl)};
   const shareText=${JSON.stringify(`🎉 Watch my personalized Printo greeting! Create yours with Printo Greeting Studio. Shopify: ${shopifyUrl} Nigeria payment: ${nigeriaUrl}`)};
   play.onclick=async()=>{try{await video.play();play.style.display='none'}catch(e){toast.textContent='Tap the video controls to play.'}};
   video.onclick=()=>{if(video.paused){video.play();play.style.display='none'}else video.pause()};
