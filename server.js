@@ -11180,38 +11180,53 @@ function quoteDrawtextText(value = "") {
 }
 
 function wrapGreetingName(value = "") {
-  const normalized = String(value || "").replace(/\s+/g, " ").trim();
-  if (!normalized) return ["", ""];
+  const normalized = String(value || "")
+    .replace(/[._]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  if (!normalized) return ["", "", ""];
 
   const words = normalized.split(" ").filter(Boolean);
+  const lines = [];
 
-  // One word: keep it whole on one line and let the font-size logic shrink it.
-  if (words.length === 1) {
-    return [normalized, ""];
+  function splitLongWord(word, maxChars = 10) {
+    const chars = Array.from(word);
+    if (chars.length <= maxChars) return [word];
+
+    const pieces = [];
+    while (chars.length > maxChars) {
+      const remainingSlots = Math.max(1, 3 - lines.length - pieces.length);
+      const ideal = Math.ceil(chars.length / remainingSlots);
+      const take = Math.min(maxChars, Math.max(7, ideal));
+      pieces.push(chars.splice(0, take).join(""));
+    }
+    if (chars.length) pieces.push(chars.join(""));
+    return pieces;
   }
 
-  // Find the most balanced two-line split without cutting words.
-  let bestFirst = words[0];
-  let bestSecond = words.slice(1).join(" ");
-  let bestDifference = Math.abs(
-    Array.from(bestFirst).length - Array.from(bestSecond).length
-  );
+  for (const word of words) {
+    const pieces = splitLongWord(word, 10);
 
-  for (let i = 1; i < words.length; i += 1) {
-    const first = words.slice(0, i).join(" ");
-    const second = words.slice(i).join(" ");
-    const difference = Math.abs(
-      Array.from(first).length - Array.from(second).length
-    );
+    for (const piece of pieces) {
+      if (lines.length >= 3) {
+        lines[2] += piece;
+        continue;
+      }
 
-    if (difference < bestDifference) {
-      bestFirst = first;
-      bestSecond = second;
-      bestDifference = difference;
+      const current = lines[lines.length - 1] || "";
+      const combined = current ? `${current} ${piece}` : piece;
+
+      if (current && Array.from(combined).length <= 11) {
+        lines[lines.length - 1] = combined;
+      } else {
+        lines.push(piece);
+      }
     }
   }
 
-  return [bestFirst, bestSecond];
+  while (lines.length < 3) lines.push("");
+  return lines.slice(0, 3);
 }
 
 function wrapCompleteGreetingMessage(value = "", maxLines = 9) {
@@ -11426,26 +11441,22 @@ app.post("/api/greeting/birthday/generate", async (req, res) => {
     const longestFromLine = Math.max(...fromNameLines.map((line) => Array.from(line).length));
 
     const toFontSize =
-      longestToLine > 16 ? 15 :
-      longestToLine > 14 ? 17 :
-      longestToLine > 12 ? 19 :
-      longestToLine > 10 ? 21 :
-      longestToLine > 8 ? 24 : 27;
+      longestToLine > 10 ? 18 :
+      longestToLine > 8 ? 20 :
+      longestToLine > 6 ? 23 : 26;
     const fromFontSize =
-      longestFromLine > 16 ? 15 :
-      longestFromLine > 14 ? 17 :
-      longestFromLine > 12 ? 19 :
-      longestFromLine > 10 ? 21 :
-      longestFromLine > 8 ? 24 : 27;
+      longestFromLine > 10 ? 18 :
+      longestFromLine > 8 ? 20 :
+      longestFromLine > 6 ? 23 : 26;
 
     // Birthday V2: preserve every accepted character.
     // Nine balanced lines prevent the end of a 160-character message from being cut off.
     const messageLines = wrapCompleteGreetingMessage(messageRaw, 10);
     const messageLength = Array.from(messageRaw).length;
     const messageFontSize =
-      messageLength > 205 ? 12 :
-      messageLength > 190 ? 13 :
-      messageLength > 175 ? 14 :
+      messageLength > 205 ? 11 :
+      messageLength > 190 ? 12 :
+      messageLength > 175 ? 13 :
       messageLength > 155 ? 16 :
       messageLength > 135 ? 17 :
       messageLength > 115 ? 18 :
@@ -11497,22 +11508,24 @@ app.post("/api/greeting/birthday/generate", async (req, res) => {
       `[bg][vid]overlay=281:342,` +
       `drawbox=x=42:y=404:w=180:h=250:color=#f9e7c9@0.96:t=fill,` +
       `drawbox=x=802:y=404:w=180:h=250:color=#f9e7c9@0.96:t=fill,` +
-      `drawtext=text=${quoteDrawtextText(toNameLines[0])}:x=42+(180-text_w)/2:y=478:fontsize=${toFontSize}:fontcolor=#d6333f:borderw=2:bordercolor=white@0.45,` +
-      `drawtext=text=${quoteDrawtextText(toNameLines[1])}:x=42+(180-text_w)/2:y=518:fontsize=${toFontSize}:fontcolor=#d6333f:borderw=2:bordercolor=white@0.45,` +
+      `drawtext=text=${quoteDrawtextText(toNameLines[0])}:x=42+(180-text_w)/2:y=462:fontsize=${toFontSize}:fontcolor=#d6333f:borderw=2:bordercolor=white@0.45,` +
+      `drawtext=text=${quoteDrawtextText(toNameLines[1])}:x=42+(180-text_w)/2:y=496:fontsize=${toFontSize}:fontcolor=#d6333f:borderw=2:bordercolor=white@0.45,` +
+      `drawtext=text=${quoteDrawtextText(toNameLines[2])}:x=42+(180-text_w)/2:y=530:fontsize=${toFontSize}:fontcolor=#d6333f:borderw=2:bordercolor=white@0.45,` +
       `drawtext=text='♥':x=42+(180-text_w)/2:y=590:fontsize=28:fontcolor=#d6333f:borderw=1:bordercolor=white@0.35,` +
-      `drawtext=text=${quoteDrawtextText(fromNameLines[0])}:x=802+(180-text_w)/2:y=478:fontsize=${fromFontSize}:fontcolor=#7b2cbf:borderw=2:bordercolor=white@0.45,` +
-      `drawtext=text=${quoteDrawtextText(fromNameLines[1])}:x=802+(180-text_w)/2:y=518:fontsize=${fromFontSize}:fontcolor=#7b2cbf:borderw=2:bordercolor=white@0.45,` +
+      `drawtext=text=${quoteDrawtextText(fromNameLines[0])}:x=802+(180-text_w)/2:y=462:fontsize=${fromFontSize}:fontcolor=#7b2cbf:borderw=2:bordercolor=white@0.45,` +
+      `drawtext=text=${quoteDrawtextText(fromNameLines[1])}:x=802+(180-text_w)/2:y=496:fontsize=${fromFontSize}:fontcolor=#7b2cbf:borderw=2:bordercolor=white@0.45,` +
+      `drawtext=text=${quoteDrawtextText(fromNameLines[2])}:x=802+(180-text_w)/2:y=530:fontsize=${fromFontSize}:fontcolor=#7b2cbf:borderw=2:bordercolor=white@0.45,` +
       `drawtext=text='♥':x=802+(180-text_w)/2:y=590:fontsize=28:fontcolor=#7b2cbf:borderw=1:bordercolor=white@0.35,` +
-      `drawtext=text=${quoteDrawtextText(messageLines[0])}:x=218+(590-text_w)/2:y=1068:fontsize=${messageFontSize}:fontcolor=#2f267f:borderw=1:bordercolor=white@0.35,` +
-      `drawtext=text=${quoteDrawtextText(messageLines[1])}:x=218+(590-text_w)/2:y=1092:fontsize=${messageFontSize}:fontcolor=#2f267f:borderw=1:bordercolor=white@0.35,` +
-      `drawtext=text=${quoteDrawtextText(messageLines[2])}:x=218+(590-text_w)/2:y=1116:fontsize=${messageFontSize}:fontcolor=#2f267f:borderw=1:bordercolor=white@0.35,` +
-      `drawtext=text=${quoteDrawtextText(messageLines[3])}:x=218+(590-text_w)/2:y=1140:fontsize=${messageFontSize}:fontcolor=#2f267f:borderw=1:bordercolor=white@0.35,` +
-      `drawtext=text=${quoteDrawtextText(messageLines[4])}:x=218+(590-text_w)/2:y=1164:fontsize=${messageFontSize}:fontcolor=#2f267f:borderw=1:bordercolor=white@0.35,` +
-      `drawtext=text=${quoteDrawtextText(messageLines[5])}:x=218+(590-text_w)/2:y=1188:fontsize=${messageFontSize}:fontcolor=#2f267f:borderw=1:bordercolor=white@0.35,` +
-      `drawtext=text=${quoteDrawtextText(messageLines[6])}:x=218+(590-text_w)/2:y=1212:fontsize=${messageFontSize}:fontcolor=#2f267f:borderw=1:bordercolor=white@0.35,` +
-      `drawtext=text=${quoteDrawtextText(messageLines[7])}:x=218+(590-text_w)/2:y=1236:fontsize=${messageFontSize}:fontcolor=#2f267f:borderw=1:bordercolor=white@0.35,` +
-      `drawtext=text=${quoteDrawtextText(messageLines[8])}:x=218+(590-text_w)/2:y=1260:fontsize=${messageFontSize}:fontcolor=#2f267f:borderw=1:bordercolor=white@0.35,` +
-      `drawtext=text=${quoteDrawtextText(messageLines[9])}:x=218+(590-text_w)/2:y=1284:fontsize=${messageFontSize}:fontcolor=#2f267f:borderw=1:bordercolor=white@0.35[outv]`;
+      `drawtext=text=${quoteDrawtextText(messageLines[0])}:x=218+(590-text_w)/2:y=1048:fontsize=${messageFontSize}:fontcolor=#2f267f:borderw=1:bordercolor=white@0.35,` +
+      `drawtext=text=${quoteDrawtextText(messageLines[1])}:x=218+(590-text_w)/2:y=1070:fontsize=${messageFontSize}:fontcolor=#2f267f:borderw=1:bordercolor=white@0.35,` +
+      `drawtext=text=${quoteDrawtextText(messageLines[2])}:x=218+(590-text_w)/2:y=1092:fontsize=${messageFontSize}:fontcolor=#2f267f:borderw=1:bordercolor=white@0.35,` +
+      `drawtext=text=${quoteDrawtextText(messageLines[3])}:x=218+(590-text_w)/2:y=1114:fontsize=${messageFontSize}:fontcolor=#2f267f:borderw=1:bordercolor=white@0.35,` +
+      `drawtext=text=${quoteDrawtextText(messageLines[4])}:x=218+(590-text_w)/2:y=1136:fontsize=${messageFontSize}:fontcolor=#2f267f:borderw=1:bordercolor=white@0.35,` +
+      `drawtext=text=${quoteDrawtextText(messageLines[5])}:x=218+(590-text_w)/2:y=1158:fontsize=${messageFontSize}:fontcolor=#2f267f:borderw=1:bordercolor=white@0.35,` +
+      `drawtext=text=${quoteDrawtextText(messageLines[6])}:x=218+(590-text_w)/2:y=1180:fontsize=${messageFontSize}:fontcolor=#2f267f:borderw=1:bordercolor=white@0.35,` +
+      `drawtext=text=${quoteDrawtextText(messageLines[7])}:x=218+(590-text_w)/2:y=1202:fontsize=${messageFontSize}:fontcolor=#2f267f:borderw=1:bordercolor=white@0.35,` +
+      `drawtext=text=${quoteDrawtextText(messageLines[8])}:x=218+(590-text_w)/2:y=1224:fontsize=${messageFontSize}:fontcolor=#2f267f:borderw=1:bordercolor=white@0.35,` +
+      `drawtext=text=${quoteDrawtextText(messageLines[9])}:x=218+(590-text_w)/2:y=1246:fontsize=${messageFontSize}:fontcolor=#2f267f:borderw=1:bordercolor=white@0.35[outv]`;
 
     const audioFilter = hasPrintoVoice
       ? `[2:a]volume=0.30,apad=pad_dur=10,atrim=0:10[music];` +
@@ -11978,16 +11991,16 @@ function renderGreetingResult(req, res) {
       <a class="btn download full" href="${safeVideo}" download>📥 Download Video</a>
       <button class="btn whatsapp" onclick="shareWhatsApp()">📱 WhatsApp</button>
       <button class="btn facebook" onclick="shareFacebook()">📘 Facebook</button>
-      <button class="btn social" onclick="sharePlatform('instagram')">📸 Instagram</button>
-      <button class="btn youtube" onclick="sharePlatform('youtube')">▶ YouTube</button>
-      <button class="btn tiktok" onclick="sharePlatform('tiktok')">🎵 TikTok</button>
+      <button class="btn social" onclick="downloadThenOpen('instagram')">📸 Instagram</button>
+      <button class="btn youtube" onclick="downloadThenOpen('youtube')">▶ YouTube</button>
+      <button class="btn tiktok" onclick="downloadThenOpen('tiktok')">🎵 TikTok</button>
       <button class="btn email" onclick="shareEmail()">📧 Email</button>
       <button class="btn copy full" onclick="copyLink()">🔗 Copy Short Greeting Link</button>
       <a class="btn social full" href="/greetings" target="_blank" rel="noopener">✨ Create Your Own Printo Greeting</a>
       <a class="btn shopify" href="${shopifyUrl}" target="_blank" rel="noopener">🛒 Buy via Shopify</a>
       <a class="btn nigeria" href="${nigeriaUrl}" target="_blank" rel="noopener">🇳🇬 Nigeria Payment</a>
     </div>
-    <div class="note">Instagram, YouTube and TikTok normally require you to download the video first and then select it inside their app or upload page.</div>
+    <div class="note">Facebook and WhatsApp share the short greeting link and preview. Instagram, YouTube and TikTok download the MP4 first; upload the downloaded video in the app and paste the copied short link into the caption or description.</div>
   </div>
 <script>
   const video=document.getElementById('greetingVideo'); const play=document.getElementById('bigPlay'); const toast=document.getElementById('toast');
@@ -12002,26 +12015,7 @@ function renderGreetingResult(req, res) {
   video.onclick=()=>{if(video.paused){video.play();play.style.display='none'}else video.pause()};
   video.onended=()=>{play.textContent='↻';play.style.display='block'};
   function shareWhatsApp(){window.open('https://wa.me/?text='+encodeURIComponent(shareText+'\\n\\n'+pageUrl),'_blank')}
-  function shareFacebook(){
-    window.open(
-      'https://www.facebook.com/sharer/sharer.php?u='+encodeURIComponent(pageUrl),
-      '_blank'
-    );
-  }
-
-  async function sharePlatform(platform){
-    const platformNames={
-      instagram:'Instagram',
-      youtube:'YouTube',
-      tiktok:'TikTok'
-    };
-    const fallbackUrls={
-      instagram:'https://www.instagram.com/',
-      youtube:'https://www.youtube.com/upload',
-      tiktok:'https://www.tiktok.com/upload'
-    };
-    const platformName=platformNames[platform]||'Social Media';
-
+  async function shareFacebook(){
     try{
       if(navigator.share){
         await navigator.share({
@@ -12031,14 +12025,53 @@ function renderGreetingResult(req, res) {
         });
         return;
       }
-
-      await navigator.clipboard.writeText(shareText+'\\n\\n'+pageUrl);
-      toast.textContent='Greeting link copied. Paste it into '+platformName+'.';
-      setTimeout(()=>window.open(fallbackUrls[platform]||pageUrl,'_blank'),500);
     }catch(error){
       if(error && error.name==='AbortError') return;
-      prompt('Copy this greeting link and paste it into '+platformName+':',pageUrl);
     }
+
+    window.open(
+      'https://www.facebook.com/sharer/sharer.php?u='+encodeURIComponent(pageUrl),
+      '_blank'
+    );
+  }
+
+  async function downloadThenOpen(platform){
+    const platformNames={
+      instagram:'Instagram',
+      youtube:'YouTube',
+      tiktok:'TikTok'
+    };
+    const platformUrls={
+      instagram:'https://www.instagram.com/',
+      youtube:'https://www.youtube.com/upload',
+      tiktok:'https://www.tiktok.com/upload'
+    };
+
+    const platformName=platformNames[platform]||'Social Media';
+
+    try{
+      await navigator.clipboard.writeText(
+        shareText+'\\n\\n'+pageUrl
+      );
+    }catch(error){
+      // The download still continues if clipboard permission is unavailable.
+    }
+
+    const link=document.createElement('a');
+    link.href=videoUrl;
+    link.download='printo-personalized-greeting.mp4';
+    link.rel='noopener';
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+
+    toast.textContent=
+      'Video downloading. Upload it to '+platformName+
+      '. The short greeting link was copied for your caption.';
+
+    setTimeout(()=>{
+      window.open(platformUrls[platform]||pageUrl,'_blank');
+    },1200);
   }
 
   function shareEmail(){
