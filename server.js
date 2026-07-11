@@ -121,6 +121,22 @@ const app = express();
 app.use("/uploads", express.static(uploadsDir));
 app.use("/generated", express.static(generatedDir));
 
+app.get("/greeting-assets/birthday-v2.png", (req, res) => {
+  const assetPath = path.join(
+    __dirname,
+    "templates",
+    "birthday",
+    "Birthday_Image_V2.png"
+  );
+
+  if (!fs.existsSync(assetPath)) {
+    return res.status(404).send("Birthday preview image not found.");
+  }
+
+  res.setHeader("Cache-Control", "public, max-age=3600");
+  return res.sendFile(assetPath);
+});
+
 app.use(express.static("public"));
 app.get("/", (req, res) => {
   res.sendFile(path.join(__dirname, "public", "index.html"));
@@ -11511,16 +11527,16 @@ app.post("/api/greeting/birthday/generate", async (req, res) => {
       `drawtext=text=${quoteDrawtextText(fromNameLines[0])}:x=802+(180-text_w)/2:y=478:fontsize=${fromFontSize}:fontcolor=#7b2cbf:borderw=2:bordercolor=white@0.45,` +
       `drawtext=text=${quoteDrawtextText(fromNameLines[1])}:x=802+(180-text_w)/2:y=518:fontsize=${fromFontSize}:fontcolor=#7b2cbf:borderw=2:bordercolor=white@0.45,` +
       `drawtext=text='♥':x=802+(180-text_w)/2:y=590:fontsize=28:fontcolor=#7b2cbf:borderw=1:bordercolor=white@0.35,` +
-      `drawtext=text=${quoteDrawtextText(messageLines[0])}:x=218+(590-text_w)/2:y=1068:fontsize=${messageFontSize}:fontcolor=#2f267f:borderw=1:bordercolor=white@0.35,` +
-      `drawtext=text=${quoteDrawtextText(messageLines[1])}:x=218+(590-text_w)/2:y=1090:fontsize=${messageFontSize}:fontcolor=#2f267f:borderw=1:bordercolor=white@0.35,` +
-      `drawtext=text=${quoteDrawtextText(messageLines[2])}:x=218+(590-text_w)/2:y=1112:fontsize=${messageFontSize}:fontcolor=#2f267f:borderw=1:bordercolor=white@0.35,` +
-      `drawtext=text=${quoteDrawtextText(messageLines[3])}:x=218+(590-text_w)/2:y=1134:fontsize=${messageFontSize}:fontcolor=#2f267f:borderw=1:bordercolor=white@0.35,` +
-      `drawtext=text=${quoteDrawtextText(messageLines[4])}:x=218+(590-text_w)/2:y=1156:fontsize=${messageFontSize}:fontcolor=#2f267f:borderw=1:bordercolor=white@0.35,` +
-      `drawtext=text=${quoteDrawtextText(messageLines[5])}:x=218+(590-text_w)/2:y=1178:fontsize=${messageFontSize}:fontcolor=#2f267f:borderw=1:bordercolor=white@0.35,` +
-      `drawtext=text=${quoteDrawtextText(messageLines[6])}:x=218+(590-text_w)/2:y=1200:fontsize=${messageFontSize}:fontcolor=#2f267f:borderw=1:bordercolor=white@0.35,` +
-      `drawtext=text=${quoteDrawtextText(messageLines[7])}:x=218+(590-text_w)/2:y=1222:fontsize=${messageFontSize}:fontcolor=#2f267f:borderw=1:bordercolor=white@0.35,` +
-      `drawtext=text=${quoteDrawtextText(messageLines[8])}:x=218+(590-text_w)/2:y=1244:fontsize=${messageFontSize}:fontcolor=#2f267f:borderw=1:bordercolor=white@0.35,` +
-      `drawtext=text=${quoteDrawtextText(messageLines[9])}:x=218+(590-text_w)/2:y=1266:fontsize=${messageFontSize}:fontcolor=#2f267f:borderw=1:bordercolor=white@0.35[outv]`;
+      `drawtext=text=${quoteDrawtextText(messageLines[0])}:x=218+(590-text_w)/2:y=1082:fontsize=${messageFontSize}:fontcolor=#2f267f:borderw=1:bordercolor=white@0.35,` +
+      `drawtext=text=${quoteDrawtextText(messageLines[1])}:x=218+(590-text_w)/2:y=1104:fontsize=${messageFontSize}:fontcolor=#2f267f:borderw=1:bordercolor=white@0.35,` +
+      `drawtext=text=${quoteDrawtextText(messageLines[2])}:x=218+(590-text_w)/2:y=1126:fontsize=${messageFontSize}:fontcolor=#2f267f:borderw=1:bordercolor=white@0.35,` +
+      `drawtext=text=${quoteDrawtextText(messageLines[3])}:x=218+(590-text_w)/2:y=1148:fontsize=${messageFontSize}:fontcolor=#2f267f:borderw=1:bordercolor=white@0.35,` +
+      `drawtext=text=${quoteDrawtextText(messageLines[4])}:x=218+(590-text_w)/2:y=1170:fontsize=${messageFontSize}:fontcolor=#2f267f:borderw=1:bordercolor=white@0.35,` +
+      `drawtext=text=${quoteDrawtextText(messageLines[5])}:x=218+(590-text_w)/2:y=1192:fontsize=${messageFontSize}:fontcolor=#2f267f:borderw=1:bordercolor=white@0.35,` +
+      `drawtext=text=${quoteDrawtextText(messageLines[6])}:x=218+(590-text_w)/2:y=1214:fontsize=${messageFontSize}:fontcolor=#2f267f:borderw=1:bordercolor=white@0.35,` +
+      `drawtext=text=${quoteDrawtextText(messageLines[7])}:x=218+(590-text_w)/2:y=1236:fontsize=${messageFontSize}:fontcolor=#2f267f:borderw=1:bordercolor=white@0.35,` +
+      `drawtext=text=${quoteDrawtextText(messageLines[8])}:x=218+(590-text_w)/2:y=1258:fontsize=${messageFontSize}:fontcolor=#2f267f:borderw=1:bordercolor=white@0.35,` +
+      `drawtext=text=${quoteDrawtextText(messageLines[9])}:x=218+(590-text_w)/2:y=1280:fontsize=${messageFontSize}:fontcolor=#2f267f:borderw=1:bordercolor=white@0.35[outv]`;
 
     const audioFilter = hasPrintoVoice
       ? `[2:a]volume=0.30,apad=pad_dur=10,atrim=0:10[music];` +
@@ -11603,12 +11619,20 @@ app.post("/api/greeting/birthday/generate", async (req, res) => {
         const sharePosterName = fileName.replace(/\.mp4$/i, "_share.jpg");
         const sharePosterPath = path.join(generatedDir, sharePosterName);
 
+        const greetingId = createShortGreetingId();
+        const fallbackPosterUrl = `${String(
+          process.env.PUBLIC_BASE_URL ||
+          process.env.RENDER_EXTERNAL_URL ||
+          `${req.protocol}://${req.get("host")}`
+        ).replace(/\/$/, "")}/greeting-assets/birthday-v2.png`;
+
         const finishResponse = () => {
-          const posterUrl = fs.existsSync(posterPath) ? buildGeneratedUrl(req, posterName) : "";
+          const posterUrl = fs.existsSync(posterPath)
+            ? buildGeneratedUrl(req, posterName)
+            : fallbackPosterUrl;
           const sharePosterUrl = fs.existsSync(sharePosterPath)
             ? buildGeneratedUrl(req, sharePosterName)
             : posterUrl;
-          const greetingId = createShortGreetingId();
           const fullResultUrl = buildGreetingResultUrl(
             req,
             downloadUrl,
@@ -11683,6 +11707,23 @@ app.post("/api/greeting/birthday/generate", async (req, res) => {
           ], { timeout: 30000, maxBuffer: 1024 * 1024 * 2 }, (sharePosterErr) => {
             if (sharePosterErr) {
               console.error("Social greeting poster generation failed:", sharePosterErr.message);
+              return;
+            }
+
+            try {
+              const metadata = loadGreetingMetadata(greetingId) || {};
+              saveGreetingMetadata(greetingId, {
+                ...metadata,
+                posterUrl: buildGeneratedUrl(req, posterName),
+                sharePosterUrl: buildGeneratedUrl(req, sharePosterName),
+                updatedAt: new Date().toISOString()
+              });
+              console.log("Greeting social preview metadata updated:", greetingId);
+            } catch (metadataError) {
+              console.error(
+                "Greeting social preview metadata update failed:",
+                metadataError.message
+              );
             }
           });
         });
@@ -12088,6 +12129,7 @@ function renderGreetingResult(req, res) {
 }
 
 app.get("/g/:id", (req, res) => {
+  res.setHeader("Cache-Control", "public, max-age=60, must-revalidate");
   const metadata = loadGreetingMetadata(req.params.id);
   if (!metadata || !metadata.videoUrl) {
     return res.status(404).send("This Printo greeting link is unavailable or has expired.");
