@@ -11296,7 +11296,7 @@ function wrapBirthdayMessage(value = "", maxChars = 28, maxLines = 5) {
 }
 
 const BIRTHDAY_NAME_MAX = 24;
-const BIRTHDAY_MESSAGE_MAX = 160;
+const BIRTHDAY_MESSAGE_MAX = 220;
 
 function limitGreetingInput(value = "", maxLength = 80) {
   return Array.from(
@@ -11440,12 +11440,15 @@ app.post("/api/greeting/birthday/generate", async (req, res) => {
 
     // Birthday V2: preserve every accepted character.
     // Nine balanced lines prevent the end of a 160-character message from being cut off.
-    const messageLines = wrapCompleteGreetingMessage(messageRaw, 9);
+    const messageLines = wrapCompleteGreetingMessage(messageRaw, 11);
     const messageLength = Array.from(messageRaw).length;
     const messageFontSize =
-      messageLength > 150 ? 17 :
-      messageLength > 135 ? 18 :
-      messageLength > 115 ? 19 :
+      messageLength > 205 ? 13 :
+      messageLength > 190 ? 14 :
+      messageLength > 175 ? 15 :
+      messageLength > 155 ? 16 :
+      messageLength > 135 ? 17 :
+      messageLength > 115 ? 18 :
       messageLength > 90 ? 20 :
       messageLength > 65 ? 22 : 25;
 
@@ -11500,15 +11503,17 @@ app.post("/api/greeting/birthday/generate", async (req, res) => {
       `drawtext=text=${quoteDrawtextText(fromNameLines[0])}:x=802+(180-text_w)/2:y=478:fontsize=${fromFontSize}:fontcolor=#7b2cbf:borderw=2:bordercolor=white@0.45,` +
       `drawtext=text=${quoteDrawtextText(fromNameLines[1])}:x=802+(180-text_w)/2:y=518:fontsize=${fromFontSize}:fontcolor=#7b2cbf:borderw=2:bordercolor=white@0.45,` +
       `drawtext=text='♥':x=802+(180-text_w)/2:y=590:fontsize=28:fontcolor=#7b2cbf:borderw=1:bordercolor=white@0.35,` +
-      `drawtext=text=${quoteDrawtextText(messageLines[0])}:x=218+(590-text_w)/2:y=1082:fontsize=${messageFontSize}:fontcolor=#2f267f:borderw=1:bordercolor=white@0.35,` +
-      `drawtext=text=${quoteDrawtextText(messageLines[1])}:x=218+(590-text_w)/2:y=1108:fontsize=${messageFontSize}:fontcolor=#2f267f:borderw=1:bordercolor=white@0.35,` +
-      `drawtext=text=${quoteDrawtextText(messageLines[2])}:x=218+(590-text_w)/2:y=1134:fontsize=${messageFontSize}:fontcolor=#2f267f:borderw=1:bordercolor=white@0.35,` +
-      `drawtext=text=${quoteDrawtextText(messageLines[3])}:x=218+(590-text_w)/2:y=1160:fontsize=${messageFontSize}:fontcolor=#2f267f:borderw=1:bordercolor=white@0.35,` +
-      `drawtext=text=${quoteDrawtextText(messageLines[4])}:x=218+(590-text_w)/2:y=1186:fontsize=${messageFontSize}:fontcolor=#2f267f:borderw=1:bordercolor=white@0.35,` +
-      `drawtext=text=${quoteDrawtextText(messageLines[5])}:x=218+(590-text_w)/2:y=1212:fontsize=${messageFontSize}:fontcolor=#2f267f:borderw=1:bordercolor=white@0.35,` +
-      `drawtext=text=${quoteDrawtextText(messageLines[6])}:x=218+(590-text_w)/2:y=1238:fontsize=${messageFontSize}:fontcolor=#2f267f:borderw=1:bordercolor=white@0.35,` +
-      `drawtext=text=${quoteDrawtextText(messageLines[7])}:x=218+(590-text_w)/2:y=1264:fontsize=${messageFontSize}:fontcolor=#2f267f:borderw=1:bordercolor=white@0.35,` +
-      `drawtext=text=${quoteDrawtextText(messageLines[8])}:x=218+(590-text_w)/2:y=1290:fontsize=${messageFontSize}:fontcolor=#2f267f:borderw=1:bordercolor=white@0.35[outv]`;
+      `drawtext=text=${quoteDrawtextText(messageLines[0])}:x=218+(590-text_w)/2:y=1074:fontsize=${messageFontSize}:fontcolor=#2f267f:borderw=1:bordercolor=white@0.35,` +
+      `drawtext=text=${quoteDrawtextText(messageLines[1])}:x=218+(590-text_w)/2:y=1098:fontsize=${messageFontSize}:fontcolor=#2f267f:borderw=1:bordercolor=white@0.35,` +
+      `drawtext=text=${quoteDrawtextText(messageLines[2])}:x=218+(590-text_w)/2:y=1122:fontsize=${messageFontSize}:fontcolor=#2f267f:borderw=1:bordercolor=white@0.35,` +
+      `drawtext=text=${quoteDrawtextText(messageLines[3])}:x=218+(590-text_w)/2:y=1146:fontsize=${messageFontSize}:fontcolor=#2f267f:borderw=1:bordercolor=white@0.35,` +
+      `drawtext=text=${quoteDrawtextText(messageLines[4])}:x=218+(590-text_w)/2:y=1170:fontsize=${messageFontSize}:fontcolor=#2f267f:borderw=1:bordercolor=white@0.35,` +
+      `drawtext=text=${quoteDrawtextText(messageLines[5])}:x=218+(590-text_w)/2:y=1194:fontsize=${messageFontSize}:fontcolor=#2f267f:borderw=1:bordercolor=white@0.35,` +
+      `drawtext=text=${quoteDrawtextText(messageLines[6])}:x=218+(590-text_w)/2:y=1218:fontsize=${messageFontSize}:fontcolor=#2f267f:borderw=1:bordercolor=white@0.35,` +
+      `drawtext=text=${quoteDrawtextText(messageLines[7])}:x=218+(590-text_w)/2:y=1242:fontsize=${messageFontSize}:fontcolor=#2f267f:borderw=1:bordercolor=white@0.35,` +
+      `drawtext=text=${quoteDrawtextText(messageLines[8])}:x=218+(590-text_w)/2:y=1266:fontsize=${messageFontSize}:fontcolor=#2f267f:borderw=1:bordercolor=white@0.35,` +
+      `drawtext=text=${quoteDrawtextText(messageLines[9])}:x=218+(590-text_w)/2:y=1290:fontsize=${messageFontSize}:fontcolor=#2f267f:borderw=1:bordercolor=white@0.35,` +
+      `drawtext=text=${quoteDrawtextText(messageLines[10])}:x=218+(590-text_w)/2:y=1314:fontsize=${messageFontSize}:fontcolor=#2f267f:borderw=1:bordercolor=white@0.35[outv]`;
 
     const audioFilter = hasPrintoVoice
       ? `[2:a]volume=0.30,apad=pad_dur=10,atrim=0:10[music];` +
@@ -11588,9 +11593,14 @@ app.post("/api/greeting/birthday/generate", async (req, res) => {
         const downloadUrl = buildGeneratedUrl(req, fileName);
         const posterName = fileName.replace(/\.mp4$/i, ".jpg");
         const posterPath = path.join(generatedDir, posterName);
+        const sharePosterName = fileName.replace(/\.mp4$/i, "_share.jpg");
+        const sharePosterPath = path.join(generatedDir, sharePosterName);
 
         const finishResponse = () => {
           const posterUrl = fs.existsSync(posterPath) ? buildGeneratedUrl(req, posterName) : "";
+          const sharePosterUrl = fs.existsSync(sharePosterPath)
+            ? buildGeneratedUrl(req, sharePosterName)
+            : posterUrl;
           const greetingId = createShortGreetingId();
           const fullResultUrl = buildGreetingResultUrl(
             req,
@@ -11605,6 +11615,7 @@ app.post("/api/greeting/birthday/generate", async (req, res) => {
           saveGreetingMetadata(greetingId, {
             videoUrl: downloadUrl,
             posterUrl,
+            sharePosterUrl,
             toName: toNameRaw,
             fromName: fromNameRaw,
             language: requestLanguage,
@@ -11620,6 +11631,7 @@ app.post("/api/greeting/birthday/generate", async (req, res) => {
             ok: true,
             downloadUrl,
             posterUrl,
+            sharePosterUrl,
             resultUrl,
             shareUrl: resultUrl,
             fullResultUrl,
@@ -11637,17 +11649,33 @@ app.post("/api/greeting/birthday/generate", async (req, res) => {
           });
         };
 
-        // Create a social-sharing thumbnail from the finished personalized video.
+        // First create a clean poster for the greeting page.
         execFile("ffmpeg", [
           "-y", "-nostdin", "-loglevel", "error",
           "-ss", "1.2", "-i", outputPath,
           "-frames:v", "1",
-          "-vf",
-          "scale=720:-2,drawtext=text='▶':x=(w-text_w)/2:y=330:fontsize=205:fontcolor=white:box=1:boxcolor=#0754b8@0.82:boxborderw=58:borderw=6:bordercolor=white@0.98",
+          "-vf", "scale=720:-2",
           "-q:v", "2", posterPath
-        ], { timeout: 30000, maxBuffer: 1024 * 1024 * 2 }, (posterErr) => {
-          if (posterErr) console.error("Greeting poster generation failed:", posterErr.message);
-          finishResponse();
+        ], { timeout: 30000, maxBuffer: 1024 * 1024 * 2 }, (cleanPosterErr) => {
+          if (cleanPosterErr) {
+            console.error("Clean greeting poster generation failed:", cleanPosterErr.message);
+            return finishResponse();
+          }
+
+          // Then create the social-sharing poster with one large play icon.
+          execFile("ffmpeg", [
+            "-y", "-nostdin", "-loglevel", "error",
+            "-i", posterPath,
+            "-frames:v", "1",
+            "-vf",
+            "drawtext=text='▶':x=(w-text_w)/2:y=330:fontsize=205:fontcolor=white:box=1:boxcolor=#0754b8@0.82:boxborderw=58:borderw=6:bordercolor=white@0.98",
+            "-q:v", "2", sharePosterPath
+          ], { timeout: 30000, maxBuffer: 1024 * 1024 * 2 }, (sharePosterErr) => {
+            if (sharePosterErr) {
+              console.error("Social greeting poster generation failed:", sharePosterErr.message);
+            }
+            finishResponse();
+          });
         });
       }
     );
@@ -11850,6 +11878,9 @@ function buildBirthdayGeneratorPage(language = "en") {
   to.addEventListener('input',()=>updateCounter(to,toCount,limits.name));
   from.addEventListener('input',()=>updateCounter(from,fromCount,limits.name));
   message.addEventListener('input',()=>updateCounter(message,messageCount,limits.message));
+  updateCounter(to,toCount,limits.name);
+  updateCounter(from,fromCount,limits.name);
+  updateCounter(message,messageCount,limits.message);
   document.getElementById('birthdayForm').addEventListener('submit',async function(e){
     e.preventDefault();
     button.disabled=true;button.textContent='⏳ '+ui.generating;statusBox.textContent=ui.waiting;
@@ -11882,6 +11913,7 @@ function renderGreetingResult(req, res) {
   const toName = String(req.query.to || "");
   const fromName = String(req.query.from || "");
   const posterUrl = String(req.query.poster || "");
+  const sharePosterUrl = String(req.query.sharePoster || req.query.poster || "");
   const language = ["en", "es", "fr", "de", "pt", "ar", "zh"].includes(String(req.query.lang || "en").toLowerCase())
     ? String(req.query.lang || "en").toLowerCase()
     : "en";
@@ -11895,6 +11927,9 @@ function renderGreetingResult(req, res) {
   const escapeHtml = (value = "") => String(value).replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
   const safeVideo = escapeHtml(videoUrl);
   const safePoster = posterUrl.startsWith("http") ? escapeHtml(posterUrl) : "";
+  const safeSharePoster = sharePosterUrl.startsWith("http")
+    ? escapeHtml(sharePosterUrl)
+    : safePoster;
   const publicBase = String(
     process.env.PUBLIC_BASE_URL ||
     process.env.RENDER_EXTERNAL_URL ||
@@ -11913,14 +11948,14 @@ function renderGreetingResult(req, res) {
   <meta property="og:url" content="${escapeHtml(pageUrl)}" />
   <meta property="og:title" content="${escapeHtml(title)}" />
   <meta property="og:description" content="Tap the large Play button to watch, then create your own personalized Printo greeting." />
-  ${safePoster ? `<meta property="og:image" content="${safePoster}" /><meta property="og:image:secure_url" content="${safePoster}" /><meta property="og:image:type" content="image/jpeg" /><meta property="og:image:width" content="720" /><meta property="og:image:height" content="1080" /><meta property="og:image:alt" content="Personalized Printo greeting card with play button" />` : ""}
+  ${safeSharePoster ? `<meta property="og:image" content="${safeSharePoster}" /><meta property="og:image:secure_url" content="${safeSharePoster}" /><meta property="og:image:type" content="image/jpeg" /><meta property="og:image:width" content="720" /><meta property="og:image:height" content="1080" /><meta property="og:image:alt" content="Personalized Printo greeting card with play button" />` : ""}
   <meta property="og:video" content="${safeVideo}" />
   <meta property="og:video:secure_url" content="${safeVideo}" />
   <meta property="og:video:type" content="video/mp4" />\n  <meta property="og:video:width" content="1024" />\n  <meta property="og:video:height" content="1536" />
   <meta name="twitter:card" content="summary_large_image" />
   <meta name="twitter:title" content="${escapeHtml(title)}" />
   <meta name="twitter:description" content="Tap the preview to watch this personalized Printo greeting." />
-  ${safePoster ? `<meta name="twitter:image" content="${safePoster}" />` : ""}
+  ${safeSharePoster ? `<meta name="twitter:image" content="${safeSharePoster}" />` : ""}
   <style>
     *{box-sizing:border-box} body{margin:0;font-family:Arial,sans-serif;background:linear-gradient(180deg,#071b61,#0b63ce);color:#fff;min-height:100vh;padding:22px}
     .wrap{max-width:680px;margin:auto;text-align:center}.brand{font-size:28px;font-weight:900;margin:8px 0}.sub{opacity:.9;margin-bottom:18px}
@@ -11987,6 +12022,7 @@ app.get("/g/:id", (req, res) => {
   req.query = {
     video: metadata.videoUrl,
     poster: metadata.posterUrl || "",
+    sharePoster: metadata.sharePosterUrl || metadata.posterUrl || "",
     to: metadata.toName || "",
     from: metadata.fromName || "",
     lang: metadata.language || "en"
