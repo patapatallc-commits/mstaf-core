@@ -11204,13 +11204,14 @@ function wrapBirthdayMessage(value = "", maxChars = 28, maxLines = 5) {
 }
 
 const BIRTHDAY_NAME_MAX = 16;
-const BIRTHDAY_MESSAGE_MAX = 140;
+const BIRTHDAY_MESSAGE_MAX = 160;
 
 function limitGreetingInput(value = "", maxLength = 80) {
-  return String(value || "")
-    .replace(/\s+/g, " ")
-    .trim()
-    .slice(0, maxLength);
+  return Array.from(
+    String(value || "")
+      .replace(/\s+/g, " ")
+      .trim()
+  ).slice(0, maxLength).join("");
 }
 
 
@@ -11278,8 +11279,8 @@ app.post("/api/greeting/birthday/generate", async (req, res) => {
   try {
     console.log("Birthday generator request received:", req.body);
 
-    const requestLanguage = ["en", "es", "fr", "de", "pt", "ar", "zh"].includes(String(req.body.lang || "en").toLowerCase())
-      ? String(req.body.lang || "en").toLowerCase()
+    const requestLanguage = ["en", "es", "fr", "de", "pt", "ar", "zh"].includes(String(req.body.language || req.body.lang || "en").toLowerCase())
+      ? String(req.body.language || req.body.lang || "en").toLowerCase()
       : "en";
     const toNameRaw = limitGreetingInput(req.body.to || "Mary", BIRTHDAY_NAME_MAX);
     const fromNameRaw = limitGreetingInput(req.body.from || "John", BIRTHDAY_NAME_MAX);
@@ -11296,11 +11297,15 @@ app.post("/api/greeting/birthday/generate", async (req, res) => {
 
     const messageLines = wrapBirthdayMessage(
       messageRaw,
-      28,
-      5
+      25,
+      6
     ).map((line) => safeGreetingText(line));
     const messageLength = Array.from(messageRaw).length;
-    const messageFontSize = messageLength > 115 ? 18 : messageLength > 85 ? 20 : messageLength > 55 ? 22 : 24;
+    const messageFontSize =
+      messageLength > 145 ? 15 :
+      messageLength > 120 ? 16 :
+      messageLength > 95 ? 18 :
+      messageLength > 70 ? 20 : 22;
 
     const birthdayDir = path.join(__dirname, "templates", "birthday");
     const framePath = path.join(birthdayDir, "frame.png");
@@ -11347,11 +11352,12 @@ app.post("/api/greeting/birthday/generate", async (req, res) => {
       `drawtext=text='♥':x=66+(178-text_w)/2:y=512:fontsize=26:fontcolor=#d63384:borderw=1:bordercolor=white@0.35,` +
       `drawtext=text='${fromName}':x=805+(160-text_w)/2:y=452:fontsize=${fromFontSize}:fontcolor=#7b2cbf:borderw=2:bordercolor=white@0.45,` +
       `drawtext=text='♥':x=805+(160-text_w)/2:y=512:fontsize=26:fontcolor=#7b2cbf:borderw=1:bordercolor=white@0.35,` +
-      `drawtext=text='${messageLines[0]}':x=385+(325-text_w)/2:y=1096:fontsize=${messageFontSize}:fontcolor=#3b1f8f:borderw=1:bordercolor=white@0.35,` +
-      `drawtext=text='${messageLines[1]}':x=385+(325-text_w)/2:y=1130:fontsize=${messageFontSize}:fontcolor=#3b1f8f:borderw=1:bordercolor=white@0.35,` +
-      `drawtext=text='${messageLines[2]}':x=385+(325-text_w)/2:y=1164:fontsize=${messageFontSize}:fontcolor=#3b1f8f:borderw=1:bordercolor=white@0.35,` +
-      `drawtext=text='${messageLines[3]}':x=385+(325-text_w)/2:y=1198:fontsize=${messageFontSize}:fontcolor=#3b1f8f:borderw=1:bordercolor=white@0.35,` +
-      `drawtext=text='${messageLines[4]}':x=385+(325-text_w)/2:y=1232:fontsize=${messageFontSize}:fontcolor=#3b1f8f:borderw=1:bordercolor=white@0.35[outv]`;
+      `drawtext=text='${messageLines[0]}':x=375+(345-text_w)/2:y=1084:fontsize=${messageFontSize}:fontcolor=#3b1f8f:borderw=1:bordercolor=white@0.35,` +
+      `drawtext=text='${messageLines[1]}':x=375+(345-text_w)/2:y=1112:fontsize=${messageFontSize}:fontcolor=#3b1f8f:borderw=1:bordercolor=white@0.35,` +
+      `drawtext=text='${messageLines[2]}':x=375+(345-text_w)/2:y=1140:fontsize=${messageFontSize}:fontcolor=#3b1f8f:borderw=1:bordercolor=white@0.35,` +
+      `drawtext=text='${messageLines[3]}':x=375+(345-text_w)/2:y=1168:fontsize=${messageFontSize}:fontcolor=#3b1f8f:borderw=1:bordercolor=white@0.35,` +
+      `drawtext=text='${messageLines[4]}':x=375+(345-text_w)/2:y=1196:fontsize=${messageFontSize}:fontcolor=#3b1f8f:borderw=1:bordercolor=white@0.35,` +
+      `drawtext=text='${messageLines[5]}':x=375+(345-text_w)/2:y=1224:fontsize=${messageFontSize}:fontcolor=#3b1f8f:borderw=1:bordercolor=white@0.35[outv]`;
 
     const audioFilter = hasPrintoVoice
       ? `[2:a]volume=0.30,apad=pad_dur=10,atrim=0:10[music];` +
@@ -11485,12 +11491,14 @@ function findPrintoThemeFile() {
   const candidates = [
     configured,
     path.join(templatesDir, "birthday", "birthday_audio.m4a"),
+    path.join(templatesDir, "birthday", "birthday_audio.mp3"),
     path.join(templatesDir, "birthday", "music.mp3"),
     path.join(templatesDir, "birthday", "theme.mp3"),
     path.join(templatesDir, "birthday", "printo-theme.mp3"),
     path.join(templatesDir, "music.mp3"),
     path.join(masterVideosDir, "music.mp3"),
-    path.join(__dirname, "public", "music.mp3")
+    path.join(__dirname, "public", "music.mp3"),
+    path.join(__dirname, "public", "printo-theme.mp3")
   ].filter(Boolean);
 
   return candidates.find((candidate) => {
@@ -11502,18 +11510,56 @@ function findPrintoThemeFile() {
   }) || "";
 }
 
-app.get("/printo-theme", (req, res) => {
-  const themeFile = findPrintoThemeFile();
-  if (!themeFile) {
-    return res.status(404).json({
-      ok: false,
-      error: "Printo theme music file was not found. Add music.mp3 to templates/birthday or set PRINTO_THEME_FILE."
-    });
+function sendAudioWithRange(req, res, audioFile) {
+  const stat = fs.statSync(audioFile);
+  const fileSize = stat.size;
+  const ext = path.extname(audioFile).toLowerCase();
+  const contentType =
+    ext === ".m4a" || ext === ".mp4" ? "audio/mp4" :
+    ext === ".ogg" ? "audio/ogg" :
+    ext === ".wav" ? "audio/wav" :
+    "audio/mpeg";
+
+  res.setHeader("Accept-Ranges", "bytes");
+  res.setHeader("Cache-Control", "public, max-age=3600");
+  res.setHeader("Content-Type", contentType);
+
+  const range = req.headers.range;
+  if (!range) {
+    res.setHeader("Content-Length", fileSize);
+    return fs.createReadStream(audioFile).pipe(res);
   }
 
-  res.setHeader("Cache-Control", "public, max-age=3600");
-  res.type(path.extname(themeFile) || ".mp3");
-  return res.sendFile(path.resolve(themeFile));
+  const parts = range.replace(/bytes=/, "").split("-");
+  const start = Number(parts[0]);
+  const requestedEnd = parts[1] ? Number(parts[1]) : fileSize - 1;
+  const end = Math.min(requestedEnd, fileSize - 1);
+
+  if (!Number.isFinite(start) || start < 0 || start >= fileSize || end < start) {
+    res.status(416).setHeader("Content-Range", `bytes */${fileSize}`);
+    return res.end();
+  }
+
+  res.status(206);
+  res.setHeader("Content-Range", `bytes ${start}-${end}/${fileSize}`);
+  res.setHeader("Content-Length", end - start + 1);
+  return fs.createReadStream(audioFile, { start, end }).pipe(res);
+}
+
+app.get("/printo-theme", (req, res) => {
+  try {
+    const themeFile = findPrintoThemeFile();
+    if (!themeFile) {
+      return res.status(404).json({
+        ok: false,
+        error: "Printo theme music file was not found. Add birthday_audio.m4a or music.mp3 to templates/birthday, or set PRINTO_THEME_FILE."
+      });
+    }
+    return sendAudioWithRange(req, res, themeFile);
+  } catch (error) {
+    console.error("Printo theme route error:", error);
+    return res.status(500).json({ ok: false, error: "Printo theme music could not be loaded." });
+  }
 });
 
 // =========================
@@ -11547,8 +11593,26 @@ function buildGreetingStudioHomePage(language = "en") {
   return `<!DOCTYPE html>
 <html lang="${lang}" dir="${dir}">
 <head><meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/><meta name="theme-color" content="#082a8f"/><title>${t.title}</title>
-<style>*{box-sizing:border-box}body{margin:0;font-family:Arial,sans-serif;background:radial-gradient(circle at top,#164ec1 0,#082a8f 38%,#041443 100%);color:#fff;min-height:100vh}.wrap{max-width:1120px;margin:auto;padding:22px 18px 56px}.hero{text-align:center;padding:25px 12px}.hero h1{font-size:42px;margin:0 0 10px}.hero p{font-size:18px;line-height:1.55;max-width:780px;margin:auto}.language{margin:16px auto 0;padding:10px 14px;border-radius:12px;border:0;font-weight:700}.actions{display:flex;gap:12px;justify-content:center;flex-wrap:wrap;margin-top:18px}.btn{border:0;border-radius:999px;padding:13px 20px;font-weight:900;text-decoration:none;cursor:pointer}.music{background:#fff;color:#0b2f89}.app{background:#111;color:#fff}.section-title{text-align:center;font-size:27px;margin:17px 0 20px}.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:20px}.card{background:#fff;color:#13234a;border-radius:22px;overflow:hidden;text-align:center;box-shadow:0 14px 34px rgba(0,0,0,.28);min-height:300px;text-decoration:none}.preview{height:155px;display:grid;place-items:center;font-size:62px;background:linear-gradient(135deg,#eef4ff,#dbeafe)}.preview.birthday{background-image:url('/templates/birthday/frame.png');background-size:cover;background-position:center}.content{padding:18px}.title{font-size:21px;font-weight:900}.sub{font-size:14px;line-height:20px;color:#53617f;min-height:44px;margin-top:8px}.ready,.soon{display:inline-block;padding:10px 18px;border-radius:999px;margin-top:14px;font-weight:900}.ready{display:inline-block;background:linear-gradient(90deg,#7b2cbf,#d63384);color:#fff;text-decoration:none}.soon{background:#e2e8f0;color:#475569}.support{display:flex;gap:12px;justify-content:center;flex-wrap:wrap;margin-top:28px}.support a{color:#fff;text-decoration:none;font-weight:900;padding:14px 20px;border-radius:14px;background:#25D366}.support a:last-child{background:#f59e0b}.footer{text-align:center;margin-top:28px;color:#dbeafe}@media(max-width:820px){.grid{grid-template-columns:repeat(2,1fr)}}@media(max-width:540px){.grid{grid-template-columns:1fr}.hero h1{font-size:30px}.preview{height:165px}}</style></head>
-<body><main class="wrap"><section class="hero"><h1>🎬 ${t.title}</h1><p>${t.hero}</p><select class="language" onchange="location.href='/greetings?lang='+this.value"><option value="en" ${lang==='en'?'selected':''}>English</option><option value="es" ${lang==='es'?'selected':''}>Español</option><option value="fr" ${lang==='fr'?'selected':''}>Français</option><option value="de" ${lang==='de'?'selected':''}>Deutsch</option><option value="pt" ${lang==='pt'?'selected':''}>Português</option><option value="ar" ${lang==='ar'?'selected':''}>العربية</option><option value="zh" ${lang==='zh'?'selected':''}>中文</option></select><div class="actions"><button id="musicBtn" class="btn music">▶ ${t.play}</button><a class="btn app" href="https://play.google.com/store/search?q=Patapata&c=apps" target="_blank" rel="noopener">📱 ${t.app}</a></div></section><h2 class="section-title">${t.choose}</h2><section class="grid">${cards}</section><div class="support"><a href="https://wa.me/18622306637?text=Hello%20Printo%2C%20I%20need%20help%20with%20a%20greeting%20video" target="_blank" rel="noopener">💬 ${t.help}</a><a href="/">🏠 ${t.home}</a></div><div class="footer">Printo Greeting Studio • Powered by PATAPATA LLC</div><audio id="theme" preload="metadata" loop src="/printo-theme"></audio></main><script>const audio=document.getElementById('theme'),btn=document.getElementById('musicBtn');audio.addEventListener('error',()=>{btn.disabled=true;btn.textContent='⚠ ${t.play}'});btn.onclick=async()=>{if(audio.paused){try{audio.load();await audio.play();btn.textContent='⏸ ${t.pause}'}catch(e){btn.textContent='⚠ ${t.play}';alert('Printo theme music could not be played. Please confirm that music.mp3 exists in templates/birthday.')}}else{audio.pause();btn.textContent='▶ ${t.play}'}}</script></body></html>`;
+<style>*{box-sizing:border-box}body{margin:0;font-family:Arial,sans-serif;background:radial-gradient(circle at top,#164ec1 0,#082a8f 38%,#041443 100%);color:#fff;min-height:100vh}.wrap{max-width:1120px;margin:auto;padding:22px 18px 56px}.hero{text-align:center;padding:25px 12px}.hero h1{font-size:42px;margin:0 0 10px}.hero p{font-size:18px;line-height:1.55;max-width:780px;margin:auto}.language{margin:16px auto 0;padding:10px 14px;border-radius:12px;border:0;font-weight:700}.actions{display:flex;gap:12px;justify-content:center;flex-wrap:wrap;margin-top:18px}.btn{border:0;border-radius:999px;padding:13px 20px;font-weight:900;text-decoration:none;cursor:pointer}.music{background:#fff;color:#0b2f89}.app{background:#111;color:#fff}.section-title{text-align:center;font-size:27px;margin:17px 0 20px}.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:20px}.card{background:#fff;color:#13234a;border-radius:22px;overflow:hidden;text-align:center;box-shadow:0 14px 34px rgba(0,0,0,.28);min-height:300px;text-decoration:none}.preview{height:155px;display:grid;place-items:center;font-size:62px;background:linear-gradient(135deg,#eef4ff,#dbeafe)}.preview.birthday{background-image:url('/templates/birthday/frame.png');background-size:cover;background-position:center}.content{padding:18px}.title{font-size:21px;font-weight:900}.sub{font-size:14px;line-height:20px;color:#53617f;min-height:44px;margin-top:8px}.ready,.soon{display:inline-block;padding:10px 18px;border-radius:999px;margin-top:14px;font-weight:900}.ready{display:inline-block;background:linear-gradient(90deg,#7b2cbf,#d63384);color:#fff;text-decoration:none;position:relative;z-index:5;pointer-events:auto}.soon{background:#e2e8f0;color:#475569}.support{display:flex;gap:12px;justify-content:center;flex-wrap:wrap;margin-top:28px}.support a{color:#fff;text-decoration:none;font-weight:900;padding:14px 20px;border-radius:14px;background:#25D366}.support a:last-child{background:#f59e0b}.footer{text-align:center;margin-top:28px;color:#dbeafe}@media(max-width:820px){.grid{grid-template-columns:repeat(2,1fr)}}@media(max-width:540px){.grid{grid-template-columns:1fr}.hero h1{font-size:30px}.preview{height:165px}}</style></head>
+<body><main class="wrap"><section class="hero"><h1>🎬 ${t.title}</h1><p>${t.hero}</p><select class="language" onchange="location.href='/greetings?lang='+this.value"><option value="en" ${lang==='en'?'selected':''}>English</option><option value="es" ${lang==='es'?'selected':''}>Español</option><option value="fr" ${lang==='fr'?'selected':''}>Français</option><option value="de" ${lang==='de'?'selected':''}>Deutsch</option><option value="pt" ${lang==='pt'?'selected':''}>Português</option><option value="ar" ${lang==='ar'?'selected':''}>العربية</option><option value="zh" ${lang==='zh'?'selected':''}>中文</option></select><div class="actions"><button id="musicBtn" class="btn music">▶ ${t.play}</button><a class="btn app" href="https://play.google.com/store/apps/details?id=com.patapata.printomatic" target="_blank" rel="noopener">📱 ${t.app}</a></div></section><h2 class="section-title">${t.choose}</h2><section class="grid">${cards}</section><div class="support"><a href="https://wa.me/18622306637?text=Hello%20Printo%2C%20I%20need%20help%20with%20a%20greeting%20video" target="_blank" rel="noopener">💬 ${t.help}</a><a href="/">🏠 ${t.home}</a></div><div class="footer">Printo Greeting Studio • Powered by PATAPATA LLC</div><audio id="theme" preload="none" loop playsinline><source src="/printo-theme" type="audio/mp4"><source src="/printo-theme" type="audio/mpeg"></audio></main><script>
+const audio=document.getElementById('theme'),btn=document.getElementById('musicBtn');
+let themeLoaded=false;
+btn.onclick=async()=>{
+  if(!audio.paused){audio.pause();btn.textContent='▶ ${t.play}';return}
+  try{
+    btn.disabled=true;btn.textContent='⏳ ${t.play}';
+    if(!themeLoaded){audio.load();themeLoaded=true}
+    await audio.play();
+    btn.textContent='⏸ ${t.pause}';
+  }catch(e){
+    console.error('Printo theme playback failed:',e);
+    themeLoaded=false;
+    btn.textContent='⚠ ${t.play}';
+    alert('Printo theme music could not be played. Please tap again or confirm that birthday_audio.m4a exists in templates/birthday.');
+  }finally{btn.disabled=false}
+};
+audio.addEventListener('ended',()=>{btn.textContent='▶ ${t.play}'});
+</script></body></html>`;
 }
 
 function buildBirthdayGeneratorPage(language = "en") {
@@ -11585,8 +11649,8 @@ function buildBirthdayGeneratorPage(language = "en") {
         <div class="field"><label for="fromName">${t.sender}</label><input id="fromName" maxlength="16" required placeholder="${t.senderExample}" /><div id="fromCount" class="counter">0 / 16</div></div>
       </div>
       <label for="message">${t.personal}</label>
-      <textarea id="message" maxlength="78" required placeholder="${t.messagePlaceholder}"></textarea>
-      <div id="messageCount" class="counter">0 / 78</div>
+      <textarea id="message" maxlength="${BIRTHDAY_MESSAGE_MAX}" required placeholder="${t.messagePlaceholder}"></textarea>
+      <div id="messageCount" class="counter">0 / ${BIRTHDAY_MESSAGE_MAX}</div>
       <button id="generateBtn" class="generate" type="submit">✨ ${t.generate}</button>
       <div id="status" class="status"></div>
     </form>
@@ -11600,7 +11664,7 @@ function buildBirthdayGeneratorPage(language = "en") {
 <script>
   const ui=${JSON.stringify(t)};
   const currentLanguage=${JSON.stringify(lang)};
-  const limits={name:16,message:78};
+  const limits={name:${BIRTHDAY_NAME_MAX},message:${BIRTHDAY_MESSAGE_MAX}};
   const to=document.getElementById('toName'),from=document.getElementById('fromName'),message=document.getElementById('message');
   const toCount=document.getElementById('toCount'),fromCount=document.getElementById('fromCount'),messageCount=document.getElementById('messageCount');
   const statusBox=document.getElementById('status'),button=document.getElementById('generateBtn');
@@ -11653,7 +11717,12 @@ app.get("/greeting-result", (req, res) => {
   const escapeHtml = (value = "") => String(value).replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
   const safeVideo = escapeHtml(videoUrl);
   const safePoster = posterUrl.startsWith("http") ? escapeHtml(posterUrl) : "";
-  const pageUrl = `${req.protocol}://${req.get("host")}${req.originalUrl}`;
+  const publicBase = String(
+    process.env.PUBLIC_BASE_URL ||
+    process.env.RENDER_EXTERNAL_URL ||
+    `${req.protocol}://${req.get("host")}`
+  ).replace(/\/$/, "");
+  const pageUrl = `${publicBase}${req.originalUrl}`;
   const title = `A special Printo greeting${toName ? ` for ${toName}` : ""}`;
 
   res.send(`<!DOCTYPE html>
@@ -11662,14 +11731,14 @@ app.get("/greeting-result", (req, res) => {
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>${title}</title>
-  <meta property="og:type" content="video.other" />
+  <meta property="og:type" content="website" />
   <meta property="og:url" content="${escapeHtml(pageUrl)}" />
   <meta property="og:title" content="${escapeHtml(title)}" />
   <meta property="og:description" content="Watch this personalized Printo Greeting Studio video." />
-  ${safePoster ? `<meta property="og:image" content="${safePoster}" /><meta property="og:image:width" content="720" /><meta property="og:image:height" content="1080" />` : ""}
+  ${safePoster ? `<meta property="og:image" content="${safePoster}" /><meta property="og:image:secure_url" content="${safePoster}" /><meta property="og:image:type" content="image/jpeg" /><meta property="og:image:width" content="720" /><meta property="og:image:height" content="1080" />` : ""}
   <meta property="og:video" content="${safeVideo}" />
   <meta property="og:video:secure_url" content="${safeVideo}" />
-  <meta property="og:video:type" content="video/mp4" />
+  <meta property="og:video:type" content="video/mp4" />\n  <meta property="og:video:width" content="1024" />\n  <meta property="og:video:height" content="1536" />
   <meta name="twitter:card" content="summary_large_image" />
   <meta name="twitter:title" content="${escapeHtml(title)}" />
   <meta name="twitter:description" content="Watch this personalized Printo greeting." />
@@ -11677,8 +11746,8 @@ app.get("/greeting-result", (req, res) => {
   <style>
     *{box-sizing:border-box} body{margin:0;font-family:Arial,sans-serif;background:linear-gradient(180deg,#071b61,#0b63ce);color:#fff;min-height:100vh;padding:22px}
     .wrap{max-width:680px;margin:auto;text-align:center}.brand{font-size:28px;font-weight:900;margin:8px 0}.sub{opacity:.9;margin-bottom:18px}
-    .player{position:relative;width:100%;aspect-ratio:9/16;max-height:78vh;border:4px solid #ffd21f;border-radius:22px;overflow:hidden;background:#071b61;box-shadow:0 12px 35px rgba(0,0,0,.35)}
-    .player video{display:block;width:100%;height:100%;object-fit:cover;object-position:center;background:#071b61}.bigPlay{position:absolute;inset:0;margin:auto;width:110px;height:110px;border-radius:55px;border:5px solid #fff;background:rgba(11,99,206,.86);color:#fff;font-size:54px;line-height:96px;padding-left:9px;cursor:pointer;box-shadow:0 8px 25px rgba(0,0,0,.45)}
+    .player{position:relative;width:min(100%,680px);aspect-ratio:2/3;margin:0 auto;border:4px solid #ffd21f;border-radius:22px;overflow:hidden;background:#071b61;box-shadow:0 12px 35px rgba(0,0,0,.35)}
+    .player video{display:block;width:100%;height:100%;object-fit:contain;object-position:center;background:#071b61}.bigPlay{position:absolute;inset:0;margin:auto;width:110px;height:110px;border-radius:55px;border:5px solid #fff;background:rgba(11,99,206,.86);color:#fff;font-size:54px;line-height:96px;padding-left:9px;cursor:pointer;box-shadow:0 8px 25px rgba(0,0,0,.45)}
     .actions{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin-top:18px}.btn{display:block;padding:14px 10px;border-radius:14px;text-decoration:none;color:#fff;font-weight:900;border:0;font-size:15px;cursor:pointer}.download{background:#7b2cbf}.whatsapp{background:#25D366}.facebook{background:#1877F2}.copy{background:#334155}.social{background:#d63384}.youtube{background:#ff0000}.tiktok{background:#111}.email{background:#0f766e}.shopify{background:#4f772d}.nigeria{background:#008751}.full{grid-column:1/-1}
     .note{font-size:13px;line-height:19px;background:rgba(255,255,255,.12);padding:12px;border-radius:12px;margin-top:14px}.toast{min-height:22px;color:#ffd21f;font-weight:800;margin-top:10px}
     @media(max-width:480px){.actions{grid-template-columns:1fr}.full{grid-column:auto}.bigPlay{width:92px;height:92px;font-size:46px;line-height:80px}}
@@ -11714,9 +11783,9 @@ app.get("/greeting-result", (req, res) => {
   play.onclick=async()=>{try{await video.play();play.style.display='none'}catch(e){toast.textContent='Tap the video controls to play.'}};
   video.onclick=()=>{if(video.paused){video.play();play.style.display='none'}else video.pause()};
   video.onended=()=>{play.textContent='↻';play.style.display='block'};
-  function shareWhatsApp(){window.open('https://wa.me/?text='+encodeURIComponent(shareText+' '+pageUrl),'_blank')}
+  function shareWhatsApp(){window.open('https://wa.me/?text='+encodeURIComponent(shareText+'\\n\\n'+pageUrl),'_blank')}
   function shareFacebook(){window.open('https://www.facebook.com/sharer/sharer.php?u='+encodeURIComponent(pageUrl),'_blank')}
-  function shareEmail(){location.href='mailto:?subject='+encodeURIComponent('My Printo greeting')+'&body='+encodeURIComponent(shareText+' '+pageUrl)}
+  function shareEmail(){location.href='mailto:?subject='+encodeURIComponent('My Printo greeting')+'&body='+encodeURIComponent(shareText+'\\n\\n'+pageUrl)}
   async function copyLink(){try{await navigator.clipboard.writeText(pageUrl);toast.textContent='Greeting link copied!'}catch(e){prompt('Copy this link:',pageUrl)}}
   function downloadThenOpen(url){const a=document.createElement('a');a.href=videoUrl;a.download='printo-greeting.mp4';document.body.appendChild(a);a.click();a.remove();setTimeout(()=>window.open(url,'_blank'),700)}
   if(navigator.share){document.querySelector('.copy').textContent='📤 Share / Copy Greeting Link';document.querySelector('.copy').onclick=async()=>{try{await navigator.share({title:'Printo Greeting',text:shareText,url:pageUrl})}catch(e){copyLink()}}}
