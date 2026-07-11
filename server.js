@@ -11179,35 +11179,48 @@ function quoteDrawtextText(value = "") {
   return `'${safeGreetingText(value)}'`;
 }
 
-function wrapGreetingName(value = "", maxCharsPerLine = 12) {
+function wrapGreetingName(value = "", maxCharsPerLine = 9, maxLines = 3) {
   const normalized = String(value || "").replace(/\s+/g, " ").trim();
-  if (!normalized) return ["", ""];
+  if (!normalized) return Array(maxLines).fill("");
 
   const chars = Array.from(normalized);
-  if (chars.length <= maxCharsPerLine) return [normalized, ""];
+  const target = Math.max(1, Math.ceil(chars.length / maxLines));
+  const lines = [];
+  let remaining = normalized;
 
-  const words = normalized.split(" ").filter(Boolean);
-  let first = "";
-  let second = "";
+  while (remaining && lines.length < maxLines) {
+    const slotsLeft = maxLines - lines.length;
+    const remainingChars = Array.from(remaining);
 
-  for (const word of words) {
-    const candidate = first ? `${first} ${word}` : word;
-    if (!second && Array.from(candidate).length <= maxCharsPerLine) {
-      first = candidate;
-    } else {
-      second = second ? `${second} ${word}` : word;
+    if (slotsLeft === 1) {
+      lines.push(remainingChars.join(""));
+      remaining = "";
+      break;
     }
+
+    const ideal = Math.min(
+      maxCharsPerLine,
+      Math.max(target, Math.ceil(remainingChars.length / slotsLeft))
+    );
+
+    let cut = Math.min(ideal, remainingChars.length);
+    let bestSpace = -1;
+
+    for (let i = cut; i >= Math.max(1, cut - 4); i -= 1) {
+      if (remainingChars[i] === " ") {
+        bestSpace = i;
+        break;
+      }
+    }
+
+    if (bestSpace > 0) cut = bestSpace;
+
+    lines.push(remainingChars.slice(0, cut).join("").trim());
+    remaining = remainingChars.slice(cut).join("").trim();
   }
 
-  if (!second) {
-    first = chars.slice(0, maxCharsPerLine).join("");
-    second = chars.slice(maxCharsPerLine).join("");
-  }
-
-  return [
-    Array.from(first).slice(0, maxCharsPerLine + 2).join(""),
-    Array.from(second).slice(0, maxCharsPerLine + 2).join("")
-  ];
+  while (lines.length < maxLines) lines.push("");
+  return lines.slice(0, maxLines);
 }
 
 function wrapCompleteGreetingMessage(value = "", maxLines = 9) {
@@ -11363,6 +11376,38 @@ function buildGreetingResultUrl(req, videoUrl, toName = "", fromName = "", poste
   return `${base}/greeting-result?${params.toString()}`;
 }
 
+function buildShortGreetingUrl(req, greetingId = "") {
+  const base = String(
+    process.env.PUBLIC_BASE_URL ||
+    process.env.RENDER_EXTERNAL_URL ||
+    `${req.protocol}://${req.get("host")}`
+  ).replace(/\/$/, "");
+
+  return `${base}/g/${encodeURIComponent(greetingId)}`;
+}
+
+function getGreetingMetadataPath(greetingId = "") {
+  const safeId = String(greetingId || "").replace(/[^a-zA-Z0-9_-]/g, "");
+  return path.join(generatedDir, `${safeId}.json`);
+}
+
+function saveGreetingMetadata(greetingId, metadata = {}) {
+  const metadataPath = getGreetingMetadataPath(greetingId);
+  fs.writeFileSync(metadataPath, JSON.stringify(metadata, null, 2), "utf8");
+  return metadataPath;
+}
+
+function loadGreetingMetadata(greetingId) {
+  try {
+    const metadataPath = getGreetingMetadataPath(greetingId);
+    if (!fs.existsSync(metadataPath)) return null;
+    return JSON.parse(fs.readFileSync(metadataPath, "utf8"));
+  } catch (error) {
+    console.error("Greeting metadata read failed:", error);
+    return null;
+  }
+}
+
 app.post("/api/greeting/birthday/generate", async (req, res) => {
   try {
     console.log("Birthday generator request received:", req.body);
@@ -11377,20 +11422,20 @@ app.post("/api/greeting/birthday/generate", async (req, res) => {
       BIRTHDAY_MESSAGE_MAX
     );
 
-    const toNameLines = wrapGreetingName(toNameRaw, 12);
-    const fromNameLines = wrapGreetingName(fromNameRaw, 12);
+    const toNameLines = wrapGreetingName(toNameRaw, 9, 3);
+    const fromNameLines = wrapGreetingName(fromNameRaw, 9, 3);
 
     const longestToLine = Math.max(...toNameLines.map((line) => Array.from(line).length));
     const longestFromLine = Math.max(...fromNameLines.map((line) => Array.from(line).length));
 
     const toFontSize =
-      longestToLine > 13 ? 25 :
-      longestToLine > 11 ? 28 :
-      longestToLine > 9 ? 31 : 35;
+      longestToLine > 9 ? 22 :
+      longestToLine > 7 ? 25 :
+      longestToLine > 5 ? 28 : 31;
     const fromFontSize =
-      longestFromLine > 13 ? 25 :
-      longestFromLine > 11 ? 28 :
-      longestFromLine > 9 ? 31 : 35;
+      longestFromLine > 9 ? 22 :
+      longestFromLine > 7 ? 25 :
+      longestFromLine > 5 ? 28 : 31;
 
     // Birthday V2: preserve every accepted character.
     // Nine balanced lines prevent the end of a 160-character message from being cut off.
@@ -11448,11 +11493,13 @@ app.post("/api/greeting/birthday/generate", async (req, res) => {
       `[bg][vid]overlay=281:342,` +
       `drawbox=x=42:y=404:w=180:h=250:color=#f9e7c9@0.96:t=fill,` +
       `drawbox=x=802:y=404:w=180:h=250:color=#f9e7c9@0.96:t=fill,` +
-      `drawtext=text=${quoteDrawtextText(toNameLines[0])}:x=42+(180-text_w)/2:y=470:fontsize=${toFontSize}:fontcolor=#d6333f:borderw=2:bordercolor=white@0.45,` +
-      `drawtext=text=${quoteDrawtextText(toNameLines[1])}:x=42+(180-text_w)/2:y=510:fontsize=${toFontSize}:fontcolor=#d6333f:borderw=2:bordercolor=white@0.45,` +
+      `drawtext=text=${quoteDrawtextText(toNameLines[0])}:x=42+(180-text_w)/2:y=456:fontsize=${toFontSize}:fontcolor=#d6333f:borderw=2:bordercolor=white@0.45,` +
+      `drawtext=text=${quoteDrawtextText(toNameLines[1])}:x=42+(180-text_w)/2:y=490:fontsize=${toFontSize}:fontcolor=#d6333f:borderw=2:bordercolor=white@0.45,` +
+      `drawtext=text=${quoteDrawtextText(toNameLines[2])}:x=42+(180-text_w)/2:y=524:fontsize=${toFontSize}:fontcolor=#d6333f:borderw=2:bordercolor=white@0.45,` +
       `drawtext=text='♥':x=42+(180-text_w)/2:y=590:fontsize=28:fontcolor=#d6333f:borderw=1:bordercolor=white@0.35,` +
-      `drawtext=text=${quoteDrawtextText(fromNameLines[0])}:x=802+(180-text_w)/2:y=470:fontsize=${fromFontSize}:fontcolor=#7b2cbf:borderw=2:bordercolor=white@0.45,` +
-      `drawtext=text=${quoteDrawtextText(fromNameLines[1])}:x=802+(180-text_w)/2:y=510:fontsize=${fromFontSize}:fontcolor=#7b2cbf:borderw=2:bordercolor=white@0.45,` +
+      `drawtext=text=${quoteDrawtextText(fromNameLines[0])}:x=802+(180-text_w)/2:y=456:fontsize=${fromFontSize}:fontcolor=#7b2cbf:borderw=2:bordercolor=white@0.45,` +
+      `drawtext=text=${quoteDrawtextText(fromNameLines[1])}:x=802+(180-text_w)/2:y=490:fontsize=${fromFontSize}:fontcolor=#7b2cbf:borderw=2:bordercolor=white@0.45,` +
+      `drawtext=text=${quoteDrawtextText(fromNameLines[2])}:x=802+(180-text_w)/2:y=524:fontsize=${fromFontSize}:fontcolor=#7b2cbf:borderw=2:bordercolor=white@0.45,` +
       `drawtext=text='♥':x=802+(180-text_w)/2:y=590:fontsize=28:fontcolor=#7b2cbf:borderw=1:bordercolor=white@0.35,` +
       `drawtext=text=${quoteDrawtextText(messageLines[0])}:x=218+(590-text_w)/2:y=1082:fontsize=${messageFontSize}:fontcolor=#2f267f:borderw=1:bordercolor=white@0.35,` +
       `drawtext=text=${quoteDrawtextText(messageLines[1])}:x=218+(590-text_w)/2:y=1108:fontsize=${messageFontSize}:fontcolor=#2f267f:borderw=1:bordercolor=white@0.35,` +
@@ -11544,7 +11591,26 @@ app.post("/api/greeting/birthday/generate", async (req, res) => {
 
         const finishResponse = () => {
           const posterUrl = fs.existsSync(posterPath) ? buildGeneratedUrl(req, posterName) : "";
-          const resultUrl = buildGreetingResultUrl(req, downloadUrl, toNameRaw, fromNameRaw, posterUrl, requestLanguage);
+          const greetingId = fileName.replace(/\.mp4$/i, "");
+          const fullResultUrl = buildGreetingResultUrl(
+            req,
+            downloadUrl,
+            toNameRaw,
+            fromNameRaw,
+            posterUrl,
+            requestLanguage
+          );
+          const resultUrl = buildShortGreetingUrl(req, greetingId);
+
+          saveGreetingMetadata(greetingId, {
+            videoUrl: downloadUrl,
+            posterUrl,
+            toName: toNameRaw,
+            fromName: fromNameRaw,
+            language: requestLanguage,
+            fullResultUrl,
+            createdAt: new Date().toISOString()
+          });
 
           if (hasPrintoVoice && fs.existsSync(voicePath)) {
             fs.unlink(voicePath, () => {});
@@ -11556,6 +11622,8 @@ app.post("/api/greeting/birthday/generate", async (req, res) => {
             posterUrl,
             resultUrl,
             shareUrl: resultUrl,
+            fullResultUrl,
+            greetingId,
             file: fileName,
             hasPrintoVoice,
             limits: {
@@ -11575,7 +11643,7 @@ app.post("/api/greeting/birthday/generate", async (req, res) => {
           "-ss", "1.2", "-i", outputPath,
           "-frames:v", "1",
           "-vf",
-          "scale=720:-2,drawtext=text='▶':x=(w-text_w)/2:y=390:fontsize=92:fontcolor=white:box=1:boxcolor=black@0.58:boxborderw=28:borderw=2:bordercolor=white@0.85",
+          "scale=720:-2,drawtext=text='▶':x=(w-text_w)/2:y=350:fontsize=170:fontcolor=white:box=1:boxcolor=#0754b8@0.78:boxborderw=48:borderw=5:bordercolor=white@0.95",
           "-q:v", "2", posterPath
         ], { timeout: 30000, maxBuffer: 1024 * 1024 * 2 }, (posterErr) => {
           if (posterErr) console.error("Greeting poster generation failed:", posterErr.message);
@@ -11809,7 +11877,7 @@ app.get(["/birthday", "/birthday-generator", "/generate-birthday"], (req, res) =
   res.type("html").send(buildBirthdayGeneratorPage(language));
 });
 
-app.get("/greeting-result", (req, res) => {
+function renderGreetingResult(req, res) {
   const videoUrl = String(req.query.video || "");
   const toName = String(req.query.to || "");
   const fromName = String(req.query.from || "");
@@ -11844,7 +11912,7 @@ app.get("/greeting-result", (req, res) => {
   <meta property="og:type" content="video.other" />\n  <meta property="og:site_name" content="Printo Greeting Studio" />
   <meta property="og:url" content="${escapeHtml(pageUrl)}" />
   <meta property="og:title" content="${escapeHtml(title)}" />
-  <meta property="og:description" content="Tap the play preview to watch this personalized Printo greeting." />
+  <meta property="og:description" content="Tap the large Play button to watch, then create your own personalized Printo greeting." />
   ${safePoster ? `<meta property="og:image" content="${safePoster}" /><meta property="og:image:secure_url" content="${safePoster}" /><meta property="og:image:type" content="image/jpeg" /><meta property="og:image:width" content="720" /><meta property="og:image:height" content="1080" /><meta property="og:image:alt" content="Personalized Printo greeting card with play button" />` : ""}
   <meta property="og:video" content="${safeVideo}" />
   <meta property="og:video:secure_url" content="${safeVideo}" />
@@ -11857,10 +11925,10 @@ app.get("/greeting-result", (req, res) => {
     *{box-sizing:border-box} body{margin:0;font-family:Arial,sans-serif;background:linear-gradient(180deg,#071b61,#0b63ce);color:#fff;min-height:100vh;padding:22px}
     .wrap{max-width:680px;margin:auto;text-align:center}.brand{font-size:28px;font-weight:900;margin:8px 0}.sub{opacity:.9;margin-bottom:18px}
     .player{position:relative;width:min(100%,680px);aspect-ratio:2/3;margin:0 auto;border:4px solid #ffd21f;border-radius:22px;overflow:hidden;background:#071b61;box-shadow:0 12px 35px rgba(0,0,0,.35)}
-    .player video{display:block;width:100%;height:100%;object-fit:contain;object-position:center;background:#071b61}.bigPlay{position:absolute;inset:0;margin:auto;width:110px;height:110px;border-radius:55px;border:5px solid #fff;background:rgba(11,99,206,.86);color:#fff;font-size:54px;line-height:96px;padding-left:9px;cursor:pointer;box-shadow:0 8px 25px rgba(0,0,0,.45)}
+    .player video{display:block;width:100%;height:100%;object-fit:contain;object-position:center;background:#071b61}.bigPlay{position:absolute;inset:0;margin:auto;width:170px;height:170px;border-radius:50%;border:8px solid #fff;background:rgba(7,84,184,.88);color:#fff;font-size:86px;line-height:148px;padding-left:14px;cursor:pointer;box-shadow:0 12px 34px rgba(0,0,0,.55)}
     .actions{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin-top:18px}.btn{display:block;padding:14px 10px;border-radius:14px;text-decoration:none;color:#fff;font-weight:900;border:0;font-size:15px;cursor:pointer}.download{background:#7b2cbf}.whatsapp{background:#25D366}.facebook{background:#1877F2}.copy{background:#334155}.social{background:#d63384}.youtube{background:#ff0000}.tiktok{background:#111}.email{background:#0f766e}.shopify{background:#4f772d}.nigeria{background:#008751}.full{grid-column:1/-1}
     .note{font-size:13px;line-height:19px;background:rgba(255,255,255,.12);padding:12px;border-radius:12px;margin-top:14px}.toast{min-height:22px;color:#ffd21f;font-weight:800;margin-top:10px}
-    @media(max-width:480px){.actions{grid-template-columns:1fr}.full{grid-column:auto}.bigPlay{width:92px;height:92px;font-size:46px;line-height:80px}}
+    @media(max-width:480px){.actions{grid-template-columns:1fr}.full{grid-column:auto}.bigPlay{width:138px;height:138px;font-size:70px;line-height:118px;border-width:7px}}
   </style>
 </head>
 <body>
@@ -11880,7 +11948,8 @@ app.get("/greeting-result", (req, res) => {
       <button class="btn youtube" onclick="downloadThenOpen('https://www.youtube.com/upload')">▶ YouTube</button>
       <button class="btn tiktok" onclick="downloadThenOpen('https://www.tiktok.com/upload')">🎵 TikTok</button>
       <button class="btn email" onclick="shareEmail()">📧 Email</button>
-      <button class="btn copy full" onclick="copyLink()">🔗 Copy Greeting Link</button>
+      <button class="btn copy full" onclick="copyLink()">🔗 Copy Short Greeting Link</button>
+      <a class="btn social full" href="/greetings" target="_blank" rel="noopener">✨ Create Your Own Printo Greeting</a>
       <a class="btn shopify" href="${shopifyUrl}" target="_blank" rel="noopener">🛒 Buy via Shopify</a>
       <a class="btn nigeria" href="${nigeriaUrl}" target="_blank" rel="noopener">🇳🇬 Nigeria Payment</a>
     </div>
@@ -11889,7 +11958,11 @@ app.get("/greeting-result", (req, res) => {
 <script>
   const video=document.getElementById('greetingVideo'); const play=document.getElementById('bigPlay'); const toast=document.getElementById('toast');
   const pageUrl=${JSON.stringify(pageUrl)}; const videoUrl=${JSON.stringify(videoUrl)};
-  const shareText=${JSON.stringify(`🎉 Watch my personalized Printo greeting! Tap the preview to play.`)};
+  const shareText=${JSON.stringify(`🎉 Watch my personalized Printo greeting!
+
+▶️ Tap the large Play button in the preview to watch.
+
+✨ Create your own personalized Printo greeting today!`)};
   const emailText=${JSON.stringify(`🎉 Watch my personalized Printo greeting!\n\nCreate yours with Printo Greeting Studio.\nShopify: ${shopifyUrl}\nNigeria payment: ${nigeriaUrl}`)};
   play.onclick=async()=>{try{await video.play();play.style.display='none'}catch(e){toast.textContent='Tap the video controls to play.'}};
   video.onclick=()=>{if(video.paused){video.play();play.style.display='none'}else video.pause()};
@@ -11903,7 +11976,26 @@ app.get("/greeting-result", (req, res) => {
 </script>
 </body>
 </html>`);
+}
+
+app.get("/g/:id", (req, res) => {
+  const metadata = loadGreetingMetadata(req.params.id);
+  if (!metadata || !metadata.videoUrl) {
+    return res.status(404).send("This Printo greeting link is unavailable or has expired.");
+  }
+
+  req.query = {
+    video: metadata.videoUrl,
+    poster: metadata.posterUrl || "",
+    to: metadata.toName || "",
+    from: metadata.fromName || "",
+    lang: metadata.language || "en"
+  };
+
+  return renderGreetingResult(req, res);
 });
+
+app.get("/greeting-result", renderGreetingResult);
 
 app.get("/greeting-test", (req, res) => {
   res.send(`<!DOCTYPE html>
