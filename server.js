@@ -1894,7 +1894,8 @@ const GREETING_TEMPLATES = [
   { id: "business", emoji: "💼", name: "Business Greeting", occasion: "Business Greeting", masterVideo: "master.mp4", priceLabel: "Premium" },
   { id: "grand-opening", emoji: "📢", name: "Grand Opening Greeting", occasion: "Grand Opening", masterVideo: "master.mp4", priceLabel: "Premium" },
   { id: "employee-appreciation", emoji: "🏆", name: "Employee Appreciation Greeting", occasion: "Employee Appreciation", masterVideo: "master.mp4", priceLabel: "Premium" },
-  { id: "award-achievement", emoji: "🎖️", name: "Award & Achievement Greeting", occasion: "Award & Achievement", masterVideo: "master.mp4", priceLabel: "Premium" }
+  { id: "award-achievement", emoji: "🎖️", name: "Award & Achievement Greeting", occasion: "Award & Achievement", masterVideo: "master.mp4", priceLabel: "Premium" },
+  { id: "cultural-festival", emoji: "🥁", name: "Cultural Festival Greeting", occasion: "Cultural Festival", masterVideo: "master.mp4", priceLabel: "Premium" }
 ];
 
 
@@ -1924,7 +1925,8 @@ const GREETING_TRANSLATIONS = {
   "business": { en: "Business Greeting", es: "Saludo empresarial", fr: "Vœux professionnels", de: "Geschäftsgruß", pt: "Saudação empresarial", ar: "تهنئة أعمال", zh: "商务祝福" },
   "grand-opening": { en: "Grand Opening", es: "Gran inauguración", fr: "Grande ouverture", de: "Große Eröffnung", pt: "Grande inauguração", ar: "الافتتاح الكبير", zh: "盛大开业" },
   "employee-appreciation": { en: "Employee Appreciation", es: "Reconocimiento al empleado", fr: "Reconnaissance des employés", de: "Mitarbeiteranerkennung", pt: "Reconhecimento do funcionário", ar: "تقدير الموظفين", zh: "员工表彰" },
-  "award-achievement": { en: "Award & Achievement", es: "Premio y logro", fr: "Prix et réussite", de: "Auszeichnung & Leistung", pt: "Prêmio e conquista", ar: "جائزة وإنجاز", zh: "奖项与成就" }
+  "award-achievement": { en: "Award & Achievement", es: "Premio y logro", fr: "Prix et réussite", de: "Auszeichnung & Leistung", pt: "Prêmio e conquista", ar: "جائزة وإنجاز", zh: "奖项与成就" },
+  "cultural-festival": { en: "Cultural Festival", es: "Festival cultural", fr: "Festival culturel", de: "Kulturfestival", pt: "Festival cultural", ar: "مهرجان ثقافي", zh: "文化节" }
 };
 
 function getGreetingLocalizedOccasion(templateOrId, language = "en") {
@@ -2122,7 +2124,8 @@ function getGreetingOccasionFromInput(input = "") {
     "mother's day": "mothers-day", "mothers day": "mothers-day", "father's day": "fathers-day", "fathers day": "fathers-day",
     "valentine's day": "valentines-day", "valentines day": "valentines-day", "business greeting": "business",
     "grand opening": "grand-opening", "employee appreciation": "employee-appreciation",
-    "award & achievement": "award-achievement", "award and achievement": "award-achievement"
+    "award & achievement": "award-achievement", "award and achievement": "award-achievement",
+    "cultural festival": "cultural-festival", "culture festival": "cultural-festival", "traditional festival": "cultural-festival"
   };
 
   let template = null;
@@ -11207,6 +11210,51 @@ function wrapGreetingName(value = "", maxCharsPerLine = 12) {
   ];
 }
 
+function wrapCompleteGreetingMessage(value = "", maxLines = 9) {
+  const normalized = String(value || "").replace(/\s+/g, " ").trim();
+  if (!normalized) return Array(maxLines).fill("");
+
+  const chars = Array.from(normalized);
+  const target = Math.max(1, Math.ceil(chars.length / maxLines));
+  const lines = [];
+  let remaining = normalized;
+
+  while (remaining && lines.length < maxLines) {
+    const slotsLeft = maxLines - lines.length;
+    const remainingChars = Array.from(remaining);
+
+    if (slotsLeft === 1) {
+      lines.push(remaining);
+      remaining = "";
+      break;
+    }
+
+    const ideal = Math.max(target, Math.ceil(remainingChars.length / slotsLeft));
+    let cut = Math.min(ideal, remainingChars.length);
+
+    // Prefer ending at a nearby space, but never lose characters.
+    const searchStart = Math.max(1, cut - 5);
+    const searchEnd = Math.min(remainingChars.length - 1, cut + 5);
+    let bestSpace = -1;
+
+    for (let i = searchEnd; i >= searchStart; i -= 1) {
+      if (remainingChars[i] === " ") {
+        bestSpace = i;
+        break;
+      }
+    }
+
+    if (bestSpace > 0) cut = bestSpace;
+
+    const line = remainingChars.slice(0, cut).join("").trim();
+    lines.push(line);
+    remaining = remainingChars.slice(cut).join("").trim();
+  }
+
+  while (lines.length < maxLines) lines.push("");
+  return lines.slice(0, maxLines);
+}
+
 function wrapBirthdayMessage(value = "", maxChars = 28, maxLines = 5) {
   const normalized = String(value || "").replace(/\s+/g, " ").trim();
   const words = normalized.split(" ").filter(Boolean);
@@ -11344,20 +11392,16 @@ app.post("/api/greeting/birthday/generate", async (req, res) => {
       longestFromLine > 11 ? 28 :
       longestFromLine > 9 ? 31 : 35;
 
-    // Birthday V2 has a larger personal-message panel.
-    // Keep every accepted character and use up to eight readable lines.
-    const messageLines = wrapBirthdayMessage(
-      messageRaw,
-      30,
-      8
-    );
+    // Birthday V2: preserve every accepted character.
+    // Nine balanced lines prevent the end of a 160-character message from being cut off.
+    const messageLines = wrapCompleteGreetingMessage(messageRaw, 9);
     const messageLength = Array.from(messageRaw).length;
     const messageFontSize =
-      messageLength > 150 ? 18 :
-      messageLength > 135 ? 19 :
-      messageLength > 115 ? 20 :
-      messageLength > 90 ? 22 :
-      messageLength > 65 ? 24 : 27;
+      messageLength > 150 ? 17 :
+      messageLength > 135 ? 18 :
+      messageLength > 115 ? 19 :
+      messageLength > 90 ? 20 :
+      messageLength > 65 ? 22 : 25;
 
     const birthdayDir = path.join(__dirname, "templates", "birthday");
     const birthdayV2FramePath = path.join(birthdayDir, "Birthday_Image_V2.png");
@@ -11410,14 +11454,15 @@ app.post("/api/greeting/birthday/generate", async (req, res) => {
       `drawtext=text=${quoteDrawtextText(fromNameLines[0])}:x=802+(180-text_w)/2:y=470:fontsize=${fromFontSize}:fontcolor=#7b2cbf:borderw=2:bordercolor=white@0.45,` +
       `drawtext=text=${quoteDrawtextText(fromNameLines[1])}:x=802+(180-text_w)/2:y=510:fontsize=${fromFontSize}:fontcolor=#7b2cbf:borderw=2:bordercolor=white@0.45,` +
       `drawtext=text='♥':x=802+(180-text_w)/2:y=590:fontsize=28:fontcolor=#7b2cbf:borderw=1:bordercolor=white@0.35,` +
-      `drawtext=text=${quoteDrawtextText(messageLines[0])}:x=218+(590-text_w)/2:y=1090:fontsize=${messageFontSize}:fontcolor=#2f267f:borderw=1:bordercolor=white@0.35,` +
-      `drawtext=text=${quoteDrawtextText(messageLines[1])}:x=218+(590-text_w)/2:y=1122:fontsize=${messageFontSize}:fontcolor=#2f267f:borderw=1:bordercolor=white@0.35,` +
-      `drawtext=text=${quoteDrawtextText(messageLines[2])}:x=218+(590-text_w)/2:y=1154:fontsize=${messageFontSize}:fontcolor=#2f267f:borderw=1:bordercolor=white@0.35,` +
-      `drawtext=text=${quoteDrawtextText(messageLines[3])}:x=218+(590-text_w)/2:y=1186:fontsize=${messageFontSize}:fontcolor=#2f267f:borderw=1:bordercolor=white@0.35,` +
-      `drawtext=text=${quoteDrawtextText(messageLines[4])}:x=218+(590-text_w)/2:y=1218:fontsize=${messageFontSize}:fontcolor=#2f267f:borderw=1:bordercolor=white@0.35,` +
-      `drawtext=text=${quoteDrawtextText(messageLines[5])}:x=218+(590-text_w)/2:y=1250:fontsize=${messageFontSize}:fontcolor=#2f267f:borderw=1:bordercolor=white@0.35,` +
-      `drawtext=text=${quoteDrawtextText(messageLines[6])}:x=218+(590-text_w)/2:y=1282:fontsize=${messageFontSize}:fontcolor=#2f267f:borderw=1:bordercolor=white@0.35,` +
-      `drawtext=text=${quoteDrawtextText(messageLines[7])}:x=218+(590-text_w)/2:y=1314:fontsize=${messageFontSize}:fontcolor=#2f267f:borderw=1:bordercolor=white@0.35[outv]`;
+      `drawtext=text=${quoteDrawtextText(messageLines[0])}:x=218+(590-text_w)/2:y=1082:fontsize=${messageFontSize}:fontcolor=#2f267f:borderw=1:bordercolor=white@0.35,` +
+      `drawtext=text=${quoteDrawtextText(messageLines[1])}:x=218+(590-text_w)/2:y=1108:fontsize=${messageFontSize}:fontcolor=#2f267f:borderw=1:bordercolor=white@0.35,` +
+      `drawtext=text=${quoteDrawtextText(messageLines[2])}:x=218+(590-text_w)/2:y=1134:fontsize=${messageFontSize}:fontcolor=#2f267f:borderw=1:bordercolor=white@0.35,` +
+      `drawtext=text=${quoteDrawtextText(messageLines[3])}:x=218+(590-text_w)/2:y=1160:fontsize=${messageFontSize}:fontcolor=#2f267f:borderw=1:bordercolor=white@0.35,` +
+      `drawtext=text=${quoteDrawtextText(messageLines[4])}:x=218+(590-text_w)/2:y=1186:fontsize=${messageFontSize}:fontcolor=#2f267f:borderw=1:bordercolor=white@0.35,` +
+      `drawtext=text=${quoteDrawtextText(messageLines[5])}:x=218+(590-text_w)/2:y=1212:fontsize=${messageFontSize}:fontcolor=#2f267f:borderw=1:bordercolor=white@0.35,` +
+      `drawtext=text=${quoteDrawtextText(messageLines[6])}:x=218+(590-text_w)/2:y=1238:fontsize=${messageFontSize}:fontcolor=#2f267f:borderw=1:bordercolor=white@0.35,` +
+      `drawtext=text=${quoteDrawtextText(messageLines[7])}:x=218+(590-text_w)/2:y=1264:fontsize=${messageFontSize}:fontcolor=#2f267f:borderw=1:bordercolor=white@0.35,` +
+      `drawtext=text=${quoteDrawtextText(messageLines[8])}:x=218+(590-text_w)/2:y=1290:fontsize=${messageFontSize}:fontcolor=#2f267f:borderw=1:bordercolor=white@0.35[outv]`;
 
     const audioFilter = hasPrintoVoice
       ? `[2:a]volume=0.30,apad=pad_dur=10,atrim=0:10[music];` +
