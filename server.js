@@ -11453,6 +11453,44 @@ app.post("/api/greeting/birthday/generate", async (req, res) => {
 
 
 // =========================
+// PRINTO THEME MUSIC
+// =========================
+function findPrintoThemeFile() {
+  const configured = String(process.env.PRINTO_THEME_FILE || "").trim();
+  const candidates = [
+    configured,
+    path.join(templatesDir, "birthday", "music.mp3"),
+    path.join(templatesDir, "birthday", "theme.mp3"),
+    path.join(templatesDir, "birthday", "printo-theme.mp3"),
+    path.join(templatesDir, "music.mp3"),
+    path.join(masterVideosDir, "music.mp3"),
+    path.join(__dirname, "public", "music.mp3")
+  ].filter(Boolean);
+
+  return candidates.find((candidate) => {
+    try {
+      return fs.existsSync(candidate) && fs.statSync(candidate).isFile();
+    } catch (error) {
+      return false;
+    }
+  }) || "";
+}
+
+app.get("/printo-theme", (req, res) => {
+  const themeFile = findPrintoThemeFile();
+  if (!themeFile) {
+    return res.status(404).json({
+      ok: false,
+      error: "Printo theme music file was not found. Add music.mp3 to templates/birthday or set PRINTO_THEME_FILE."
+    });
+  }
+
+  res.setHeader("Cache-Control", "public, max-age=3600");
+  res.type(path.extname(themeFile) || ".mp3");
+  return res.sendFile(path.resolve(themeFile));
+});
+
+// =========================
 // PUBLIC PRINTO GREETING STUDIO PAGES
 // =========================
 function buildGreetingStudioHomePage(language = "en") {
@@ -11481,44 +11519,58 @@ function buildGreetingStudioHomePage(language = "en") {
 <html lang="${lang}" dir="${dir}">
 <head><meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/><meta name="theme-color" content="#082a8f"/><title>${t.title}</title>
 <style>*{box-sizing:border-box}body{margin:0;font-family:Arial,sans-serif;background:radial-gradient(circle at top,#164ec1 0,#082a8f 38%,#041443 100%);color:#fff;min-height:100vh}.wrap{max-width:1120px;margin:auto;padding:22px 18px 56px}.hero{text-align:center;padding:25px 12px}.hero h1{font-size:42px;margin:0 0 10px}.hero p{font-size:18px;line-height:1.55;max-width:780px;margin:auto}.language{margin:16px auto 0;padding:10px 14px;border-radius:12px;border:0;font-weight:700}.actions{display:flex;gap:12px;justify-content:center;flex-wrap:wrap;margin-top:18px}.btn{border:0;border-radius:999px;padding:13px 20px;font-weight:900;text-decoration:none;cursor:pointer}.music{background:#fff;color:#0b2f89}.app{background:#111;color:#fff}.section-title{text-align:center;font-size:27px;margin:17px 0 20px}.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:20px}.card{background:#fff;color:#13234a;border-radius:22px;overflow:hidden;text-align:center;box-shadow:0 14px 34px rgba(0,0,0,.28);min-height:300px;text-decoration:none}.preview{height:155px;display:grid;place-items:center;font-size:62px;background:linear-gradient(135deg,#eef4ff,#dbeafe)}.preview.birthday{background-image:url('/templates/birthday/frame.png');background-size:cover;background-position:center}.content{padding:18px}.title{font-size:21px;font-weight:900}.sub{font-size:14px;line-height:20px;color:#53617f;min-height:44px;margin-top:8px}.ready,.soon{display:inline-block;padding:10px 18px;border-radius:999px;margin-top:14px;font-weight:900}.ready{background:linear-gradient(90deg,#7b2cbf,#d63384);color:#fff}.soon{background:#e2e8f0;color:#475569}.support{display:flex;gap:12px;justify-content:center;flex-wrap:wrap;margin-top:28px}.support a{color:#fff;text-decoration:none;font-weight:900;padding:14px 20px;border-radius:14px;background:#25D366}.support a:last-child{background:#f59e0b}.footer{text-align:center;margin-top:28px;color:#dbeafe}@media(max-width:820px){.grid{grid-template-columns:repeat(2,1fr)}}@media(max-width:540px){.grid{grid-template-columns:1fr}.hero h1{font-size:30px}.preview{height:165px}}</style></head>
-<body><main class="wrap"><section class="hero"><h1>🎬 ${t.title}</h1><p>${t.hero}</p><select class="language" onchange="location.href='/greetings?lang='+this.value"><option value="en" ${lang==='en'?'selected':''}>English</option><option value="es" ${lang==='es'?'selected':''}>Español</option><option value="fr" ${lang==='fr'?'selected':''}>Français</option><option value="de" ${lang==='de'?'selected':''}>Deutsch</option><option value="pt" ${lang==='pt'?'selected':''}>Português</option><option value="ar" ${lang==='ar'?'selected':''}>العربية</option><option value="zh" ${lang==='zh'?'selected':''}>中文</option></select><div class="actions"><button id="musicBtn" class="btn music">▶ ${t.play}</button><a class="btn app" href="https://play.google.com/store/search?q=Patapata&c=apps" target="_blank" rel="noopener">📱 ${t.app}</a></div></section><h2 class="section-title">${t.choose}</h2><section class="grid">${cards}</section><div class="support"><a href="https://wa.me/18622306637?text=Hello%20Printo%2C%20I%20need%20help%20with%20a%20greeting%20video" target="_blank" rel="noopener">💬 ${t.help}</a><a href="/">🏠 ${t.home}</a></div><div class="footer">Printo Greeting Studio • Powered by PATAPATA LLC</div><audio id="theme" preload="none" loop src="/templates/birthday/music.mp3"></audio></main><script>const audio=document.getElementById('theme'),btn=document.getElementById('musicBtn');btn.onclick=async()=>{if(audio.paused){try{await audio.play();btn.textContent='⏸ ${t.pause}'}catch(e){}}else{audio.pause();btn.textContent='▶ ${t.play}'}}</script></body></html>`;
+<body><main class="wrap"><section class="hero"><h1>🎬 ${t.title}</h1><p>${t.hero}</p><select class="language" onchange="location.href='/greetings?lang='+this.value"><option value="en" ${lang==='en'?'selected':''}>English</option><option value="es" ${lang==='es'?'selected':''}>Español</option><option value="fr" ${lang==='fr'?'selected':''}>Français</option><option value="de" ${lang==='de'?'selected':''}>Deutsch</option><option value="pt" ${lang==='pt'?'selected':''}>Português</option><option value="ar" ${lang==='ar'?'selected':''}>العربية</option><option value="zh" ${lang==='zh'?'selected':''}>中文</option></select><div class="actions"><button id="musicBtn" class="btn music">▶ ${t.play}</button><a class="btn app" href="https://play.google.com/store/search?q=Patapata&c=apps" target="_blank" rel="noopener">📱 ${t.app}</a></div></section><h2 class="section-title">${t.choose}</h2><section class="grid">${cards}</section><div class="support"><a href="https://wa.me/18622306637?text=Hello%20Printo%2C%20I%20need%20help%20with%20a%20greeting%20video" target="_blank" rel="noopener">💬 ${t.help}</a><a href="/">🏠 ${t.home}</a></div><div class="footer">Printo Greeting Studio • Powered by PATAPATA LLC</div><audio id="theme" preload="metadata" loop src="/printo-theme"></audio></main><script>const audio=document.getElementById('theme'),btn=document.getElementById('musicBtn');audio.addEventListener('error',()=>{btn.disabled=true;btn.textContent='⚠ ${t.play}'});btn.onclick=async()=>{if(audio.paused){try{audio.load();await audio.play();btn.textContent='⏸ ${t.pause}'}catch(e){btn.textContent='⚠ ${t.play}';alert('Printo theme music could not be played. Please confirm that music.mp3 exists in templates/birthday.')}}else{audio.pause();btn.textContent='▶ ${t.play}'}}</script></body></html>`;
 }
 
-function buildBirthdayGeneratorPage() {
+function buildBirthdayGeneratorPage(language = "en") {
+  const lang = ["en", "es", "fr", "de", "pt", "ar", "zh"].includes(language) ? language : "en";
+  const copy = {
+    en: { title:"Printo Birthday Generator", back:"All Greeting Cards", intro:"Enter the recipient, sender and personal message. Printo will create the finished video with music and personalized voice.", recipient:"Recipient Name", sender:"Sender Name", recipientExample:"Example: Michael", senderExample:"Example: Ana", personal:"Personal Message", messagePlaceholder:"Write a short birthday message...", generate:"Generate Birthday Video", generating:"Generating...", waiting:"Printo is creating your birthday video. Please wait.", failed:"Generation failed.", voiceReady:"Video and Printo voice are ready!", musicReady:"Video is ready. Music was used because voice was unavailable.", shopify:"Buy via Shopify", nigeria:"Nigeria Payment", note:"Your generated page will include a large Play button, Download, WhatsApp, Facebook, Instagram, TikTok, YouTube, Email and Copy Link options." },
+    es: { title:"Generador de cumpleaños Printo", back:"Todas las tarjetas de saludo", intro:"Ingresa el nombre del destinatario, el remitente y un mensaje personal. Printo creará el video final con música y voz personalizada.", recipient:"Nombre del destinatario", sender:"Nombre del remitente", recipientExample:"Ejemplo: Miguel", senderExample:"Ejemplo: Ana", personal:"Mensaje personal", messagePlaceholder:"Escribe un mensaje corto de cumpleaños...", generate:"Generar video de cumpleaños", generating:"Generando...", waiting:"Printo está creando tu video de cumpleaños. Espera, por favor.", failed:"No se pudo generar el video.", voiceReady:"¡El video y la voz de Printo están listos!", musicReady:"El video está listo. Se usó música porque la voz no estaba disponible.", shopify:"Comprar por Shopify", nigeria:"Pago en Nigeria", note:"La página generada incluirá un botón grande de reproducción, descarga, WhatsApp, Facebook, Instagram, TikTok, YouTube, correo electrónico y copiar enlace." },
+    fr: { title:"Générateur d’anniversaire Printo", back:"Toutes les cartes de vœux", intro:"Saisissez le nom du destinataire, de l’expéditeur et un message personnel. Printo créera la vidéo finale avec musique et voix personnalisée.", recipient:"Nom du destinataire", sender:"Nom de l’expéditeur", recipientExample:"Exemple : Michel", senderExample:"Exemple : Ana", personal:"Message personnel", messagePlaceholder:"Écrivez un court message d’anniversaire...", generate:"Créer la vidéo d’anniversaire", generating:"Création...", waiting:"Printo crée votre vidéo d’anniversaire. Veuillez patienter.", failed:"La création a échoué.", voiceReady:"La vidéo et la voix de Printo sont prêtes !", musicReady:"La vidéo est prête. La musique a été utilisée car la voix n’était pas disponible.", shopify:"Acheter via Shopify", nigeria:"Paiement Nigeria", note:"La page générée comprendra un grand bouton Lecture, Télécharger, WhatsApp, Facebook, Instagram, TikTok, YouTube, E-mail et Copier le lien." },
+    de: { title:"Printo Geburtstagsgenerator", back:"Alle Grußkarten", intro:"Geben Sie den Namen des Empfängers, des Absenders und eine persönliche Nachricht ein. Printo erstellt das fertige Video mit Musik und personalisierter Stimme.", recipient:"Name des Empfängers", sender:"Name des Absenders", recipientExample:"Beispiel: Michael", senderExample:"Beispiel: Ana", personal:"Persönliche Nachricht", messagePlaceholder:"Schreiben Sie eine kurze Geburtstagsnachricht...", generate:"Geburtstagsvideo erstellen", generating:"Wird erstellt...", waiting:"Printo erstellt Ihr Geburtstagsvideo. Bitte warten.", failed:"Erstellung fehlgeschlagen.", voiceReady:"Video und Printo-Stimme sind fertig!", musicReady:"Das Video ist fertig. Musik wurde verwendet, da die Stimme nicht verfügbar war.", shopify:"Über Shopify kaufen", nigeria:"Nigeria-Zahlung", note:"Die erstellte Seite enthält eine große Wiedergabetaste sowie Download-, WhatsApp-, Facebook-, Instagram-, TikTok-, YouTube-, E-Mail- und Link-kopieren-Optionen." },
+    pt: { title:"Gerador de aniversário Printo", back:"Todos os cartões de saudação", intro:"Digite o nome do destinatário, do remetente e uma mensagem pessoal. Printo criará o vídeo final com música e voz personalizada.", recipient:"Nome do destinatário", sender:"Nome do remetente", recipientExample:"Exemplo: Miguel", senderExample:"Exemplo: Ana", personal:"Mensagem pessoal", messagePlaceholder:"Escreva uma mensagem curta de aniversário...", generate:"Gerar vídeo de aniversário", generating:"Gerando...", waiting:"Printo está criando seu vídeo de aniversário. Aguarde.", failed:"Falha ao gerar o vídeo.", voiceReady:"O vídeo e a voz do Printo estão prontos!", musicReady:"O vídeo está pronto. A música foi usada porque a voz não estava disponível.", shopify:"Comprar pela Shopify", nigeria:"Pagamento na Nigéria", note:"A página gerada incluirá um grande botão Reproduzir, Download, WhatsApp, Facebook, Instagram, TikTok, YouTube, E-mail e Copiar link." },
+    ar: { title:"منشئ فيديو عيد الميلاد من Printo", back:"جميع بطاقات التهنئة", intro:"أدخل اسم المستلم والمرسل والرسالة الشخصية. سيُنشئ Printo الفيديو النهائي مع الموسيقى والصوت المخصص.", recipient:"اسم المستلم", sender:"اسم المرسل", recipientExample:"مثال: محمد", senderExample:"مثال: آنا", personal:"الرسالة الشخصية", messagePlaceholder:"اكتب رسالة عيد ميلاد قصيرة...", generate:"إنشاء فيديو عيد الميلاد", generating:"جارٍ الإنشاء...", waiting:"يقوم Printo بإنشاء فيديو عيد الميلاد. يرجى الانتظار.", failed:"فشل إنشاء الفيديو.", voiceReady:"الفيديو وصوت Printo جاهزان!", musicReady:"الفيديو جاهز. تم استخدام الموسيقى لأن الصوت لم يكن متاحًا.", shopify:"الشراء عبر Shopify", nigeria:"الدفع في نيجيريا", note:"ستتضمن الصفحة الناتجة زر تشغيل كبيرًا وخيارات التنزيل وWhatsApp وFacebook وInstagram وTikTok وYouTube والبريد الإلكتروني ونسخ الرابط." },
+    zh: { title:"Printo 生日视频生成器", back:"所有祝福卡片", intro:"输入收件人、发件人和个人留言。Printo 将制作带有音乐和个性化语音的完整视频。", recipient:"收件人姓名", sender:"发件人姓名", recipientExample:"例如：迈克尔", senderExample:"例如：安娜", personal:"个人留言", messagePlaceholder:"写一段简短的生日祝福……", generate:"生成生日视频", generating:"正在生成……", waiting:"Printo 正在制作您的生日视频，请稍候。", failed:"生成失败。", voiceReady:"视频和 Printo 语音已准备好！", musicReady:"视频已准备好。由于语音不可用，已使用音乐。", shopify:"通过 Shopify 购买", nigeria:"尼日利亚付款", note:"生成的页面将包含大号播放按钮、下载、WhatsApp、Facebook、Instagram、TikTok、YouTube、电子邮件和复制链接选项。" }
+  };
+  const t = copy[lang] || copy.en;
+  const dir = lang === "ar" ? "rtl" : "ltr";
   return `<!DOCTYPE html>
-<html lang="en">
+<html lang="${lang}" dir="${dir}">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Printo Birthday Generator</title>
+  <title>${t.title}</title>
   <style>
-    *{box-sizing:border-box}body{margin:0;font-family:Arial,sans-serif;background:linear-gradient(180deg,#071b61,#0b63ce);color:#fff;min-height:100vh;padding:20px}.wrap{max-width:760px;margin:auto}.top{text-align:center;margin-bottom:18px}.top h1{font-size:34px;margin:7px 0}.top p{opacity:.92;line-height:23px}.panel{background:#fff;color:#172554;border-radius:22px;padding:22px;box-shadow:0 14px 38px rgba(0,0,0,.32)}label{display:block;font-weight:900;margin:13px 0 7px}.row{display:grid;grid-template-columns:1fr 1fr;gap:14px}.field{position:relative}input,textarea{width:100%;border:2px solid #cbd5e1;border-radius:13px;padding:13px 15px;font-size:17px;outline:none}input:focus,textarea:focus{border-color:#7b2cbf;box-shadow:0 0 0 3px rgba(123,44,191,.14)}textarea{min-height:120px;resize:vertical}.counter{text-align:right;font-size:13px;font-weight:800;color:#64748b;margin-top:5px}.counter.warn{color:#dc2626}.generate{width:100%;border:0;border-radius:15px;padding:16px;background:linear-gradient(90deg,#7b2cbf,#d63384);color:#fff;font-size:19px;font-weight:900;cursor:pointer;margin-top:18px}.generate:disabled{opacity:.55;cursor:not-allowed}.status{text-align:center;min-height:28px;margin-top:13px;font-weight:800;color:#7b2cbf}.payments{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:15px}.pay{display:block;text-align:center;text-decoration:none;color:#fff;font-weight:900;padding:13px;border-radius:13px}.shopify{background:#4f772d}.nigeria{background:#008751}.back{display:inline-block;color:#ffd21f;text-decoration:none;font-weight:900;margin-bottom:10px}.note{font-size:13px;line-height:19px;color:#475569;background:#f1f5f9;padding:12px;border-radius:12px;margin-top:14px}@media(max-width:580px){body{padding:12px}.row,.payments{grid-template-columns:1fr}.top h1{font-size:29px}}
+    *{box-sizing:border-box}body{margin:0;font-family:Arial,sans-serif;background:linear-gradient(180deg,#071b61,#0b63ce);color:#fff;min-height:100vh;padding:20px}.wrap{max-width:760px;margin:auto}.top{text-align:center;margin-bottom:18px}.top h1{font-size:34px;margin:7px 0}.top p{opacity:.92;line-height:23px}.panel{background:#fff;color:#172554;border-radius:22px;padding:22px;box-shadow:0 14px 38px rgba(0,0,0,.32)}label{display:block;font-weight:900;margin:13px 0 7px}.row{display:grid;grid-template-columns:1fr 1fr;gap:14px}.field{position:relative}input,textarea{width:100%;border:2px solid #cbd5e1;border-radius:13px;padding:13px 15px;font-size:17px;outline:none;text-align:start}input:focus,textarea:focus{border-color:#7b2cbf;box-shadow:0 0 0 3px rgba(123,44,191,.14)}textarea{min-height:120px;resize:vertical}.counter{text-align:end;font-size:13px;font-weight:800;color:#64748b;margin-top:5px}.counter.warn{color:#dc2626}.generate{width:100%;border:0;border-radius:15px;padding:16px;background:linear-gradient(90deg,#7b2cbf,#d63384);color:#fff;font-size:19px;font-weight:900;cursor:pointer;margin-top:18px}.generate:disabled{opacity:.55;cursor:not-allowed}.status{text-align:center;min-height:28px;margin-top:13px;font-weight:800;color:#7b2cbf}.payments{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:15px}.pay{display:block;text-align:center;text-decoration:none;color:#fff;font-weight:900;padding:13px;border-radius:13px}.shopify{background:#4f772d}.nigeria{background:#008751}.back{display:inline-block;color:#ffd21f;text-decoration:none;font-weight:900;margin-bottom:10px}.note{font-size:13px;line-height:19px;color:#475569;background:#f1f5f9;padding:12px;border-radius:12px;margin-top:14px}@media(max-width:580px){body{padding:12px}.row,.payments{grid-template-columns:1fr}.top h1{font-size:29px}}
   </style>
 </head>
 <body>
 <div class="wrap">
-  <a class="back" href="/greetings">← All Greeting Cards</a>
-  <div class="top"><h1>🎂 Printo Birthday Generator</h1><p>Enter the recipient, sender and personal message. Printo will create the finished video with music and personalized voice.</p></div>
+  <a class="back" href="/greetings?lang=${lang}">← ${t.back}</a>
+  <div class="top"><h1>🎂 ${t.title}</h1><p>${t.intro}</p></div>
   <div class="panel">
     <form id="birthdayForm">
       <div class="row">
-        <div class="field"><label for="toName">Recipient Name</label><input id="toName" maxlength="16" required placeholder="Example: Michael" /><div id="toCount" class="counter">0 / 16</div></div>
-        <div class="field"><label for="fromName">Sender Name</label><input id="fromName" maxlength="16" required placeholder="Example: Ana" /><div id="fromCount" class="counter">0 / 16</div></div>
+        <div class="field"><label for="toName">${t.recipient}</label><input id="toName" maxlength="16" required placeholder="${t.recipientExample}" /><div id="toCount" class="counter">0 / 16</div></div>
+        <div class="field"><label for="fromName">${t.sender}</label><input id="fromName" maxlength="16" required placeholder="${t.senderExample}" /><div id="fromCount" class="counter">0 / 16</div></div>
       </div>
-      <label for="message">Personal Message</label>
-      <textarea id="message" maxlength="78" required placeholder="Write a short birthday message..."></textarea>
+      <label for="message">${t.personal}</label>
+      <textarea id="message" maxlength="78" required placeholder="${t.messagePlaceholder}"></textarea>
       <div id="messageCount" class="counter">0 / 78</div>
-      <button id="generateBtn" class="generate" type="submit">✨ Generate Birthday Video</button>
+      <button id="generateBtn" class="generate" type="submit">✨ ${t.generate}</button>
       <div id="status" class="status"></div>
     </form>
     <div class="payments">
-      <a class="pay shopify" href="https://www.patapata.us/" target="_blank" rel="noopener">🛒 Buy via Shopify</a>
-      <a class="pay nigeria" href="https://www.patapata.us/pages/africa-payment" target="_blank" rel="noopener">🇳🇬 Nigeria Payment</a>
+      <a class="pay shopify" href="https://www.patapata.us/" target="_blank" rel="noopener">🛒 ${t.shopify}</a>
+      <a class="pay nigeria" href="https://www.patapata.us/pages/africa-payment" target="_blank" rel="noopener">🇳🇬 ${t.nigeria}</a>
     </div>
-    <div class="note">Your generated page will include a large Play button, Download, WhatsApp, Facebook, Instagram, TikTok, YouTube, Email and Copy Link options.</div>
+    <div class="note">${t.note}</div>
   </div>
 </div>
 <script>
+  const ui=${JSON.stringify(t)};
+  const currentLanguage=${JSON.stringify(lang)};
   const limits={name:16,message:78};
   const to=document.getElementById('toName'),from=document.getElementById('fromName'),message=document.getElementById('message');
   const toCount=document.getElementById('toCount'),fromCount=document.getElementById('fromCount'),messageCount=document.getElementById('messageCount');
@@ -11529,14 +11581,15 @@ function buildBirthdayGeneratorPage() {
   message.addEventListener('input',()=>updateCounter(message,messageCount,limits.message));
   document.getElementById('birthdayForm').addEventListener('submit',async function(e){
     e.preventDefault();
-    button.disabled=true;button.textContent='⏳ Generating...';statusBox.textContent='Printo is creating your birthday video. Please wait.';
+    button.disabled=true;button.textContent='⏳ '+ui.generating;statusBox.textContent=ui.waiting;
     try{
-      const response=await fetch('/api/greeting/birthday/generate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({to:to.value.trim(),from:from.value.trim(),message:message.value.trim()})});
+      const response=await fetch('/api/greeting/birthday/generate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({to:to.value.trim(),from:from.value.trim(),message:message.value.trim(),language:currentLanguage})});
       const data=await response.json();
-      if(!response.ok||!data.ok)throw new Error(data.error||'Generation failed.');
-      statusBox.textContent=data.hasPrintoVoice?'✅ Video and Printo voice are ready!':'✅ Video is ready. Music was used because voice was unavailable.';
-      window.location.href=data.resultUrl||data.downloadUrl;
-    }catch(error){statusBox.textContent='❌ '+error.message;button.disabled=false;button.textContent='✨ Generate Birthday Video'}
+      if(!response.ok||!data.ok)throw new Error(data.error||ui.failed);
+      statusBox.textContent=data.hasPrintoVoice?'✅ '+ui.voiceReady:'✅ '+ui.musicReady;
+      const target=data.resultUrl||data.downloadUrl;
+      if(data.resultUrl){const separator=target.includes('?')?'&':'?';window.location.href=target+separator+'lang='+encodeURIComponent(currentLanguage)}else{window.location.href=target}
+    }catch(error){statusBox.textContent='❌ '+(error.message||ui.failed);button.disabled=false;button.textContent='✨ '+ui.generate}
   });
 </script>
 </body>
@@ -11549,7 +11602,8 @@ app.get(["/greetings", "/greeting"], (req, res) => {
 });
 
 app.get(["/birthday", "/birthday-generator", "/generate-birthday"], (req, res) => {
-  res.type("html").send(buildBirthdayGeneratorPage());
+  const language = String(req.query.lang || "en").toLowerCase();
+  res.type("html").send(buildBirthdayGeneratorPage(language));
 });
 
 app.get("/greeting-result", (req, res) => {
