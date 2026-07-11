@@ -1897,6 +1897,59 @@ const GREETING_TEMPLATES = [
   { id: "award-achievement", emoji: "🎖️", name: "Award & Achievement Greeting", occasion: "Award & Achievement", masterVideo: "master.mp4", priceLabel: "Premium" }
 ];
 
+
+const GREETING_TRANSLATIONS = {
+  "birthday": { en: "Birthday", es: "Cumpleaños", fr: "Anniversaire", de: "Geburtstag", pt: "Aniversário", ar: "عيد الميلاد", zh: "生日" },
+  "anniversary": { en: "Anniversary", es: "Aniversario", fr: "Anniversaire de mariage", de: "Jahrestag", pt: "Aniversário de casamento", ar: "ذكرى سنوية", zh: "纪念日" },
+  "wedding": { en: "Wedding", es: "Boda", fr: "Mariage", de: "Hochzeit", pt: "Casamento", ar: "زفاف", zh: "婚礼" },
+  "engagement": { en: "Engagement", es: "Compromiso", fr: "Fiançailles", de: "Verlobung", pt: "Noivado", ar: "خطوبة", zh: "订婚" },
+  "new-baby": { en: "New Baby", es: "Nuevo bebé", fr: "Nouveau bébé", de: "Neues Baby", pt: "Novo bebê", ar: "مولود جديد", zh: "新生宝宝" },
+  "baby-shower": { en: "Baby Shower", es: "Fiesta de bebé", fr: "Fête prénatale", de: "Babyparty", pt: "Chá de bebê", ar: "حفل استقبال المولود", zh: "迎婴派对" },
+  "child-dedication": { en: "Child Dedication", es: "Dedicación infantil", fr: "Présentation de l’enfant", de: "Kindersegnung", pt: "Dedicação infantil", ar: "تكريس الطفل", zh: "儿童奉献礼" },
+  "graduation": { en: "Graduation", es: "Graduación", fr: "Remise de diplôme", de: "Abschlussfeier", pt: "Formatura", ar: "تخرج", zh: "毕业" },
+  "housewarming": { en: "Housewarming", es: "Inauguración de casa", fr: "Crémaillère", de: "Einweihung", pt: "Casa nova", ar: "منزل جديد", zh: "乔迁" },
+  "new-job-promotion": { en: "New Job / Promotion", es: "Nuevo trabajo / Ascenso", fr: "Nouveau poste / Promotion", de: "Neuer Job / Beförderung", pt: "Novo emprego / Promoção", ar: "وظيفة جديدة / ترقية", zh: "新工作 / 晋升" },
+  "congratulations": { en: "Congratulations", es: "Felicitaciones", fr: "Félicitations", de: "Herzlichen Glückwunsch", pt: "Parabéns", ar: "تهانينا", zh: "祝贺" },
+  "get-well-soon": { en: "Get Well Soon", es: "Que te mejores pronto", fr: "Bon rétablissement", de: "Gute Besserung", pt: "Melhoras", ar: "الشفاء العاجل", zh: "早日康复" },
+  "sympathy-condolence": { en: "Sympathy / Condolence", es: "Pésame / Condolencias", fr: "Soutien / Condoléances", de: "Mitgefühl / Beileid", pt: "Solidariedade / Condolências", ar: "تعاطف / تعزية", zh: "慰问 / 哀悼" },
+  "retirement": { en: "Retirement", es: "Jubilación", fr: "Retraite", de: "Ruhestand", pt: "Aposentadoria", ar: "تقاعد", zh: "退休" },
+  "christmas": { en: "Christmas", es: "Navidad", fr: "Noël", de: "Weihnachten", pt: "Natal", ar: "عيد الميلاد المجيد", zh: "圣诞节" },
+  "new-year": { en: "New Year", es: "Año Nuevo", fr: "Nouvel An", de: "Neujahr", pt: "Ano Novo", ar: "رأس السنة", zh: "新年" },
+  "easter": { en: "Easter", es: "Pascua", fr: "Pâques", de: "Ostern", pt: "Páscoa", ar: "عيد القيامة", zh: "复活节" },
+  "islamic-celebration": { en: "Islamic Celebration (Eid)", es: "Celebración islámica (Eid)", fr: "Célébration islamique (Aïd)", de: "Islamisches Fest (Eid)", pt: "Celebração islâmica (Eid)", ar: "احتفال إسلامي (العيد)", zh: "伊斯兰节庆（开斋节）" },
+  "thanksgiving": { en: "Thanksgiving", es: "Día de Acción de Gracias", fr: "Action de grâce", de: "Erntedankfest", pt: "Dia de Ação de Graças", ar: "عيد الشكر", zh: "感恩节" },
+  "mothers-day": { en: "Mother's Day", es: "Día de la Madre", fr: "Fête des Mères", de: "Muttertag", pt: "Dia das Mães", ar: "عيد الأم", zh: "母亲节" },
+  "fathers-day": { en: "Father's Day", es: "Día del Padre", fr: "Fête des Pères", de: "Vatertag", pt: "Dia dos Pais", ar: "عيد الأب", zh: "父亲节" },
+  "valentines-day": { en: "Valentine's Day", es: "Día de San Valentín", fr: "Saint-Valentin", de: "Valentinstag", pt: "Dia dos Namorados", ar: "عيد الحب", zh: "情人节" },
+  "business": { en: "Business Greeting", es: "Saludo empresarial", fr: "Vœux professionnels", de: "Geschäftsgruß", pt: "Saudação empresarial", ar: "تهنئة أعمال", zh: "商务祝福" },
+  "grand-opening": { en: "Grand Opening", es: "Gran inauguración", fr: "Grande ouverture", de: "Große Eröffnung", pt: "Grande inauguração", ar: "الافتتاح الكبير", zh: "盛大开业" },
+  "employee-appreciation": { en: "Employee Appreciation", es: "Reconocimiento al empleado", fr: "Reconnaissance des employés", de: "Mitarbeiteranerkennung", pt: "Reconhecimento do funcionário", ar: "تقدير الموظفين", zh: "员工表彰" },
+  "award-achievement": { en: "Award & Achievement", es: "Premio y logro", fr: "Prix et réussite", de: "Auszeichnung & Leistung", pt: "Prêmio e conquista", ar: "جائزة وإنجاز", zh: "奖项与成就" }
+};
+
+function getGreetingLocalizedOccasion(templateOrId, language = "en") {
+  const lang = ["en", "es", "fr", "de", "pt", "ar", "zh"].includes(language) ? language : "en";
+  const id = typeof templateOrId === "string"
+    ? templateOrId
+    : (templateOrId && templateOrId.id) || "birthday";
+  const labels = GREETING_TRANSLATIONS[id] || {};
+  const template = GREETING_TEMPLATES.find((item) => item.id === id);
+  return labels[lang] || labels.en || (template ? template.occasion : "Greeting");
+}
+
+function getGreetingLocalizedDescription(templateOrId, language = "en") {
+  const occasion = getGreetingLocalizedOccasion(templateOrId, language);
+  return pickText(language, {
+    en: `Create a personalized Printo video greeting for ${occasion}.`,
+    es: `Crea un saludo de video Printo personalizado para ${occasion}.`,
+    fr: `Créez un message vidéo Printo personnalisé pour ${occasion}.`,
+    de: `Erstellen Sie einen persönlichen Printo-Videogruß für ${occasion}.`,
+    pt: `Crie uma saudação em vídeo Printo personalizada para ${occasion}.`,
+    ar: `أنشئ تهنئة فيديو Printo مخصصة بمناسبة ${occasion}.`,
+    zh: `为${occasion}制作个性化 Printo 祝福视频。`
+  });
+}
+
 function getGreetingTemplate(templateId = "birthday") {
   const id = String(templateId || "birthday").trim().toLowerCase();
   return GREETING_TEMPLATES.find((item) => item.id === id) || GREETING_TEMPLATES[0];
@@ -1913,12 +1966,12 @@ function greetingStudioMenuText(language = "en") {
     zh: ["🎬 Printo 祝福工作室", "创建个性化 Printo 动画视频贺卡。", "请选择场合：", "请只回复编号。", "不需要使用 | 或 /。机器人会一步一步询问。"]
   };
   const h = headings[language] || headings.en;
-  const options = GREETING_TEMPLATES.map((item, index) => `${index + 1} - ${item.emoji} ${item.occasion}`).join("\n");
+  const options = GREETING_TEMPLATES.map((item, index) => `${index + 1} - ${item.emoji} ${getGreetingLocalizedOccasion(item, language)}`).join("\n");
   return `${h[0]}\n\n${h[1]}\n\n${h[2]}\n${options}\n\n${h[3]}\n\n${h[4]}`;
 }
 
 function greetingQuestionText(language = "en", key = "recipient", spec = {}) {
-  const occasion = spec.occasion || "Greeting";
+  const occasion = getGreetingLocalizedOccasion(spec.templateId || "birthday", language) || spec.occasion || "Greeting";
   const questions = {
     recipient: {
       en: `✅ ${occasion} selected.
@@ -11418,7 +11471,9 @@ function buildGreetingStudioHomePage(language = "en") {
   const cards = GREETING_TEMPLATES.map((item) => {
     const ready = item.id === "birthday";
     const previewClass = ready ? "preview birthday" : "preview";
-    const cardBody = `<div class="${previewClass}">${ready ? "" : item.emoji}</div><div class="content"><div class="title">${item.emoji} ${item.occasion}</div><div class="sub">${t.sub}</div><div class="${ready ? "ready" : "soon"}">${ready ? t.create : t.soon}</div></div>`;
+    const localizedOccasion = getGreetingLocalizedOccasion(item, lang);
+    const localizedDescription = getGreetingLocalizedDescription(item, lang);
+    const cardBody = `<div class="${previewClass}">${ready ? "" : item.emoji}</div><div class="content"><div class="title">${item.emoji} ${localizedOccasion}</div><div class="sub">${localizedDescription}</div><div class="${ready ? "ready" : "soon"}">${ready ? t.create : t.soon}</div></div>`;
     return ready ? `<a class="card" href="/birthday?lang=${lang}">${cardBody}</a>` : `<div class="card">${cardBody}</div>`;
   }).join("");
 
