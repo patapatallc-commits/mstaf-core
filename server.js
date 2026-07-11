@@ -11528,7 +11528,9 @@ app.post("/api/greeting/birthday/generate", async (req, res) => {
         execFile("ffmpeg", [
           "-y", "-nostdin", "-loglevel", "error",
           "-ss", "1.2", "-i", outputPath,
-          "-frames:v", "1", "-vf", "scale=720:-2",
+          "-frames:v", "1",
+          "-vf",
+          "scale=720:-2,drawtext=text='▶':x=(w-text_w)/2:y=390:fontsize=92:fontcolor=white:box=1:boxcolor=black@0.58:boxborderw=28:borderw=2:bordercolor=white@0.85",
           "-q:v", "2", posterPath
         ], { timeout: 30000, maxBuffer: 1024 * 1024 * 2 }, (posterErr) => {
           if (posterErr) console.error("Greeting poster generation failed:", posterErr.message);
@@ -11708,8 +11710,8 @@ function buildBirthdayGeneratorPage(language = "en") {
   <div class="panel">
     <form id="birthdayForm">
       <div class="row">
-        <div class="field"><label for="toName">${t.recipient}</label><input id="toName" maxlength="16" required placeholder="${t.recipientExample}" /><div id="toCount" class="counter">0 / 16</div></div>
-        <div class="field"><label for="fromName">${t.sender}</label><input id="fromName" maxlength="16" required placeholder="${t.senderExample}" /><div id="fromCount" class="counter">0 / 16</div></div>
+        <div class="field"><label for="toName">${t.recipient}</label><input id="toName" maxlength="${BIRTHDAY_NAME_MAX}" required placeholder="${t.recipientExample}" /><div id="toCount" class="counter">0 / ${BIRTHDAY_NAME_MAX}</div></div>
+        <div class="field"><label for="fromName">${t.sender}</label><input id="fromName" maxlength="${BIRTHDAY_NAME_MAX}" required placeholder="${t.senderExample}" /><div id="fromCount" class="counter">0 / ${BIRTHDAY_NAME_MAX}</div></div>
       </div>
       <label for="message">${t.personal}</label>
       <textarea id="message" maxlength="${BIRTHDAY_MESSAGE_MAX}" required placeholder="${t.messagePlaceholder}"></textarea>
@@ -11793,18 +11795,18 @@ app.get("/greeting-result", (req, res) => {
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>${title}</title>
-  <meta property="og:type" content="website" />
+  <title>${title}</title>\n  <link rel="canonical" href="${escapeHtml(pageUrl)}" />
+  <meta property="og:type" content="video.other" />\n  <meta property="og:site_name" content="Printo Greeting Studio" />
   <meta property="og:url" content="${escapeHtml(pageUrl)}" />
   <meta property="og:title" content="${escapeHtml(title)}" />
-  <meta property="og:description" content="Watch this personalized Printo Greeting Studio video." />
-  ${safePoster ? `<meta property="og:image" content="${safePoster}" /><meta property="og:image:secure_url" content="${safePoster}" /><meta property="og:image:type" content="image/jpeg" /><meta property="og:image:width" content="720" /><meta property="og:image:height" content="1080" />` : ""}
+  <meta property="og:description" content="Tap the play preview to watch this personalized Printo greeting." />
+  ${safePoster ? `<meta property="og:image" content="${safePoster}" /><meta property="og:image:secure_url" content="${safePoster}" /><meta property="og:image:type" content="image/jpeg" /><meta property="og:image:width" content="720" /><meta property="og:image:height" content="1080" /><meta property="og:image:alt" content="Personalized Printo greeting card with play button" />` : ""}
   <meta property="og:video" content="${safeVideo}" />
   <meta property="og:video:secure_url" content="${safeVideo}" />
   <meta property="og:video:type" content="video/mp4" />\n  <meta property="og:video:width" content="1024" />\n  <meta property="og:video:height" content="1536" />
   <meta name="twitter:card" content="summary_large_image" />
   <meta name="twitter:title" content="${escapeHtml(title)}" />
-  <meta name="twitter:description" content="Watch this personalized Printo greeting." />
+  <meta name="twitter:description" content="Tap the preview to watch this personalized Printo greeting." />
   ${safePoster ? `<meta name="twitter:image" content="${safePoster}" />` : ""}
   <style>
     *{box-sizing:border-box} body{margin:0;font-family:Arial,sans-serif;background:linear-gradient(180deg,#071b61,#0b63ce);color:#fff;min-height:100vh;padding:22px}
@@ -11842,13 +11844,14 @@ app.get("/greeting-result", (req, res) => {
 <script>
   const video=document.getElementById('greetingVideo'); const play=document.getElementById('bigPlay'); const toast=document.getElementById('toast');
   const pageUrl=${JSON.stringify(pageUrl)}; const videoUrl=${JSON.stringify(videoUrl)};
-  const shareText=${JSON.stringify(`🎉 Watch my personalized Printo greeting! Create yours with Printo Greeting Studio. Shopify: ${shopifyUrl} Nigeria payment: ${nigeriaUrl}`)};
+  const shareText=${JSON.stringify(`🎉 Watch my personalized Printo greeting! Tap the preview to play.`)};
+  const emailText=${JSON.stringify(`🎉 Watch my personalized Printo greeting!\n\nCreate yours with Printo Greeting Studio.\nShopify: ${shopifyUrl}\nNigeria payment: ${nigeriaUrl}`)};
   play.onclick=async()=>{try{await video.play();play.style.display='none'}catch(e){toast.textContent='Tap the video controls to play.'}};
   video.onclick=()=>{if(video.paused){video.play();play.style.display='none'}else video.pause()};
   video.onended=()=>{play.textContent='↻';play.style.display='block'};
   function shareWhatsApp(){window.open('https://wa.me/?text='+encodeURIComponent(shareText+'\\n\\n'+pageUrl),'_blank')}
   function shareFacebook(){window.open('https://www.facebook.com/sharer/sharer.php?u='+encodeURIComponent(pageUrl),'_blank')}
-  function shareEmail(){location.href='mailto:?subject='+encodeURIComponent('My Printo greeting')+'&body='+encodeURIComponent(shareText+'\\n\\n'+pageUrl)}
+  function shareEmail(){location.href='mailto:?subject='+encodeURIComponent('My Printo greeting')+'&body='+encodeURIComponent(emailText+'\\n\\n'+pageUrl)}
   async function copyLink(){try{await navigator.clipboard.writeText(pageUrl);toast.textContent='Greeting link copied!'}catch(e){prompt('Copy this link:',pageUrl)}}
   function downloadThenOpen(url){const a=document.createElement('a');a.href=videoUrl;a.download='printo-greeting.mp4';document.body.appendChild(a);a.click();a.remove();setTimeout(()=>window.open(url,'_blank'),700)}
   if(navigator.share){document.querySelector('.copy').textContent='📤 Share / Copy Greeting Link';document.querySelector('.copy').onclick=async()=>{try{await navigator.share({title:'Printo Greeting',text:shareText,url:pageUrl})}catch(e){copyLink()}}}
