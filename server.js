@@ -11234,6 +11234,90 @@ function wrapGreetingName(value = "") {
   return [bestFirst, bestSecond];
 }
 
+function getGreetingNameFontSize(lines = []) {
+  const longestLine = Math.max(
+    0,
+    ...lines.map((line) => Array.from(String(line || "")).length)
+  );
+
+  // Short names appear large and prominent. Longer names shrink only as needed.
+  if (longestLine <= 5) return 34;
+  if (longestLine <= 7) return 31;
+  if (longestLine <= 9) return 28;
+  if (longestLine <= 11) return 25;
+  if (longestLine <= 13) return 22;
+  if (longestLine <= 15) return 19;
+  if (longestLine <= 17) return 17;
+  if (longestLine <= 19) return 15;
+  if (longestLine <= 21) return 13;
+  return 11;
+}
+
+function getGreetingMessageLayout(value = "") {
+  const messageLength = Array.from(String(value || "").trim()).length;
+
+  let maxLines;
+  let fontSize;
+  let lineGap;
+
+  if (messageLength <= 35) {
+    maxLines = 2;
+    fontSize = 34;
+    lineGap = 42;
+  } else if (messageLength <= 60) {
+    maxLines = 3;
+    fontSize = 29;
+    lineGap = 36;
+  } else if (messageLength <= 90) {
+    maxLines = 4;
+    fontSize = 25;
+    lineGap = 32;
+  } else if (messageLength <= 120) {
+    maxLines = 6;
+    fontSize = 21;
+    lineGap = 28;
+  } else if (messageLength <= 150) {
+    maxLines = 7;
+    fontSize = 18;
+    lineGap = 25;
+  } else if (messageLength <= 180) {
+    maxLines = 8;
+    fontSize = 15;
+    lineGap = 23;
+  } else if (messageLength <= 205) {
+    maxLines = 9;
+    fontSize = 13;
+    lineGap = 21;
+  } else {
+    maxLines = 10;
+    fontSize = 11;
+    lineGap = 20;
+  }
+
+  const lines = wrapCompleteGreetingMessage(value, maxLines);
+  const usedLines = Math.max(
+    1,
+    lines.filter((line) => String(line || "").trim()).length
+  );
+
+  // Keep every message centered vertically inside the safe text area.
+  const safeTop = 1088;
+  const safeBottom = 1282;
+  const blockHeight = (usedLines - 1) * lineGap;
+  const startY = Math.round(
+    safeTop + Math.max(0, (safeBottom - safeTop - blockHeight) / 2)
+  );
+
+  return {
+    lines: [...lines, ...Array(Math.max(0, 10 - lines.length)).fill("")].slice(0, 10),
+    fontSize,
+    lineGap,
+    startY,
+    usedLines,
+    messageLength
+  };
+}
+
 function wrapCompleteGreetingMessage(value = "", maxLines = 9) {
   const normalized = String(value || "").replace(/\s+/g, " ").trim();
   if (!normalized) return Array(maxLines).fill("");
@@ -11442,39 +11526,30 @@ app.post("/api/greeting/birthday/generate", async (req, res) => {
     const toNameLines = wrapGreetingName(toNameRaw);
     const fromNameLines = wrapGreetingName(fromNameRaw);
 
-    const longestToLine = Math.max(...toNameLines.map((line) => Array.from(line).length));
-    const longestFromLine = Math.max(...fromNameLines.map((line) => Array.from(line).length));
+    const longestToLine = Math.max(
+      ...toNameLines.map((line) => Array.from(line || "").length),
+      0
+    );
+    const longestFromLine = Math.max(
+      ...fromNameLines.map((line) => Array.from(line || "").length),
+      0
+    );
 
-    const toFontSize =
-      longestToLine > 20 ? 11 :
-      longestToLine > 18 ? 12 :
-      longestToLine > 16 ? 13 :
-      longestToLine > 14 ? 15 :
-      longestToLine > 12 ? 17 :
-      longestToLine > 10 ? 19 :
-      longestToLine > 8 ? 22 : 25;
-    const fromFontSize =
-      longestFromLine > 20 ? 11 :
-      longestFromLine > 18 ? 12 :
-      longestFromLine > 16 ? 13 :
-      longestFromLine > 14 ? 15 :
-      longestFromLine > 12 ? 17 :
-      longestFromLine > 10 ? 19 :
-      longestFromLine > 8 ? 22 : 25;
+    const toFontSize = getGreetingNameFontSize(toNameLines);
+    const fromFontSize = getGreetingNameFontSize(fromNameLines);
 
-    // Birthday V2: preserve every accepted character.
-    // Nine balanced lines prevent the end of a 160-character message from being cut off.
-    const messageLines = wrapCompleteGreetingMessage(messageRaw, 10);
-    const messageLength = Array.from(messageRaw).length;
-    const messageFontSize =
-      messageLength > 205 ? 11 :
-      messageLength > 190 ? 12 :
-      messageLength > 175 ? 13 :
-      messageLength > 155 ? 16 :
-      messageLength > 135 ? 17 :
-      messageLength > 115 ? 18 :
-      messageLength > 90 ? 20 :
-      messageLength > 65 ? 22 : 25;
+    const messageLayout = getGreetingMessageLayout(messageRaw);
+    const messageLines = messageLayout.lines;
+    const messageLength = messageLayout.messageLength;
+    const messageFontSize = messageLayout.fontSize;
+    const messageLineGap = messageLayout.lineGap;
+    const messageStartY = messageLayout.startY;
+
+    const toUsedLines = toNameLines.filter((line) => String(line || "").trim()).length;
+    const fromUsedLines = fromNameLines.filter((line) => String(line || "").trim()).length;
+    const toNameStartY = toUsedLines <= 1 ? 500 : 478;
+    const fromNameStartY = fromUsedLines <= 1 ? 500 : 478;
+    const nameLineGap = 40;
 
     const birthdayDir = path.join(__dirname, "templates", "birthday");
     const birthdayV2FramePath = path.join(birthdayDir, "Birthday_Image_V2.png");
@@ -11521,22 +11596,22 @@ app.post("/api/greeting/birthday/generate", async (req, res) => {
       `[bg][vid]overlay=281:342,` +
       `drawbox=x=42:y=404:w=180:h=250:color=#f9e7c9@0.96:t=fill,` +
       `drawbox=x=802:y=404:w=180:h=250:color=#f9e7c9@0.96:t=fill,` +
-      `drawtext=text=${quoteDrawtextText(toNameLines[0])}:x=42+(180-text_w)/2:y=478:fontsize=${toFontSize}:fontcolor=#d6333f:borderw=2:bordercolor=white@0.45,` +
-      `drawtext=text=${quoteDrawtextText(toNameLines[1])}:x=42+(180-text_w)/2:y=518:fontsize=${toFontSize}:fontcolor=#d6333f:borderw=2:bordercolor=white@0.45,` +
+      `drawtext=text=${quoteDrawtextText(toNameLines[0])}:x=42+(180-text_w)/2:y=${toNameStartY}:fontsize=${toFontSize}:fontcolor=#d6333f:borderw=2:bordercolor=white@0.45,` +
+      `drawtext=text=${quoteDrawtextText(toNameLines[1])}:x=42+(180-text_w)/2:y=${toNameStartY + nameLineGap}:fontsize=${toFontSize}:fontcolor=#d6333f:borderw=2:bordercolor=white@0.45,` +
       `drawtext=text='♥':x=42+(180-text_w)/2:y=590:fontsize=28:fontcolor=#d6333f:borderw=1:bordercolor=white@0.35,` +
-      `drawtext=text=${quoteDrawtextText(fromNameLines[0])}:x=802+(180-text_w)/2:y=478:fontsize=${fromFontSize}:fontcolor=#7b2cbf:borderw=2:bordercolor=white@0.45,` +
-      `drawtext=text=${quoteDrawtextText(fromNameLines[1])}:x=802+(180-text_w)/2:y=518:fontsize=${fromFontSize}:fontcolor=#7b2cbf:borderw=2:bordercolor=white@0.45,` +
+      `drawtext=text=${quoteDrawtextText(fromNameLines[0])}:x=802+(180-text_w)/2:y=${fromNameStartY}:fontsize=${fromFontSize}:fontcolor=#7b2cbf:borderw=2:bordercolor=white@0.45,` +
+      `drawtext=text=${quoteDrawtextText(fromNameLines[1])}:x=802+(180-text_w)/2:y=${fromNameStartY + nameLineGap}:fontsize=${fromFontSize}:fontcolor=#7b2cbf:borderw=2:bordercolor=white@0.45,` +
       `drawtext=text='♥':x=802+(180-text_w)/2:y=590:fontsize=28:fontcolor=#7b2cbf:borderw=1:bordercolor=white@0.35,` +
-      `drawtext=text=${quoteDrawtextText(messageLines[0])}:x=218+(590-text_w)/2:y=1082:fontsize=${messageFontSize}:fontcolor=#2f267f:borderw=1:bordercolor=white@0.35,` +
-      `drawtext=text=${quoteDrawtextText(messageLines[1])}:x=218+(590-text_w)/2:y=1104:fontsize=${messageFontSize}:fontcolor=#2f267f:borderw=1:bordercolor=white@0.35,` +
-      `drawtext=text=${quoteDrawtextText(messageLines[2])}:x=218+(590-text_w)/2:y=1126:fontsize=${messageFontSize}:fontcolor=#2f267f:borderw=1:bordercolor=white@0.35,` +
-      `drawtext=text=${quoteDrawtextText(messageLines[3])}:x=218+(590-text_w)/2:y=1148:fontsize=${messageFontSize}:fontcolor=#2f267f:borderw=1:bordercolor=white@0.35,` +
-      `drawtext=text=${quoteDrawtextText(messageLines[4])}:x=218+(590-text_w)/2:y=1170:fontsize=${messageFontSize}:fontcolor=#2f267f:borderw=1:bordercolor=white@0.35,` +
-      `drawtext=text=${quoteDrawtextText(messageLines[5])}:x=218+(590-text_w)/2:y=1192:fontsize=${messageFontSize}:fontcolor=#2f267f:borderw=1:bordercolor=white@0.35,` +
-      `drawtext=text=${quoteDrawtextText(messageLines[6])}:x=218+(590-text_w)/2:y=1214:fontsize=${messageFontSize}:fontcolor=#2f267f:borderw=1:bordercolor=white@0.35,` +
-      `drawtext=text=${quoteDrawtextText(messageLines[7])}:x=218+(590-text_w)/2:y=1236:fontsize=${messageFontSize}:fontcolor=#2f267f:borderw=1:bordercolor=white@0.35,` +
-      `drawtext=text=${quoteDrawtextText(messageLines[8])}:x=218+(590-text_w)/2:y=1258:fontsize=${messageFontSize}:fontcolor=#2f267f:borderw=1:bordercolor=white@0.35,` +
-      `drawtext=text=${quoteDrawtextText(messageLines[9])}:x=218+(590-text_w)/2:y=1280:fontsize=${messageFontSize}:fontcolor=#2f267f:borderw=1:bordercolor=white@0.35[outv]`;
+      `drawtext=text=${quoteDrawtextText(messageLines[0])}:x=218+(590-text_w)/2:y=${messageStartY + (0 * messageLineGap)}:fontsize=${messageFontSize}:fontcolor=#2f267f:borderw=1:bordercolor=white@0.35,` +
+      `drawtext=text=${quoteDrawtextText(messageLines[1])}:x=218+(590-text_w)/2:y=${messageStartY + (1 * messageLineGap)}:fontsize=${messageFontSize}:fontcolor=#2f267f:borderw=1:bordercolor=white@0.35,` +
+      `drawtext=text=${quoteDrawtextText(messageLines[2])}:x=218+(590-text_w)/2:y=${messageStartY + (2 * messageLineGap)}:fontsize=${messageFontSize}:fontcolor=#2f267f:borderw=1:bordercolor=white@0.35,` +
+      `drawtext=text=${quoteDrawtextText(messageLines[3])}:x=218+(590-text_w)/2:y=${messageStartY + (3 * messageLineGap)}:fontsize=${messageFontSize}:fontcolor=#2f267f:borderw=1:bordercolor=white@0.35,` +
+      `drawtext=text=${quoteDrawtextText(messageLines[4])}:x=218+(590-text_w)/2:y=${messageStartY + (4 * messageLineGap)}:fontsize=${messageFontSize}:fontcolor=#2f267f:borderw=1:bordercolor=white@0.35,` +
+      `drawtext=text=${quoteDrawtextText(messageLines[5])}:x=218+(590-text_w)/2:y=${messageStartY + (5 * messageLineGap)}:fontsize=${messageFontSize}:fontcolor=#2f267f:borderw=1:bordercolor=white@0.35,` +
+      `drawtext=text=${quoteDrawtextText(messageLines[6])}:x=218+(590-text_w)/2:y=${messageStartY + (6 * messageLineGap)}:fontsize=${messageFontSize}:fontcolor=#2f267f:borderw=1:bordercolor=white@0.35,` +
+      `drawtext=text=${quoteDrawtextText(messageLines[7])}:x=218+(590-text_w)/2:y=${messageStartY + (7 * messageLineGap)}:fontsize=${messageFontSize}:fontcolor=#2f267f:borderw=1:bordercolor=white@0.35,` +
+      `drawtext=text=${quoteDrawtextText(messageLines[8])}:x=218+(590-text_w)/2:y=${messageStartY + (8 * messageLineGap)}:fontsize=${messageFontSize}:fontcolor=#2f267f:borderw=1:bordercolor=white@0.35,` +
+      `drawtext=text=${quoteDrawtextText(messageLines[9])}:x=218+(590-text_w)/2:y=${messageStartY + (9 * messageLineGap)}:fontsize=${messageFontSize}:fontcolor=#2f267f:borderw=1:bordercolor=white@0.35[outv]`;
 
     const audioFilter = hasPrintoVoice
       ? `[2:a]volume=0.30,apad=pad_dur=10,atrim=0:10[music];` +
@@ -11578,7 +11653,10 @@ app.post("/api/greeting/birthday/generate", async (req, res) => {
       toFontSize,
       fromFontSize,
       messageLines,
-      messageFontSize
+      messageFontSize,
+      messageLineGap,
+      messageStartY,
+      messageUsedLines: messageLayout.usedLines
     });
     console.log("Birthday output path:", outputPath);
     console.log("FFmpeg command:", "ffmpeg " + ffmpegArgs.join(" "));
