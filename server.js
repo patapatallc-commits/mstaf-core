@@ -11160,11 +11160,22 @@ app.get("/api/greeting/birthday/assets", (req, res) => {
 
 function safeGreetingText(value = "") {
   return String(value || "")
-    .replace(/\\/g, "\\\\")
+    .normalize("NFKC")
+    .replace(/\r?\n/g, " ")
+    .replace(/\\/g, "\\\\\\\\")
+    .replace(/'/g, "’")
     .replace(/:/g, "\\:")
-    .replace(/'/g, "\\'")
-    .replace(/\n/g, " ")
-    .slice(0, 220);
+    .replace(/%/g, "\\%")
+    .replace(/\[/g, "\\[")
+    .replace(/\]/g, "\\]")
+    .replace(/,/g, "\\,")
+    .replace(/;/g, "\\;")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function quoteDrawtextText(value = "") {
+  return `'${safeGreetingText(value)}'`;
 }
 
 function wrapBirthdayMessage(value = "", maxChars = 28, maxLines = 5) {
@@ -11352,12 +11363,12 @@ app.post("/api/greeting/birthday/generate", async (req, res) => {
       `drawtext=text='♥':x=66+(178-text_w)/2:y=512:fontsize=26:fontcolor=#d63384:borderw=1:bordercolor=white@0.35,` +
       `drawtext=text='${fromName}':x=805+(160-text_w)/2:y=452:fontsize=${fromFontSize}:fontcolor=#7b2cbf:borderw=2:bordercolor=white@0.45,` +
       `drawtext=text='♥':x=805+(160-text_w)/2:y=512:fontsize=26:fontcolor=#7b2cbf:borderw=1:bordercolor=white@0.35,` +
-      `drawtext=text='${messageLines[0]}':x=375+(345-text_w)/2:y=1084:fontsize=${messageFontSize}:fontcolor=#3b1f8f:borderw=1:bordercolor=white@0.35,` +
-      `drawtext=text='${messageLines[1]}':x=375+(345-text_w)/2:y=1112:fontsize=${messageFontSize}:fontcolor=#3b1f8f:borderw=1:bordercolor=white@0.35,` +
-      `drawtext=text='${messageLines[2]}':x=375+(345-text_w)/2:y=1140:fontsize=${messageFontSize}:fontcolor=#3b1f8f:borderw=1:bordercolor=white@0.35,` +
-      `drawtext=text='${messageLines[3]}':x=375+(345-text_w)/2:y=1168:fontsize=${messageFontSize}:fontcolor=#3b1f8f:borderw=1:bordercolor=white@0.35,` +
-      `drawtext=text='${messageLines[4]}':x=375+(345-text_w)/2:y=1196:fontsize=${messageFontSize}:fontcolor=#3b1f8f:borderw=1:bordercolor=white@0.35,` +
-      `drawtext=text='${messageLines[5]}':x=375+(345-text_w)/2:y=1224:fontsize=${messageFontSize}:fontcolor=#3b1f8f:borderw=1:bordercolor=white@0.35[outv]`;
+      `drawtext=text=${quoteDrawtextText(messageLines[0])}:x=375+(345-text_w)/2:y=1084:fontsize=${messageFontSize}:fontcolor=#3b1f8f:borderw=1:bordercolor=white@0.35,` +
+      `drawtext=text=${quoteDrawtextText(messageLines[1])}:x=375+(345-text_w)/2:y=1112:fontsize=${messageFontSize}:fontcolor=#3b1f8f:borderw=1:bordercolor=white@0.35,` +
+      `drawtext=text=${quoteDrawtextText(messageLines[2])}:x=375+(345-text_w)/2:y=1140:fontsize=${messageFontSize}:fontcolor=#3b1f8f:borderw=1:bordercolor=white@0.35,` +
+      `drawtext=text=${quoteDrawtextText(messageLines[3])}:x=375+(345-text_w)/2:y=1168:fontsize=${messageFontSize}:fontcolor=#3b1f8f:borderw=1:bordercolor=white@0.35,` +
+      `drawtext=text=${quoteDrawtextText(messageLines[4])}:x=375+(345-text_w)/2:y=1196:fontsize=${messageFontSize}:fontcolor=#3b1f8f:borderw=1:bordercolor=white@0.35,` +
+      `drawtext=text=${quoteDrawtextText(messageLines[5])}:x=375+(345-text_w)/2:y=1224:fontsize=${messageFontSize}:fontcolor=#3b1f8f:borderw=1:bordercolor=white@0.35[outv]`;
 
     const audioFilter = hasPrintoVoice
       ? `[2:a]volume=0.30,apad=pad_dur=10,atrim=0:10[music];` +
