@@ -11179,44 +11179,40 @@ function quoteDrawtextText(value = "") {
   return `'${safeGreetingText(value)}'`;
 }
 
-function wrapGreetingName(value = "", maxCharsPerLine = 9, maxLines = 3) {
+function wrapGreetingName(value = "", maxCharsPerLine = 7, maxLines = 4) {
   const normalized = String(value || "").replace(/\s+/g, " ").trim();
   if (!normalized) return Array(maxLines).fill("");
 
-  const chars = Array.from(normalized);
-  const target = Math.max(1, Math.ceil(chars.length / maxLines));
   const lines = [];
   let remaining = normalized;
 
   while (remaining && lines.length < maxLines) {
     const slotsLeft = maxLines - lines.length;
-    const remainingChars = Array.from(remaining);
+    const chars = Array.from(remaining);
 
     if (slotsLeft === 1) {
-      lines.push(remainingChars.join(""));
+      lines.push(chars.join(""));
       remaining = "";
       break;
     }
 
-    const ideal = Math.min(
-      maxCharsPerLine,
-      Math.max(target, Math.ceil(remainingChars.length / slotsLeft))
-    );
+    const balancedLength = Math.ceil(chars.length / slotsLeft);
+    let cut = Math.min(maxCharsPerLine, Math.max(1, balancedLength), chars.length);
 
-    let cut = Math.min(ideal, remainingChars.length);
-    let bestSpace = -1;
-
-    for (let i = cut; i >= Math.max(1, cut - 4); i -= 1) {
-      if (remainingChars[i] === " ") {
-        bestSpace = i;
+    // Prefer a nearby word boundary, but never discard any character.
+    let spaceIndex = -1;
+    for (let i = cut; i >= Math.max(1, cut - 3); i -= 1) {
+      if (chars[i] === " ") {
+        spaceIndex = i;
         break;
       }
     }
 
-    if (bestSpace > 0) cut = bestSpace;
+    if (spaceIndex > 0) cut = spaceIndex;
 
-    lines.push(remainingChars.slice(0, cut).join("").trim());
-    remaining = remainingChars.slice(cut).join("").trim();
+    const line = chars.slice(0, cut).join("").trim();
+    lines.push(line);
+    remaining = chars.slice(cut).join("").trim();
   }
 
   while (lines.length < maxLines) lines.push("");
@@ -11376,6 +11372,12 @@ function buildGreetingResultUrl(req, videoUrl, toName = "", fromName = "", poste
   return `${base}/greeting-result?${params.toString()}`;
 }
 
+function createShortGreetingId() {
+  const timePart = Date.now().toString(36).slice(-6);
+  const randomPart = Math.random().toString(36).slice(2, 6);
+  return `${timePart}${randomPart}`;
+}
+
 function buildShortGreetingUrl(req, greetingId = "") {
   const base = String(
     process.env.PUBLIC_BASE_URL ||
@@ -11422,20 +11424,18 @@ app.post("/api/greeting/birthday/generate", async (req, res) => {
       BIRTHDAY_MESSAGE_MAX
     );
 
-    const toNameLines = wrapGreetingName(toNameRaw, 9, 3);
-    const fromNameLines = wrapGreetingName(fromNameRaw, 9, 3);
+    const toNameLines = wrapGreetingName(toNameRaw, 7, 4);
+    const fromNameLines = wrapGreetingName(fromNameRaw, 7, 4);
 
     const longestToLine = Math.max(...toNameLines.map((line) => Array.from(line).length));
     const longestFromLine = Math.max(...fromNameLines.map((line) => Array.from(line).length));
 
     const toFontSize =
-      longestToLine > 9 ? 22 :
-      longestToLine > 7 ? 25 :
-      longestToLine > 5 ? 28 : 31;
+      longestToLine > 7 ? 21 :
+      longestToLine > 5 ? 23 : 26;
     const fromFontSize =
-      longestFromLine > 9 ? 22 :
-      longestFromLine > 7 ? 25 :
-      longestFromLine > 5 ? 28 : 31;
+      longestFromLine > 7 ? 21 :
+      longestFromLine > 5 ? 23 : 26;
 
     // Birthday V2: preserve every accepted character.
     // Nine balanced lines prevent the end of a 160-character message from being cut off.
@@ -11493,13 +11493,15 @@ app.post("/api/greeting/birthday/generate", async (req, res) => {
       `[bg][vid]overlay=281:342,` +
       `drawbox=x=42:y=404:w=180:h=250:color=#f9e7c9@0.96:t=fill,` +
       `drawbox=x=802:y=404:w=180:h=250:color=#f9e7c9@0.96:t=fill,` +
-      `drawtext=text=${quoteDrawtextText(toNameLines[0])}:x=42+(180-text_w)/2:y=456:fontsize=${toFontSize}:fontcolor=#d6333f:borderw=2:bordercolor=white@0.45,` +
-      `drawtext=text=${quoteDrawtextText(toNameLines[1])}:x=42+(180-text_w)/2:y=490:fontsize=${toFontSize}:fontcolor=#d6333f:borderw=2:bordercolor=white@0.45,` +
-      `drawtext=text=${quoteDrawtextText(toNameLines[2])}:x=42+(180-text_w)/2:y=524:fontsize=${toFontSize}:fontcolor=#d6333f:borderw=2:bordercolor=white@0.45,` +
+      `drawtext=text=${quoteDrawtextText(toNameLines[0])}:x=42+(180-text_w)/2:y=446:fontsize=${toFontSize}:fontcolor=#d6333f:borderw=2:bordercolor=white@0.45,` +
+      `drawtext=text=${quoteDrawtextText(toNameLines[1])}:x=42+(180-text_w)/2:y=476:fontsize=${toFontSize}:fontcolor=#d6333f:borderw=2:bordercolor=white@0.45,` +
+      `drawtext=text=${quoteDrawtextText(toNameLines[2])}:x=42+(180-text_w)/2:y=506:fontsize=${toFontSize}:fontcolor=#d6333f:borderw=2:bordercolor=white@0.45,` +
+      `drawtext=text=${quoteDrawtextText(toNameLines[3])}:x=42+(180-text_w)/2:y=536:fontsize=${toFontSize}:fontcolor=#d6333f:borderw=2:bordercolor=white@0.45,` +
       `drawtext=text='♥':x=42+(180-text_w)/2:y=590:fontsize=28:fontcolor=#d6333f:borderw=1:bordercolor=white@0.35,` +
-      `drawtext=text=${quoteDrawtextText(fromNameLines[0])}:x=802+(180-text_w)/2:y=456:fontsize=${fromFontSize}:fontcolor=#7b2cbf:borderw=2:bordercolor=white@0.45,` +
-      `drawtext=text=${quoteDrawtextText(fromNameLines[1])}:x=802+(180-text_w)/2:y=490:fontsize=${fromFontSize}:fontcolor=#7b2cbf:borderw=2:bordercolor=white@0.45,` +
-      `drawtext=text=${quoteDrawtextText(fromNameLines[2])}:x=802+(180-text_w)/2:y=524:fontsize=${fromFontSize}:fontcolor=#7b2cbf:borderw=2:bordercolor=white@0.45,` +
+      `drawtext=text=${quoteDrawtextText(fromNameLines[0])}:x=802+(180-text_w)/2:y=446:fontsize=${fromFontSize}:fontcolor=#7b2cbf:borderw=2:bordercolor=white@0.45,` +
+      `drawtext=text=${quoteDrawtextText(fromNameLines[1])}:x=802+(180-text_w)/2:y=476:fontsize=${fromFontSize}:fontcolor=#7b2cbf:borderw=2:bordercolor=white@0.45,` +
+      `drawtext=text=${quoteDrawtextText(fromNameLines[2])}:x=802+(180-text_w)/2:y=506:fontsize=${fromFontSize}:fontcolor=#7b2cbf:borderw=2:bordercolor=white@0.45,` +
+      `drawtext=text=${quoteDrawtextText(fromNameLines[3])}:x=802+(180-text_w)/2:y=536:fontsize=${fromFontSize}:fontcolor=#7b2cbf:borderw=2:bordercolor=white@0.45,` +
       `drawtext=text='♥':x=802+(180-text_w)/2:y=590:fontsize=28:fontcolor=#7b2cbf:borderw=1:bordercolor=white@0.35,` +
       `drawtext=text=${quoteDrawtextText(messageLines[0])}:x=218+(590-text_w)/2:y=1082:fontsize=${messageFontSize}:fontcolor=#2f267f:borderw=1:bordercolor=white@0.35,` +
       `drawtext=text=${quoteDrawtextText(messageLines[1])}:x=218+(590-text_w)/2:y=1108:fontsize=${messageFontSize}:fontcolor=#2f267f:borderw=1:bordercolor=white@0.35,` +
@@ -11591,7 +11593,7 @@ app.post("/api/greeting/birthday/generate", async (req, res) => {
 
         const finishResponse = () => {
           const posterUrl = fs.existsSync(posterPath) ? buildGeneratedUrl(req, posterName) : "";
-          const greetingId = fileName.replace(/\.mp4$/i, "");
+          const greetingId = createShortGreetingId();
           const fullResultUrl = buildGreetingResultUrl(
             req,
             downloadUrl,
@@ -11643,7 +11645,7 @@ app.post("/api/greeting/birthday/generate", async (req, res) => {
           "-ss", "1.2", "-i", outputPath,
           "-frames:v", "1",
           "-vf",
-          "scale=720:-2,drawtext=text='▶':x=(w-text_w)/2:y=350:fontsize=170:fontcolor=white:box=1:boxcolor=#0754b8@0.78:boxborderw=48:borderw=5:bordercolor=white@0.95",
+          "scale=720:-2,drawtext=text='▶':x=(w-text_w)/2:y=330:fontsize=205:fontcolor=white:box=1:boxcolor=#0754b8@0.82:boxborderw=58:borderw=6:bordercolor=white@0.98",
           "-q:v", "2", posterPath
         ], { timeout: 30000, maxBuffer: 1024 * 1024 * 2 }, (posterErr) => {
           if (posterErr) console.error("Greeting poster generation failed:", posterErr.message);
@@ -11925,10 +11927,10 @@ function renderGreetingResult(req, res) {
     *{box-sizing:border-box} body{margin:0;font-family:Arial,sans-serif;background:linear-gradient(180deg,#071b61,#0b63ce);color:#fff;min-height:100vh;padding:22px}
     .wrap{max-width:680px;margin:auto;text-align:center}.brand{font-size:28px;font-weight:900;margin:8px 0}.sub{opacity:.9;margin-bottom:18px}
     .player{position:relative;width:min(100%,680px);aspect-ratio:2/3;margin:0 auto;border:4px solid #ffd21f;border-radius:22px;overflow:hidden;background:#071b61;box-shadow:0 12px 35px rgba(0,0,0,.35)}
-    .player video{display:block;width:100%;height:100%;object-fit:contain;object-position:center;background:#071b61}.bigPlay{position:absolute;inset:0;margin:auto;width:170px;height:170px;border-radius:50%;border:8px solid #fff;background:rgba(7,84,184,.88);color:#fff;font-size:86px;line-height:148px;padding-left:14px;cursor:pointer;box-shadow:0 12px 34px rgba(0,0,0,.55)}
+    .player video{display:block;width:100%;height:100%;object-fit:contain;object-position:center;background:#071b61}.bigPlay{position:absolute;inset:0;margin:auto;width:190px;height:190px;border-radius:50%;border:9px solid #fff;background:rgba(7,84,184,.88);color:#fff;font-size:98px;line-height:166px;padding-left:16px;cursor:pointer;box-shadow:0 12px 34px rgba(0,0,0,.55)}
     .actions{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin-top:18px}.btn{display:block;padding:14px 10px;border-radius:14px;text-decoration:none;color:#fff;font-weight:900;border:0;font-size:15px;cursor:pointer}.download{background:#7b2cbf}.whatsapp{background:#25D366}.facebook{background:#1877F2}.copy{background:#334155}.social{background:#d63384}.youtube{background:#ff0000}.tiktok{background:#111}.email{background:#0f766e}.shopify{background:#4f772d}.nigeria{background:#008751}.full{grid-column:1/-1}
     .note{font-size:13px;line-height:19px;background:rgba(255,255,255,.12);padding:12px;border-radius:12px;margin-top:14px}.toast{min-height:22px;color:#ffd21f;font-weight:800;margin-top:10px}
-    @media(max-width:480px){.actions{grid-template-columns:1fr}.full{grid-column:auto}.bigPlay{width:138px;height:138px;font-size:70px;line-height:118px;border-width:7px}}
+    @media(max-width:480px){.actions{grid-template-columns:1fr}.full{grid-column:auto}.bigPlay{width:154px;height:154px;font-size:80px;line-height:132px;border-width:8px}}
   </style>
 </head>
 <body>
