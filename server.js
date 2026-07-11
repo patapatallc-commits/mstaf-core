@@ -1905,6 +1905,34 @@ const GREETING_TEMPLATES = [
     priceLabel: "Standard"
   },
   {
+    id: "baby-shower",
+    name: "Baby Shower Greeting",
+    occasion: "Baby Shower",
+    masterVideo: "master.mp4",
+    priceLabel: "Standard"
+  },
+  {
+    id: "child-dedication",
+    name: "Child Dedication Greeting",
+    occasion: "Child Dedication",
+    masterVideo: "master.mp4",
+    priceLabel: "Standard"
+  },
+  {
+    id: "mothers-day",
+    name: "Mother's Day Greeting",
+    occasion: "Mother's Day",
+    masterVideo: "master.mp4",
+    priceLabel: "Standard"
+  },
+  {
+    id: "fathers-day",
+    name: "Father's Day Greeting",
+    occasion: "Father's Day",
+    masterVideo: "master.mp4",
+    priceLabel: "Standard"
+  },
+  {
     id: "business",
     name: "Business Greeting",
     occasion: "Business",
@@ -1931,6 +1959,10 @@ Choose the occasion:
 4 - Anniversary
 5 - Christmas
 6 - Business Greeting
+7 - Baby Shower
+8 - Child Dedication
+9 - Mother's Day
+10 - Father's Day
 
 Reply with only the occasion number.
 
@@ -1946,6 +1978,10 @@ Elige la ocasión:
 4 - Aniversario
 5 - Navidad
 6 - Saludo de negocio
+7 - Baby shower
+8 - Dedicación infantil
+9 - Día de la Madre
+10 - Día del Padre
 
 Responde solo con el número de la ocasión.
 
@@ -1958,9 +1994,13 @@ Choisissez l'occasion :
 1 - Anniversaire
 2 - Mariage
 3 - Remise de diplôme
-4 - Anniversaire
+4 - Anniversaire de mariage
 5 - Noël
 6 - Message professionnel
+7 - Baby shower
+8 - Dédicace d'enfant
+9 - Fête des Mères
+10 - Fête des Pères
 
 Répondez uniquement avec le numéro.
 
@@ -1976,6 +2016,10 @@ Wählen Sie den Anlass:
 4 - Jubiläum
 5 - Weihnachten
 6 - Geschäftlicher Gruß
+7 - Babyparty
+8 - Kindersegnung
+9 - Muttertag
+10 - Vatertag
 
 Antworten Sie nur mit der Nummer.
 
@@ -1991,6 +2035,10 @@ Escolha a ocasião:
 4 - Comemoração
 5 - Natal
 6 - Saudação empresarial
+7 - Chá de bebê
+8 - Dedicação infantil
+9 - Dia das Mães
+10 - Dia dos Pais
 
 Responda apenas com o número.
 
@@ -2003,9 +2051,13 @@ Você não precisa usar | ou /. O bot perguntará uma coisa de cada vez.`,
 1 - عيد ميلاد
 2 - زفاف
 3 - تخرج
-4 - ذكرى
+4 - ذكرى سنوية
 5 - عيد الميلاد
 6 - تهنئة أعمال
+7 - حفل استقبال المولود
+8 - تكريس الطفل
+9 - عيد الأم
+10 - عيد الأب
 
 رد برقم المناسبة فقط.
 
@@ -2021,6 +2073,10 @@ Você não precisa usar | ou /. O bot perguntará uma coisa de cada vez.`,
 4 - 周年纪念
 5 - 圣诞节
 6 - 商务问候
+7 - 宝宝派对
+8 - 儿童奉献礼
+9 - 母亲节
+10 - 父亲节
 
 请只回复编号。
 
@@ -2184,6 +2240,32 @@ function getGreetingOccasionFromInput(input = "") {
     "5": { occasion: "Christmas", templateId: "christmas", packageType: "STANDARD" },
     "christmas": { occasion: "Christmas", templateId: "christmas", packageType: "STANDARD" },
     "xmas": { occasion: "Christmas", templateId: "christmas", packageType: "STANDARD" },
+    "7": { occasion: "Baby Shower", templateId: "baby-shower", packageType: "STANDARD" },
+    "baby shower": { occasion: "Baby Shower", templateId: "baby-shower", packageType: "STANDARD" },
+    "baby-shower": { occasion: "Baby Shower", templateId: "baby-shower", packageType: "STANDARD" },
+    "8": { occasion: "Child Dedication", templateId: "child-dedication", packageType: "STANDARD" },
+    "child dedication": { occasion: "Child Dedication", templateId: "child-dedication", packageType: "STANDARD" },
+    "child-dedication": { occasion: "Child Dedication", templateId: "child-dedication", packageType: "STANDARD" },
+    "9": { occasion: "Mother's Day", templateId: "mothers-day", packageType: "STANDARD" },
+    "mother's day": { occasion: "Mother's Day", templateId: "mothers-day", packageType: "STANDARD" },
+    "mothers day": { occasion: "Mother's Day", templateId: "mothers-day", packageType: "STANDARD" },
+    "mothers-day": { occasion: "Mother's Day", templateId: "mothers-day", packageType: "STANDARD" },
+    "día de la madre": { occasion: "Mother's Day", templateId: "mothers-day", packageType: "STANDARD" },
+    "fête des mères": { occasion: "Mother's Day", templateId: "mothers-day", packageType: "STANDARD" },
+    "muttertag": { occasion: "Mother's Day", templateId: "mothers-day", packageType: "STANDARD" },
+    "dia das mães": { occasion: "Mother's Day", templateId: "mothers-day", packageType: "STANDARD" },
+    "عيد الأم": { occasion: "Mother's Day", templateId: "mothers-day", packageType: "STANDARD" },
+    "母亲节": { occasion: "Mother's Day", templateId: "mothers-day", packageType: "STANDARD" },
+    "10": { occasion: "Father's Day", templateId: "fathers-day", packageType: "STANDARD" },
+    "father's day": { occasion: "Father's Day", templateId: "fathers-day", packageType: "STANDARD" },
+    "fathers day": { occasion: "Father's Day", templateId: "fathers-day", packageType: "STANDARD" },
+    "fathers-day": { occasion: "Father's Day", templateId: "fathers-day", packageType: "STANDARD" },
+    "día del padre": { occasion: "Father's Day", templateId: "fathers-day", packageType: "STANDARD" },
+    "fête des pères": { occasion: "Father's Day", templateId: "fathers-day", packageType: "STANDARD" },
+    "vatertag": { occasion: "Father's Day", templateId: "fathers-day", packageType: "STANDARD" },
+    "dia dos pais": { occasion: "Father's Day", templateId: "fathers-day", packageType: "STANDARD" },
+    "عيد الأب": { occasion: "Father's Day", templateId: "fathers-day", packageType: "STANDARD" },
+    "父亲节": { occasion: "Father's Day", templateId: "fathers-day", packageType: "STANDARD" },
     "6": { occasion: "Business", templateId: "business", packageType: "PREMIUM" },
     "business": { occasion: "Business", templateId: "business", packageType: "PREMIUM" },
     "business greeting": { occasion: "Business", templateId: "business", packageType: "PREMIUM" }
@@ -11501,54 +11583,37 @@ app.post("/api/greeting/birthday/generate", async (req, res) => {
 // =========================
 // PUBLIC PRINTO GREETING STUDIO PAGES
 // =========================
-function buildGreetingStudioHomePage() {
+function buildGreetingStudioHomePage(language = "en") {
+  const lang = ["en", "es", "fr", "de", "pt", "ar", "zh"].includes(language) ? language : "en";
+  const copy = {
+    en: { title: "Printo Greeting Studio", hero: "Create personalized video greetings with Printo music, voice, names and messages. Choose a greeting below and make a special moment in minutes.", choose: "Choose Your Greeting", play: "Play Printo Theme", pause: "Pause Printo Theme", app: "Get Print-O-Matic", create: "Create Now", soon: "Coming Soon", help: "Talk to Printo", home: "Print-O-Matic Home", birthday: "Birthday", birthdaySub: "Create a personalized birthday video with Printo music and voice.", wedding: "Wedding", weddingSub: "Celebrate a couple with a personalized Printo wedding greeting.", graduation: "Graduation", graduationSub: "Honor a graduate with a memorable personalized video.", anniversary: "Anniversary", anniversarySub: "Share love and memories with a special anniversary greeting.", newBaby: "New Baby", newBabySub: "Welcome a new baby with a joyful Printo greeting.", christmas: "Christmas", christmasSub: "Send a festive personalized Christmas video.", babyShower: "Baby Shower", babyShowerSub: "Celebrate the parents-to-be with a joyful personalized Printo greeting.", dedication: "Child Dedication", dedicationSub: "Honor a child's special dedication with a meaningful Printo greeting.", mothers: "Mother's Day", mothersSub: "Celebrate a wonderful mother with a loving personalized Printo greeting.", fathers: "Father's Day", fathersSub: "Honor a wonderful father with a proud personalized Printo greeting." },
+    es: { title: "Estudio de Saludos Printo", hero: "Crea saludos de video personalizados con música, voz, nombres y mensajes de Printo.", choose: "Elige tu saludo", play: "Reproducir tema de Printo", pause: "Pausar tema de Printo", app: "Obtener Print-O-Matic", create: "Crear ahora", soon: "Próximamente", help: "Hablar con Printo", home: "Inicio Print-O-Matic", birthday: "Cumpleaños", birthdaySub: "Crea un video de cumpleaños personalizado con música y voz de Printo.", wedding: "Boda", weddingSub: "Celebra a una pareja con un saludo de boda personalizado.", graduation: "Graduación", graduationSub: "Honra a un graduado con un video memorable.", anniversary: "Aniversario", anniversarySub: "Comparte amor y recuerdos con un saludo especial.", newBaby: "Nuevo bebé", newBabySub: "Da la bienvenida a un bebé con un alegre saludo Printo.", christmas: "Navidad", christmasSub: "Envía un video navideño personalizado.", babyShower: "Baby shower", babyShowerSub: "Celebra a los futuros padres con un alegre saludo personalizado.", dedication: "Dedicación infantil", dedicationSub: "Honra la dedicación especial de un niño con un saludo significativo.", mothers: "Día de la Madre", mothersSub: "Celebra a una madre maravillosa con un saludo personalizado lleno de amor.", fathers: "Día del Padre", fathersSub: "Honra a un padre maravilloso con un saludo personalizado especial." },
+    fr: { title: "Studio de Vœux Printo", hero: "Créez des vœux vidéo personnalisés avec la musique, la voix, les noms et les messages Printo.", choose: "Choisissez votre vœu", play: "Lire le thème Printo", pause: "Mettre en pause", app: "Obtenir Print-O-Matic", create: "Créer maintenant", soon: "Bientôt disponible", help: "Parler à Printo", home: "Accueil Print-O-Matic", birthday: "Anniversaire", birthdaySub: "Créez une vidéo d'anniversaire personnalisée avec la musique et la voix Printo.", wedding: "Mariage", weddingSub: "Célébrez un couple avec un message de mariage personnalisé.", graduation: "Remise de diplôme", graduationSub: "Honorez un diplômé avec une vidéo mémorable.", anniversary: "Anniversaire de mariage", anniversarySub: "Partagez amour et souvenirs avec un message spécial.", newBaby: "Nouveau bébé", newBabySub: "Accueillez un bébé avec un joyeux message Printo.", christmas: "Noël", christmasSub: "Envoyez une vidéo de Noël personnalisée.", babyShower: "Baby shower", babyShowerSub: "Célébrez les futurs parents avec un joyeux message personnalisé.", dedication: "Dédicace d'enfant", dedicationSub: "Honorez la dédicace spéciale d'un enfant avec un message significatif.", mothers: "Fête des Mères", mothersSub: "Célébrez une maman merveilleuse avec un message Printo plein d'amour.", fathers: "Fête des Pères", fathersSub: "Honorez un papa merveilleux avec un message Printo spécial." },
+    de: { title: "Printo Grußstudio", hero: "Erstellen Sie personalisierte Videogrüße mit Printo-Musik, Stimme, Namen und Nachrichten.", choose: "Gruß auswählen", play: "Printo-Thema abspielen", pause: "Printo-Thema pausieren", app: "Print-O-Matic herunterladen", create: "Jetzt erstellen", soon: "Demnächst", help: "Mit Printo sprechen", home: "Print-O-Matic Startseite", birthday: "Geburtstag", birthdaySub: "Erstellen Sie ein personalisiertes Geburtstagsvideo mit Printo-Musik und Stimme.", wedding: "Hochzeit", weddingSub: "Feiern Sie ein Paar mit einem personalisierten Hochzeitsgruß.", graduation: "Abschluss", graduationSub: "Ehren Sie einen Absolventen mit einem unvergesslichen Video.", anniversary: "Jubiläum", anniversarySub: "Teilen Sie Liebe und Erinnerungen mit einem besonderen Gruß.", newBaby: "Neues Baby", newBabySub: "Begrüßen Sie ein Baby mit einem fröhlichen Printo-Gruß.", christmas: "Weihnachten", christmasSub: "Senden Sie ein festliches personalisiertes Weihnachtsvideo.", babyShower: "Babyparty", babyShowerSub: "Feiern Sie die werdenden Eltern mit einem fröhlichen Gruß.", dedication: "Kindersegnung", dedicationSub: "Ehren Sie die besondere Kindersegnung mit einem bedeutungsvollen Gruß.", mothers: "Muttertag", mothersSub: "Feiern Sie eine wunderbare Mutter mit einem liebevollen Printo-Gruß.", fathers: "Vatertag", fathersSub: "Ehren Sie einen wunderbaren Vater mit einem besonderen Printo-Gruß." },
+    pt: { title: "Estúdio de Saudações Printo", hero: "Crie saudações em vídeo personalizadas com música, voz, nomes e mensagens Printo.", choose: "Escolha sua saudação", play: "Tocar tema Printo", pause: "Pausar tema Printo", app: "Baixar Print-O-Matic", create: "Criar agora", soon: "Em breve", help: "Falar com Printo", home: "Início Print-O-Matic", birthday: "Aniversário", birthdaySub: "Crie um vídeo de aniversário personalizado com música e voz Printo.", wedding: "Casamento", weddingSub: "Celebre um casal com uma saudação de casamento personalizada.", graduation: "Formatura", graduationSub: "Homenageie um formando com um vídeo memorável.", anniversary: "Comemoração", anniversarySub: "Compartilhe amor e memórias com uma saudação especial.", newBaby: "Novo bebê", newBabySub: "Dê boas-vindas ao bebê com uma alegre saudação Printo.", christmas: "Natal", christmasSub: "Envie um vídeo de Natal personalizado.", babyShower: "Chá de bebê", babyShowerSub: "Celebre os futuros pais com uma alegre saudação personalizada.", dedication: "Dedicação infantil", dedicationSub: "Honre a dedicação especial de uma criança com uma saudação significativa.", mothers: "Dia das Mães", mothersSub: "Celebre uma mãe maravilhosa com uma saudação Printo cheia de amor.", fathers: "Dia dos Pais", fathersSub: "Honre um pai maravilhoso com uma saudação Printo especial." },
+    ar: { title: "استوديو تهاني Printo", hero: "أنشئ تهاني فيديو مخصصة مع موسيقى وصوت وأسماء ورسائل Printo.", choose: "اختر التهنئة", play: "تشغيل موسيقى Printo", pause: "إيقاف موسيقى Printo", app: "تنزيل Print-O-Matic", create: "أنشئ الآن", soon: "قريبًا", help: "تحدث مع Printo", home: "الصفحة الرئيسية", birthday: "عيد ميلاد", birthdaySub: "أنشئ فيديو عيد ميلاد مخصصًا مع موسيقى وصوت Printo.", wedding: "زفاف", weddingSub: "احتفل بالعروسين بتهنئة زفاف مخصصة.", graduation: "تخرج", graduationSub: "كرّم الخريج بفيديو مميز لا يُنسى.", anniversary: "ذكرى سنوية", anniversarySub: "شارك الحب والذكريات بتهنئة خاصة.", newBaby: "مولود جديد", newBabySub: "رحّب بالمولود الجديد بتهنئة Printo مبهجة.", christmas: "عيد الميلاد", christmasSub: "أرسل فيديو عيد ميلاد مجيد مخصصًا.", babyShower: "حفل استقبال المولود", babyShowerSub: "احتفل بالوالدين المنتظرين بتهنئة مبهجة.", dedication: "تكريس الطفل", dedicationSub: "كرّم مناسبة تكريس الطفل بتهنئة ذات معنى.", mothers: "عيد الأم", mothersSub: "احتفل بأم رائعة بتهنئة Printo مليئة بالحب.", fathers: "عيد الأب", fathersSub: "كرّم أبًا رائعًا بتهنئة Printo مميزة." },
+    zh: { title: "Printo 祝福工作室", hero: "使用 Printo 音乐、声音、姓名和留言制作个性化祝福视频。", choose: "选择祝福类型", play: "播放 Printo 主题音乐", pause: "暂停 Printo 主题音乐", app: "下载 Print-O-Matic", create: "立即制作", soon: "即将推出", help: "联系 Printo", home: "Print-O-Matic 首页", birthday: "生日", birthdaySub: "使用 Printo 音乐和声音制作个性化生日视频。", wedding: "婚礼", weddingSub: "用个性化 Printo 婚礼祝福庆祝新人。", graduation: "毕业", graduationSub: "用难忘的视频祝贺毕业生。", anniversary: "周年纪念", anniversarySub: "用特别祝福分享爱与回忆。", newBaby: "新生宝宝", newBabySub: "用欢乐的 Printo 祝福欢迎新生宝宝。", christmas: "圣诞节", christmasSub: "发送个性化圣诞祝福视频。", babyShower: "宝宝派对", babyShowerSub: "用欢乐的个性化祝福庆祝准父母。", dedication: "儿童奉献礼", dedicationSub: "用有意义的祝福纪念孩子的奉献礼。", mothers: "母亲节", mothersSub: "用充满爱意的 Printo 祝福庆祝伟大的母亲。", fathers: "父亲节", fathersSub: "用特别的 Printo 祝福向伟大的父亲致敬。" }
+  };
+  const t = copy[lang] || copy.en;
+  const dir = lang === "ar" ? "rtl" : "ltr";
   return `<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <meta name="theme-color" content="#082a8f" />
-  <title>Printo Greeting Studio</title>
-  <style>
-    *{box-sizing:border-box}html{scroll-behavior:smooth}body{margin:0;font-family:Arial,sans-serif;background:radial-gradient(circle at top,#164ec1 0,#082a8f 38%,#041443 100%);color:#fff;min-height:100vh;overflow-x:hidden}.wrap{max-width:1120px;margin:auto;padding:22px 18px 56px;position:relative;z-index:2}.hero{text-align:center;padding:34px 12px 24px}.logo-badge{width:86px;height:86px;margin:0 auto 14px;border-radius:50%;display:grid;place-items:center;background:linear-gradient(145deg,#ffd83d,#ff8a00);font-size:46px;box-shadow:0 14px 34px rgba(0,0,0,.35);animation:bounce 2.8s ease-in-out infinite}.hero h1{font-size:42px;margin:0 0 10px;text-shadow:0 4px 14px rgba(0,0,0,.3)}.hero p{font-size:18px;opacity:.94;max-width:760px;margin:0 auto;line-height:1.55}.hero-actions{display:flex;gap:12px;justify-content:center;flex-wrap:wrap;margin-top:20px}.hero-btn{border:0;border-radius:999px;padding:13px 20px;font-weight:900;font-size:15px;cursor:pointer;text-decoration:none;display:inline-flex;align-items:center;gap:8px}.music-btn{background:#fff;color:#0b2f89}.playstore-btn{background:#111;color:#fff}.section-title{text-align:center;font-size:26px;margin:18px 0 20px}.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:20px}.card{background:#fff;color:#13234a;border-radius:22px;padding:0 0 22px;text-decoration:none;box-shadow:0 14px 34px rgba(0,0,0,.28);min-height:300px;display:flex;flex-direction:column;align-items:center;text-align:center;overflow:hidden;border:3px solid transparent;opacity:0;transform:translateY(24px);animation:rise .65s ease forwards}.card:nth-child(2){animation-delay:.08s}.card:nth-child(3){animation-delay:.16s}.card:nth-child(4){animation-delay:.24s}.card:nth-child(5){animation-delay:.32s}.card:nth-child(6){animation-delay:.40s}.card:hover{border-color:#ffd21f;transform:translateY(-6px);transition:.22s}.preview{width:100%;height:138px;display:flex;align-items:center;justify-content:center;font-size:62px;background:linear-gradient(135deg,#eef4ff,#dbeafe);position:relative;overflow:hidden}.preview.birthday{background-image:linear-gradient(rgba(7,27,97,.12),rgba(7,27,97,.12)),url('/templates/birthday/frame.png');background-size:cover;background-position:center}.preview:after{content:'';position:absolute;inset:0;background:linear-gradient(180deg,transparent 55%,rgba(0,0,0,.12))}.content{padding:18px 18px 0}.title{font-size:23px;font-weight:900;margin:0 0 7px}.sub{font-size:14px;line-height:20px;color:#53617f;min-height:42px}.ready{background:linear-gradient(90deg,#7b2cbf,#d63384);color:#fff;padding:11px 18px;border-radius:999px;margin-top:14px;font-weight:900;box-shadow:0 8px 18px rgba(123,44,191,.3);animation:pulse 2s infinite}.soon{background:#e2e8f0;color:#475569;padding:9px 15px;border-radius:999px;margin-top:14px;font-weight:800}.support-row{display:flex;gap:12px;justify-content:center;flex-wrap:wrap;margin-top:28px}.support{display:inline-flex;align-items:center;gap:8px;color:#fff;text-decoration:none;font-weight:900;padding:14px 20px;border-radius:14px}.whatsapp{background:#25D366}.home{background:#f59e0b}.floating-wa{position:fixed;right:18px;bottom:18px;width:62px;height:62px;border-radius:50%;display:grid;place-items:center;background:#25D366;color:#fff;text-decoration:none;font-size:30px;box-shadow:0 10px 28px rgba(0,0,0,.35);z-index:5}.footer{text-align:center;margin-top:28px;color:#dbeafe;font-size:14px}.confetti{position:fixed;top:-20px;width:10px;height:18px;border-radius:3px;z-index:1;animation:fall linear infinite}.c1{left:8%;background:#ffd21f;animation-duration:8s}.c2{left:24%;background:#ff4d8d;animation-duration:10s;animation-delay:1s}.c3{left:42%;background:#3ddc97;animation-duration:9s;animation-delay:2s}.c4{left:63%;background:#7dd3fc;animation-duration:11s}.c5{left:82%;background:#f97316;animation-duration:8.5s;animation-delay:3s}@keyframes rise{to{opacity:1;transform:translateY(0)}}@keyframes pulse{0%,100%{transform:scale(1)}50%{transform:scale(1.06)}}@keyframes bounce{0%,100%{transform:translateY(0)}50%{transform:translateY(-8px)}}@keyframes fall{to{transform:translateY(110vh) rotate(720deg)}}@media(max-width:820px){.grid{grid-template-columns:repeat(2,1fr)}.hero h1{font-size:35px}}@media(max-width:540px){.wrap{padding:14px 12px 44px}.grid{grid-template-columns:1fr}.hero{padding-top:22px}.hero h1{font-size:30px}.preview{height:155px}.card{min-height:292px}}
-  </style>
-</head>
-<body>
-  <span class="confetti c1"></span><span class="confetti c2"></span><span class="confetti c3"></span><span class="confetti c4"></span><span class="confetti c5"></span>
-  <div class="wrap">
-    <header class="hero">
-      <div class="logo-badge">🎉</div>
-      <h1>Printo Greeting Studio</h1>
-      <p>Create personalized video greetings with Printo music, voice, names and messages. Choose a greeting below and make a special moment in minutes.</p>
-      <div class="hero-actions">
-        <button id="themeBtn" class="hero-btn music-btn" type="button">🔊 Play Printo Theme</button>
-        <a class="hero-btn playstore-btn" href="https://play.google.com/store/apps/details?id=com.patapata.printomatic" target="_blank" rel="noopener">▶ Get Print-O-Matic</a>
-      </div>
-      <audio id="themeAudio" preload="none" src="/templates/birthday/birthday_audio.m4a"></audio>
-    </header>
-    <h2 class="section-title">Choose Your Greeting</h2>
-    <section class="grid">
-      <a class="card" href="/birthday"><div class="preview birthday" aria-label="Birthday greeting preview"></div><div class="content"><div class="title">🎂 Birthday</div><div class="sub">Create a personalized birthday video with Printo music and voice.</div><div class="ready">Create Now</div></div></a>
-      <div class="card"><div class="preview">💍</div><div class="content"><div class="title">Wedding</div><div class="sub">Celebrate a couple with a personalized Printo wedding greeting.</div><div class="soon">Coming Soon</div></div></div>
-      <div class="card"><div class="preview">🎓</div><div class="content"><div class="title">Graduation</div><div class="sub">Honor a graduate with a memorable personalized video.</div><div class="soon">Coming Soon</div></div></div>
-      <div class="card"><div class="preview">❤️</div><div class="content"><div class="title">Anniversary</div><div class="sub">Share love and memories with a special anniversary greeting.</div><div class="soon">Coming Soon</div></div></div>
-      <div class="card"><div class="preview">👶</div><div class="content"><div class="title">New Baby</div><div class="sub">Welcome a new baby with a joyful Printo greeting.</div><div class="soon">Coming Soon</div></div></div>
-      <div class="card"><div class="preview">🎄</div><div class="content"><div class="title">Christmas</div><div class="sub">Send a festive personalized Christmas video.</div><div class="soon">Coming Soon</div></div></div>
-    </section>
-    <div class="support-row">
-      <a class="support whatsapp" href="https://wa.me/18622306637?text=I%20want%20to%20order%20a%20Printo%20greeting%20video">📱 Talk to Printo</a>
-      <a class="support home" href="/">🏠 Print-O-Matic Home</a>
-    </div>
-    <div class="footer">Powered by Patapata LLC • Original Printo Greeting Studio</div>
-  </div>
-  <a class="floating-wa" href="https://wa.me/18622306637?text=I%20need%20help%20with%20Printo%20Greeting%20Studio" aria-label="WhatsApp support">💬</a>
-<script>
-  const audio=document.getElementById('themeAudio');const btn=document.getElementById('themeBtn');
-  btn.addEventListener('click',async()=>{try{if(audio.paused){await audio.play();btn.textContent='⏸ Pause Printo Theme'}else{audio.pause();btn.textContent='🔊 Play Printo Theme'}}catch(e){btn.textContent='Tap again to play'}});
-  audio.addEventListener('ended',()=>{btn.textContent='🔊 Play Printo Theme'});
-</script>
-</body>
-</html>`;
+<html lang="${lang}" dir="${dir}">
+<head><meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/><meta name="theme-color" content="#082a8f"/><title>${t.title}</title>
+<style>*{box-sizing:border-box}body{margin:0;font-family:Arial,sans-serif;background:radial-gradient(circle at top,#164ec1 0,#082a8f 38%,#041443 100%);color:#fff;min-height:100vh}.wrap{max-width:1120px;margin:auto;padding:22px 18px 56px}.hero{text-align:center;padding:25px 12px}.hero h1{font-size:42px;margin:0 0 10px}.hero p{font-size:18px;line-height:1.55;max-width:780px;margin:auto}.language{margin:16px auto 0;padding:10px 14px;border-radius:12px;border:0;font-weight:700}.actions{display:flex;gap:12px;justify-content:center;flex-wrap:wrap;margin-top:18px}.btn{border:0;border-radius:999px;padding:13px 20px;font-weight:900;text-decoration:none;cursor:pointer}.music{background:#fff;color:#0b2f89}.app{background:#111;color:#fff}.section-title{text-align:center;font-size:27px;margin:17px 0 20px}.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:20px}.card{background:#fff;color:#13234a;border-radius:22px;overflow:hidden;text-align:center;box-shadow:0 14px 34px rgba(0,0,0,.28);min-height:300px}.preview{height:138px;display:grid;place-items:center;font-size:62px;background:linear-gradient(135deg,#eef4ff,#dbeafe)}.preview.birthday{background-image:url('/templates/birthday/frame.png');background-size:cover;background-position:center}.content{padding:18px}.title{font-size:23px;font-weight:900}.sub{font-size:14px;line-height:20px;color:#53617f;min-height:44px;margin-top:8px}.ready,.soon{display:inline-block;padding:10px 18px;border-radius:999px;margin-top:14px;font-weight:900}.ready{background:linear-gradient(90deg,#7b2cbf,#d63384);color:#fff}.soon{background:#e2e8f0;color:#475569}.support{display:flex;gap:12px;justify-content:center;flex-wrap:wrap;margin-top:28px}.support a{color:#fff;text-decoration:none;font-weight:900;padding:14px 20px;border-radius:14px;background:#25D366}.support a:last-child{background:#f59e0b}.footer{text-align:center;margin-top:28px;color:#dbeafe}@media(max-width:820px){.grid{grid-template-columns:repeat(2,1fr)}}@media(max-width:540px){.grid{grid-template-columns:1fr}.hero h1{font-size:30px}.preview{height:155px}}</style></head>
+<body><div class="wrap"><header class="hero"><h1>🎉 ${t.title}</h1><p>${t.hero}</p><select id="lang" class="language"><option value="en">English</option><option value="es">Español</option><option value="fr">Français</option><option value="de">Deutsch</option><option value="pt">Português</option><option value="ar">العربية</option><option value="zh">中文</option></select><div class="actions"><button id="themeBtn" class="btn music">🔊 ${t.play}</button><a class="btn app" href="https://play.google.com/store/apps/details?id=com.patapata.printomatic" target="_blank">▶ ${t.app}</a></div><audio id="themeAudio" src="/templates/birthday/birthday_audio.m4a"></audio></header><h2 class="section-title">${t.choose}</h2>
+<section class="grid">
+<a class="card" href="/birthday?lang=${lang}"><div class="preview birthday"></div><div class="content"><div class="title">🎂 ${t.birthday}</div><div class="sub">${t.birthdaySub}</div><div class="ready">${t.create}</div></div></a>
+<div class="card"><div class="preview">💍</div><div class="content"><div class="title">${t.wedding}</div><div class="sub">${t.weddingSub}</div><div class="soon">${t.soon}</div></div></div>
+<div class="card"><div class="preview">🎓</div><div class="content"><div class="title">${t.graduation}</div><div class="sub">${t.graduationSub}</div><div class="soon">${t.soon}</div></div></div>
+<div class="card"><div class="preview">❤️</div><div class="content"><div class="title">${t.anniversary}</div><div class="sub">${t.anniversarySub}</div><div class="soon">${t.soon}</div></div></div>
+<div class="card"><div class="preview">👶</div><div class="content"><div class="title">${t.newBaby}</div><div class="sub">${t.newBabySub}</div><div class="soon">${t.soon}</div></div></div>
+<div class="card"><div class="preview">🎄</div><div class="content"><div class="title">${t.christmas}</div><div class="sub">${t.christmasSub}</div><div class="soon">${t.soon}</div></div></div>
+<div class="card"><div class="preview">🎁</div><div class="content"><div class="title">${t.babyShower}</div><div class="sub">${t.babyShowerSub}</div><div class="soon">${t.soon}</div></div></div>
+<div class="card"><div class="preview">🙏</div><div class="content"><div class="title">${t.dedication}</div><div class="sub">${t.dedicationSub}</div><div class="soon">${t.soon}</div></div></div>
+<div class="card"><div class="preview">💐</div><div class="content"><div class="title">${t.mothers}</div><div class="sub">${t.mothersSub}</div><div class="soon">${t.soon}</div></div></div>
+<div class="card"><div class="preview">👔</div><div class="content"><div class="title">${t.fathers}</div><div class="sub">${t.fathersSub}</div><div class="soon">${t.soon}</div></div></div>
+</section><div class="support"><a href="https://wa.me/18622306637?text=I%20want%20to%20order%20a%20Printo%20greeting%20video">📱 ${t.help}</a><a href="/">🏠 ${t.home}</a></div><div class="footer">Powered by Patapata LLC • Printo Greeting Studio</div></div>
+<script>const lang=document.getElementById('lang');lang.value=${JSON.stringify(lang)};lang.onchange=()=>location.href='/greetings?lang='+lang.value;const a=document.getElementById('themeAudio'),b=document.getElementById('themeBtn');b.onclick=async()=>{if(a.paused){await a.play();b.textContent='⏸ ${t.pause}'}else{a.pause();b.textContent='🔊 ${t.play}'}};</script></body></html>`;
 }
 
 function buildBirthdayGeneratorPage() {
@@ -11611,7 +11676,8 @@ function buildBirthdayGeneratorPage() {
 }
 
 app.get(["/greetings", "/greeting"], (req, res) => {
-  res.type("html").send(buildGreetingStudioHomePage());
+  const language = String(req.query.lang || "en").toLowerCase();
+  res.type("html").send(buildGreetingStudioHomePage(language));
 });
 
 app.get(["/birthday", "/birthday-generator", "/generate-birthday"], (req, res) => {
