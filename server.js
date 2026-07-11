@@ -11179,44 +11179,39 @@ function quoteDrawtextText(value = "") {
   return `'${safeGreetingText(value)}'`;
 }
 
-function wrapGreetingName(value = "", maxCharsPerLine = 7, maxLines = 4) {
+function wrapGreetingName(value = "") {
   const normalized = String(value || "").replace(/\s+/g, " ").trim();
-  if (!normalized) return Array(maxLines).fill("");
+  if (!normalized) return ["", ""];
 
-  const lines = [];
-  let remaining = normalized;
+  const words = normalized.split(" ").filter(Boolean);
 
-  while (remaining && lines.length < maxLines) {
-    const slotsLeft = maxLines - lines.length;
-    const chars = Array.from(remaining);
-
-    if (slotsLeft === 1) {
-      lines.push(chars.join(""));
-      remaining = "";
-      break;
-    }
-
-    const balancedLength = Math.ceil(chars.length / slotsLeft);
-    let cut = Math.min(maxCharsPerLine, Math.max(1, balancedLength), chars.length);
-
-    // Prefer a nearby word boundary, but never discard any character.
-    let spaceIndex = -1;
-    for (let i = cut; i >= Math.max(1, cut - 3); i -= 1) {
-      if (chars[i] === " ") {
-        spaceIndex = i;
-        break;
-      }
-    }
-
-    if (spaceIndex > 0) cut = spaceIndex;
-
-    const line = chars.slice(0, cut).join("").trim();
-    lines.push(line);
-    remaining = chars.slice(cut).join("").trim();
+  // One word: keep it whole on one line and let the font-size logic shrink it.
+  if (words.length === 1) {
+    return [normalized, ""];
   }
 
-  while (lines.length < maxLines) lines.push("");
-  return lines.slice(0, maxLines);
+  // Find the most balanced two-line split without cutting words.
+  let bestFirst = words[0];
+  let bestSecond = words.slice(1).join(" ");
+  let bestDifference = Math.abs(
+    Array.from(bestFirst).length - Array.from(bestSecond).length
+  );
+
+  for (let i = 1; i < words.length; i += 1) {
+    const first = words.slice(0, i).join(" ");
+    const second = words.slice(i).join(" ");
+    const difference = Math.abs(
+      Array.from(first).length - Array.from(second).length
+    );
+
+    if (difference < bestDifference) {
+      bestFirst = first;
+      bestSecond = second;
+      bestDifference = difference;
+    }
+  }
+
+  return [bestFirst, bestSecond];
 }
 
 function wrapCompleteGreetingMessage(value = "", maxLines = 9) {
@@ -11424,18 +11419,24 @@ app.post("/api/greeting/birthday/generate", async (req, res) => {
       BIRTHDAY_MESSAGE_MAX
     );
 
-    const toNameLines = wrapGreetingName(toNameRaw, 7, 4);
-    const fromNameLines = wrapGreetingName(fromNameRaw, 7, 4);
+    const toNameLines = wrapGreetingName(toNameRaw);
+    const fromNameLines = wrapGreetingName(fromNameRaw);
 
     const longestToLine = Math.max(...toNameLines.map((line) => Array.from(line).length));
     const longestFromLine = Math.max(...fromNameLines.map((line) => Array.from(line).length));
 
     const toFontSize =
-      longestToLine > 7 ? 21 :
-      longestToLine > 5 ? 23 : 26;
+      longestToLine > 16 ? 15 :
+      longestToLine > 14 ? 17 :
+      longestToLine > 12 ? 19 :
+      longestToLine > 10 ? 21 :
+      longestToLine > 8 ? 24 : 27;
     const fromFontSize =
-      longestFromLine > 7 ? 21 :
-      longestFromLine > 5 ? 23 : 26;
+      longestFromLine > 16 ? 15 :
+      longestFromLine > 14 ? 17 :
+      longestFromLine > 12 ? 19 :
+      longestFromLine > 10 ? 21 :
+      longestFromLine > 8 ? 24 : 27;
 
     // Birthday V2: preserve every accepted character.
     // Nine balanced lines prevent the end of a 160-character message from being cut off.
@@ -11493,15 +11494,11 @@ app.post("/api/greeting/birthday/generate", async (req, res) => {
       `[bg][vid]overlay=281:342,` +
       `drawbox=x=42:y=404:w=180:h=250:color=#f9e7c9@0.96:t=fill,` +
       `drawbox=x=802:y=404:w=180:h=250:color=#f9e7c9@0.96:t=fill,` +
-      `drawtext=text=${quoteDrawtextText(toNameLines[0])}:x=42+(180-text_w)/2:y=446:fontsize=${toFontSize}:fontcolor=#d6333f:borderw=2:bordercolor=white@0.45,` +
-      `drawtext=text=${quoteDrawtextText(toNameLines[1])}:x=42+(180-text_w)/2:y=476:fontsize=${toFontSize}:fontcolor=#d6333f:borderw=2:bordercolor=white@0.45,` +
-      `drawtext=text=${quoteDrawtextText(toNameLines[2])}:x=42+(180-text_w)/2:y=506:fontsize=${toFontSize}:fontcolor=#d6333f:borderw=2:bordercolor=white@0.45,` +
-      `drawtext=text=${quoteDrawtextText(toNameLines[3])}:x=42+(180-text_w)/2:y=536:fontsize=${toFontSize}:fontcolor=#d6333f:borderw=2:bordercolor=white@0.45,` +
+      `drawtext=text=${quoteDrawtextText(toNameLines[0])}:x=42+(180-text_w)/2:y=478:fontsize=${toFontSize}:fontcolor=#d6333f:borderw=2:bordercolor=white@0.45,` +
+      `drawtext=text=${quoteDrawtextText(toNameLines[1])}:x=42+(180-text_w)/2:y=518:fontsize=${toFontSize}:fontcolor=#d6333f:borderw=2:bordercolor=white@0.45,` +
       `drawtext=text='♥':x=42+(180-text_w)/2:y=590:fontsize=28:fontcolor=#d6333f:borderw=1:bordercolor=white@0.35,` +
-      `drawtext=text=${quoteDrawtextText(fromNameLines[0])}:x=802+(180-text_w)/2:y=446:fontsize=${fromFontSize}:fontcolor=#7b2cbf:borderw=2:bordercolor=white@0.45,` +
-      `drawtext=text=${quoteDrawtextText(fromNameLines[1])}:x=802+(180-text_w)/2:y=476:fontsize=${fromFontSize}:fontcolor=#7b2cbf:borderw=2:bordercolor=white@0.45,` +
-      `drawtext=text=${quoteDrawtextText(fromNameLines[2])}:x=802+(180-text_w)/2:y=506:fontsize=${fromFontSize}:fontcolor=#7b2cbf:borderw=2:bordercolor=white@0.45,` +
-      `drawtext=text=${quoteDrawtextText(fromNameLines[3])}:x=802+(180-text_w)/2:y=536:fontsize=${fromFontSize}:fontcolor=#7b2cbf:borderw=2:bordercolor=white@0.45,` +
+      `drawtext=text=${quoteDrawtextText(fromNameLines[0])}:x=802+(180-text_w)/2:y=478:fontsize=${fromFontSize}:fontcolor=#7b2cbf:borderw=2:bordercolor=white@0.45,` +
+      `drawtext=text=${quoteDrawtextText(fromNameLines[1])}:x=802+(180-text_w)/2:y=518:fontsize=${fromFontSize}:fontcolor=#7b2cbf:borderw=2:bordercolor=white@0.45,` +
       `drawtext=text='♥':x=802+(180-text_w)/2:y=590:fontsize=28:fontcolor=#7b2cbf:borderw=1:bordercolor=white@0.35,` +
       `drawtext=text=${quoteDrawtextText(messageLines[0])}:x=218+(590-text_w)/2:y=1082:fontsize=${messageFontSize}:fontcolor=#2f267f:borderw=1:bordercolor=white@0.35,` +
       `drawtext=text=${quoteDrawtextText(messageLines[1])}:x=218+(590-text_w)/2:y=1108:fontsize=${messageFontSize}:fontcolor=#2f267f:borderw=1:bordercolor=white@0.35,` +
@@ -11549,6 +11546,7 @@ app.post("/api/greeting/birthday/generate", async (req, res) => {
       framePath,
       toNameLines,
       fromNameLines,
+      nameLayout: 'natural-two-line',
       toFontSize,
       fromFontSize,
       messageLines,
