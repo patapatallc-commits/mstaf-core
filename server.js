@@ -11185,48 +11185,37 @@ function wrapGreetingName(value = "") {
     .replace(/\s+/g, " ")
     .trim();
 
-  if (!normalized) return ["", "", ""];
+  if (!normalized) return ["", ""];
 
   const words = normalized.split(" ").filter(Boolean);
-  const lines = [];
 
-  function splitLongWord(word, maxChars = 10) {
-    const chars = Array.from(word);
-    if (chars.length <= maxChars) return [word];
-
-    const pieces = [];
-    while (chars.length > maxChars) {
-      const remainingSlots = Math.max(1, 3 - lines.length - pieces.length);
-      const ideal = Math.ceil(chars.length / remainingSlots);
-      const take = Math.min(maxChars, Math.max(7, ideal));
-      pieces.push(chars.splice(0, take).join(""));
-    }
-    if (chars.length) pieces.push(chars.join(""));
-    return pieces;
+  // Keep a single long name whole; responsive font sizing will make it fit.
+  if (words.length === 1) {
+    return [normalized, ""];
   }
 
-  for (const word of words) {
-    const pieces = splitLongWord(word, 10);
+  // Choose the most balanced split without breaking words.
+  let bestFirst = words[0];
+  let bestSecond = words.slice(1).join(" ");
+  let bestDifference = Math.abs(
+    Array.from(bestFirst).length - Array.from(bestSecond).length
+  );
 
-    for (const piece of pieces) {
-      if (lines.length >= 3) {
-        lines[2] += piece;
-        continue;
-      }
+  for (let i = 1; i < words.length; i += 1) {
+    const first = words.slice(0, i).join(" ");
+    const second = words.slice(i).join(" ");
+    const difference = Math.abs(
+      Array.from(first).length - Array.from(second).length
+    );
 
-      const current = lines[lines.length - 1] || "";
-      const combined = current ? `${current} ${piece}` : piece;
-
-      if (current && Array.from(combined).length <= 11) {
-        lines[lines.length - 1] = combined;
-      } else {
-        lines.push(piece);
-      }
+    if (difference < bestDifference) {
+      bestFirst = first;
+      bestSecond = second;
+      bestDifference = difference;
     }
   }
 
-  while (lines.length < 3) lines.push("");
-  return lines.slice(0, 3);
+  return [bestFirst, bestSecond];
 }
 
 function wrapCompleteGreetingMessage(value = "", maxLines = 9) {
@@ -11441,13 +11430,21 @@ app.post("/api/greeting/birthday/generate", async (req, res) => {
     const longestFromLine = Math.max(...fromNameLines.map((line) => Array.from(line).length));
 
     const toFontSize =
-      longestToLine > 10 ? 18 :
-      longestToLine > 8 ? 20 :
-      longestToLine > 6 ? 23 : 26;
+      longestToLine > 20 ? 11 :
+      longestToLine > 18 ? 12 :
+      longestToLine > 16 ? 13 :
+      longestToLine > 14 ? 15 :
+      longestToLine > 12 ? 17 :
+      longestToLine > 10 ? 19 :
+      longestToLine > 8 ? 22 : 25;
     const fromFontSize =
-      longestFromLine > 10 ? 18 :
-      longestFromLine > 8 ? 20 :
-      longestFromLine > 6 ? 23 : 26;
+      longestFromLine > 20 ? 11 :
+      longestFromLine > 18 ? 12 :
+      longestFromLine > 16 ? 13 :
+      longestFromLine > 14 ? 15 :
+      longestFromLine > 12 ? 17 :
+      longestFromLine > 10 ? 19 :
+      longestFromLine > 8 ? 22 : 25;
 
     // Birthday V2: preserve every accepted character.
     // Nine balanced lines prevent the end of a 160-character message from being cut off.
@@ -11508,24 +11505,22 @@ app.post("/api/greeting/birthday/generate", async (req, res) => {
       `[bg][vid]overlay=281:342,` +
       `drawbox=x=42:y=404:w=180:h=250:color=#f9e7c9@0.96:t=fill,` +
       `drawbox=x=802:y=404:w=180:h=250:color=#f9e7c9@0.96:t=fill,` +
-      `drawtext=text=${quoteDrawtextText(toNameLines[0])}:x=42+(180-text_w)/2:y=462:fontsize=${toFontSize}:fontcolor=#d6333f:borderw=2:bordercolor=white@0.45,` +
-      `drawtext=text=${quoteDrawtextText(toNameLines[1])}:x=42+(180-text_w)/2:y=496:fontsize=${toFontSize}:fontcolor=#d6333f:borderw=2:bordercolor=white@0.45,` +
-      `drawtext=text=${quoteDrawtextText(toNameLines[2])}:x=42+(180-text_w)/2:y=530:fontsize=${toFontSize}:fontcolor=#d6333f:borderw=2:bordercolor=white@0.45,` +
+      `drawtext=text=${quoteDrawtextText(toNameLines[0])}:x=42+(180-text_w)/2:y=478:fontsize=${toFontSize}:fontcolor=#d6333f:borderw=2:bordercolor=white@0.45,` +
+      `drawtext=text=${quoteDrawtextText(toNameLines[1])}:x=42+(180-text_w)/2:y=518:fontsize=${toFontSize}:fontcolor=#d6333f:borderw=2:bordercolor=white@0.45,` +
       `drawtext=text='♥':x=42+(180-text_w)/2:y=590:fontsize=28:fontcolor=#d6333f:borderw=1:bordercolor=white@0.35,` +
-      `drawtext=text=${quoteDrawtextText(fromNameLines[0])}:x=802+(180-text_w)/2:y=462:fontsize=${fromFontSize}:fontcolor=#7b2cbf:borderw=2:bordercolor=white@0.45,` +
-      `drawtext=text=${quoteDrawtextText(fromNameLines[1])}:x=802+(180-text_w)/2:y=496:fontsize=${fromFontSize}:fontcolor=#7b2cbf:borderw=2:bordercolor=white@0.45,` +
-      `drawtext=text=${quoteDrawtextText(fromNameLines[2])}:x=802+(180-text_w)/2:y=530:fontsize=${fromFontSize}:fontcolor=#7b2cbf:borderw=2:bordercolor=white@0.45,` +
+      `drawtext=text=${quoteDrawtextText(fromNameLines[0])}:x=802+(180-text_w)/2:y=478:fontsize=${fromFontSize}:fontcolor=#7b2cbf:borderw=2:bordercolor=white@0.45,` +
+      `drawtext=text=${quoteDrawtextText(fromNameLines[1])}:x=802+(180-text_w)/2:y=518:fontsize=${fromFontSize}:fontcolor=#7b2cbf:borderw=2:bordercolor=white@0.45,` +
       `drawtext=text='♥':x=802+(180-text_w)/2:y=590:fontsize=28:fontcolor=#7b2cbf:borderw=1:bordercolor=white@0.35,` +
-      `drawtext=text=${quoteDrawtextText(messageLines[0])}:x=218+(590-text_w)/2:y=1048:fontsize=${messageFontSize}:fontcolor=#2f267f:borderw=1:bordercolor=white@0.35,` +
-      `drawtext=text=${quoteDrawtextText(messageLines[1])}:x=218+(590-text_w)/2:y=1070:fontsize=${messageFontSize}:fontcolor=#2f267f:borderw=1:bordercolor=white@0.35,` +
-      `drawtext=text=${quoteDrawtextText(messageLines[2])}:x=218+(590-text_w)/2:y=1092:fontsize=${messageFontSize}:fontcolor=#2f267f:borderw=1:bordercolor=white@0.35,` +
-      `drawtext=text=${quoteDrawtextText(messageLines[3])}:x=218+(590-text_w)/2:y=1114:fontsize=${messageFontSize}:fontcolor=#2f267f:borderw=1:bordercolor=white@0.35,` +
-      `drawtext=text=${quoteDrawtextText(messageLines[4])}:x=218+(590-text_w)/2:y=1136:fontsize=${messageFontSize}:fontcolor=#2f267f:borderw=1:bordercolor=white@0.35,` +
-      `drawtext=text=${quoteDrawtextText(messageLines[5])}:x=218+(590-text_w)/2:y=1158:fontsize=${messageFontSize}:fontcolor=#2f267f:borderw=1:bordercolor=white@0.35,` +
-      `drawtext=text=${quoteDrawtextText(messageLines[6])}:x=218+(590-text_w)/2:y=1180:fontsize=${messageFontSize}:fontcolor=#2f267f:borderw=1:bordercolor=white@0.35,` +
-      `drawtext=text=${quoteDrawtextText(messageLines[7])}:x=218+(590-text_w)/2:y=1202:fontsize=${messageFontSize}:fontcolor=#2f267f:borderw=1:bordercolor=white@0.35,` +
-      `drawtext=text=${quoteDrawtextText(messageLines[8])}:x=218+(590-text_w)/2:y=1224:fontsize=${messageFontSize}:fontcolor=#2f267f:borderw=1:bordercolor=white@0.35,` +
-      `drawtext=text=${quoteDrawtextText(messageLines[9])}:x=218+(590-text_w)/2:y=1246:fontsize=${messageFontSize}:fontcolor=#2f267f:borderw=1:bordercolor=white@0.35[outv]`;
+      `drawtext=text=${quoteDrawtextText(messageLines[0])}:x=218+(590-text_w)/2:y=1068:fontsize=${messageFontSize}:fontcolor=#2f267f:borderw=1:bordercolor=white@0.35,` +
+      `drawtext=text=${quoteDrawtextText(messageLines[1])}:x=218+(590-text_w)/2:y=1090:fontsize=${messageFontSize}:fontcolor=#2f267f:borderw=1:bordercolor=white@0.35,` +
+      `drawtext=text=${quoteDrawtextText(messageLines[2])}:x=218+(590-text_w)/2:y=1112:fontsize=${messageFontSize}:fontcolor=#2f267f:borderw=1:bordercolor=white@0.35,` +
+      `drawtext=text=${quoteDrawtextText(messageLines[3])}:x=218+(590-text_w)/2:y=1134:fontsize=${messageFontSize}:fontcolor=#2f267f:borderw=1:bordercolor=white@0.35,` +
+      `drawtext=text=${quoteDrawtextText(messageLines[4])}:x=218+(590-text_w)/2:y=1156:fontsize=${messageFontSize}:fontcolor=#2f267f:borderw=1:bordercolor=white@0.35,` +
+      `drawtext=text=${quoteDrawtextText(messageLines[5])}:x=218+(590-text_w)/2:y=1178:fontsize=${messageFontSize}:fontcolor=#2f267f:borderw=1:bordercolor=white@0.35,` +
+      `drawtext=text=${quoteDrawtextText(messageLines[6])}:x=218+(590-text_w)/2:y=1200:fontsize=${messageFontSize}:fontcolor=#2f267f:borderw=1:bordercolor=white@0.35,` +
+      `drawtext=text=${quoteDrawtextText(messageLines[7])}:x=218+(590-text_w)/2:y=1222:fontsize=${messageFontSize}:fontcolor=#2f267f:borderw=1:bordercolor=white@0.35,` +
+      `drawtext=text=${quoteDrawtextText(messageLines[8])}:x=218+(590-text_w)/2:y=1244:fontsize=${messageFontSize}:fontcolor=#2f267f:borderw=1:bordercolor=white@0.35,` +
+      `drawtext=text=${quoteDrawtextText(messageLines[9])}:x=218+(590-text_w)/2:y=1266:fontsize=${messageFontSize}:fontcolor=#2f267f:borderw=1:bordercolor=white@0.35[outv]`;
 
     const audioFilter = hasPrintoVoice
       ? `[2:a]volume=0.30,apad=pad_dur=10,atrim=0:10[music];` +
@@ -11661,7 +11656,11 @@ app.post("/api/greeting/birthday/generate", async (req, res) => {
           });
         };
 
-        // First create a clean poster for the greeting page.
+        // Return the completed greeting immediately so poster creation cannot
+        // make the browser display "Load failed".
+        finishResponse();
+
+        // Create the clean and social posters in the background.
         execFile("ffmpeg", [
           "-y", "-nostdin", "-loglevel", "error",
           "-ss", "1.2", "-i", outputPath,
@@ -11671,10 +11670,9 @@ app.post("/api/greeting/birthday/generate", async (req, res) => {
         ], { timeout: 30000, maxBuffer: 1024 * 1024 * 2 }, (cleanPosterErr) => {
           if (cleanPosterErr) {
             console.error("Clean greeting poster generation failed:", cleanPosterErr.message);
-            return finishResponse();
+            return;
           }
 
-          // Then create the social-sharing poster with one large play icon.
           execFile("ffmpeg", [
             "-y", "-nostdin", "-loglevel", "error",
             "-i", posterPath,
@@ -11686,7 +11684,6 @@ app.post("/api/greeting/birthday/generate", async (req, res) => {
             if (sharePosterErr) {
               console.error("Social greeting poster generation failed:", sharePosterErr.message);
             }
-            finishResponse();
           });
         });
       }
@@ -11836,7 +11833,7 @@ audio.addEventListener('ended',()=>{btn.textContent='▶ ${t.play}'});
 function buildBirthdayGeneratorPage(language = "en") {
   const lang = ["en", "es", "fr", "de", "pt", "ar", "zh"].includes(language) ? language : "en";
   const copy = {
-    en: { title:"Printo Birthday Generator", back:"All Greeting Cards", intro:"Enter the recipient, sender and personal message. Printo will create the finished video with music and personalized voice.", recipient:"Recipient Name", sender:"Sender Name", recipientExample:"Example: Michael", senderExample:"Example: Ana", personal:"Personal Message", messagePlaceholder:"Write a short birthday message...", generate:"Generate Birthday Video", generating:"Generating...", waiting:"Printo is creating your birthday video. Please wait.", failed:"Generation failed.", voiceReady:"Video and Printo voice are ready!", musicReady:"Video is ready. Music was used because voice was unavailable.", shopify:"Buy via Shopify", nigeria:"Nigeria Payment", note:"Your generated page will include a large Play button, Download, WhatsApp, Facebook, Instagram, TikTok, YouTube, Email and Copy Link options." },
+    en: { title:"Printo Birthday Generator", back:"All Greeting Cards", intro:"Enter the recipient, sender and personal message. Printo will create the finished video with music and personalized voice.", recipient:"Recipient Name", sender:"Sender Name", recipientExample:"Example: Michael", senderExample:"Example: Ana", personal:"Personal Message", messagePlaceholder:"Write a short birthday message...", generate:"Generate Birthday Video", generating:"Generating...", waiting:"Printo is creating your birthday video. Please wait.", failed:"Generation failed.", voiceReady:"Video and Printo voice are ready!", musicReady:"Video is ready. Music was used because voice was unavailable.", shopify:"Buy via Shopify", nigeria:"Nigeria Payment", note:"Your generated page will include a large Play button, Download, WhatsApp, Facebook, X/Twitter, Instagram, TikTok, YouTube, Email and Copy Link options." },
     es: { title:"Generador de cumpleaños Printo", back:"Todas las tarjetas de saludo", intro:"Ingresa el nombre del destinatario, el remitente y un mensaje personal. Printo creará el video final con música y voz personalizada.", recipient:"Nombre del destinatario", sender:"Nombre del remitente", recipientExample:"Ejemplo: Miguel", senderExample:"Ejemplo: Ana", personal:"Mensaje personal", messagePlaceholder:"Escribe un mensaje corto de cumpleaños...", generate:"Generar video de cumpleaños", generating:"Generando...", waiting:"Printo está creando tu video de cumpleaños. Espera, por favor.", failed:"No se pudo generar el video.", voiceReady:"¡El video y la voz de Printo están listos!", musicReady:"El video está listo. Se usó música porque la voz no estaba disponible.", shopify:"Comprar por Shopify", nigeria:"Pago en Nigeria", note:"La página generada incluirá un botón grande de reproducción, descarga, WhatsApp, Facebook, Instagram, TikTok, YouTube, correo electrónico y copiar enlace." },
     fr: { title:"Générateur d’anniversaire Printo", back:"Toutes les cartes de vœux", intro:"Saisissez le nom du destinataire, de l’expéditeur et un message personnel. Printo créera la vidéo finale avec musique et voix personnalisée.", recipient:"Nom du destinataire", sender:"Nom de l’expéditeur", recipientExample:"Exemple : Michel", senderExample:"Exemple : Ana", personal:"Message personnel", messagePlaceholder:"Écrivez un court message d’anniversaire...", generate:"Créer la vidéo d’anniversaire", generating:"Création...", waiting:"Printo crée votre vidéo d’anniversaire. Veuillez patienter.", failed:"La création a échoué.", voiceReady:"La vidéo et la voix de Printo sont prêtes !", musicReady:"La vidéo est prête. La musique a été utilisée car la voix n’était pas disponible.", shopify:"Acheter via Shopify", nigeria:"Paiement Nigeria", note:"La page générée comprendra un grand bouton Lecture, Télécharger, WhatsApp, Facebook, Instagram, TikTok, YouTube, E-mail et Copier le lien." },
     de: { title:"Printo Geburtstagsgenerator", back:"Alle Grußkarten", intro:"Geben Sie den Namen des Empfängers, des Absenders und eine persönliche Nachricht ein. Printo erstellt das fertige Video mit Musik und personalisierter Stimme.", recipient:"Name des Empfängers", sender:"Name des Absenders", recipientExample:"Beispiel: Michael", senderExample:"Beispiel: Ana", personal:"Persönliche Nachricht", messagePlaceholder:"Schreiben Sie eine kurze Geburtstagsnachricht...", generate:"Geburtstagsvideo erstellen", generating:"Wird erstellt...", waiting:"Printo erstellt Ihr Geburtstagsvideo. Bitte warten.", failed:"Erstellung fehlgeschlagen.", voiceReady:"Video und Printo-Stimme sind fertig!", musicReady:"Das Video ist fertig. Musik wurde verwendet, da die Stimme nicht verfügbar war.", shopify:"Über Shopify kaufen", nigeria:"Nigeria-Zahlung", note:"Die erstellte Seite enthält eine große Wiedergabetaste sowie Download-, WhatsApp-, Facebook-, Instagram-, TikTok-, YouTube-, E-Mail- und Link-kopieren-Optionen." },
@@ -11973,7 +11970,7 @@ function renderGreetingResult(req, res) {
     .wrap{max-width:680px;margin:auto;text-align:center}.brand{font-size:28px;font-weight:900;margin:8px 0}.sub{opacity:.9;margin-bottom:18px}
     .player{position:relative;width:min(100%,680px);aspect-ratio:2/3;margin:0 auto;border:4px solid #ffd21f;border-radius:22px;overflow:hidden;background:#071b61;box-shadow:0 12px 35px rgba(0,0,0,.35)}
     .player video{display:block;width:100%;height:100%;object-fit:contain;object-position:center;background:#071b61}.bigPlay{position:absolute;inset:0;margin:auto;width:190px;height:190px;border-radius:50%;border:9px solid #fff;background:rgba(7,84,184,.88);color:#fff;font-size:98px;line-height:166px;padding-left:16px;cursor:pointer;box-shadow:0 12px 34px rgba(0,0,0,.55)}
-    .actions{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin-top:18px}.btn{display:block;padding:14px 10px;border-radius:14px;text-decoration:none;color:#fff;font-weight:900;border:0;font-size:15px;cursor:pointer}.download{background:#7b2cbf}.whatsapp{background:#25D366}.facebook{background:#1877F2}.copy{background:#334155}.social{background:#d63384}.youtube{background:#ff0000}.tiktok{background:#111}.email{background:#0f766e}.shopify{background:#4f772d}.nigeria{background:#008751}.full{grid-column:1/-1}
+    .actions{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin-top:18px}.btn{display:block;padding:14px 10px;border-radius:14px;text-decoration:none;color:#fff;font-weight:900;border:0;font-size:15px;cursor:pointer}.download{background:#7b2cbf}.whatsapp{background:#25D366}.facebook{background:#1877F2}.xshare{background:#000}.copy{background:#334155}.social{background:#d63384}.youtube{background:#ff0000}.tiktok{background:#111}.email{background:#0f766e}.shopify{background:#4f772d}.nigeria{background:#008751}.full{grid-column:1/-1}
     .note{font-size:13px;line-height:19px;background:rgba(255,255,255,.12);padding:12px;border-radius:12px;margin-top:14px}.toast{min-height:22px;color:#ffd21f;font-weight:800;margin-top:10px}
     @media(max-width:480px){.actions{grid-template-columns:1fr}.full{grid-column:auto}.bigPlay{width:154px;height:154px;font-size:80px;line-height:132px;border-width:8px}}
   </style>
@@ -11991,6 +11988,7 @@ function renderGreetingResult(req, res) {
       <a class="btn download full" href="${safeVideo}" download>📥 Download Video</a>
       <button class="btn whatsapp" onclick="shareWhatsApp()">📱 WhatsApp</button>
       <button class="btn facebook" onclick="shareFacebook()">📘 Facebook</button>
+      <button class="btn xshare" onclick="shareX()">𝕏 X / Twitter</button>
       <button class="btn social" onclick="downloadThenOpen('instagram')">📸 Instagram</button>
       <button class="btn youtube" onclick="downloadThenOpen('youtube')">▶ YouTube</button>
       <button class="btn tiktok" onclick="downloadThenOpen('tiktok')">🎵 TikTok</button>
@@ -12000,7 +11998,7 @@ function renderGreetingResult(req, res) {
       <a class="btn shopify" href="${shopifyUrl}" target="_blank" rel="noopener">🛒 Buy via Shopify</a>
       <a class="btn nigeria" href="${nigeriaUrl}" target="_blank" rel="noopener">🇳🇬 Nigeria Payment</a>
     </div>
-    <div class="note">Facebook and WhatsApp share the short greeting link and preview. Instagram, YouTube and TikTok download the MP4 first; upload the downloaded video in the app and paste the copied short link into the caption or description.</div>
+    <div class="note">Facebook, WhatsApp and X/Twitter share the short greeting link and preview. Instagram, YouTube and TikTok download the MP4 first; upload the downloaded video in the app and paste the copied short link into the caption or description.</div>
   </div>
 <script>
   const video=document.getElementById('greetingVideo'); const play=document.getElementById('bigPlay'); const toast=document.getElementById('toast');
@@ -12015,22 +12013,18 @@ function renderGreetingResult(req, res) {
   video.onclick=()=>{if(video.paused){video.play();play.style.display='none'}else video.pause()};
   video.onended=()=>{play.textContent='↻';play.style.display='block'};
   function shareWhatsApp(){window.open('https://wa.me/?text='+encodeURIComponent(shareText+'\\n\\n'+pageUrl),'_blank')}
-  async function shareFacebook(){
-    try{
-      if(navigator.share){
-        await navigator.share({
-          title:'My Printo Greeting',
-          text:shareText,
-          url:pageUrl
-        });
-        return;
-      }
-    }catch(error){
-      if(error && error.name==='AbortError') return;
-    }
-
+  function shareFacebook(){
     window.open(
       'https://www.facebook.com/sharer/sharer.php?u='+encodeURIComponent(pageUrl),
+      '_blank'
+    );
+  }
+
+  function shareX(){
+    window.open(
+      'https://twitter.com/intent/tweet?text='+
+      encodeURIComponent(shareText)+
+      '&url='+encodeURIComponent(pageUrl),
       '_blank'
     );
   }
