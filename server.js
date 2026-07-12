@@ -12094,7 +12094,7 @@ function renderGreetingResult(req, res) {
     *{box-sizing:border-box} body{margin:0;font-family:Arial,sans-serif;background:linear-gradient(180deg,#071b61,#0b63ce);color:#fff;min-height:100vh;padding:22px}
     .wrap{max-width:680px;margin:auto;text-align:center}.brand{font-size:28px;font-weight:900;margin:8px 0}.sub{opacity:.9;margin-bottom:18px}
     .player{position:relative;width:min(100%,680px);aspect-ratio:2/3;margin:0 auto;border:4px solid #ffd21f;border-radius:22px;overflow:hidden;background:#071b61;box-shadow:0 12px 35px rgba(0,0,0,.35)}
-    .player video{display:block;width:100%;height:100%;object-fit:contain;object-position:center;background:#071b61}.bigPlay{position:absolute;inset:0;margin:auto;width:190px;height:190px;border-radius:50%;border:9px solid #fff;background:rgba(7,84,184,.88);color:#fff;font-size:98px;line-height:166px;padding-left:16px;cursor:pointer;box-shadow:0 12px 34px rgba(0,0,0,.55)}
+    .player video{display:block;width:100%;height:100%;object-fit:contain;object-position:center;background:#071b61}.bigPlay{position:absolute;z-index:10;inset:0;margin:auto;width:190px;height:190px;border-radius:50%;border:9px solid #fff;background:rgba(7,84,184,.88);color:#fff;font-size:98px;line-height:166px;padding-left:16px;cursor:pointer;box-shadow:0 12px 34px rgba(0,0,0,.55)}
     .actions{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin-top:18px}.btn{display:block;padding:14px 10px;border-radius:14px;text-decoration:none;color:#fff;font-weight:900;border:0;font-size:15px;cursor:pointer}.download{background:#7b2cbf}.whatsapp{background:#25D366}.facebook{background:#1877F2}.xshare{background:#000}.copy{background:#334155}.social{background:#d63384}.youtube{background:#ff0000}.tiktok{background:#111}.email{background:#0f766e}.shopify{background:#4f772d}.nigeria{background:#008751}.full{grid-column:1/-1}
     .note{font-size:13px;line-height:19px;background:rgba(255,255,255,.12);padding:12px;border-radius:12px;margin-top:14px}.toast{min-height:22px;color:#ffd21f;font-weight:800;margin-top:10px}
     @media(max-width:480px){.actions{grid-template-columns:1fr}.full{grid-column:auto}.bigPlay{width:154px;height:154px;font-size:80px;line-height:132px;border-width:8px}}
@@ -12134,9 +12134,38 @@ function renderGreetingResult(req, res) {
 
 ✨ Create your own personalized Printo greeting today!`)};
   const emailText=${JSON.stringify(`🎉 Watch my personalized Printo greeting!\n\nCreate yours with Printo Greeting Studio.\nShopify: ${shopifyUrl}\nNigeria payment: ${nigeriaUrl}`)};
-  play.onclick=async()=>{try{await video.play();play.style.display='none'}catch(e){toast.textContent='Tap the video controls to play.'}};
-  video.onclick=()=>{if(video.paused){video.play();play.style.display='none'}else video.pause()};
-  video.onended=()=>{play.textContent='↻';play.style.display='block'};
+  async function startGreetingPlayback(){
+    try{
+      video.muted=false;
+      await video.play();
+      play.style.display='none';
+      toast.textContent='';
+    }catch(error){
+      video.controls=true;
+      toast.textContent='Tap the video once more to play.';
+    }
+  }
+
+  play.addEventListener('click',(event)=>{
+    event.preventDefault();
+    event.stopPropagation();
+    startGreetingPlayback();
+  });
+
+  video.addEventListener('click',()=>{
+    if(video.paused){
+      startGreetingPlayback();
+    }else{
+      video.pause();
+      play.textContent='▶';
+      play.style.display='block';
+    }
+  });
+
+  video.addEventListener('ended',()=>{
+    play.textContent='↻';
+    play.style.display='block';
+  });
   function shareWhatsApp(){window.open('https://wa.me/?text='+encodeURIComponent(shareText+'\\n\\n'+pageUrl),'_blank')}
   function shareFacebook(){
     window.open(
@@ -12175,7 +12204,7 @@ function renderGreetingResult(req, res) {
 
     try{
       await navigator.clipboard.writeText(
-        shareText+'\n\n'+pageUrl
+        shareText+'\\n\\n'+pageUrl
       );
     }catch(error){
       // File sharing can continue when clipboard permission is unavailable.
@@ -12203,7 +12232,7 @@ function renderGreetingResult(req, res) {
         await navigator.share({
           files:[videoFile],
           title:'My Printo Greeting',
-          text:shareText+'\n\n'+pageUrl
+          text:shareText+'\\n\\n'+pageUrl
         });
         return;
       }
