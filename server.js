@@ -113,6 +113,7 @@ const upload = multer({ storage });
 const express = require("express");
 const axios = require("axios");
 const { execFile } = require("child_process");
+const crypto = require("crypto");
 require("dotenv").config();
 
 const app = express();
@@ -141,7 +142,12 @@ app.use(express.static("public"));
 app.get("/", (req, res) => {
   res.sendFile(path.join(__dirname, "public", "index.html"));
 });
-app.use(express.json({ limit: "20mb" }));
+app.use(express.json({
+  limit: "20mb",
+  verify: (req, _res, buffer) => {
+    req.rawBody = Buffer.from(buffer);
+  }
+}));
 const cors = require("cors");
 
 app.use(cors({
@@ -151,7 +157,7 @@ app.use(cors({
     "https://patapata.myshopify.com"
   ],
   methods: ["GET", "POST", "OPTIONS"],
-  allowedHeaders: ["Content-Type", "x-worker-key", "x-dashboard-key"],
+  allowedHeaders: ["Content-Type", "x-worker-key", "x-dashboard-key", "x-printo-customer-id", "x-printo-customer-key"],
   credentials: false
 }));
 
@@ -166,18 +172,76 @@ app.get("/uploads/:file", (req, res) => {
 });
 const PORT = process.env.PORT || 10000;
 const SUPPORT_PHONE = process.env.SUPPORT_PHONE || process.env.PATAPATA_PHONE || "18622306637";
+const PRINTO_STUDIO_URL =
+  process.env.PRINTO_STUDIO_URL ||
+  process.env.PRINTO_STUDIO_WEB_URL ||
+  "https://www.patapata.us/";
+const GREETING_AFRICA_PAYMENT_URL =
+  process.env.GREETING_AFRICA_PAYMENT_URL ||
+  "https://www.patapata.us/pages/africa-payment";
+const GREETING_SHOPIFY_PAYMENT_URL =
+  process.env.GREETING_SHOPIFY_URL ||
+  "https://www.patapata.us/";
+
+function getPrintoStudioMenuFooter(language = "en") {
+  const labels = {
+    en: "↩️ Back to Printo Studio",
+    es: "↩️ Volver a Printo Studio",
+    fr: "↩️ Retour à Printo Studio",
+    de: "↩️ Zurück zu Printo Studio",
+    pt: "↩️ Voltar ao Printo Studio",
+    ar: "↩️ العودة إلى استوديو برينتو",
+    zh: "↩️ 返回 Printo Studio"
+  };
+
+  return `${labels[language] || labels.en}:\n${PRINTO_STUDIO_URL}`;
+}
+
+function isNumberedWhatsAppMenu(text = "") {
+  const matches = String(text || "").match(
+    /(?:^|\n)\s*(?:0|[1-9]\d*)\s*(?:[-.)]|\.)\s+/g
+  );
+
+  return Array.isArray(matches) && matches.length >= 2;
+}
+
+function appendPrintoStudioLinkToMenu(text = "", language = "en") {
+  const body = String(text || "").trim();
+  const footerMarkers = [
+    "Back to Printo Studio",
+    "Volver a Printo Studio",
+    "Retour à Printo Studio",
+    "Zurück zu Printo Studio",
+    "Voltar ao Printo Studio",
+    "العودة إلى استوديو برينتو",
+    "返回 Printo Studio"
+  ];
+
+  if (
+    !body ||
+    !isNumberedWhatsAppMenu(body) ||
+    footerMarkers.some((marker) => body.includes(marker))
+  ) {
+    return body;
+  }
+
+  return `${body}\n\n${getPrintoStudioMenuFooter(language)}`;
+}
 
 // =========================
 // WHATSAPP SEND MESSAGE
 // =========================
 async function sendMessage(to, text) {
   try {
+    const language = sessions.get(String(to))?.language || "en";
+    const finalText = appendPrintoStudioLinkToMenu(text, language);
+
     await axios.post(
       `https://graph.facebook.com/v18.0/${process.env.WHATSAPP_PHONE_NUMBER_ID}/messages`,
       {
         messaging_product: "whatsapp",
         to,
-        text: { body: text }
+        text: { body: finalText }
       },
       {
         headers: {
@@ -1881,6 +1945,560 @@ function getLaminateVariantId(size) {
 }
 
 
+
+// =========================
+// PRINTO GREETING ACCESS / CREDITS
+// =========================
+function normalizeGreetingIdentity(value = "") {
+  return String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, "");
+}
+
+function makeGreetingCustomerKey(value = "") {
+  const normalized = normalizeGreetingIdentity(value);
+  if (!normalized) return "";
+
+  return `g_${crypto
+    .createHash("sha256")
+    .update(normalized)
+    .digest("hex")}`;
+}
+
+function getGreetingCustomerIdentity(req, body = {}, whatsappPhone = "") {
+  const directCustomerKey = String(
+    body.customerKey ||
+    body.customer_key ||
+    req.headers["x-printo-customer-key"] ||
+    ""
+  ).trim();
+
+  if (/^g_[a-f0-9]{64}$/i.test(directCustomerKey)) {
+    return {
+      customerKey: directCustomerKey,
+      identitySource: "customer_key",
+      contactPhone: String(
+        whatsappPhone ||
+        body.customerPhone ||
+        body.customer_phone ||
+        body.phone ||
+        body.whatsapp ||
+        ""
+      ).replace(/\D+/g, "")
+    };
+  }
+
+  const supplied =
+    body.customerId ||
+    body.customer_id ||
+    body.deviceId ||
+    body.device_id ||
+    body.customerPhone ||
+    body.customer_phone ||
+    body.phone ||
+    body.whatsapp ||
+    body.email ||
+    req.headers["x-printo-customer-id"] ||
+    whatsappPhone ||
+    "";
+
+  if (supplied) {
+    const source = whatsappPhone
+      ? "whatsapp"
+      : body.customerPhone || body.customer_phone || body.phone || body.whatsapp
+        ? "phone"
+        : body.email
+          ? "email"
+          : body.customerId || body.customer_id || body.deviceId || body.device_id
+            ? "device"
+            : "header";
+
+    return {
+      customerKey: makeGreetingCustomerKey(`${source}:${supplied}`),
+      identitySource: source,
+      contactPhone: String(
+        whatsappPhone ||
+        body.customerPhone ||
+        body.customer_phone ||
+        body.phone ||
+        body.whatsapp ||
+        ""
+      ).replace(/\D+/g, "")
+    };
+  }
+
+  const forwarded = String(req.headers["x-forwarded-for"] || "")
+    .split(",")[0]
+    .trim();
+  const ip = forwarded || req.ip || req.socket?.remoteAddress || "unknown";
+  const userAgent = String(req.headers["user-agent"] || "unknown");
+
+  return {
+    customerKey: makeGreetingCustomerKey(`network:${ip}:${userAgent}`),
+    identitySource: "network_fallback",
+    contactPhone: ""
+  };
+}
+
+async function ensureGreetingAccessTables() {
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS greeting_customer_access (
+      customer_key TEXT PRIMARY KEY,
+      contact_phone TEXT NOT NULL DEFAULT '',
+      free_used BOOLEAN NOT NULL DEFAULT FALSE,
+      paid_credits INTEGER NOT NULL DEFAULT 0 CHECK (paid_credits >= 0),
+      total_generated INTEGER NOT NULL DEFAULT 0 CHECK (total_generated >= 0),
+      last_generation_source TEXT NOT NULL DEFAULT '',
+      last_generated_at TIMESTAMPTZ,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `);
+
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS greeting_payment_events (
+      event_key TEXT PRIMARY KEY,
+      customer_key TEXT NOT NULL,
+      provider TEXT NOT NULL DEFAULT 'manual',
+      credits INTEGER NOT NULL DEFAULT 1 CHECK (credits > 0),
+      payload JSONB,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `);
+
+  await pool.query(`
+    CREATE INDEX IF NOT EXISTS greeting_payment_events_customer_idx
+    ON greeting_payment_events(customer_key)
+  `);
+}
+
+async function ensureGreetingCustomerRow(customerKey, contactPhone = "") {
+  if (!customerKey) {
+    throw new Error("Greeting customer identity is required.");
+  }
+
+  await pool.query(
+    `
+    INSERT INTO greeting_customer_access (
+      customer_key,
+      contact_phone,
+      created_at,
+      updated_at
+    )
+    VALUES ($1, $2, NOW(), NOW())
+    ON CONFLICT (customer_key)
+    DO UPDATE SET
+      contact_phone = CASE
+        WHEN EXCLUDED.contact_phone <> '' THEN EXCLUDED.contact_phone
+        ELSE greeting_customer_access.contact_phone
+      END,
+      updated_at = NOW()
+    `,
+    [customerKey, String(contactPhone || "").replace(/\D+/g, "")]
+  );
+}
+
+async function getGreetingAccessStatus(customerKey, contactPhone = "") {
+  await ensureGreetingCustomerRow(customerKey, contactPhone);
+
+  const result = await pool.query(
+    `
+    SELECT
+      customer_key,
+      contact_phone,
+      free_used,
+      paid_credits,
+      total_generated,
+      last_generation_source,
+      last_generated_at
+    FROM greeting_customer_access
+    WHERE customer_key = $1
+    `,
+    [customerKey]
+  );
+
+  const row = result.rows[0] || {};
+
+  return {
+    customerKey,
+    contactPhone: row.contact_phone || "",
+    freeAvailable: !row.free_used,
+    freeUsed: Boolean(row.free_used),
+    paidCredits: Number(row.paid_credits || 0),
+    totalGenerated: Number(row.total_generated || 0),
+    lastGenerationSource: row.last_generation_source || "",
+    lastGeneratedAt: row.last_generated_at || null
+  };
+}
+
+async function reserveGreetingGenerationAccess(customerKey, contactPhone = "") {
+  const client = await pool.connect();
+
+  try {
+    await client.query("BEGIN");
+
+    await client.query(
+      `
+      INSERT INTO greeting_customer_access (
+        customer_key,
+        contact_phone,
+        created_at,
+        updated_at
+      )
+      VALUES ($1, $2, NOW(), NOW())
+      ON CONFLICT (customer_key)
+      DO UPDATE SET
+        contact_phone = CASE
+          WHEN EXCLUDED.contact_phone <> '' THEN EXCLUDED.contact_phone
+          ELSE greeting_customer_access.contact_phone
+        END,
+        updated_at = NOW()
+      `,
+      [customerKey, String(contactPhone || "").replace(/\D+/g, "")]
+    );
+
+    const freeResult = await client.query(
+      `
+      UPDATE greeting_customer_access
+      SET
+        free_used = TRUE,
+        total_generated = total_generated + 1,
+        last_generation_source = 'free',
+        last_generated_at = NOW(),
+        updated_at = NOW()
+      WHERE customer_key = $1
+        AND free_used = FALSE
+      RETURNING *
+      `,
+      [customerKey]
+    );
+
+    if (freeResult.rows[0]) {
+      await client.query("COMMIT");
+      const row = freeResult.rows[0];
+
+      return {
+        allowed: true,
+        source: "free",
+        customerKey,
+        freeUsed: true,
+        paidCredits: Number(row.paid_credits || 0),
+        totalGenerated: Number(row.total_generated || 0)
+      };
+    }
+
+    const paidResult = await client.query(
+      `
+      UPDATE greeting_customer_access
+      SET
+        paid_credits = paid_credits - 1,
+        total_generated = total_generated + 1,
+        last_generation_source = 'paid',
+        last_generated_at = NOW(),
+        updated_at = NOW()
+      WHERE customer_key = $1
+        AND paid_credits > 0
+      RETURNING *
+      `,
+      [customerKey]
+    );
+
+    if (paidResult.rows[0]) {
+      await client.query("COMMIT");
+      const row = paidResult.rows[0];
+
+      return {
+        allowed: true,
+        source: "paid",
+        customerKey,
+        freeUsed: Boolean(row.free_used),
+        paidCredits: Number(row.paid_credits || 0),
+        totalGenerated: Number(row.total_generated || 0)
+      };
+    }
+
+    const statusResult = await client.query(
+      `
+      SELECT free_used, paid_credits, total_generated
+      FROM greeting_customer_access
+      WHERE customer_key = $1
+      `,
+      [customerKey]
+    );
+
+    await client.query("COMMIT");
+
+    const row = statusResult.rows[0] || {};
+    return {
+      allowed: false,
+      source: "payment_required",
+      customerKey,
+      freeUsed: Boolean(row.free_used),
+      paidCredits: Number(row.paid_credits || 0),
+      totalGenerated: Number(row.total_generated || 0)
+    };
+  } catch (error) {
+    await client.query("ROLLBACK").catch(() => {});
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+async function refundGreetingGenerationAccess(customerKey, source = "") {
+  if (!customerKey || !["free", "paid"].includes(source)) return;
+
+  if (source === "free") {
+    await pool.query(
+      `
+      UPDATE greeting_customer_access
+      SET
+        free_used = FALSE,
+        total_generated = GREATEST(total_generated - 1, 0),
+        last_generation_source = '',
+        last_generated_at = NULL,
+        updated_at = NOW()
+      WHERE customer_key = $1
+      `,
+      [customerKey]
+    );
+    return;
+  }
+
+  await pool.query(
+    `
+    UPDATE greeting_customer_access
+    SET
+      paid_credits = paid_credits + 1,
+      total_generated = GREATEST(total_generated - 1, 0),
+      last_generation_source = '',
+      last_generated_at = NULL,
+      updated_at = NOW()
+    WHERE customer_key = $1
+    `,
+    [customerKey]
+  );
+}
+
+async function grantGreetingPaidCredits({
+  customerKey,
+  contactPhone = "",
+  credits = 1,
+  provider = "manual",
+  eventKey = "",
+  payload = {}
+}) {
+  if (!customerKey) {
+    throw new Error("Greeting customer key is required.");
+  }
+
+  const safeCredits = Math.max(1, Math.min(100, Number(credits) || 1));
+  const safeEventKey =
+    String(eventKey || "").trim() ||
+    `${provider}:${customerKey}:${Date.now()}:${Math.random().toString(36).slice(2, 8)}`;
+
+  const client = await pool.connect();
+
+  try {
+    await client.query("BEGIN");
+
+    await client.query(
+      `
+      INSERT INTO greeting_customer_access (
+        customer_key,
+        contact_phone,
+        created_at,
+        updated_at
+      )
+      VALUES ($1, $2, NOW(), NOW())
+      ON CONFLICT (customer_key)
+      DO UPDATE SET
+        contact_phone = CASE
+          WHEN EXCLUDED.contact_phone <> '' THEN EXCLUDED.contact_phone
+          ELSE greeting_customer_access.contact_phone
+        END,
+        updated_at = NOW()
+      `,
+      [customerKey, String(contactPhone || "").replace(/\D+/g, "")]
+    );
+
+    const eventResult = await client.query(
+      `
+      INSERT INTO greeting_payment_events (
+        event_key,
+        customer_key,
+        provider,
+        credits,
+        payload,
+        created_at
+      )
+      VALUES ($1, $2, $3, $4, $5::jsonb, NOW())
+      ON CONFLICT (event_key) DO NOTHING
+      RETURNING event_key
+      `,
+      [
+        safeEventKey,
+        customerKey,
+        String(provider || "manual"),
+        safeCredits,
+        JSON.stringify(payload || {})
+      ]
+    );
+
+    if (!eventResult.rows[0]) {
+      const duplicateStatusResult = await client.query(
+        `
+        SELECT
+          contact_phone,
+          free_used,
+          paid_credits,
+          total_generated
+        FROM greeting_customer_access
+        WHERE customer_key = $1
+        `,
+        [customerKey]
+      );
+
+      await client.query("COMMIT");
+      const duplicateRow = duplicateStatusResult.rows[0] || {};
+
+      return {
+        ok: true,
+        duplicate: true,
+        eventKey: safeEventKey,
+        status: {
+          customerKey,
+          contactPhone: duplicateRow.contact_phone || "",
+          freeAvailable: !duplicateRow.free_used,
+          freeUsed: Boolean(duplicateRow.free_used),
+          paidCredits: Number(duplicateRow.paid_credits || 0),
+          totalGenerated: Number(duplicateRow.total_generated || 0)
+        }
+      };
+    }
+
+    const creditResult = await client.query(
+      `
+      UPDATE greeting_customer_access
+      SET
+        paid_credits = paid_credits + $2,
+        updated_at = NOW()
+      WHERE customer_key = $1
+      RETURNING *
+      `,
+      [customerKey, safeCredits]
+    );
+
+    await client.query("COMMIT");
+    const row = creditResult.rows[0] || {};
+
+    return {
+      ok: true,
+      duplicate: false,
+      eventKey: safeEventKey,
+      creditsAdded: safeCredits,
+      status: {
+        customerKey,
+        contactPhone: row.contact_phone || "",
+        freeAvailable: !row.free_used,
+        freeUsed: Boolean(row.free_used),
+        paidCredits: Number(row.paid_credits || 0),
+        totalGenerated: Number(row.total_generated || 0)
+      }
+    };
+  } catch (error) {
+    await client.query("ROLLBACK").catch(() => {});
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+function appendUrlParameters(baseUrl, params = {}) {
+  try {
+    const url = new URL(baseUrl);
+
+    Object.entries(params).forEach(([key, value]) => {
+      if (value !== undefined && value !== null && String(value) !== "") {
+        url.searchParams.set(key, String(value));
+      }
+    });
+
+    return url.toString();
+  } catch (_error) {
+    const query = new URLSearchParams(
+      Object.entries(params).reduce((acc, [key, value]) => {
+        if (value !== undefined && value !== null && String(value) !== "") {
+          acc[key] = String(value);
+        }
+        return acc;
+      }, {})
+    ).toString();
+
+    return query
+      ? `${baseUrl}${String(baseUrl).includes("?") ? "&" : "?"}${query}`
+      : baseUrl;
+  }
+}
+
+function buildGreetingPaymentLinks({
+  customerKey,
+  templateId = "birthday",
+  contactPhone = ""
+} = {}) {
+  const common = {
+    greeting_customer_key: customerKey || "",
+    greeting_template: templateId || "birthday",
+    greeting_credits: "1"
+  };
+
+  const shopify = appendUrlParameters(GREETING_SHOPIFY_PAYMENT_URL, {
+    ...common,
+    "attributes[Greeting Customer Key]": customerKey || "",
+    "attributes[Greeting Template]": templateId || "birthday",
+    "attributes[Greeting Credits]": "1",
+    "attributes[Greeting Phone]": String(contactPhone || "").replace(/\D+/g, "")
+  });
+
+  const africa = appendUrlParameters(GREETING_AFRICA_PAYMENT_URL, {
+    ...common,
+    greeting_phone: String(contactPhone || "").replace(/\D+/g, "")
+  });
+
+  return { shopify, africa };
+}
+
+function verifyShopifyWebhookSignature(req) {
+  const secret = process.env.SHOPIFY_WEBHOOK_SECRET || "";
+  const provided = String(req.headers["x-shopify-hmac-sha256"] || "");
+
+  if (!secret || !provided || !req.rawBody) return false;
+
+  const digest = crypto
+    .createHmac("sha256", secret)
+    .update(req.rawBody)
+    .digest("base64");
+
+  const left = Buffer.from(digest);
+  const right = Buffer.from(provided);
+
+  return left.length === right.length && crypto.timingSafeEqual(left, right);
+}
+
+function getShopifyNoteAttribute(order = {}, names = []) {
+  const wanted = new Set(names.map((name) => String(name).toLowerCase()));
+  const attributes = Array.isArray(order.note_attributes)
+    ? order.note_attributes
+    : [];
+
+  const match = attributes.find((item) =>
+    wanted.has(String(item?.name || "").toLowerCase())
+  );
+
+  return String(match?.value || "").trim();
+}
+
 // =========================
 // PRINTO GREETING STUDIO
 // =========================
@@ -2755,7 +3373,16 @@ async function tryRenderGreetingVideoForWhatsApp(req, from, session, spec = {}) 
     const renderResult = await renderGreetingVideo(req, spec);
 
     if (!renderResult.ok) {
-      return `\n\n🎬 Video rendering is ready, but the master video is not uploaded yet.\n${renderResult.message}\n\nFor now, use the Greeting Order Portal link:\n${spec.downloadUrl || "Download link already created."}`;
+      return {
+        ok: false,
+        message: `
+
+🎬 Video rendering is ready, but the master video is not uploaded yet.
+${renderResult.message}
+
+For now, use the Greeting Order Portal link:
+${spec.downloadUrl || "Download link already created."}`
+      };
     }
 
     session.greetingSpec = {
@@ -2771,37 +3398,190 @@ async function tryRenderGreetingVideoForWhatsApp(req, from, session, spec = {}) 
       );
     }
 
-    return `\n\n🎉 Your personalized Printo greeting video is ready!\n\n📥 Download MP4:\n${renderResult.downloadUrl}\n\n📱 You can share this video on WhatsApp, Facebook, Instagram, and TikTok.\n\nThank you for using Printo Greeting Studio.`;
+    return {
+      ok: true,
+      message: `
+
+🎉 Your personalized Printo greeting video is ready!
+
+📥 Download MP4:
+${renderResult.downloadUrl}
+
+📱 You can share this video on WhatsApp, Facebook, Instagram, and TikTok.
+
+Thank you for using Printo Greeting Studio.`
+    };
   } catch (err) {
     console.error("Greeting MP4 render failed:", err.stderr || err.message);
-    return `\n\n⚠️ The greeting order was received, but automatic MP4 rendering could not complete yet. A Printo team member will continue it.\n\nGreeting Order Portal:\n${spec.downloadUrl || "Download link already created."}`;
+    return {
+      ok: false,
+      message: `
+
+⚠️ The greeting order was received, but automatic MP4 rendering could not complete yet. A Printo team member will continue it.
+
+Greeting Order Portal:
+${spec.downloadUrl || "Download link already created."}`
+    };
   }
 }
 
-function greetingPaymentPromptText(spec = {}) {
-  return `✅ Your Printo Greeting Studio request has been received.
+function greetingPaymentPromptText(spec = {}, language = "en") {
+  const paymentLinks =
+    spec.paymentLinks ||
+    buildGreetingPaymentLinks({
+      customerKey: spec.customerKey,
+      templateId: spec.templateId || "birthday",
+      contactPhone: spec.customerPhone || ""
+    });
+
+  return pickText(language, {
+    en: `💳 Payment is required for this greeting.
+
+Your first free Printo video greeting has already been used.
 
 Occasion: ${spec.occasion || "Birthday"}
 Recipient: ${spec.recipientName || ""}
 Sender: ${spec.senderName || ""}
 
-Message:
-${spec.message || ""}
+Choose a payment method:
 
-✅ Your Greeting Order Portal is ready:
-${spec.downloadUrl || "Download link will be created shortly."}
+1 - Shopify Payment
+${paymentLinks.shopify}
 
-Please choose payment method.
-
-Reply with number only:
-
-1 - Shopify Checkout (coming next)
 2 - Africa Payment
+${paymentLinks.africa}
+
 3 - Continue with Agent
 
-After payment, please send your payment receipt here on WhatsApp for confirmation.
+The next video will not be created until payment is confirmed.
+After confirmation, return to Printo Studio and generate the greeting again.`,
 
-To start over, type 39.`;
+    es: `💳 Se requiere pago para este saludo.
+
+Ya utilizó su primer saludo de video Printo gratis.
+
+Ocasión: ${spec.occasion || "Cumpleaños"}
+Destinatario: ${spec.recipientName || ""}
+Remitente: ${spec.senderName || ""}
+
+Elija un método de pago:
+
+1 - Pago Shopify
+${paymentLinks.shopify}
+
+2 - Pago África
+${paymentLinks.africa}
+
+3 - Continuar con un agente
+
+El próximo video no se creará hasta que se confirme el pago.
+Después de la confirmación, vuelva a Printo Studio y genere el saludo de nuevo.`,
+
+    fr: `💳 Un paiement est requis pour ce message.
+
+Votre première carte vidéo Printo gratuite a déjà été utilisée.
+
+Occasion : ${spec.occasion || "Anniversaire"}
+Destinataire : ${spec.recipientName || ""}
+Expéditeur : ${spec.senderName || ""}
+
+Choisissez un mode de paiement :
+
+1 - Paiement Shopify
+${paymentLinks.shopify}
+
+2 - Paiement Afrique
+${paymentLinks.africa}
+
+3 - Continuer avec un agent
+
+La prochaine vidéo ne sera pas créée avant confirmation du paiement.
+Après confirmation, revenez à Printo Studio et générez à nouveau la carte.`,
+
+    de: `💳 Für diesen Gruß ist eine Zahlung erforderlich.
+
+Ihr erster kostenloser Printo-Videogruß wurde bereits verwendet.
+
+Anlass: ${spec.occasion || "Geburtstag"}
+Empfänger: ${spec.recipientName || ""}
+Absender: ${spec.senderName || ""}
+
+Wählen Sie eine Zahlungsmethode:
+
+1 - Shopify-Zahlung
+${paymentLinks.shopify}
+
+2 - Afrika-Zahlung
+${paymentLinks.africa}
+
+3 - Mit einem Mitarbeiter fortfahren
+
+Das nächste Video wird erst nach bestätigter Zahlung erstellt.
+Kehren Sie danach zu Printo Studio zurück und erstellen Sie den Gruß erneut.`,
+
+    pt: `💳 É necessário pagamento para esta saudação.
+
+Sua primeira saudação de vídeo Printo gratuita já foi usada.
+
+Ocasião: ${spec.occasion || "Aniversário"}
+Destinatário: ${spec.recipientName || ""}
+Remetente: ${spec.senderName || ""}
+
+Escolha uma forma de pagamento:
+
+1 - Pagamento Shopify
+${paymentLinks.shopify}
+
+2 - Pagamento África
+${paymentLinks.africa}
+
+3 - Continuar com um agente
+
+O próximo vídeo não será criado até que o pagamento seja confirmado.
+Depois da confirmação, volte ao Printo Studio e gere a saudação novamente.`,
+
+    ar: `💳 يلزم الدفع لإنشاء هذه التهنئة.
+
+لقد استخدمت أول بطاقة فيديو مجانية من Printo.
+
+المناسبة: ${spec.occasion || "عيد الميلاد"}
+المستلم: ${spec.recipientName || ""}
+المرسل: ${spec.senderName || ""}
+
+اختر طريقة الدفع:
+
+1 - الدفع عبر Shopify
+${paymentLinks.shopify}
+
+2 - الدفع في أفريقيا
+${paymentLinks.africa}
+
+3 - المتابعة مع موظف
+
+لن يتم إنشاء الفيديو التالي حتى يتم تأكيد الدفع.
+بعد التأكيد، ارجع إلى استوديو Printo وأنشئ التهنئة مرة أخرى.`,
+
+    zh: `💳 此贺卡需要付款。
+
+您的第一张免费 Printo 视频贺卡已经使用。
+
+场合：${spec.occasion || "生日"}
+收件人：${spec.recipientName || ""}
+发件人：${spec.senderName || ""}
+
+请选择付款方式：
+
+1 - Shopify 付款
+${paymentLinks.shopify}
+
+2 - 非洲付款
+${paymentLinks.africa}
+
+3 - 联系客服
+
+付款确认前不会生成下一段视频。
+确认后，请返回 Printo Studio 再次生成贺卡。`
+  });
 }
 
 function isGreetingShopifyChoice(value = "") {
@@ -2828,9 +3608,16 @@ async function handleGreetingPaymentChoice({ req, from, text, session, spec = {}
   };
 
   const finalSpec = session.greetingSpec || {};
-  const checkoutUrl =
-    finalSpec.checkoutUrl ||
-    buildGreetingCheckoutUrl(finalSpec.packageType || "STANDARD", 1);
+  const paymentLinks =
+    finalSpec.paymentLinks ||
+    buildGreetingPaymentLinks({
+      customerKey: finalSpec.customerKey,
+      templateId: finalSpec.templateId || "birthday",
+      contactPhone: from
+    });
+
+  finalSpec.paymentLinks = paymentLinks;
+  session.greetingSpec = finalSpec;
 
   async function safeAttach(note) {
     try {
@@ -2843,86 +3630,74 @@ async function handleGreetingPaymentChoice({ req, from, text, session, spec = {}
   }
 
   if (isGreetingShopifyChoice(choice)) {
-    await safeAttach("Greeting Studio payment choice: Shopify Checkout selected by customer");
+    await safeAttach(
+      `Greeting Studio payment required. Shopify selected. Customer key: ${finalSpec.customerKey || "not available"}`
+    );
 
-    if (checkoutUrl) {
-      session.stage = "DONE";
-      session.selectedService = null;
-      const renderNote = await tryRenderGreetingVideoForWhatsApp(req, from, session, finalSpec);
-      await sendMessage(
-        from,
-        `✅ Shopify Checkout selected.
-
-Please complete payment here:
-${checkoutUrl}
-
-Your Greeting Order Portal:
-${finalSpec.downloadUrl || "Download link already created."}
-
-After payment, please send your payment receipt here on WhatsApp for confirmation.
-
-A Printo team member will confirm the order and continue the greeting card video process.${renderNote}`
-      );
-      return true;
-    }
-
-    session.stage = "GREETING_PAYMENT";
+    session.stage = "GREETING_AWAITING_PAYMENT";
     session.selectedService = "GREETING_CARD";
+
     await sendMessage(
       from,
-      `✅ Shopify Checkout selected.
+      `✅ Shopify Payment selected.
 
-Shopify Greeting Studio checkout is coming next.
+Complete payment here:
+${paymentLinks.shopify}
 
-Your Greeting Order Portal:
-${finalSpec.downloadUrl || "Download link already created."}
+Your greeting will remain locked until payment is confirmed.
 
-For now, please choose:
+After payment confirmation, return to Printo Studio and tap Generate again.
 
-2 - Africa Payment
-3 - Continue with Agent`
+If you need help, reply here and a worker will assist you.`
     );
+
     return true;
   }
 
   if (isGreetingAfricaChoice(choice)) {
-    await safeAttach("Greeting Studio payment choice: Africa Payment selected by customer");
+    await safeAttach(
+      `Greeting Studio payment required. Africa Payment selected. Customer key: ${finalSpec.customerKey || "not available"}`
+    );
 
-    session.stage = "DONE";
-    session.selectedService = null;
-    const renderNote = await tryRenderGreetingVideoForWhatsApp(req, from, session, finalSpec);
+    session.stage = "GREETING_AWAITING_PAYMENT";
+    session.selectedService = "GREETING_CARD";
+
     await sendMessage(
       from,
-      `✅ Africa Payment selected for Printo Greeting Studio.
+      `✅ Africa Payment selected.
 
-Please complete payment here:
-https://www.patapata.us/pages/africa-payment
+Complete payment here:
+${paymentLinks.africa}
 
-After payment, please send your payment receipt here on WhatsApp for confirmation.
+Send your payment receipt here on WhatsApp.
 
-Your Greeting Order Portal:
-${finalSpec.downloadUrl || "Download link already created."}
-
-A Printo team member will confirm the order and continue the greeting card video process.${renderNote}`
+Your greeting will remain locked until a worker confirms the payment.
+After confirmation, return to Printo Studio and tap Generate again.`
     );
+
     return true;
   }
 
   if (isGreetingAgentChoice(choice)) {
-    await safeAttach("Greeting Studio payment choice: Continue with Agent selected by customer");
+    await safeAttach(
+      `Greeting Studio payment assistance requested. Customer key: ${finalSpec.customerKey || "not available"}`
+    );
 
-    session.stage = "DONE";
-    session.selectedService = null;
-    const renderNote = await tryRenderGreetingVideoForWhatsApp(req, from, session, finalSpec);
+    session.stage = "GREETING_AWAITING_PAYMENT";
+    session.selectedService = "GREETING_CARD";
+
     await sendMessage(
       from,
-      `✅ Continue with Agent selected.
+      `✅ A worker will help you with payment.
 
-Your Greeting Order Portal:
-${finalSpec.downloadUrl || "Download link already created."}
+Your greeting will not be generated until payment is confirmed.
 
-A Printo team member will review your Greeting Studio order and reply here shortly.${renderNote}`
+Customer reference:
+${finalSpec.customerKey || "Not available"}
+
+Please send your question or payment receipt here on WhatsApp.`
     );
+
     return true;
   }
 
@@ -2941,8 +3716,10 @@ async function createGreetingDashboardJob({
   customerPhone,
   checkoutUrl,
   downloadUrl,
-  status = "pending"
+  status = "pending",
+  accessNote = ""
 }) {
+  const accessSection = accessNote ? `\n\n${accessNote}` : "";
   const instructions = `PRINTO GREETING STUDIO
 
 Occasion: ${occasion}
@@ -2958,7 +3735,7 @@ Checkout:
 ${checkoutUrl || "Not configured"}
 
 Download:
-${downloadUrl || "Not generated yet"}`;
+${downloadUrl || "Not generated yet"}${accessSection}`;
 
   try {
     const result = await pool.query(
@@ -3036,6 +3813,232 @@ app.get("/api/greeting-studio/assets/:templateId?", (req, res) => {
   });
 });
 
+
+function isGreetingAdminAuthorized(req) {
+  const expected =
+    process.env.DASHBOARD_KEY ||
+    process.env.SYSTEM_KEY ||
+    process.env.WORKER_KEY ||
+    "";
+
+  const provided =
+    req.headers["x-dashboard-key"] ||
+    req.headers["x-worker-key"] ||
+    req.query.key ||
+    req.body?.dashboard_key ||
+    "";
+
+  return Boolean(expected && provided === expected);
+}
+
+app.post("/api/greeting/access/status", async (req, res) => {
+  try {
+    const identity = getGreetingCustomerIdentity(req, req.body || {});
+    const status = await getGreetingAccessStatus(
+      identity.customerKey,
+      identity.contactPhone
+    );
+    const payment = buildGreetingPaymentLinks({
+      customerKey: identity.customerKey,
+      templateId: req.body?.templateId || "birthday",
+      contactPhone: identity.contactPhone
+    });
+
+    return res.json({
+      ok: true,
+      identitySource: identity.identitySource,
+      customerKey: identity.customerKey,
+      freeAvailable: status.freeAvailable,
+      freeUsed: status.freeUsed,
+      paidCredits: status.paidCredits,
+      totalGenerated: status.totalGenerated,
+      paymentRequired: !status.freeAvailable && status.paidCredits <= 0,
+      payment
+    });
+  } catch (error) {
+    console.error("Greeting access status error:", error);
+    return res.status(500).json({
+      ok: false,
+      error: "Could not check greeting access."
+    });
+  }
+});
+
+app.post("/api/greeting/payment/approve", async (req, res) => {
+  try {
+    if (!isGreetingAdminAuthorized(req)) {
+      return res.status(401).json({
+        ok: false,
+        error: "Unauthorized"
+      });
+    }
+
+    const body = req.body || {};
+    const providedCustomerKey = String(
+      body.customerKey || body.customer_key || ""
+    ).trim();
+    const hasExplicitIdentity = Boolean(
+      providedCustomerKey ||
+      body.customerId ||
+      body.customer_id ||
+      body.deviceId ||
+      body.device_id ||
+      body.customerPhone ||
+      body.customer_phone ||
+      body.phone ||
+      body.whatsapp ||
+      body.email
+    );
+
+    if (!hasExplicitIdentity) {
+      return res.status(400).json({
+        ok: false,
+        error: "customerKey, customerId, customerPhone, or email is required."
+      });
+    }
+
+    const identity = providedCustomerKey
+      ? {
+          customerKey: providedCustomerKey,
+          contactPhone: String(
+            body.customerPhone ||
+            body.customer_phone ||
+            body.phone ||
+            ""
+          ).replace(/\D+/g, "")
+        }
+      : getGreetingCustomerIdentity(req, body);
+
+    const result = await grantGreetingPaidCredits({
+      customerKey: identity.customerKey,
+      contactPhone: identity.contactPhone,
+      credits: body.credits || 1,
+      provider: body.provider || "manual",
+      eventKey:
+        body.reference ||
+        body.eventKey ||
+        body.event_key ||
+        `manual:${identity.customerKey}:${Date.now()}`,
+      payload: body
+    });
+
+    if (identity.contactPhone) {
+      await sendMessage(
+        identity.contactPhone,
+        `✅ Your Printo Greeting Studio payment has been confirmed.
+
+You now have ${result.status?.paidCredits ?? 1} greeting credit(s).
+
+Return to Printo Studio and tap Generate to create your next greeting:
+${PRINTO_STUDIO_URL}`
+      );
+    }
+
+    return res.json({
+      ok: true,
+      customerKey: identity.customerKey,
+      result
+    });
+  } catch (error) {
+    console.error("Greeting payment approval error:", error);
+    return res.status(500).json({
+      ok: false,
+      error: error.message || "Could not approve greeting payment."
+    });
+  }
+});
+
+app.post("/webhooks/shopify/orders-paid", async (req, res) => {
+  try {
+    if (!verifyShopifyWebhookSignature(req)) {
+      return res.status(401).send("Invalid Shopify webhook signature.");
+    }
+
+    const order = req.body || {};
+    const financialStatus = String(order.financial_status || "").toLowerCase();
+
+    if (!["paid", "partially_paid"].includes(financialStatus)) {
+      return res.status(200).json({
+        ok: true,
+        ignored: true,
+        reason: "Order is not paid."
+      });
+    }
+
+    const customerKey =
+      getShopifyNoteAttribute(order, [
+        "Greeting Customer Key",
+        "greeting_customer_key",
+        "Printo Greeting Customer Key"
+      ]) ||
+      String(order.greeting_customer_key || "").trim();
+
+    const contactPhone =
+      getShopifyNoteAttribute(order, [
+        "Greeting Phone",
+        "greeting_phone",
+        "Printo Greeting Phone"
+      ]) ||
+      String(order.phone || order.customer?.phone || "").replace(/\D+/g, "");
+
+    const creditsValue =
+      getShopifyNoteAttribute(order, [
+        "Greeting Credits",
+        "greeting_credits",
+        "Printo Greeting Credits"
+      ]) ||
+      "1";
+
+    if (!customerKey) {
+      return res.status(200).json({
+        ok: true,
+        ignored: true,
+        reason: "No greeting customer key was attached to the order."
+      });
+    }
+
+    const orderReference =
+      order.id ||
+      order.admin_graphql_api_id ||
+      order.order_number ||
+      order.name ||
+      Date.now();
+
+    const result = await grantGreetingPaidCredits({
+      customerKey,
+      contactPhone,
+      credits: Number(creditsValue) || 1,
+      provider: "shopify",
+      eventKey: `shopify:${orderReference}`,
+      payload: order
+    });
+
+    if (contactPhone && !result.duplicate) {
+      await sendMessage(
+        contactPhone,
+        `✅ Shopify payment confirmed.
+
+Your Printo Greeting Studio credit is now available.
+
+Return to Printo Studio and tap Generate:
+${PRINTO_STUDIO_URL}`
+      );
+    }
+
+    return res.status(200).json({
+      ok: true,
+      customerKey,
+      result
+    });
+  } catch (error) {
+    console.error("Shopify greeting payment webhook error:", error);
+    return res.status(500).json({
+      ok: false,
+      error: "Greeting payment webhook failed."
+    });
+  }
+});
+
 app.post("/api/greeting-studio/create", async (req, res) => {
   try {
     const {
@@ -3103,6 +4106,9 @@ app.post("/api/greeting-studio/create", async (req, res) => {
 });
 
 app.post("/api/greeting-studio/render", async (req, res) => {
+  let accessReservation = null;
+  let customerIdentity = null;
+
   try {
     const {
       templateId = "birthday",
@@ -3119,6 +4125,52 @@ app.post("/api/greeting-studio/render", async (req, res) => {
       return res.status(400).json({
         ok: false,
         error: "Missing recipientName, senderName, or message."
+      });
+    }
+
+    customerIdentity = getGreetingCustomerIdentity(req, req.body || {});
+    accessReservation = await reserveGreetingGenerationAccess(
+      customerIdentity.customerKey,
+      customerPhone || customerIdentity.contactPhone
+    );
+
+    if (!accessReservation.allowed) {
+      const payment = buildGreetingPaymentLinks({
+        customerKey: customerIdentity.customerKey,
+        templateId,
+        contactPhone: customerPhone || customerIdentity.contactPhone
+      });
+
+      const paymentJob = await createGreetingDashboardJob({
+        templateId,
+        occasion: occasion || templateId,
+        recipientName,
+        senderName,
+        message,
+        language,
+        customerEmail,
+        customerPhone: customerPhone || customerIdentity.contactPhone,
+        checkoutUrl: payment.shopify,
+        downloadUrl: "",
+        status: "pending",
+        accessNote: `PAYMENT REQUIRED BEFORE GENERATION
+
+Customer key: ${customerIdentity.customerKey}
+Identity source: ${customerIdentity.identitySource}
+Shopify: ${payment.shopify}
+Africa Payment: ${payment.africa}`
+      });
+
+      return res.status(402).json({
+        ok: false,
+        paymentRequired: true,
+        error:
+          "Your first free greeting has already been used. Complete payment before creating another greeting.",
+        customerKey: customerIdentity.customerKey,
+        identitySource: customerIdentity.identitySource,
+        job_id: paymentJob?.id || null,
+        access: accessReservation,
+        payment
       });
     }
 
@@ -3142,6 +4194,15 @@ app.post("/api/greeting-studio/render", async (req, res) => {
       downloadUrl: record.downloadUrl
     });
 
+    if (!renderResult.ok) {
+      await refundGreetingGenerationAccess(
+        customerIdentity.customerKey,
+        accessReservation.source
+      );
+
+      accessReservation = null;
+    }
+
     const job = await createGreetingDashboardJob({
       templateId: template.id,
       occasion: occasion || template.occasion,
@@ -3155,7 +4216,7 @@ app.post("/api/greeting-studio/render", async (req, res) => {
       status: renderResult.ok ? "completed" : "pending"
     });
 
-    res.json({
+    return res.json({
       ok: true,
       greetingId: record.greetingId,
       job_id: job?.id || null,
@@ -3164,11 +4225,30 @@ app.post("/api/greeting-studio/render", async (req, res) => {
       downloadUrl: renderResult.ok ? renderResult.downloadUrl : record.downloadUrl,
       recordDownloadUrl: record.downloadUrl,
       videoDownloadUrl: renderResult.ok ? renderResult.downloadUrl : "",
-      note: renderResult.ok ? "MP4 greeting video rendered." : renderResult.message
+      note: renderResult.ok ? "MP4 greeting video rendered." : renderResult.message,
+      customerKey: customerIdentity.customerKey,
+      access: renderResult.ok
+        ? {
+            source: accessReservation.source,
+            paidCreditsRemaining: accessReservation.paidCredits
+          }
+        : {
+            restored: true,
+            reason: "Video was not rendered."
+          }
     });
   } catch (err) {
+    if (accessReservation?.allowed && customerIdentity?.customerKey) {
+      await refundGreetingGenerationAccess(
+        customerIdentity.customerKey,
+        accessReservation.source
+      ).catch((refundError) => {
+        console.error("Greeting access refund failed:", refundError);
+      });
+    }
+
     console.error("Greeting Studio render error:", err.stderr || err.message || err);
-    res.status(500).json({
+    return res.status(500).json({
       ok: false,
       error: "Failed to render greeting video."
     });
@@ -3255,6 +4335,83 @@ ${serviceMenu(session.language)}`
   return res.sendStatus(200);
 }
 
+
+// ===== DIRECT WORKER ROUTING FOR NON-AUTOMATED GREETING CARDS =====
+if (
+  type === "text" &&
+  lower.includes("card_personalization_agent")
+) {
+  const selectedCardMatch = String(text || "").match(
+    /Selected card:\s*(.+)/i
+  );
+  const selectedCard = selectedCardMatch?.[1]?.trim() || "Greeting Video Card";
+
+  const job = await createGreetingDashboardJob({
+    templateId: "worker-personalization",
+    occasion: selectedCard,
+    recipientName: "To be provided",
+    senderName: "To be provided",
+    message: String(text || "").trim(),
+    language: session.language,
+    customerName: "",
+    customerPhone: from,
+    checkoutUrl: "",
+    downloadUrl: "",
+    status: "pending",
+    accessNote: `DIRECT WORKER PERSONALIZATION REQUEST
+
+This greeting card does not yet use automatic personalization.
+A worker must collect the recipient name, sender name, personal message, and payment choice.`
+  });
+
+  session.selectedService = "GREETING_CARD_AGENT";
+  session.lastServiceJobId = job?.id || null;
+  session.pendingFile = null;
+  session.stage = "SERVICE_WAITING_EXTRA_NOTES";
+
+  await sendMessage(
+    from,
+    pickText(session.language, {
+      en: `✅ Your ${selectedCard} personalization request has been sent directly to a worker.
+
+Please type the recipient name, sender name, and personal message. You may also send a voice note.
+
+A worker will reply here on WhatsApp.`,
+      es: `✅ Su solicitud de personalización de ${selectedCard} fue enviada directamente a un trabajador.
+
+Escriba el nombre del destinatario, el remitente y el mensaje personal. También puede enviar una nota de voz.
+
+Un trabajador responderá aquí en WhatsApp.`,
+      fr: `✅ Votre demande de personnalisation ${selectedCard} a été envoyée directement à un agent.
+
+Écrivez le nom du destinataire, de l'expéditeur et le message personnel. Vous pouvez aussi envoyer un message vocal.
+
+Un agent répondra ici sur WhatsApp.`,
+      de: `✅ Ihre Personalisierungsanfrage für ${selectedCard} wurde direkt an einen Mitarbeiter gesendet.
+
+Geben Sie Empfängername, Absendername und persönliche Nachricht ein. Sie können auch eine Sprachnachricht senden.
+
+Ein Mitarbeiter antwortet hier auf WhatsApp.`,
+      pt: `✅ Sua solicitação de personalização de ${selectedCard} foi enviada diretamente a um trabalhador.
+
+Digite o nome do destinatário, remetente e a mensagem pessoal. Você também pode enviar uma mensagem de voz.
+
+Um trabalhador responderá aqui no WhatsApp.`,
+      ar: `✅ تم إرسال طلب تخصيص ${selectedCard} مباشرة إلى أحد الموظفين.
+
+اكتب اسم المستلم واسم المرسل والرسالة الشخصية. يمكنك أيضًا إرسال رسالة صوتية.
+
+سيرد الموظف هنا على واتساب.`,
+      zh: `✅ 您的 ${selectedCard} 个性化请求已直接发送给工作人员。
+
+请输入收件人姓名、发件人姓名和个人留言。您也可以发送语音消息。
+
+工作人员会在 WhatsApp 上回复您。`
+    })
+  );
+
+  return res.sendStatus(200);
+}
 
 // ===== DIRECT HANDLER FOR PRINTO MOBILE APP SERVICES =====
 // Handles WhatsApp messages sent from index.tsx service cards.
@@ -3350,7 +4507,7 @@ if (
   type === "text" &&
   (
     session.selectedService === "GREETING_CARD" ||
-    ["GREETING_STUDIO", "GREETING_OCCASION", "GREETING_RECIPIENT", "GREETING_SENDER", "GREETING_MESSAGE", "GREETING_PAYMENT"].includes(session.stage)
+    ["GREETING_STUDIO", "GREETING_OCCASION", "GREETING_RECIPIENT", "GREETING_SENDER", "GREETING_MESSAGE", "GREETING_PAYMENT", "GREETING_AWAITING_PAYMENT"].includes(session.stage)
   )
 ) {
   session.greetingSpec = session.greetingSpec || {};
@@ -3364,6 +4521,14 @@ if (
   }
 
   async function finishGreetingDetailsAndAskPayment(spec) {
+    const customerIdentity = getGreetingCustomerIdentity(req, {}, from);
+
+    const paymentLinks = buildGreetingPaymentLinks({
+      customerKey: customerIdentity.customerKey,
+      templateId: spec.templateId || "birthday",
+      contactPhone: from
+    });
+
     const downloadRecord = createGreetingDownloadRecord(req, {
       templateId: spec.templateId || "birthday",
       occasion: spec.occasion || "Birthday",
@@ -3373,7 +4538,10 @@ if (
       language: session.language
     });
 
-    const checkoutUrl = buildGreetingCheckoutUrl(spec.packageType || "STANDARD", 1);
+    const accessReservation = await reserveGreetingGenerationAccess(
+      customerIdentity.customerKey,
+      from
+    );
 
     const finalSpec = {
       ...session.greetingSpec,
@@ -3382,7 +4550,11 @@ if (
       templateId: downloadRecord.template.id,
       downloadUrl: downloadRecord.downloadUrl,
       generatedFileName: downloadRecord.fileName,
-      checkoutUrl
+      checkoutUrl: paymentLinks.shopify,
+      paymentLinks,
+      customerKey: customerIdentity.customerKey,
+      customerPhone: from,
+      accessSource: accessReservation.source
     };
 
     const job = await createGreetingDashboardJob({
@@ -3393,19 +4565,97 @@ if (
       message: finalSpec.message,
       language: session.language,
       customerPhone: from,
-      checkoutUrl,
+      checkoutUrl: paymentLinks.shopify,
       downloadUrl: finalSpec.downloadUrl,
-      status: "pending"
+      status: accessReservation.allowed ? "processing" : "pending"
     });
 
     session.greetingSpec = finalSpec;
     session.selectedService = "GREETING_CARD";
     session.lastServiceJobId = job?.id || null;
-    session.stage = "GREETING_PAYMENT";
-    await sendMessage(from, greetingPaymentPromptText(finalSpec));
+
+    if (!accessReservation.allowed) {
+      session.stage = "GREETING_PAYMENT";
+
+      if (session.lastServiceJobId) {
+        await attachTextToExistingJob(
+          session.lastServiceJobId,
+          `Payment required before generation. Customer key: ${customerIdentity.customerKey}`
+        );
+      }
+
+      await sendMessage(
+        from,
+        greetingPaymentPromptText(finalSpec, session.language)
+      );
+
+      return res.sendStatus(200);
+    }
+
+    session.stage = "GREETING_RENDERING";
+
+    const renderResult = await tryRenderGreetingVideoForWhatsApp(
+      req,
+      from,
+      session,
+      finalSpec
+    );
+
+    if (!renderResult.ok) {
+      await refundGreetingGenerationAccess(
+        customerIdentity.customerKey,
+        accessReservation.source
+      );
+
+      session.stage = "DONE";
+      session.selectedService = null;
+
+      if (session.lastServiceJobId) {
+        await attachTextToExistingJob(
+          session.lastServiceJobId,
+          `Greeting render failed. ${accessReservation.source} access was restored.`
+        );
+      }
+
+      await sendMessage(
+        from,
+        `${renderResult.message}
+
+Your ${
+          accessReservation.source === "free" ? "free greeting" : "paid greeting credit"
+        } was restored because the video was not created.`
+      );
+
+      return res.sendStatus(200);
+    }
+
+    session.stage = "DONE";
+    session.selectedService = null;
+
+    const accessMessage =
+      accessReservation.source === "free"
+        ? pickText(session.language, {
+            en: "🎁 Your first personalized Printo video greeting is FREE.",
+            es: "🎁 Su primer saludo de video Printo personalizado es GRATIS.",
+            fr: "🎁 Votre première carte vidéo Printo personnalisée est GRATUITE.",
+            de: "🎁 Ihr erster personalisierter Printo-Videogruß ist KOSTENLOS.",
+            pt: "🎁 Sua primeira saudação de vídeo Printo personalizada é GRÁTIS.",
+            ar: "🎁 أول تهنئة فيديو مخصصة من Printo مجانية.",
+            zh: "🎁 您的第一张个性化 Printo 视频贺卡免费。"
+          })
+        : pickText(session.language, {
+            en: "✅ One paid greeting credit was used.",
+            es: "✅ Se utilizó un crédito de saludo pagado.",
+            fr: "✅ Un crédit de carte payant a été utilisé.",
+            de: "✅ Ein bezahltes Grußguthaben wurde verwendet.",
+            pt: "✅ Um crédito de saudação pago foi usado.",
+            ar: "✅ تم استخدام رصيد تهنئة مدفوع.",
+            zh: "✅ 已使用一个付费贺卡额度。"
+          });
+
+    await sendMessage(from, `${accessMessage}${renderResult.message}`);
     return res.sendStatus(200);
   }
-
 
   if (session.stage === "GREETING_STUDIO" || session.stage === "GREETING_OCCASION") {
     const parsedFullRequest = parseGreetingRequest(text);
@@ -3492,6 +4742,60 @@ if (
     };
 
     return await finishGreetingDetailsAndAskPayment(spec);
+  }
+
+  if (session.stage === "GREETING_AWAITING_PAYMENT") {
+    const customerMessage = String(text || "").trim();
+
+    if (customerMessage && session.lastServiceJobId) {
+      await attachTextToExistingJob(
+        session.lastServiceJobId,
+        `Customer payment/receipt message: ${customerMessage}`
+      );
+    }
+
+    await sendMessage(
+      from,
+      pickText(session.language, {
+        en: `✅ Your payment message has been received.
+
+A worker will verify the payment. No new greeting video will be generated until payment is confirmed.
+
+After confirmation, return to Printo Studio and tap Generate again.`,
+        es: `✅ Su mensaje de pago fue recibido.
+
+Un trabajador verificará el pago. No se generará otro video hasta que se confirme el pago.
+
+Después de la confirmación, vuelva a Printo Studio y pulse Generar de nuevo.`,
+        fr: `✅ Votre message de paiement a été reçu.
+
+Un agent vérifiera le paiement. Aucune nouvelle vidéo ne sera générée avant confirmation.
+
+Après confirmation, revenez à Printo Studio et appuyez de nouveau sur Générer.`,
+        de: `✅ Ihre Zahlungsnachricht wurde empfangen.
+
+Ein Mitarbeiter prüft die Zahlung. Vor der Bestätigung wird kein neues Video erstellt.
+
+Kehren Sie danach zu Printo Studio zurück und tippen Sie erneut auf Erstellen.`,
+        pt: `✅ Sua mensagem de pagamento foi recebida.
+
+Um trabalhador verificará o pagamento. Nenhum novo vídeo será gerado antes da confirmação.
+
+Depois da confirmação, volte ao Printo Studio e toque em Gerar novamente.`,
+        ar: `✅ تم استلام رسالة الدفع.
+
+سيقوم موظف بالتحقق من الدفع. لن يتم إنشاء فيديو جديد قبل تأكيد الدفع.
+
+بعد التأكيد، ارجع إلى استوديو Printo واضغط على إنشاء مرة أخرى.`,
+        zh: `✅ 已收到您的付款信息。
+
+工作人员会核实付款。付款确认前不会生成新视频。
+
+确认后，请返回 Printo Studio 再次点击生成。`
+      })
+    );
+
+    return res.sendStatus(200);
   }
 
   if (session.stage === "GREETING_PAYMENT") {
@@ -10958,9 +12262,32 @@ return parts.join("");
     return html;
   }
 
+  function extractGreetingCustomerKey(job) {
+    const combined = [
+      job.instructions || "",
+      job.notes || "",
+      job.error_message || ""
+    ].join("\n");
+
+    const match = combined.match(/Customer key:\s*(g_[a-f0-9]{64})/i);
+    return match ? match[1] : "";
+  }
+
   function renderJob(job, printers) {
     const fileUrl = job.file_url || "";
     const title = job.original_name || job.service_type || ("Job #" + job.id);
+    const greetingCustomerKey = extractGreetingCustomerKey(job);
+    const greetingApprovalButton =
+      String(job.service_type || "").toUpperCase() === "GREETING_CARD" &&
+      greetingCustomerKey
+        ? '<button class="btn green" onclick="approveGreetingCredit(\'' +
+          greetingCustomerKey +
+          '\',\'' +
+          h(job.customer_phone || "") +
+          '\',\'' +
+          h(job.id || "") +
+          '\')">Approve Greeting Payment</button>'
+        : "";
     return \`
       <div class="jobCard">
         <div class="jobHead">
@@ -11008,6 +12335,7 @@ return parts.join("");
               <button class="btn purple" onclick="markJob('\${h(job.id)}','printing')">Start</button>
               <button class="btn green" onclick="markJob('\${h(job.id)}','completed')">Complete</button>
               <button class="btn red" onclick="markJob('\${h(job.id)}','failed')">Fail</button>
+              \${greetingApprovalButton}
             </div>
 
             <div class="replyBox">
@@ -11077,6 +12405,40 @@ return parts.join("");
       loadJobs();
     } catch (err) {
       alert("Route failed: " + err.message);
+    }
+  }
+
+  async function approveGreetingCredit(customerKey, customerPhone, jobId) {
+    try {
+      if (!customerKey) {
+        return alert("Greeting customer key was not found on this job.");
+      }
+
+      const confirmed = confirm(
+        "Confirm payment and add one greeting credit for this customer?"
+      );
+      if (!confirmed) return;
+
+      const data = await api("/api/greeting/payment/approve", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          customerKey,
+          customerPhone,
+          credits: 1,
+          provider: "africa_manual",
+          reference:
+            "africa:job:" + (jobId || customerKey)
+        })
+      });
+
+      alert(
+        "Greeting payment approved. Available paid credits: " +
+        (data.result?.status?.paidCredits ?? 1)
+      );
+      loadJobs();
+    } catch (err) {
+      alert("Greeting payment approval failed: " + err.message);
     }
   }
 
@@ -11511,6 +12873,9 @@ function loadGreetingMetadata(greetingId) {
 }
 
 app.post("/api/greeting/birthday/generate", async (req, res) => {
+  let accessReservation = null;
+  let customerIdentity = null;
+
   try {
     console.log("Birthday generator request received:", req.body);
 
@@ -11573,6 +12938,52 @@ app.post("/api/greeting/birthday/generate", async (req, res) => {
       return res.status(400).json({
         ok: false,
         error: "Birthday template assets missing. Birthday_Image_V2.png (or frame.png), master.mp4, and birthday_audio.m4a are required."
+      });
+    }
+
+    customerIdentity = getGreetingCustomerIdentity(req, req.body || {});
+    accessReservation = await reserveGreetingGenerationAccess(
+      customerIdentity.customerKey,
+      customerIdentity.contactPhone
+    );
+
+    if (!accessReservation.allowed) {
+      const payment = buildGreetingPaymentLinks({
+        customerKey: customerIdentity.customerKey,
+        templateId: "birthday",
+        contactPhone: customerIdentity.contactPhone
+      });
+
+      const paymentJob = await createGreetingDashboardJob({
+        templateId: "birthday",
+        occasion: "Birthday",
+        recipientName: toNameRaw,
+        senderName: fromNameRaw,
+        message: messageRaw,
+        language: requestLanguage,
+        customerName: fromNameRaw,
+        customerPhone: customerIdentity.contactPhone,
+        checkoutUrl: payment.shopify,
+        downloadUrl: "",
+        status: "pending",
+        accessNote: `PAYMENT REQUIRED BEFORE GENERATION
+
+Customer key: ${customerIdentity.customerKey}
+Identity source: ${customerIdentity.identitySource}
+Shopify: ${payment.shopify}
+Africa Payment: ${payment.africa}`
+      });
+
+      return res.status(402).json({
+        ok: false,
+        paymentRequired: true,
+        error:
+          "Your first free greeting has already been used. Complete payment before creating another greeting.",
+        customerKey: customerIdentity.customerKey,
+        identitySource: customerIdentity.identitySource,
+        job_id: paymentJob?.id || null,
+        access: accessReservation,
+        payment
       });
     }
 
@@ -11669,13 +13080,24 @@ app.post("/api/greeting/birthday/generate", async (req, res) => {
         timeout: 120000,
         maxBuffer: 1024 * 1024 * 5
       },
-      (err, stdout, stderr) => {
+      async (err, stdout, stderr) => {
         console.log("FFmpeg stdout:", stdout || "");
         console.log("FFmpeg stderr:", stderr || "");
         console.log("Birthday output exists:", fs.existsSync(outputPath));
 
         if (err) {
           console.error("Birthday stable render error:", err);
+
+          if (accessReservation?.allowed && customerIdentity?.customerKey) {
+            await refundGreetingGenerationAccess(
+              customerIdentity.customerKey,
+              accessReservation.source
+            ).catch((refundError) => {
+              console.error("Birthday access refund failed:", refundError);
+            });
+            accessReservation = null;
+          }
+
           return res.status(500).json({
             ok: false,
             error: "Video render failed. Check Render logs for FFmpeg details."
@@ -11684,6 +13106,17 @@ app.post("/api/greeting/birthday/generate", async (req, res) => {
 
         if (!fs.existsSync(outputPath)) {
           console.error("Birthday render finished but output file is missing:", outputPath);
+
+          if (accessReservation?.allowed && customerIdentity?.customerKey) {
+            await refundGreetingGenerationAccess(
+              customerIdentity.customerKey,
+              accessReservation.source
+            ).catch((refundError) => {
+              console.error("Birthday access refund failed:", refundError);
+            });
+            accessReservation = null;
+          }
+
           return res.status(500).json({
             ok: false,
             error: "Video render finished but output file was not created."
@@ -11752,10 +13185,19 @@ app.post("/api/greeting/birthday/generate", async (req, res) => {
               name: BIRTHDAY_NAME_MAX,
               message: BIRTHDAY_MESSAGE_MAX
             },
-            payment: {
-              shopify: process.env.GREETING_SHOPIFY_URL || "https://www.patapata.us/",
-              nigeria: "https://www.patapata.us/pages/africa-payment"
-            }
+            customerKey: customerIdentity?.customerKey || "",
+            access: {
+              source: accessReservation?.source || "",
+              firstFreeGreeting:
+                accessReservation?.source === "free",
+              paidCreditsRemaining:
+                accessReservation?.paidCredits ?? 0
+            },
+            payment: buildGreetingPaymentLinks({
+              customerKey: customerIdentity?.customerKey || "",
+              templateId: "birthday",
+              contactPhone: customerIdentity?.contactPhone || ""
+            })
           });
         };
 
@@ -11814,6 +13256,15 @@ app.post("/api/greeting/birthday/generate", async (req, res) => {
       }
     );
   } catch (err) {
+    if (accessReservation?.allowed && customerIdentity?.customerKey) {
+      await refundGreetingGenerationAccess(
+        customerIdentity.customerKey,
+        accessReservation.source
+      ).catch((refundError) => {
+        console.error("Birthday access refund failed:", refundError);
+      });
+    }
+
     console.error("Birthday generate route error:", err);
     return res.status(500).json({
       ok: false,
@@ -11995,8 +13446,8 @@ function buildBirthdayGeneratorPage(language = "en") {
       <div id="status" class="status"></div>
     </form>
     <div class="payments">
-      <a class="pay shopify" href="https://www.patapata.us/" target="_blank" rel="noopener">🛒 ${t.shopify}</a>
-      <a class="pay nigeria" href="https://www.patapata.us/pages/africa-payment" target="_blank" rel="noopener">🇳🇬 ${t.nigeria}</a>
+      <a id="shopifyPayment" class="pay shopify" href="https://www.patapata.us/" target="_blank" rel="noopener">🛒 ${t.shopify}</a>
+      <a id="africaPayment" class="pay nigeria" href="https://www.patapata.us/pages/africa-payment" target="_blank" rel="noopener">🇳🇬 ${t.nigeria}</a>
     </div>
     <div class="note">${t.note}</div>
   </div>
@@ -12008,6 +13459,13 @@ function buildBirthdayGeneratorPage(language = "en") {
   const to=document.getElementById('toName'),from=document.getElementById('fromName'),message=document.getElementById('message');
   const toCount=document.getElementById('toCount'),fromCount=document.getElementById('fromCount'),messageCount=document.getElementById('messageCount');
   const statusBox=document.getElementById('status'),button=document.getElementById('generateBtn');
+  const shopifyPayment=document.getElementById('shopifyPayment');
+  const africaPayment=document.getElementById('africaPayment');
+  let customerId=localStorage.getItem('printoGreetingCustomerId');
+  if(!customerId){
+    customerId=(window.crypto&&crypto.randomUUID)?crypto.randomUUID():'pg-'+Date.now()+'-'+Math.random().toString(36).slice(2);
+    localStorage.setItem('printoGreetingCustomerId',customerId);
+  }
   function updateCounter(input,output,max){const n=input.value.length;output.textContent=n+' / '+max;output.classList.toggle('warn',n>=max)}
   to.addEventListener('input',()=>updateCounter(to,toCount,limits.name));
   from.addEventListener('input',()=>updateCounter(from,fromCount,limits.name));
@@ -12019,8 +13477,15 @@ function buildBirthdayGeneratorPage(language = "en") {
     e.preventDefault();
     button.disabled=true;button.textContent='⏳ '+ui.generating;statusBox.textContent=ui.waiting;
     try{
-      const response=await fetch('/api/greeting/birthday/generate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({to:to.value.trim(),from:from.value.trim(),message:message.value.trim(),language:currentLanguage})});
+      const response=await fetch('/api/greeting/birthday/generate',{method:'POST',headers:{'Content-Type':'application/json','x-printo-customer-id':customerId},body:JSON.stringify({to:to.value.trim(),from:from.value.trim(),message:message.value.trim(),language:currentLanguage,customerId})});
       const data=await response.json();
+      if(data.paymentRequired){
+        if(data.payment?.shopify)shopifyPayment.href=data.payment.shopify;
+        if(data.payment?.africa)africaPayment.href=data.payment.africa;
+        statusBox.textContent='💳 '+(data.error||'Payment is required before another greeting can be generated.');
+        button.disabled=false;button.textContent='✨ '+ui.generate;
+        return;
+      }
       if(!response.ok||!data.ok)throw new Error(data.error||ui.failed);
       statusBox.textContent=data.hasPrintoVoice?'✅ '+ui.voiceReady:'✅ '+ui.musicReady;
       const target=data.resultUrl||data.downloadUrl;
@@ -12368,21 +13833,43 @@ setupCounter("to", "toCount", ${BIRTHDAY_NAME_MAX});
 setupCounter("from", "fromCount", ${BIRTHDAY_NAME_MAX});
 setupCounter("message", "messageCount", ${BIRTHDAY_MESSAGE_MAX});
 
+let printoGreetingCustomerId = localStorage.getItem("printoGreetingCustomerId");
+if (!printoGreetingCustomerId) {
+  printoGreetingCustomerId =
+    (window.crypto && crypto.randomUUID)
+      ? crypto.randomUUID()
+      : "pg-" + Date.now() + "-" + Math.random().toString(36).slice(2);
+  localStorage.setItem("printoGreetingCustomerId", printoGreetingCustomerId);
+}
+
 async function generate() {
   document.getElementById("status").innerText = "Generating video... please wait.";
   document.getElementById("result").innerHTML = "";
 
   const res = await fetch("/api/greeting/birthday/generate", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      "x-printo-customer-id": printoGreetingCustomerId
+    },
     body: JSON.stringify({
       to: document.getElementById("to").value || "Mary",
       from: document.getElementById("from").value || "John",
-      message: document.getElementById("message").value
+      message: document.getElementById("message").value,
+      customerId: printoGreetingCustomerId
     })
   });
 
   const data = await res.json();
+
+  if (data.paymentRequired) {
+    document.getElementById("status").innerText =
+      "Payment required before another greeting can be generated.";
+    document.getElementById("result").innerHTML =
+      '<a href="' + data.payment.shopify + '" target="_blank">🛒 Shopify Payment</a><br><br>' +
+      '<a href="' + data.payment.africa + '" target="_blank">🌍 Africa Payment</a>';
+    return;
+  }
 
   if (!data.ok) {
     document.getElementById("status").innerText = "Failed: " + (data.error || "Unknown error");
@@ -12397,6 +13884,20 @@ async function generate() {
 </body>
 </html>`);
 });
-app.listen(PORT, "0.0.0.0", () => {
-  console.log(`Server running on port ${PORT}`);
-});
+async function startServer() {
+  try {
+    await ensureGreetingAccessTables();
+    console.log("Greeting access tables are ready.");
+  } catch (error) {
+    console.error(
+      "Greeting access table setup failed. Greeting generation will stay protected until the database is available:",
+      error.message
+    );
+  }
+
+  app.listen(PORT, "0.0.0.0", () => {
+    console.log(`Server running on port ${PORT}`);
+  });
+}
+
+startServer();
