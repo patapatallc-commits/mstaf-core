@@ -11286,12 +11286,12 @@ function getGreetingMessageLayout(value = "") {
     lineGap = 23;
   } else if (messageLength <= 205) {
     maxLines = 9;
-    fontSize = 13;
-    lineGap = 21;
+    fontSize = 11;
+    lineGap = 19;
   } else {
     maxLines = 10;
-    fontSize = 11;
-    lineGap = 20;
+    fontSize = 10;
+    lineGap = 18;
   }
 
   const lines = wrapCompleteGreetingMessage(value, maxLines);
@@ -11302,7 +11302,8 @@ function getGreetingMessageLayout(value = "") {
 
   // Keep every message centered vertically inside the safe text area.
   const safeTop = 1088;
-  const safeBottom = 1282;
+  // Stop well above the purple heart decoration.
+  const safeBottom = 1248;
   const blockHeight = (usedLines - 1) * lineGap;
   const startY = Math.round(
     safeTop + Math.max(0, (safeBottom - safeTop - blockHeight) / 2)
@@ -11758,23 +11759,28 @@ app.post("/api/greeting/birthday/generate", async (req, res) => {
           });
         };
 
-        // Return the completed greeting immediately so poster creation cannot
-        // make the browser display "Load failed".
-        finishResponse();
-
-        // Create the clean and social posters in the background.
+        // Create the clean personalized poster first. Poster extraction is fast
+        // and ensures the result page immediately shows the actual names,
+        // message and Printo video frame instead of empty template spaces.
         execFile("ffmpeg", [
           "-y", "-nostdin", "-loglevel", "error",
           "-ss", "1.2", "-i", outputPath,
           "-frames:v", "1",
           "-vf", "scale=720:-2",
           "-q:v", "2", posterPath
-        ], { timeout: 30000, maxBuffer: 1024 * 1024 * 2 }, (cleanPosterErr) => {
+        ], { timeout: 20000, maxBuffer: 1024 * 1024 * 2 }, (cleanPosterErr) => {
           if (cleanPosterErr) {
             console.error("Clean greeting poster generation failed:", cleanPosterErr.message);
+          }
+
+          // Return the greeting whether poster extraction succeeded or not.
+          finishResponse();
+
+          if (cleanPosterErr || !fs.existsSync(posterPath)) {
             return;
           }
 
+          // Create the social-sharing poster in the background.
           execFile("ffmpeg", [
             "-y", "-nostdin", "-loglevel", "error",
             "-i", posterPath,
@@ -12108,9 +12114,9 @@ function renderGreetingResult(req, res) {
       <button class="btn whatsapp" onclick="shareWhatsApp()">📱 WhatsApp</button>
       <button class="btn facebook" onclick="shareFacebook()">📘 Facebook</button>
       <button class="btn xshare" onclick="shareX()">𝕏 X / Twitter</button>
-      <button class="btn social" onclick="downloadThenOpen('instagram')">📸 Instagram</button>
-      <button class="btn youtube" onclick="downloadThenOpen('youtube')">▶ YouTube</button>
-      <button class="btn tiktok" onclick="downloadThenOpen('tiktok')">🎵 TikTok</button>
+      <button class="btn social" onclick="downloadThenOpen('instagram')">📸 Share Video to Instagram</button>
+      <button class="btn youtube" onclick="downloadThenOpen('youtube')">▶ Share Video to YouTube</button>
+      <button class="btn tiktok" onclick="downloadThenOpen('tiktok')">🎵 Share Video to TikTok</button>
       <button class="btn email" onclick="shareEmail()">📧 Email</button>
       <button class="btn copy full" onclick="copyLink()">🔗 Copy Short Greeting Link</button>
       <a class="btn social full" href="/greetings" target="_blank" rel="noopener">✨ Create Your Own Printo Greeting</a>
@@ -12161,30 +12167,78 @@ function renderGreetingResult(req, res) {
     };
 
     const platformName=platformNames[platform]||'Social Media';
+    const safeRecipient=String(${JSON.stringify(toName)}||'Recipient')
+      .replace(/[^a-zA-Z0-9_-]+/g,'_')
+      .replace(/^_+|_+$/g,'')
+      .slice(0,30);
+    const fileName='Printo_Birthday_'+(safeRecipient||'Greeting')+'.mp4';
 
     try{
       await navigator.clipboard.writeText(
-        shareText+'\\n\\n'+pageUrl
+        shareText+'\n\n'+pageUrl
       );
     }catch(error){
-      // The download still continues if clipboard permission is unavailable.
+      // File sharing can continue when clipboard permission is unavailable.
     }
 
-    const link=document.createElement('a');
-    link.href=videoUrl;
-    link.download='printo-personalized-greeting.mp4';
-    link.rel='noopener';
-    document.body.appendChild(link);
-    link.click();
-    link.remove();
+    try{
+      const response=await fetch(videoUrl,{cache:'no-store'});
+      if(!response.ok) throw new Error('Video download failed');
 
-    toast.textContent=
-      'Video downloading. Upload it to '+platformName+
-      '. The short greeting link was copied for your caption.';
+      const blob=await response.blob();
+      const videoFile=new File(
+        [blob],
+        fileName,
+        {type:blob.type||'video/mp4'}
+      );
 
-    setTimeout(()=>{
-      window.open(platformUrls[platform]||pageUrl,'_blank');
-    },1200);
+      // On iPhone and supported mobile browsers, this sends the actual
+      // personalized MP4 to the system share sheet. The user can select
+      // YouTube, Instagram, TikTok, Files, or another installed app.
+      if(
+        navigator.share &&
+        navigator.canShare &&
+        navigator.canShare({files:[videoFile]})
+      ){
+        await navigator.share({
+          files:[videoFile],
+          title:'My Printo Greeting',
+          text:shareText+'\n\n'+pageUrl
+        });
+        return;
+      }
+
+      // Desktop and older-browser fallback: download the actual MP4 file.
+      const objectUrl=URL.createObjectURL(blob);
+      const link=document.createElement('a');
+      link.href=objectUrl;
+      link.download=fileName;
+      link.rel='noopener';
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+
+      setTimeout(()=>{
+        URL.revokeObjectURL(objectUrl);
+        window.open(platformUrls[platform]||pageUrl,'_blank');
+      },900);
+    }catch(error){
+      console.error(platformName+' video sharing failed:',error);
+
+      // Final fallback: open the MP4 itself so the user can save/share it.
+      const link=document.createElement('a');
+      link.href=videoUrl;
+      link.download=fileName;
+      link.target='_blank';
+      link.rel='noopener';
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+
+      setTimeout(()=>{
+        window.open(platformUrls[platform]||pageUrl,'_blank');
+      },900);
+    }
   }
 
   function shareEmail(){
