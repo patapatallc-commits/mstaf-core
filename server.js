@@ -3949,15 +3949,41 @@ ${PRINTO_STUDIO_URL}`
 });
 
 app.post("/webhooks/shopify/orders-paid", async (req, res) => {
+  const webhookMeta = {
+    webhookId: String(req.headers["x-shopify-webhook-id"] || "unknown"),
+    topic: String(req.headers["x-shopify-topic"] || "orders/paid"),
+    shopDomain: String(req.headers["x-shopify-shop-domain"] || "unknown"),
+    apiVersion: String(req.headers["x-shopify-api-version"] || "unknown"),
+    hasSignature: Boolean(req.headers["x-shopify-hmac-sha256"]),
+    hasRawBody: Boolean(req.rawBody && req.rawBody.length)
+  };
+
+  console.log("Shopify orders-paid webhook received", webhookMeta);
+
   try {
     if (!verifyShopifyWebhookSignature(req)) {
+      console.error("Shopify webhook signature verification failed", webhookMeta);
       return res.status(401).send("Invalid Shopify webhook signature.");
     }
 
+    console.log("Shopify webhook signature verified", webhookMeta);
+
     const order = req.body || {};
     const financialStatus = String(order.financial_status || "").toLowerCase();
+    const orderReference =
+      order.id ||
+      order.admin_graphql_api_id ||
+      order.order_number ||
+      order.name ||
+      "unknown";
 
     if (!["paid", "partially_paid"].includes(financialStatus)) {
+      console.log("Shopify order-payment webhook ignored: order is not paid", {
+        ...webhookMeta,
+        orderReference,
+        financialStatus: financialStatus || "missing"
+      });
+
       return res.status(200).json({
         ok: true,
         ignored: true,
@@ -3990,6 +4016,16 @@ app.post("/webhooks/shopify/orders-paid", async (req, res) => {
       "1";
 
     if (!customerKey) {
+      console.log(
+        "Shopify test/order ignored: no greeting customer key was attached",
+        {
+          ...webhookMeta,
+          orderReference,
+          financialStatus,
+          orderName: String(order.name || "")
+        }
+      );
+
       return res.status(200).json({
         ok: true,
         ignored: true,
@@ -3997,21 +4033,29 @@ app.post("/webhooks/shopify/orders-paid", async (req, res) => {
       });
     }
 
-    const orderReference =
-      order.id ||
-      order.admin_graphql_api_id ||
-      order.order_number ||
-      order.name ||
-      Date.now();
+    const requestedCredits = Math.max(1, Number(creditsValue) || 1);
 
     const result = await grantGreetingPaidCredits({
       customerKey,
       contactPhone,
-      credits: Number(creditsValue) || 1,
+      credits: requestedCredits,
       provider: "shopify",
       eventKey: `shopify:${orderReference}`,
       payload: order
     });
+
+    console.log(
+      result.duplicate
+        ? "Shopify greeting payment already processed; duplicate ignored"
+        : "Shopify greeting credit added successfully",
+      {
+        ...webhookMeta,
+        orderReference,
+        credits: requestedCredits,
+        duplicate: Boolean(result.duplicate),
+        customerKeySuffix: String(customerKey).slice(-8)
+      }
+    );
 
     if (contactPhone && !result.duplicate) {
       await sendMessage(
@@ -4031,7 +4075,12 @@ ${PRINTO_STUDIO_URL}`
       result
     });
   } catch (error) {
-    console.error("Shopify greeting payment webhook error:", error);
+    console.error("Shopify greeting payment webhook error", {
+      ...webhookMeta,
+      message: error?.message || String(error),
+      stack: error?.stack || ""
+    });
+
     return res.status(500).json({
       ok: false,
       error: "Greeting payment webhook failed."
