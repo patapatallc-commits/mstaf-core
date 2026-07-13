@@ -11490,7 +11490,7 @@ app.get("/dashboard", (req, res) => {
   }
   res.setHeader("content-type", "text/html; charset=utf-8");
   return res.end(dashboardHtml({
-    initialPrinter: safeTrim(req.query.printer_id || DISPATCH_QUEUE_ID)
+    initialPrinter: safeTrim(req.query.printer_id || "")
   }));
 });
 
@@ -11533,20 +11533,18 @@ app.get("/api/dashboard/jobs", requireDashboardKey, async (req, res) => {
       where.push(`status = $${params.length}`);
     }
 
+    // Keep queue filtering compatible with the existing database schema.
+    // The long-standing print_jobs table routes jobs through printer_id.
     if (queue === "agent") {
-  where.push(`(queue_type = 'AGENT' OR printer_id = $${params.length + 1})`);
-  params.push(AGENT_QUEUE_ID);
-
-} else if (queue === "dispatch") {
-  where.push(`(queue_type = 'DISPATCH' OR printer_id = $${params.length + 1})`);
-  params.push(DISPATCH_QUEUE_ID);
-
-} else if (queue === "worker") {
-  where.push(`(
-    COALESCE(queue_type, '') <> 'AGENT'
-    AND COALESCE(queue_type, '') <> 'DISPATCH'
-  )`);
-}
+      params.push(AGENT_QUEUE_ID);
+      where.push(`printer_id = $${params.length}`);
+    } else if (queue === "dispatch") {
+      params.push(DISPATCH_QUEUE_ID);
+      where.push(`printer_id = $${params.length}`);
+    } else if (queue === "worker") {
+      params.push(AGENT_QUEUE_ID, DISPATCH_QUEUE_ID);
+      where.push(`COALESCE(printer_id, '') NOT IN ($${params.length - 1}, $${params.length})`);
+    }
 
     if (printer_id) {
       params.push(printer_id);
@@ -11560,6 +11558,8 @@ app.get("/api/dashboard/jobs", requireDashboardKey, async (req, res) => {
         OR COALESCE(file_url, '') ILIKE $${params.length}
         OR COALESCE(instructions, '') ILIKE $${params.length}
         OR COALESCE(customer_phone, '') ILIKE $${params.length}
+        OR COALESCE(customer_name, '') ILIKE $${params.length}
+        OR COALESCE(customer_email, '') ILIKE $${params.length}
         OR COALESCE(printer_id, '') ILIKE $${params.length}
         OR COALESCE(service_type, '') ILIKE $${params.length}
       )`);
@@ -11567,43 +11567,23 @@ app.get("/api/dashboard/jobs", requireDashboardKey, async (req, res) => {
 
     params.push(Math.min(parseInt(limit, 10) || 100, 300));
 
- const sql = `
-  SELECT
-    id,
-    printer_id,
-    queue_type,
-    status,
-    file_url,
-    original_name,
-    paper_size,
-    color_mode,
-    copies,
-    pages,
-    instructions,
-    instruction_audio_url,
-    service_type,
-    customer_phone,
-    customer_name,
-    customer_email,
-    mime_type,
-    notes,
-    total_cost,
-    city,
-    country,
-    error_message,
-    created_at,
-    updated_at
-  FROM print_jobs
-  ${where.length ? `WHERE ${where.join(" AND ")}` : ""}
-  ORDER BY id DESC
-  LIMIT $${params.length}
-`;
+    const sql = `
+      SELECT *
+      FROM print_jobs
+      ${where.length ? `WHERE ${where.join(" AND ")}` : ""}
+      ORDER BY id DESC
+      LIMIT $${params.length}
+    `;
 
     const result = await pool.query(sql, params);
-    res.json({ ok: true, jobs: result.rows, printers: getPrinterRegistry() });
+    return res.json({
+      ok: true,
+      jobs: result.rows,
+      printers: getPrinterRegistry()
+    });
   } catch (err) {
     console.error("Dashboard jobs error:", err);
-    res.status(500).json({ ok: false, error: err.message });
+    return res.status(500).json({ ok: false, error: err.message });
   }
 });
 
@@ -11613,30 +11593,38 @@ app.get("/api/dashboard/jobs", requireDashboardKey, async (req, res) => {
 app.post("/api/dashboard/jobs/:id/route", requireDashboardKey, express.json(), async (req, res) => {
   try {
     const id = req.params.id;
-    const target_printer_id = req.body?.printer_id || DISPATCH_QUEUE_ID;
-    const queue_type =
-      target_printer_id === AGENT_QUEUE_ID
-        ? "AGENT"
-        : target_printer_id === DISPATCH_QUEUE_ID
-          ? "DISPATCH"
-          : "WORKER";
+    const target_printer_id = String(
+      req.body?.printer_id ||
+      req.body?.to_printer_id ||
+      DISPATCH_QUEUE_ID
+    ).trim();
+
+    if (!target_printer_id) {
+      return res.status(400).json({ ok: false, error: "Printer or queue is required" });
+    }
 
     const result = await pool.query(
       `
       UPDATE print_jobs
       SET printer_id = $1,
-          queue_type = $2,
-          status = CASE WHEN status = 'completed' THEN status ELSE 'pending' END
-      WHERE id = $3
+          status = CASE
+            WHEN status IN ('completed', 'done') THEN status
+            ELSE 'pending'
+          END
+      WHERE id = $2
       RETURNING *
       `,
-      [target_printer_id, queue_type, id]
+      [target_printer_id, id]
     );
 
-    res.json({ ok: true, job: result.rows[0] || null });
+    if (!result.rows[0]) {
+      return res.status(404).json({ ok: false, error: "Job not found" });
+    }
+
+    return res.json({ ok: true, job: result.rows[0] });
   } catch (err) {
     console.error("Dashboard route error:", err);
-    res.status(500).json({ ok: false, error: err.message });
+    return res.status(500).json({ ok: false, error: err.message });
   }
 });
 
