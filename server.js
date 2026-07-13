@@ -11371,14 +11371,442 @@ async function getPrintJobsColumns() {
   `);
   return new Set(q.rows.map(r => r.column_name));
 }
+
+// =========================
+// RESTORED WORKER / AGENT DASHBOARD
+// =========================
+const PRINTERS = getPrinterRegistry().flatMap(group => group.printers || []);
+const escHtml = escapeHtml;
+function safeTrim(value = "") { return String(value ?? "").trim(); }
+
+function dashboardHtml({ initialPrinter }) {
+  const options = PRINTERS.map(
+    (p) => `<option value="${escHtml(p.id)}">${escHtml(p.label)}</option>`
+  ).join("");
+
+  const initialPrinterSafe = JSON.stringify(initialPrinter || DISPATCH_QUEUE_ID);
+  const routeOptionsJson = JSON.stringify(
+    PRINTERS.map((p) => ({ id: p.id, label: p.label }))
+  );
+
+  return `<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>MSTAF Worker + Agent Dashboard</title>
+  <style>
+    body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;margin:0;background:#071225;color:#e5e7eb}
+    .wrap{max-width:1360px;margin:0 auto;padding:24px}
+    .top{display:flex;gap:16px;flex-wrap:wrap;align-items:flex-end;margin-bottom:14px}
+    .card{background:rgba(15,23,42,.9);border:1px solid #1f2a44;border-radius:16px;padding:14px}
+    input,select,button{padding:10px 12px;border-radius:12px;border:1px solid #334155;background:#0b1730;color:#e5e7eb}
+    button{cursor:pointer}
+    .muted{color:#94a3b8}
+    .err{color:#fca5a5;white-space:pre-wrap}
+    .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+    table{width:100%;border-collapse:collapse;margin-top:12px;font-size:13px}
+    th,td{border-bottom:1px solid #1f2a44;padding:10px;text-align:left;vertical-align:top}
+    a{color:#93c5fd}
+    .pill{display:inline-block;padding:2px 8px;border-radius:999px;border:1px solid #334155;color:#cbd5e1;font-size:12px}
+    .actions{display:flex;gap:8px;flex-wrap:wrap}
+    .btn-sm{padding:7px 10px;border-radius:10px}
+    .danger{border-color:#7f1d1d}
+    .file-links{display:flex;flex-direction:column;gap:6px}
+    .text-wrap{white-space:pre-wrap;word-break:break-word}
+    .mini{font-size:11px;color:#94a3b8;margin-bottom:4px}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h2 style="margin:0 0 6px 0;">MSTAF Worker + Agent Dashboard</h2>
+    <div class="muted" style="margin-bottom:16px;">
+      DISPATCH routing • printers • editing queue • Nigeria hubs
+      <span style="float:right" class="muted">
+        Auto: A4→${escHtml(DEFAULT_PRINTER_ID)} • A3/CARD/LAMINATING/ID CARD→${escHtml(DISPATCH_QUEUE_ID)} • IMAGE/VIDEO/LESSON→${escHtml(AGENT_QUEUE_ID)}
+      </span>
+    </div>
+
+    <div class="card">
+      <div class="top">
+        <div>
+          <div class="muted" style="margin-bottom:6px;">Queue/Printer</div>
+          <select id="printer" style="min-width:520px;max-width:520px">${options}</select>
+        </div>
+
+        <div>
+          <div class="muted" style="margin-bottom:6px;">Status</div>
+          <select id="status">
+            <option value="">All</option>
+            <option value="pending">pending</option>
+            <option value="printing">printing</option>
+            <option value="done">done</option>
+            <option value="error">error</option>
+          </select>
+        </div>
+
+        <div style="flex:1;min-width:240px">
+          <div class="muted" style="margin-bottom:6px;">Search</div>
+          <input id="q" placeholder="id, name, email, filename, instructions, links..." style="width:100%"/>
+        </div>
+
+        <div>
+          <div class="muted" style="margin-bottom:6px;">Limit</div>
+          <input id="limit" type="number" value="50" min="1" max="200" style="width:110px"/>
+        </div>
+
+        <div class="row">
+          <button id="refresh">Refresh</button>
+          <label class="muted"><input id="auto" type="checkbox" style="transform:scale(1.1);margin-right:6px"/> Auto-refresh</label>
+          <span id="loadState" class="muted">Idle</span>
+        </div>
+      </div>
+
+      <div id="error" class="err"></div>
+      <div id="table"></div>
+    </div>
+  </div>
+
+<script>
+  const urlParams = new URLSearchParams(location.search);
+  const DASH_KEY = urlParams.get("key") || "";
+
+  const printerEl = document.getElementById("printer");
+  const statusEl = document.getElementById("status");
+  const qEl = document.getElementById("q");
+  const limitEl = document.getElementById("limit");
+  const refreshBtn = document.getElementById("refresh");
+  const autoEl = document.getElementById("auto");
+  const errorEl = document.getElementById("error");
+  const tableEl = document.getElementById("table");
+  const loadStateEl = document.getElementById("loadState");
+
+  function esc(s){
+    return String(s ?? "").replace(/[&<>"']/g, m => ({
+      "&":"&amp;",
+      "<":"&lt;",
+      ">":"&gt;",
+      "\\"":"&quot;",
+      "'":"&#39;"
+    }[m]));
+  }
+
+  function isVideoFilename(name){
+    return /\\.(mp4|mov|avi|mkv|webm|m4v|3gp)$/i.test(String(name || ""));
+  }
+
+  function linkifyText(s){
+    const raw = String(s ?? "");
+    if(!raw) return "";
+    const escaped = esc(raw);
+    return escaped.replace(/(https?:\\/\\/[^\\s<]+)/gi, function(url){
+      return "<a href='" + url + "' target='_blank' rel='noopener noreferrer'>" + url + "</a>";
+    });
+  }
+
+  function extractUrlsFromText(s){
+    const txt = String(s ?? "");
+    const matches = txt.match(/https?:\\/\\/[^\\s]+/gi) || [];
+    const uniq = [];
+    const seen = new Set();
+    for (const m of matches) {
+      if (!seen.has(m)) {
+        seen.add(m);
+        uniq.push(m);
+      }
+    }
+    return uniq;
+  }
+
+  const INITIAL_PRINTER = ${initialPrinterSafe};
+  printerEl.value = INITIAL_PRINTER;
+
+  let timer = null;
+
+  function apiUrl(path){
+    const sep = path.includes("?") ? "&" : "?";
+    return path + sep + "key=" + encodeURIComponent(DASH_KEY);
+  }
+
+  async function apiPost(path, body){
+    const r = await fetch(apiUrl(path), {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-dashboard-key": DASH_KEY
+      },
+      body: JSON.stringify(body || {})
+    });
+
+    const data = await r.json().catch(() => ({}));
+    if(!r.ok) throw new Error("HTTP " + r.status + ": " + JSON.stringify(data));
+    return data;
+  }
+
+  function renderJobs(jobs){
+    if(!Array.isArray(jobs) || jobs.length === 0){
+      tableEl.innerHTML = "<div class='muted'>0 jobs</div>";
+      return;
+    }
+
+    const routeOptions = ${routeOptionsJson};
+
+    const rows = jobs.map(j => {
+      const fileLinks = [];
+
+      const mainFileLabel =
+        (String(j.service_type || "").toUpperCase() === "VIDEO_EDITING" || isVideoFilename(j.original_name))
+          ? "Open Video"
+          : "Open File";
+
+      if (j.file_url) {
+        fileLinks.push(
+          "<a href='" + esc(j.file_url) + "' target='_blank' rel='noopener noreferrer'>" + esc(mainFileLabel) + "</a>"
+        );
+      }
+
+      const textUrls = [
+        ...extractUrlsFromText(j.instructions || ""),
+        ...extractUrlsFromText(j.notes || "")
+      ];
+
+      const uniqueUrls = [];
+      const seenUrls = new Set(j.file_url ? [String(j.file_url)] : []);
+
+      for (const u of textUrls) {
+        if (!seenUrls.has(u)) {
+          seenUrls.add(u);
+          uniqueUrls.push(u);
+        }
+      }
+
+      uniqueUrls.forEach((u, idx) => {
+        const isVid =
+          /\\.(mp4|mov|avi|mkv|webm|m4v|3gp)(\\?|#|$)/i.test(u) ||
+          String(j.service_type || "").toUpperCase() === "VIDEO_EDITING";
+
+        fileLinks.push(
+          "<a href='" + esc(u) + "' target='_blank' rel='noopener noreferrer'>" +
+          esc(isVid ? ("Open Video Link " + (idx + 1)) : ("Open Link " + (idx + 1))) +
+          "</a>"
+        );
+      });
+
+      const file =
+        fileLinks.length
+          ? "<div class='file-links'>" + fileLinks.join("") + "</div>"
+          : "<span class='muted'>—</span>";
+
+      const instrRaw = String(j.instructions || "");
+      const notesRaw = String(j.notes || "");
+      const svc = esc(j.service_type || "");
+      const who = [j.customer_name, j.customer_email].filter(Boolean).map(esc).join("<br/>");
+      const loc = [j.city, j.country].filter(Boolean).map(esc).join(", ");
+
+      const routeSel =
+        "<select data-route='" + esc(j.id) + "'>" +
+        routeOptions.map(p =>
+          "<option value='" + esc(p.id) + "' " + (p.id === j.printer_id ? "selected" : "") + ">" +
+          esc(p.label) +
+          "</option>"
+        ).join("") +
+        "</select>";
+
+      const actions =
+        "<div class='actions'>" +
+          "<button class='btn-sm' data-move='" + esc(j.id) + "'>Route</button>" +
+          "<button class='btn-sm' data-done='" + esc(j.id) + "'>Done</button>" +
+          "<button class='btn-sm' data-err='" + esc(j.id) + "'>Error</button>" +
+          "<button class='btn-sm danger' data-del='" + esc(j.id) + "'>Delete</button>" +
+        "</div>";
+
+      const instructionsBlock = instrRaw
+        ? "<div class='text-wrap'>" + linkifyText(instrRaw) + "</div>"
+        : "<span class='muted'>—</span>";
+
+      const notesBlock = notesRaw
+        ? "<div class='text-wrap'>" + linkifyText(notesRaw) + "</div>"
+        : "<span class='muted'>—</span>";
+
+      return "<tr>" +
+        "<td><div><b>" + esc(j.id) + "</b></div><div class='pill'>" + esc(j.status) + "</div></td>" +
+        "<td>" + esc(j.printer_id) + "</td>" +
+        "<td>" + esc(j.paper_size || "") + " / " + esc(j.color_mode || "") + "<br/><span class='muted'>" + svc + "</span></td>" +
+        "<td>" + esc(j.copies || "") + " / " + esc(j.pages || "") + "<br/><span class='muted'>₦/$ " + esc(j.total_cost ?? "") + "</span></td>" +
+        "<td>" + file + "<br/><span class='muted'>" + esc(j.original_name || "") + "</span></td>" +
+        "<td>" + (who || "<span class='muted'>—</span>") + "<br/><span class='muted'>" + (loc || "") + "</span></td>" +
+        "<td style='min-width:320px;max-width:420px'>" +
+          "<div class='mini'>Instructions / Laminating Note</div>" +
+          instructionsBlock +
+          "<div class='mini' style='margin-top:8px'>Notes / Extra Links</div>" +
+          notesBlock +
+        "</td>" +
+        "<td style='min-width:360px'>" + routeSel + "<br/>" + actions + "</td>" +
+      "</tr>";
+    }).join("");
+
+    tableEl.innerHTML =
+      "<table>" +
+      "<thead><tr>" +
+      "<th>ID/Status</th><th>Queue/Printer</th><th>Mode</th><th>Copies/Pages</th><th>File / Video</th><th>Customer</th><th>Instructions / Notes</th><th>Actions</th>" +
+      "</tr></thead>" +
+      "<tbody>" + rows + "</tbody></table>";
+
+    document.querySelectorAll("[data-move]").forEach(btn => {
+      btn.addEventListener("click", async () => {
+        const id = btn.getAttribute("data-move");
+        const sel = document.querySelector("[data-route='" + CSS.escape(id) + "']");
+        const to = sel ? sel.value : "";
+        if(!to) return;
+
+        loadStateEl.textContent = "Routing...";
+        try {
+          await apiPost("/api/dashboard/jobs/" + encodeURIComponent(id) + "/route", { to_printer_id: to });
+          await load();
+        } catch(e) {
+          errorEl.textContent = String(e.message || e);
+        } finally {
+          loadStateEl.textContent = "Idle";
+        }
+      });
+    });
+
+    document.querySelectorAll("[data-done]").forEach(btn => {
+      btn.addEventListener("click", async () => {
+        const id = btn.getAttribute("data-done");
+        loadStateEl.textContent = "Marking done...";
+        try {
+          await apiPost("/api/dashboard/jobs/" + encodeURIComponent(id) + "/mark", { status: "done" });
+          await load();
+        } catch(e) {
+          errorEl.textContent = String(e.message || e);
+        } finally {
+          loadStateEl.textContent = "Idle";
+        }
+      });
+    });
+
+    document.querySelectorAll("[data-err]").forEach(btn => {
+      btn.addEventListener("click", async () => {
+        const id = btn.getAttribute("data-err");
+        const msg = prompt("Error message (optional):", "");
+        loadStateEl.textContent = "Marking error...";
+        try {
+          await apiPost("/api/dashboard/jobs/" + encodeURIComponent(id) + "/mark", {
+            status: "error",
+            error_message: msg || ""
+          });
+          await load();
+        } catch(e) {
+          errorEl.textContent = String(e.message || e);
+        } finally {
+          loadStateEl.textContent = "Idle";
+        }
+      });
+    });
+
+    document.querySelectorAll("[data-del]").forEach(btn => {
+      btn.addEventListener("click", async () => {
+        const id = btn.getAttribute("data-del");
+        if(!confirm("Delete job #" + id + " ?")) return;
+
+        loadStateEl.textContent = "Deleting...";
+        try {
+          await apiPost("/api/dashboard/jobs/" + encodeURIComponent(id) + "/delete", {});
+          await load();
+        } catch(e) {
+          errorEl.textContent = String(e.message || e);
+        } finally {
+          loadStateEl.textContent = "Idle";
+        }
+      });
+    });
+  }
+
+  async function load(){
+    errorEl.textContent = "";
+
+    if(!DASH_KEY){
+      errorEl.textContent = "Missing dashboard key. Open: /dashboard?key=YOUR_KEY";
+      tableEl.innerHTML = "";
+      return;
+    }
+
+    loadStateEl.textContent = "Loading...";
+
+    const printer_id = printerEl.value;
+    const limit = Number(limitEl.value || 50);
+    const status = statusEl.value;
+    const q = qEl.value || "";
+
+    const url =
+      "/api/dashboard/jobs?printer_id=" + encodeURIComponent(printer_id) +
+      "&limit=" + encodeURIComponent(limit) +
+      (status ? "&status=" + encodeURIComponent(status) : "") +
+      (q ? "&q=" + encodeURIComponent(q) : "");
+
+    try {
+      const r = await fetch(apiUrl(url), {
+        headers: { "x-dashboard-key": DASH_KEY }
+      });
+
+      const data = await r.json().catch(() => ({}));
+      if(!r.ok) throw new Error("HTTP " + r.status + ": " + JSON.stringify(data));
+
+      renderJobs(data.jobs || []);
+      loadStateEl.textContent = "Idle";
+    } catch(e) {
+      loadStateEl.textContent = "Idle";
+      errorEl.textContent = String(e.message || e);
+      tableEl.innerHTML = "";
+    }
+  }
+
+  function setAuto(on){
+    if(timer) clearInterval(timer);
+    timer = null;
+    if(on) timer = setInterval(load, 4000);
+  }
+
+  refreshBtn.addEventListener("click", load);
+  printerEl.addEventListener("change", load);
+  statusEl.addEventListener("change", load);
+  qEl.addEventListener("keydown", (e) => { if (e.key === "Enter") load(); });
+  autoEl.addEventListener("change", () => setAuto(autoEl.checked));
+
+  load();
+</script>
+</body>
+</html>`;
+}
+
 app.get("/dashboard", (req, res) => {
   const key = req.query.key;
-
   if (!key || key !== process.env.DASHBOARD_KEY) {
     return res.status(403).send("Access denied");
   }
+  res.setHeader("content-type", "text/html; charset=utf-8");
+  return res.end(dashboardHtml({
+    initialPrinter: safeTrim(req.query.printer_id || DISPATCH_QUEUE_ID)
+  }));
+});
 
-  res.send(renderDashboardHtml());
+app.get("/worker", (req, res) => {
+  const key = req.query.key;
+  if (!key || key !== process.env.DASHBOARD_KEY) {
+    return res.status(403).send("Access denied");
+  }
+  res.setHeader("content-type", "text/html; charset=utf-8");
+  return res.end(dashboardHtml({ initialPrinter: DISPATCH_QUEUE_ID }));
+});
+
+app.get("/agent", (req, res) => {
+  const key = req.query.key;
+  if (!key || key !== process.env.DASHBOARD_KEY) {
+    return res.status(403).send("Access denied");
+  }
+  res.setHeader("content-type", "text/html; charset=utf-8");
+  return res.end(dashboardHtml({ initialPrinter: AGENT_QUEUE_ID }));
 });
 
 /**
