@@ -2,7 +2,7 @@
   "expo": {
     "name": "PATAPATA Print-O-Matic",
     "slug": "PATAPATA-Mobile-App",
-    "version": "1.0.3",
+    "version": "1.0.4",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "patapata",
@@ -12,11 +12,12 @@
       "bundleIdentifier": "com.patapata.printomatic"
     },
     "android": {
+      "softwareKeyboardLayoutMode": "resize",
       "package": "com.patapata.printomatic",
-      "versionCode": 11,
+      "versionCode": 12,
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/adaptive-icon.png",
-        "backgroundColor": "#ffffff"
+        "backgroundColor": "#05081D"
       }
     },
     "web": {
@@ -26,11 +27,13 @@
       [
         "expo-splash-screen",
         {
-          "image": "./assets/images/printomatic-logo.png",
+          "image": "./assets/images/splash.png",
           "resizeMode": "contain",
-          "backgroundColor": "#ffffff"
+          "backgroundColor": "#05081D"
         }
-      ]
+      ],
+      "expo-font",
+      "expo-router"
     ],
     "extra": {
       "eas": {
