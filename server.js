@@ -110,6 +110,25 @@ const storage = multer.diskStorage({
 });
 
 const upload = multer({ storage });
+
+// Premium tribute orders may include one recipient photo and one introduction video.
+// Keep the limits conservative enough for mobile uploads while preventing accidental
+// very large files from exhausting the web service.
+const premiumUpload = multer({
+  storage,
+  limits: {
+    fileSize: 120 * 1024 * 1024,
+    files: 2
+  },
+  fileFilter: (_req, file, cb) => {
+    const mime = String(file.mimetype || "").toLowerCase();
+    const allowed = mime.startsWith("image/") || mime.startsWith("video/");
+    if (!allowed) {
+      return cb(new Error("Premium uploads must be an image or video file."));
+    }
+    return cb(null, true);
+  }
+});
 const express = require("express");
 const axios = require("axios");
 const { execFile } = require("child_process");
@@ -2071,6 +2090,40 @@ async function ensureGreetingAccessTables() {
     CREATE INDEX IF NOT EXISTS greeting_payment_events_customer_idx
     ON greeting_payment_events(customer_key)
   `);
+
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS premium_greeting_orders (
+      order_id TEXT PRIMARY KEY,
+      customer_key TEXT NOT NULL,
+      contact_phone TEXT NOT NULL DEFAULT '',
+      customer_email TEXT NOT NULL DEFAULT '',
+      recipient_name TEXT NOT NULL,
+      sender_name TEXT NOT NULL,
+      personal_message TEXT NOT NULL,
+      song_style TEXT NOT NULL DEFAULT '',
+      tribute_notes TEXT NOT NULL DEFAULT '',
+      recipient_photo_url TEXT NOT NULL DEFAULT '',
+      intro_video_url TEXT NOT NULL DEFAULT '',
+      status TEXT NOT NULL DEFAULT 'payment_required',
+      payment_provider TEXT NOT NULL DEFAULT '',
+      payment_reference TEXT NOT NULL DEFAULT '',
+      shopify_order_id TEXT NOT NULL DEFAULT '',
+      dashboard_job_id TEXT NOT NULL DEFAULT '',
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      paid_at TIMESTAMPTZ,
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `);
+
+  await pool.query(`
+    CREATE INDEX IF NOT EXISTS premium_greeting_orders_customer_idx
+    ON premium_greeting_orders(customer_key)
+  `);
+
+  await pool.query(`
+    CREATE INDEX IF NOT EXISTS premium_greeting_orders_status_idx
+    ON premium_greeting_orders(status)
+  `);
 }
 
 async function ensureGreetingCustomerRow(customerKey, contactPhone = "") {
@@ -2467,6 +2520,221 @@ function buildGreetingPaymentLinks({
   });
 
   return { shopify, africa };
+}
+
+function makePremiumOrderId() {
+  return `PPM-${Date.now()}-${Math.random().toString(36).slice(2, 8).toUpperCase()}`;
+}
+
+function getPremiumShopifyBaseUrl() {
+  const explicit = String(process.env.GREETING_PREMIUM_SHOPIFY_URL || "").trim();
+  if (explicit) return explicit;
+  return buildGreetingCheckoutUrl("PREMIUM", 1);
+}
+
+function buildPremiumPaymentLinks({
+  orderId,
+  customerKey,
+  contactPhone = ""
+} = {}) {
+  const phone = String(contactPhone || "").replace(/\D+/g, "");
+  const common = {
+    premium_order_id: orderId || "",
+    greeting_customer_key: customerKey || "",
+    greeting_package: "GREETING_PREMIUM",
+    greeting_phone: phone
+  };
+
+  const premiumShopifyBase = getPremiumShopifyBaseUrl();
+  const shopify = premiumShopifyBase
+    ? appendUrlParameters(premiumShopifyBase, {
+        ...common,
+        "attributes[Premium Order ID]": orderId || "",
+        "attributes[Greeting Customer Key]": customerKey || "",
+        "attributes[Greeting Package]": "GREETING_PREMIUM",
+        "attributes[Greeting Phone]": phone
+      })
+    : "";
+
+  const africa = appendUrlParameters(GREETING_AFRICA_PAYMENT_URL, common);
+  return { shopify, africa };
+}
+
+async function createPremiumGreetingDashboardJob({
+  orderId,
+  customerKey,
+  contactPhone,
+  customerEmail,
+  recipientName,
+  senderName,
+  personalMessage,
+  songStyle,
+  tributeNotes,
+  recipientPhotoUrl,
+  introVideoUrl,
+  introVideoMime,
+  recipientPhotoMime,
+  shopifyUrl,
+  africaUrl,
+  language = "en"
+}) {
+  const instructions = `PRINTO PREMIUM PERSONAL TRIBUTE ORDER
+
+Premium order ID: ${orderId}
+Customer key: ${customerKey}
+Payment status: AWAITING PAYMENT
+Language: ${language}
+
+Recipient: ${recipientName}
+Sender: ${senderName}
+Phone: ${contactPhone || "Not provided"}
+Email: ${customerEmail || "Not provided"}
+
+Personal message:
+${personalMessage}
+
+Requested tribute song style:
+${songStyle || "Worker to discuss with customer"}
+
+Story / memories / song notes:
+${tributeNotes || "Worker to discuss with customer"}
+
+Recipient photo:
+${recipientPhotoUrl || "Not uploaded"}
+
+Personal introduction video:
+${introVideoUrl || "Not uploaded"}
+
+Shopify Premium Checkout:
+${shopifyUrl || "Premium Shopify product not configured yet"}
+
+Africa Payment:
+${africaUrl || GREETING_AFRICA_PAYMENT_URL}
+
+NEXT ACTION FOR WORKER:
+1. Confirm payment before production.
+2. Review the photo and introduction video.
+3. Contact the customer for any missing tribute-song details.
+4. Prepare and deliver the finished premium Printo tribute video.`;
+
+  try {
+    const primaryFileUrl = introVideoUrl || recipientPhotoUrl || "";
+    const primaryMime = introVideoUrl
+      ? introVideoMime || "video/mp4"
+      : recipientPhotoMime || "image/jpeg";
+
+    const result = await pool.query(
+      `
+      INSERT INTO print_jobs (
+        printer_id,
+        queue_type,
+        status,
+        service_type,
+        customer_name,
+        customer_email,
+        customer_phone,
+        original_name,
+        file_url,
+        mime_type,
+        instructions,
+        copies,
+        pages,
+        total_cost,
+        created_at,
+        updated_at
+      )
+      VALUES ($1, 'AGENT', 'pending', 'GREETING_PREMIUM', $2, $3, $4, $5, $6, $7, $8, 1, 1, 0, NOW(), NOW())
+      RETURNING *
+      `,
+      [
+        process.env.AGENT_QUEUE_ID || "AGENT",
+        senderName || recipientName || "Premium Greeting Customer",
+        customerEmail || "",
+        contactPhone || "",
+        `Printo Premium Tribute - ${recipientName}`,
+        primaryFileUrl,
+        primaryMime,
+        instructions
+      ]
+    );
+
+    return result.rows[0] || null;
+  } catch (error) {
+    console.error("Premium greeting dashboard job insert failed:", error);
+    return null;
+  }
+}
+
+async function markPremiumOrderPaid({
+  orderId,
+  provider,
+  paymentReference = "",
+  shopifyOrderId = "",
+  payload = {}
+}) {
+  if (!orderId) throw new Error("Premium order ID is required.");
+
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    const found = await client.query(
+      `SELECT * FROM premium_greeting_orders WHERE order_id = $1 FOR UPDATE`,
+      [orderId]
+    );
+    const order = found.rows[0];
+    if (!order) {
+      await client.query("ROLLBACK");
+      return { ok: false, missing: true };
+    }
+
+    if (String(order.status || "").toLowerCase() === "paid") {
+      await client.query("COMMIT");
+      return { ok: true, duplicate: true, order };
+    }
+
+    const updated = await client.query(
+      `
+      UPDATE premium_greeting_orders
+      SET status = 'paid',
+          payment_provider = $2,
+          payment_reference = $3,
+          shopify_order_id = $4,
+          paid_at = NOW(),
+          updated_at = NOW()
+      WHERE order_id = $1
+      RETURNING *
+      `,
+      [
+        orderId,
+        String(provider || "manual"),
+        String(paymentReference || ""),
+        String(shopifyOrderId || "")
+      ]
+    );
+
+    if (order.dashboard_job_id) {
+      await client.query(
+        `
+        UPDATE print_jobs
+        SET instructions = COALESCE(instructions, '') || $2,
+            updated_at = NOW()
+        WHERE id::text = $1::text
+        `,
+        [
+          String(order.dashboard_job_id),
+          `\n\n✅ PREMIUM PAYMENT CONFIRMED\nProvider: ${provider || "manual"}\nReference: ${paymentReference || shopifyOrderId || "Not supplied"}\nConfirmed at: ${new Date().toISOString()}`
+        ]
+      );
+    }
+
+    await client.query("COMMIT");
+    return { ok: true, duplicate: false, order: updated.rows[0], payload };
+  } catch (error) {
+    await client.query("ROLLBACK").catch(() => {});
+    throw error;
+  } finally {
+    client.release();
+  }
 }
 
 function verifyShopifyWebhookSignature(req) {
@@ -3948,6 +4216,52 @@ ${PRINTO_STUDIO_URL}`
   }
 });
 
+app.post("/api/greeting/premium/payment/approve", async (req, res) => {
+  try {
+    if (!isGreetingAdminAuthorized(req)) {
+      return res.status(401).json({ ok: false, error: "Unauthorized" });
+    }
+
+    const orderId = String(
+      req.body?.orderId || req.body?.order_id || req.body?.premiumOrderId || ""
+    ).trim();
+    if (!orderId) {
+      return res.status(400).json({
+        ok: false,
+        error: "Premium order ID is required."
+      });
+    }
+
+    const result = await markPremiumOrderPaid({
+      orderId,
+      provider: req.body?.provider || "africa_manual",
+      paymentReference:
+        req.body?.reference || req.body?.paymentReference || `manual:${orderId}:${Date.now()}`,
+      payload: req.body || {}
+    });
+
+    if (result.missing) {
+      return res.status(404).json({ ok: false, error: "Premium order not found." });
+    }
+
+    const order = result.order || {};
+    if (order.contact_phone && !result.duplicate) {
+      await sendMessage(
+        order.contact_phone,
+        `✅ Your Printo Premium Tribute payment has been confirmed.\n\nOrder: ${orderId}\n\nA Printo worker will review your photo, introduction video, message, and tribute-song details and contact you here on WhatsApp.`
+      );
+    }
+
+    return res.json({ ok: true, orderId, result });
+  } catch (error) {
+    console.error("Premium payment approval error:", error);
+    return res.status(500).json({
+      ok: false,
+      error: error.message || "Could not approve premium payment."
+    });
+  }
+});
+
 app.post("/webhooks/shopify/orders-paid", async (req, res) => {
   const webhookMeta = {
     webhookId: String(req.headers["x-shopify-webhook-id"] || "unknown"),
@@ -3988,6 +4302,79 @@ app.post("/webhooks/shopify/orders-paid", async (req, res) => {
         ok: true,
         ignored: true,
         reason: "Order is not paid."
+      });
+    }
+
+    const greetingPackage = String(
+      getShopifyNoteAttribute(order, [
+        "Greeting Package",
+        "greeting_package",
+        "Printo Greeting Package"
+      ]) || order.greeting_package || ""
+    ).trim().toUpperCase();
+
+    const premiumOrderId = String(
+      getShopifyNoteAttribute(order, [
+        "Premium Order ID",
+        "premium_order_id",
+        "Printo Premium Order ID"
+      ]) || order.premium_order_id || ""
+    ).trim();
+
+    if (premiumOrderId || greetingPackage === "GREETING_PREMIUM") {
+      if (!premiumOrderId) {
+        console.log("Premium Shopify order ignored: premium order ID missing", {
+          ...webhookMeta,
+          orderReference
+        });
+        return res.status(200).json({
+          ok: true,
+          ignored: true,
+          reason: "Premium order ID is missing."
+        });
+      }
+
+      const premiumResult = await markPremiumOrderPaid({
+        orderId: premiumOrderId,
+        provider: "shopify",
+        paymentReference: String(order.name || order.order_number || orderReference),
+        shopifyOrderId: String(orderReference),
+        payload: order
+      });
+
+      if (premiumResult.missing) {
+        console.log("Premium Shopify payment ignored: order record not found", {
+          ...webhookMeta,
+          orderReference,
+          premiumOrderId
+        });
+        return res.status(200).json({
+          ok: true,
+          ignored: true,
+          reason: "Premium order record not found."
+        });
+      }
+
+      const premiumOrder = premiumResult.order || {};
+      if (premiumOrder.contact_phone && !premiumResult.duplicate) {
+        await sendMessage(
+          premiumOrder.contact_phone,
+          `✅ Shopify payment confirmed for your Printo Premium Tribute.\n\nOrder: ${premiumOrderId}\n\nA Printo worker will review your uploaded photo, introduction video, personal message, and tribute-song details and contact you here on WhatsApp.`
+        );
+      }
+
+      console.log("Premium Shopify payment confirmed", {
+        ...webhookMeta,
+        orderReference,
+        premiumOrderId,
+        duplicate: Boolean(premiumResult.duplicate)
+      });
+
+      return res.status(200).json({
+        ok: true,
+        premium: true,
+        orderId: premiumOrderId,
+        duplicate: Boolean(premiumResult.duplicate)
       });
     }
 
@@ -12322,6 +12709,16 @@ return parts.join("");
     return match ? match[1] : "";
   }
 
+  function extractPremiumOrderId(job) {
+    const combined = [
+      job.instructions || "",
+      job.notes || "",
+      job.error_message || ""
+    ].join("\n");
+    const match = combined.match(/Premium order ID:\s*(PPM-[A-Z0-9-]+)/i);
+    return match ? match[1] : "";
+  }
+
   function renderJob(job, printers) {
     const fileUrl = job.file_url || "";
     const title = job.original_name || job.service_type || ("Job #" + job.id);
@@ -12336,6 +12733,15 @@ return parts.join("");
           '\',\'' +
           h(job.id || "") +
           '\')">Approve Greeting Payment</button>'
+        : "";
+    const premiumOrderId = extractPremiumOrderId(job);
+    const premiumApprovalButton =
+      String(job.service_type || "").toUpperCase() === "GREETING_PREMIUM" && premiumOrderId
+        ? '<button class="btn green" onclick="approvePremiumPayment(\'' +
+          premiumOrderId +
+          '\',\'' +
+          h(job.id || "") +
+          '\')">Approve Premium Payment</button>'
         : "";
     return \`
       <div class="jobCard">
@@ -12385,6 +12791,7 @@ return parts.join("");
               <button class="btn green" onclick="markJob('\${h(job.id)}','completed')">Complete</button>
               <button class="btn red" onclick="markJob('\${h(job.id)}','failed')">Fail</button>
               \${greetingApprovalButton}
+              \${premiumApprovalButton}
             </div>
 
             <div class="replyBox">
@@ -12488,6 +12895,33 @@ return parts.join("");
       loadJobs();
     } catch (err) {
       alert("Greeting payment approval failed: " + err.message);
+    }
+  }
+
+  async function approvePremiumPayment(orderId, jobId) {
+    try {
+      if (!orderId) return alert("Premium order ID was not found on this job.");
+      const confirmed = confirm(
+        "Confirm Africa/manual payment for premium order " + orderId + "?"
+      );
+      if (!confirmed) return;
+      const data = await api("/api/greeting/premium/payment/approve", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          orderId,
+          provider: "africa_manual",
+          reference: "africa:premium:job:" + (jobId || orderId)
+        })
+      });
+      alert(
+        data.result?.duplicate
+          ? "This premium payment was already approved."
+          : "Premium payment approved. The worker can begin production."
+      );
+      loadJobs();
+    } catch (err) {
+      alert("Premium payment approval failed: " + err.message);
     }
   }
 
@@ -13486,7 +13920,8 @@ function buildGreetingStudioHomePage(language = "en") {
   ].join("\n");
   const premiumWhatsAppUrl = `https://wa.me/${SUPPORT_PHONE}?text=${encodeURIComponent(premiumOrderMessage)}`;
   const premiumFeatures = p.features.map((feature) => `<li>✓ ${feature}</li>`).join("");
-  const premiumCard = `<section class="premium-card"><div class="premium-shine"></div><div class="premium-badge">🌟 ${p.badge}</div><div class="premium-layout"><div class="premium-visual"><div class="premium-icon">🎵</div><div class="premium-photo">📸</div><div class="premium-play">▶</div></div><div class="premium-content"><h2>${p.title}</h2><p>${p.description}</p><ul>${premiumFeatures}</ul><div class="premium-note">${p.notice}</div><a class="premium-order" href="${premiumWhatsAppUrl}" target="_blank" rel="noopener">✨ ${p.order}</a></div></div></section>`;
+  const premiumOrderUrl = `/greetings/premium?lang=${encodeURIComponent(lang)}`;
+  const premiumCard = `<section class="premium-card"><div class="premium-shine"></div><div class="premium-badge">🌟 ${p.badge}</div><div class="premium-layout"><div class="premium-visual"><div class="premium-icon">🎵</div><div class="premium-photo">📸</div><div class="premium-play">▶</div></div><div class="premium-content"><h2>${p.title}</h2><p>${p.description}</p><ul>${premiumFeatures}</ul><div class="premium-note">${p.notice}</div><a class="premium-order" href="${premiumOrderUrl}">✨ ${p.order}</a><a class="premium-order" style="margin-left:8px;background:#25D366" href="${premiumWhatsAppUrl}" target="_blank" rel="noopener">💬 Worker Help</a></div></div></section>`;
   const dir = lang === "ar" ? "rtl" : "ltr";
   const cards = GREETING_TEMPLATES.map((item) => {
     const ready = item.id === "birthday";
@@ -13615,6 +14050,185 @@ function buildBirthdayGeneratorPage(language = "en") {
 </body>
 </html>`;
 }
+
+function buildPremiumGreetingOrderPage(language = "en") {
+  const lang = ["en", "es", "fr", "de", "pt", "ar", "zh"].includes(language)
+    ? language
+    : "en";
+  const copy = {
+    en: {
+      title: "Personal Tribute Music Video Card",
+      intro: "Complete the order details and upload the recipient photo and your personal introduction video. Payment is completed only after the order is saved.",
+      recipient: "Recipient name",
+      sender: "Sender name",
+      phone: "WhatsApp phone number",
+      email: "Email address (optional)",
+      message: "Heartfelt personal message",
+      songStyle: "Preferred tribute-song style",
+      notes: "Story, memories, qualities, or words for the tribute song",
+      photo: "Recipient photo",
+      video: "Your personal introduction video",
+      submit: "Save Premium Order",
+      saving: "Saving order and uploads…",
+      required: "Please complete every required field and choose both files.",
+      success: "Premium order saved successfully.",
+      pay: "Choose payment method",
+      shopify: "Pay with Shopify",
+      africa: "Africa Payment",
+      worker: "Send order to worker on WhatsApp",
+      back: "Back to Greeting Studio"
+    },
+    es: { title:"Tarjeta musical de homenaje personal", intro:"Complete los datos y suba la foto del destinatario y su video de introducción. El pago se realiza después de guardar el pedido.", recipient:"Nombre del destinatario", sender:"Nombre del remitente", phone:"Número de WhatsApp", email:"Correo electrónico (opcional)", message:"Mensaje personal", songStyle:"Estilo de canción preferido", notes:"Historia, recuerdos o palabras para la canción", photo:"Foto del destinatario", video:"Su video personal de introducción", submit:"Guardar pedido Premium", saving:"Guardando pedido y archivos…", required:"Complete todos los campos obligatorios y seleccione ambos archivos.", success:"Pedido Premium guardado.", pay:"Elija el método de pago", shopify:"Pagar con Shopify", africa:"Pago África", worker:"Enviar pedido al trabajador por WhatsApp", back:"Volver al Estudio" },
+    fr: { title:"Carte vidéo musicale d’hommage personnel", intro:"Complétez les informations et importez la photo du destinataire et votre vidéo d’introduction. Le paiement vient après l’enregistrement.", recipient:"Nom du destinataire", sender:"Nom de l’expéditeur", phone:"Numéro WhatsApp", email:"E-mail (facultatif)", message:"Message personnel", songStyle:"Style de chanson souhaité", notes:"Histoire, souvenirs ou mots pour la chanson", photo:"Photo du destinataire", video:"Votre vidéo d’introduction", submit:"Enregistrer la commande Premium", saving:"Enregistrement de la commande…", required:"Complétez les champs obligatoires et choisissez les deux fichiers.", success:"Commande Premium enregistrée.", pay:"Choisissez le paiement", shopify:"Payer avec Shopify", africa:"Paiement Afrique", worker:"Envoyer au travailleur sur WhatsApp", back:"Retour au Studio" },
+    de: { title:"Persönliche Tribute-Musik-Videokarte", intro:"Füllen Sie die Angaben aus und laden Sie Empfängerfoto und Einführungsvideo hoch. Bezahlt wird nach dem Speichern.", recipient:"Empfängername", sender:"Absendername", phone:"WhatsApp-Nummer", email:"E-Mail (optional)", message:"Persönliche Nachricht", songStyle:"Gewünschter Musikstil", notes:"Geschichte, Erinnerungen oder Worte für den Song", photo:"Empfängerfoto", video:"Persönliches Einführungsvideo", submit:"Premium-Bestellung speichern", saving:"Bestellung wird gespeichert…", required:"Füllen Sie alle Pflichtfelder aus und wählen Sie beide Dateien.", success:"Premium-Bestellung gespeichert.", pay:"Zahlungsmethode wählen", shopify:"Mit Shopify bezahlen", africa:"Afrika-Zahlung", worker:"Bestellung per WhatsApp senden", back:"Zurück zum Studio" },
+    pt: { title:"Cartão musical de homenagem pessoal", intro:"Preencha os dados e envie a foto do destinatário e seu vídeo de introdução. O pagamento é feito depois de salvar.", recipient:"Nome do destinatário", sender:"Nome do remetente", phone:"Número de WhatsApp", email:"E-mail (opcional)", message:"Mensagem pessoal", songStyle:"Estilo musical desejado", notes:"História, memórias ou palavras para a música", photo:"Foto do destinatário", video:"Seu vídeo de introdução", submit:"Salvar pedido Premium", saving:"Salvando pedido e arquivos…", required:"Preencha os campos obrigatórios e escolha os dois arquivos.", success:"Pedido Premium salvo.", pay:"Escolha o pagamento", shopify:"Pagar com Shopify", africa:"Pagamento África", worker:"Enviar pedido ao trabalhador no WhatsApp", back:"Voltar ao Studio" },
+    ar: { title:"بطاقة فيديو موسيقية للتكريم الشخصي", intro:"أكمل تفاصيل الطلب وارفع صورة المستلم وفيديو التقديم الشخصي. يتم الدفع بعد حفظ الطلب.", recipient:"اسم المستلم", sender:"اسم المرسل", phone:"رقم واتساب", email:"البريد الإلكتروني (اختياري)", message:"الرسالة الشخصية", songStyle:"نمط الأغنية المطلوب", notes:"القصة أو الذكريات أو الكلمات للأغنية", photo:"صورة المستلم", video:"فيديو التقديم الشخصي", submit:"حفظ طلب Premium", saving:"جارٍ حفظ الطلب والملفات…", required:"أكمل الحقول المطلوبة واختر الملفين.", success:"تم حفظ طلب Premium.", pay:"اختر طريقة الدفع", shopify:"الدفع عبر Shopify", africa:"الدفع في أفريقيا", worker:"إرسال الطلب للعامل عبر واتساب", back:"العودة إلى الاستوديو" },
+    zh: { title:"个人致敬音乐视频贺卡", intro:"填写订单信息，并上传收件人照片和您的个人介绍视频。保存订单后再付款。", recipient:"收件人姓名", sender:"发件人姓名", phone:"WhatsApp 电话", email:"电子邮件（可选）", message:"个人留言", songStyle:"致敬歌曲风格", notes:"故事、回忆、优点或歌曲内容", photo:"收件人照片", video:"您的个人介绍视频", submit:"保存高级订单", saving:"正在保存订单和文件…", required:"请填写必填项并选择两个文件。", success:"高级订单已保存。", pay:"选择付款方式", shopify:"Shopify 付款", africa:"非洲付款", worker:"通过 WhatsApp 发送给工作人员", back:"返回祝福工作室" }
+  };
+  const t = copy[lang] || copy.en;
+  const dir = lang === "ar" ? "rtl" : "ltr";
+  return `<!doctype html>
+<html lang="${lang}" dir="${dir}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${t.title}</title>
+<style>
+*{box-sizing:border-box}body{margin:0;font-family:Arial,sans-serif;background:linear-gradient(150deg,#071b61,#0b63ce);color:#fff;min-height:100vh;padding:18px}.wrap{max-width:820px;margin:auto}.back{color:#ffd21f;font-weight:900;text-decoration:none}.hero{text-align:center;margin:12px 0 20px}.hero h1{font-size:34px;margin:8px}.hero p{line-height:1.55}.panel{background:#fff;color:#172554;border:3px solid #ffd21f;border-radius:25px;padding:22px;box-shadow:0 18px 44px rgba(0,0,0,.35)}.grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}.full{grid-column:1/-1}label{display:block;font-weight:900;margin:5px 0 7px}input,textarea,select{width:100%;padding:13px;border:2px solid #cbd5e1;border-radius:13px;font-size:16px}textarea{min-height:110px}.hint{font-size:12px;color:#64748b;margin-top:5px}.submit{width:100%;border:0;border-radius:15px;padding:16px;background:linear-gradient(90deg,#7b2cbf,#d63384);color:#fff;font-size:19px;font-weight:900;margin-top:15px;cursor:pointer}.submit:disabled{opacity:.55}.status{text-align:center;font-weight:900;min-height:26px;margin-top:12px}.result{display:none;background:#f1f5f9;padding:16px;border-radius:16px;margin-top:15px}.orderId{font-size:20px;font-weight:900}.payments{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:12px}.pay{display:block;text-align:center;text-decoration:none;color:#fff;font-weight:900;padding:14px;border-radius:13px}.shopify{background:#4f772d}.africa{background:#008751}.worker{background:#25D366;grid-column:1/-1}.disabled{opacity:.45;pointer-events:none}@media(max-width:620px){.grid,.payments{grid-template-columns:1fr}.full,.worker{grid-column:auto}.hero h1{font-size:28px}}
+</style></head><body><main class="wrap"><a class="back" href="/greetings?lang=${lang}">← ${t.back}</a><section class="hero"><h1>🌟 ${t.title}</h1><p>${t.intro}</p></section><section class="panel">
+<form id="premiumForm" enctype="multipart/form-data"><input type="hidden" name="language" value="${lang}"><input type="hidden" id="customerId" name="customerId">
+<div class="grid"><div><label>${t.recipient} *</label><input name="recipientName" maxlength="24" required></div><div><label>${t.sender} *</label><input name="senderName" maxlength="24" required></div><div><label>${t.phone} *</label><input name="customerPhone" inputmode="tel" required></div><div><label>${t.email}</label><input name="customerEmail" type="email"></div><div class="full"><label>${t.message} *</label><textarea name="personalMessage" maxlength="220" required></textarea></div><div><label>${t.songStyle}</label><select name="songStyle"><option value="">Worker will discuss with me</option><option>Afrobeat</option><option>Gospel</option><option>R&B / Soul</option><option>Pop</option><option>Highlife</option><option>Hip-Hop / Rap</option><option>Soft acoustic</option><option>Other</option></select></div><div><label>${t.notes}</label><textarea name="tributeNotes" maxlength="1000"></textarea></div><div><label>${t.photo} *</label><input name="recipientPhoto" type="file" accept="image/*" required><div class="hint">JPG, PNG or WebP. Clear portrait preferred.</div></div><div><label>${t.video} *</label><input name="introVideo" type="file" accept="video/*" required><div class="hint">MP4 or MOV. Keep it short for faster upload.</div></div></div>
+<button id="submitBtn" class="submit" type="submit">✨ ${t.submit}</button><div id="status" class="status"></div></form><div id="result" class="result"><div>${t.success}</div><div id="orderId" class="orderId"></div><h3>${t.pay}</h3><div class="payments"><a id="shopifyPay" class="pay shopify" target="_blank" rel="noopener">🛒 ${t.shopify}</a><a id="africaPay" class="pay africa" target="_blank" rel="noopener">🌍 ${t.africa}</a><a id="workerLink" class="pay worker" target="_blank" rel="noopener">💬 ${t.worker}</a></div></div></section></main>
+<script>
+const form=document.getElementById('premiumForm'),button=document.getElementById('submitBtn'),statusBox=document.getElementById('status'),result=document.getElementById('result'),orderIdBox=document.getElementById('orderId'),shopifyPay=document.getElementById('shopifyPay'),africaPay=document.getElementById('africaPay'),workerLink=document.getElementById('workerLink');
+let customerId=localStorage.getItem('printoPremiumCustomerId');if(!customerId){customerId='premium_'+Date.now()+'_'+Math.random().toString(36).slice(2,11);localStorage.setItem('printoPremiumCustomerId',customerId)}document.getElementById('customerId').value=customerId;
+form.addEventListener('submit',async(e)=>{e.preventDefault();button.disabled=true;button.textContent='⏳ ${t.saving}';statusBox.textContent='';result.style.display='none';try{const fd=new FormData(form);const photo=fd.get('recipientPhoto'),video=fd.get('introVideo');if(!photo||!photo.size||!video||!video.size)throw new Error('${t.required}');if(photo.size>15*1024*1024)throw new Error('Recipient photo must be 15 MB or smaller.');if(video.size>120*1024*1024)throw new Error('Introduction video must be 120 MB or smaller.');const response=await fetch('/api/greeting/premium/request',{method:'POST',headers:{'x-printo-customer-id':customerId},body:fd});const data=await response.json();if(!response.ok||!data.ok)throw new Error(data.error||'Could not save premium order.');statusBox.textContent='✅ ${t.success}';orderIdBox.textContent='Order: '+data.orderId;shopifyPay.href=data.payment?.shopify||'#';africaPay.href=data.payment?.africa||'#';if(!data.payment?.shopify)shopifyPay.classList.add('disabled');else shopifyPay.classList.remove('disabled');workerLink.href=data.whatsappUrl;result.style.display='block';result.scrollIntoView({behavior:'smooth'});}catch(error){statusBox.textContent='❌ '+error.message;}finally{button.disabled=false;button.textContent='✨ ${t.submit}';}});
+</script></body></html>`;
+}
+
+app.get(["/greetings/premium", "/premium-greeting"], (req, res) => {
+  const language = String(req.query.lang || "en").toLowerCase();
+  res.type("html").send(buildPremiumGreetingOrderPage(language));
+});
+
+app.post(
+  "/api/greeting/premium/request",
+  premiumUpload.fields([
+    { name: "recipientPhoto", maxCount: 1 },
+    { name: "introVideo", maxCount: 1 }
+  ]),
+  async (req, res) => {
+    try {
+      const body = req.body || {};
+      const recipientName = String(body.recipientName || "").trim().slice(0, 24);
+      const senderName = String(body.senderName || "").trim().slice(0, 24);
+      const personalMessage = String(body.personalMessage || "").trim().slice(0, 220);
+      const customerPhone = String(body.customerPhone || "").replace(/\D+/g, "");
+      const customerEmail = String(body.customerEmail || "").trim().slice(0, 200);
+      const songStyle = String(body.songStyle || "").trim().slice(0, 100);
+      const tributeNotes = String(body.tributeNotes || "").trim().slice(0, 1000);
+      const language = String(body.language || "en").toLowerCase();
+      const photo = req.files?.recipientPhoto?.[0];
+      const introVideo = req.files?.introVideo?.[0];
+
+      if (!recipientName || !senderName || !personalMessage || !customerPhone) {
+        return res.status(400).json({
+          ok: false,
+          error: "Recipient name, sender name, personal message, and WhatsApp phone are required."
+        });
+      }
+      if (!photo || !String(photo.mimetype || "").startsWith("image/")) {
+        return res.status(400).json({ ok: false, error: "A recipient photo is required." });
+      }
+      if (!introVideo || !String(introVideo.mimetype || "").startsWith("video/")) {
+        return res.status(400).json({ ok: false, error: "A personal introduction video is required." });
+      }
+
+      const identity = getGreetingCustomerIdentity(req, {
+        customerId: body.customerId,
+        customerPhone,
+        email: customerEmail
+      });
+      const customerKey = identity.customerKey;
+      const orderId = makePremiumOrderId();
+      const recipientPhotoUrl = buildUploadUrl(req, photo.filename);
+      const introVideoUrl = buildUploadUrl(req, introVideo.filename);
+      const payment = buildPremiumPaymentLinks({
+        orderId,
+        customerKey,
+        contactPhone: customerPhone
+      });
+
+      const job = await createPremiumGreetingDashboardJob({
+        orderId,
+        customerKey,
+        contactPhone: customerPhone,
+        customerEmail,
+        recipientName,
+        senderName,
+        personalMessage,
+        songStyle,
+        tributeNotes,
+        recipientPhotoUrl,
+        introVideoUrl,
+        introVideoMime: introVideo.mimetype,
+        recipientPhotoMime: photo.mimetype,
+        shopifyUrl: payment.shopify,
+        africaUrl: payment.africa,
+        language
+      });
+
+      await pool.query(
+        `
+        INSERT INTO premium_greeting_orders (
+          order_id, customer_key, contact_phone, customer_email,
+          recipient_name, sender_name, personal_message, song_style,
+          tribute_notes, recipient_photo_url, intro_video_url,
+          status, dashboard_job_id, created_at, updated_at
+        )
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,'payment_required',$12,NOW(),NOW())
+        `,
+        [
+          orderId,
+          customerKey,
+          customerPhone,
+          customerEmail,
+          recipientName,
+          senderName,
+          personalMessage,
+          songStyle,
+          tributeNotes,
+          recipientPhotoUrl,
+          introVideoUrl,
+          job?.id ? String(job.id) : ""
+        ]
+      );
+
+      const workerMessage = [
+        "Printo Premium Tribute order saved",
+        `Premium order ID: ${orderId}`,
+        `Recipient: ${recipientName}`,
+        `Sender: ${senderName}`,
+        `Customer phone: ${customerPhone}`,
+        "I have submitted the photo, introduction video, message, and tribute-song details on Printo Studio.",
+        "Please confirm payment and help complete this premium order."
+      ].join("\n");
+      const whatsappUrl = `https://wa.me/${SUPPORT_PHONE}?text=${encodeURIComponent(workerMessage)}`;
+
+      return res.json({
+        ok: true,
+        orderId,
+        customerKey,
+        jobId: job?.id || null,
+        payment,
+        whatsappUrl,
+        status: "payment_required"
+      });
+    } catch (error) {
+      console.error("Premium greeting request error:", error);
+      return res.status(500).json({
+        ok: false,
+        error: error.message || "Could not save premium greeting order."
+      });
+    }
+  }
+);
 
 app.get(["/greetings", "/greeting"], (req, res) => {
   const language = String(req.query.lang || "en").toLowerCase();
