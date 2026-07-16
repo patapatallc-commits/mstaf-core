@@ -4206,9 +4206,6 @@ app.post("/api/greeting-studio/render", async (req, res) => {
 
 Customer key: ${customerIdentity.customerKey}
 Identity source: ${customerIdentity.identitySource}
-Greeting plan: ${greetingPlan}
-Recipient photo uploaded: ${recipientPhotoFile ? "Yes" : "No"}
-Tribute music uploaded: ${tributeMusicFile ? "Yes" : "No"}
 Shopify: ${payment.shopify}
 Africa Payment: ${payment.africa}`
       });
@@ -11374,145 +11371,14 @@ async function getPrintJobsColumns() {
   `);
   return new Set(q.rows.map(r => r.column_name));
 }
-
-// =========================
-// RESTORED WORKER / AGENT DASHBOARD
-// =========================
-const PRINTERS = getPrinterRegistry().flatMap(group => group.printers || []);
-const escHtml = escapeHtml;
-function safeTrim(value = "") { return String(value ?? "").trim(); }
-
-function dashboardHtml({ initialPrinter }) {
-  const printerOptions = PRINTERS.map(
-    (p) => `<option value="${escHtml(p.id)}">${escHtml(p.label)}</option>`
-  ).join("");
-
-  const initialPrinterSafe = JSON.stringify(initialPrinter || "");
-  const routeOptionsJson = JSON.stringify(
-    PRINTERS.map((p) => ({ id: p.id, label: p.label }))
-  );
-
-  return String.raw`<!doctype html>
-<html lang="en">
-<head>
-  <meta charset="utf-8"/>
-  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"/>
-  <title>PATAPATA MSTAF Operations</title>
-  <style>
-    :root{
-      --bg:#07101f;--panel:#0d1930;--panel2:#12213d;--line:#243657;
-      --text:#eef5ff;--muted:#94a9c8;--blue:#48a7ff;--gold:#ffd05a;
-      --green:#39d98a;--red:#ff6978;--orange:#ffad5a;--shadow:0 18px 50px rgba(0,0,0,.28)
-    }
-    *{box-sizing:border-box} body{margin:0;background:linear-gradient(145deg,#050b16,#09162b 48%,#07101f);color:var(--text);font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif}
-    button,input,select,textarea{font:inherit}.app{min-height:100vh}.header{position:sticky;top:0;z-index:30;background:rgba(7,16,31,.92);backdrop-filter:blur(16px);border-bottom:1px solid var(--line)}
-    .header-inner{max-width:1600px;margin:auto;padding:16px 22px;display:flex;align-items:center;justify-content:space-between;gap:16px}.brand{display:flex;gap:12px;align-items:center}.logo{width:46px;height:46px;border-radius:15px;display:grid;place-items:center;background:linear-gradient(145deg,var(--gold),#ff9d36);color:#101827;font-weight:900;box-shadow:var(--shadow)}
-    h1{font-size:20px;margin:0}.subtitle{color:var(--muted);font-size:12px;margin-top:3px}.header-actions{display:flex;gap:9px;flex-wrap:wrap}
-    .btn{border:1px solid var(--line);background:#142442;color:var(--text);border-radius:11px;padding:10px 14px;cursor:pointer;font-weight:700}.btn:hover{filter:brightness(1.12)}.btn.primary{background:linear-gradient(135deg,#399fff,#2876dd);border:0}.btn.gold{background:linear-gradient(135deg,#ffd76e,#ffb53d);color:#101827;border:0}.btn.danger{border-color:#6e2736;color:#ffb5bd;background:#281522}.btn.sm{padding:7px 10px;font-size:12px}
-    .shell{max-width:1600px;margin:auto;padding:18px 22px 35px}.stats{display:grid;grid-template-columns:repeat(4,minmax(150px,1fr));gap:12px;margin-bottom:14px}.stat{background:linear-gradient(145deg,var(--panel2),var(--panel));border:1px solid var(--line);border-radius:16px;padding:16px;box-shadow:var(--shadow)}.stat-label{font-size:12px;color:var(--muted)}.stat-value{font-size:30px;font-weight:900;margin-top:4px}.stat.pending .stat-value{color:var(--gold)}.stat.printing .stat-value{color:var(--blue)}.stat.completed .stat-value{color:var(--green)}
-    .filters{display:grid;grid-template-columns:minmax(230px,1.3fr) 170px minmax(230px,1fr) 90px auto;gap:10px;align-items:end;background:rgba(13,25,48,.92);border:1px solid var(--line);border-radius:17px;padding:14px;margin-bottom:14px}.field label{display:block;font-size:11px;color:var(--muted);margin:0 0 6px 2px}.control{width:100%;border:1px solid #304667;background:#09172e;color:var(--text);padding:11px 12px;border-radius:11px;outline:none}.control:focus{border-color:var(--blue);box-shadow:0 0 0 3px rgba(72,167,255,.12)}
-    .workspace{display:grid;grid-template-columns:minmax(360px,1fr) minmax(380px,1.12fr);gap:14px;align-items:start}.panel{background:rgba(13,25,48,.94);border:1px solid var(--line);border-radius:18px;overflow:hidden;box-shadow:var(--shadow)}.panel-head{padding:14px 16px;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between}.panel-title{font-weight:900}.muted{color:var(--muted)}.error{padding:10px 14px;color:#ffc0c7;white-space:pre-wrap}
-    .jobs{max-height:calc(100vh - 310px);overflow:auto;padding:10px}.job{border:1px solid #263a5d;background:#0a172d;border-radius:15px;padding:13px;margin-bottom:10px;cursor:pointer;transition:.18s}.job:hover{transform:translateY(-1px);border-color:#426797}.job.active{border-color:var(--blue);box-shadow:0 0 0 3px rgba(72,167,255,.11)}.job-top{display:flex;align-items:flex-start;justify-content:space-between;gap:8px}.job-id{font-size:17px;font-weight:900}.service{font-size:12px;color:#b7cae9;margin-top:3px}.pill{display:inline-flex;align-items:center;padding:4px 9px;border-radius:999px;font-size:11px;font-weight:800;border:1px solid #3b506f}.pill.pending{color:#ffe598;border-color:#735f28;background:#2a2414}.pill.printing,.pill.claimed{color:#9dd6ff;border-color:#245f8c;background:#10253b}.pill.completed,.pill.done{color:#9af2c5;border-color:#236447;background:#102b22}.pill.failed,.pill.error{color:#ffb4bc;border-color:#763444;background:#301722}.job-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:11px}.tiny{font-size:11px;color:var(--muted)}.small{font-size:13px;word-break:break-word}.job-actions{display:flex;gap:7px;flex-wrap:wrap;margin-top:12px}
-    .details-empty{min-height:520px;display:grid;place-items:center;color:var(--muted);padding:30px;text-align:center}.details{display:none}.details.show{display:block}.details-scroll{max-height:calc(100vh - 310px);overflow:auto}.hero{padding:17px;border-bottom:1px solid var(--line);background:linear-gradient(135deg,#132849,#0c1a31)}.hero-row{display:flex;justify-content:space-between;gap:12px}.hero h2{font-size:21px;margin:0 0 5px}.detail-section{padding:15px 17px;border-bottom:1px solid var(--line)}.section-title{font-size:12px;text-transform:uppercase;letter-spacing:.08em;color:#9cb3d4;font-weight:900;margin-bottom:10px}.info-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:9px}.info{background:#09172d;border:1px solid #223756;border-radius:11px;padding:10px}.info b{display:block;font-size:12px;margin-top:4px}.file-preview{border:1px dashed #3b5275;border-radius:13px;padding:12px;background:#081429}.file-preview img,.file-preview video{max-width:100%;max-height:330px;border-radius:10px;display:block;margin:auto}.file-preview iframe{width:100%;height:390px;border:0;border-radius:10px;background:#fff}.pre{white-space:pre-wrap;word-break:break-word;line-height:1.45;color:#dbe8fa;font-size:13px}.route-row{display:grid;grid-template-columns:1fr auto;gap:8px}
-    .chat{background:#081429;border:1px solid #243a5b;border-radius:15px;overflow:hidden}.chat-head{padding:11px 13px;border-bottom:1px solid #243a5b;display:flex;justify-content:space-between}.messages{height:260px;overflow:auto;padding:13px;display:flex;flex-direction:column;gap:9px}.bubble{max-width:88%;padding:10px 12px;border-radius:13px;font-size:13px;white-space:pre-wrap;word-break:break-word}.bubble.customer{align-self:flex-start;background:#182a47;border-bottom-left-radius:4px}.bubble.agent{align-self:flex-end;background:#17633f;border-bottom-right-radius:4px}.bubble.system{align-self:center;background:#332b15;color:#ffe798;font-size:11px}.quick{display:flex;gap:6px;flex-wrap:wrap;padding:9px 11px;border-top:1px solid #243a5b}.quick button{border:1px solid #344c70;background:#10213d;color:#dceaff;border-radius:999px;padding:7px 9px;font-size:11px;cursor:pointer}.composer{padding:11px;border-top:1px solid #243a5b}.composer textarea{width:100%;min-height:88px;resize:vertical}.composer-row{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-top:8px}.status-text{font-size:12px;color:var(--muted)}
-    @media(max-width:980px){.stats{grid-template-columns:repeat(2,1fr)}.filters{grid-template-columns:1fr 1fr}.workspace{grid-template-columns:1fr}.jobs{max-height:none}.details-scroll{max-height:none}.header-inner{align-items:flex-start}.header-actions{justify-content:flex-end}}
-    @media(max-width:600px){.shell{padding:12px}.header-inner{padding:12px}.logo{width:40px;height:40px}.stats{gap:8px}.stat{padding:12px}.stat-value{font-size:24px}.filters{grid-template-columns:1fr;padding:11px}.workspace{gap:10px}.info-grid{grid-template-columns:1fr}.route-row{grid-template-columns:1fr}.header-actions .btn{padding:8px 10px;font-size:12px}.jobs{padding:7px}.job-grid{grid-template-columns:1fr}.messages{height:230px}}
-  </style>
-</head>
-<body>
-<div class="app">
-  <header class="header"><div class="header-inner">
-    <div class="brand"><div class="logo">P</div><div><h1>PATAPATA MSTAF Operations</h1><div class="subtitle">Worker • Agent • Customer WhatsApp support</div></div></div>
-    <div class="header-actions"><button class="btn" id="openWorker">Worker Queue</button><button class="btn" id="openAgent">Agent Queue</button><button class="btn gold" id="manualUpload">Manual Upload</button></div>
-  </div></header>
-  <main class="shell">
-    <section class="stats">
-      <div class="stat"><div class="stat-label">Jobs loaded</div><div class="stat-value" id="countAll">0</div></div>
-      <div class="stat pending"><div class="stat-label">Pending</div><div class="stat-value" id="countPending">0</div></div>
-      <div class="stat printing"><div class="stat-label">Printing / Claimed</div><div class="stat-value" id="countPrinting">0</div></div>
-      <div class="stat completed"><div class="stat-label">Completed</div><div class="stat-value" id="countCompleted">0</div></div>
-    </section>
-    <section class="filters">
-      <div class="field"><label>Queue / Printer</label><select id="printer" class="control"><option value="">All queues</option>${printerOptions}</select></div>
-      <div class="field"><label>Status</label><select id="status" class="control"><option value="">All statuses</option><option value="pending">Pending</option><option value="claimed">Claimed</option><option value="printing">Printing</option><option value="completed">Completed</option><option value="failed">Failed</option></select></div>
-      <div class="field"><label>Search</label><input id="q" class="control" placeholder="Job, phone, name, service, instructions…"/></div>
-      <div class="field"><label>Limit</label><input id="limit" class="control" type="number" min="1" max="300" value="100"/></div>
-      <div style="display:flex;gap:8px;align-items:center"><button class="btn primary" id="refresh">Refresh</button><label class="tiny"><input id="auto" type="checkbox"/> Auto</label></div>
-    </section>
-    <div id="error" class="error"></div>
-    <section class="workspace">
-      <div class="panel"><div class="panel-head"><div><div class="panel-title">Jobs</div><div class="tiny" id="loadState">Idle</div></div><span class="tiny" id="resultCount">0 results</span></div><div id="jobs" class="jobs"></div></div>
-      <div class="panel">
-        <div id="detailsEmpty" class="details-empty"><div><div style="font-size:42px">💬</div><h3>Select a job</h3><div>Open job details, preview the file, route it, and chat with the customer.</div></div></div>
-        <div id="details" class="details"><div class="details-scroll">
-          <div class="hero"><div class="hero-row"><div><h2 id="dTitle">Job</h2><div class="muted" id="dCustomer"></div></div><span id="dStatus" class="pill"></span></div></div>
-          <div class="detail-section"><div class="section-title">Order details</div><div id="dInfo" class="info-grid"></div></div>
-          <div class="detail-section"><div class="section-title">File preview</div><div id="dPreview" class="file-preview"></div></div>
-          <div class="detail-section"><div class="section-title">Instructions and notes</div><div id="dInstructions" class="pre"></div></div>
-          <div class="detail-section"><div class="section-title">Routing and status</div><div class="route-row"><select id="routeSelect" class="control"></select><button id="routeBtn" class="btn primary">Route</button></div><div class="job-actions"><button class="btn sm" data-mark="claimed">Claim</button><button class="btn sm" data-mark="printing">Printing</button><button class="btn sm" data-mark="completed">Complete</button><button class="btn sm danger" data-mark="failed">Failed</button><button id="deleteBtn" class="btn sm danger">Delete</button></div></div>
-          <div class="detail-section"><div class="section-title">Customer WhatsApp chat</div><div class="chat"><div class="chat-head"><b id="chatPerson">Customer</b><span class="tiny" id="chatPhone"></span></div><div id="messages" class="messages"></div><div class="quick"><button data-quick="✅ We received your order and a team member is reviewing it now.">Job received</button><button data-quick="🖨️ Your job is now being processed.">Processing started</button><button data-quick="💳 Please complete your payment using the payment link previously sent, or reply if you need help.">Payment reminder</button><button data-quick="📦 Your order is ready for pickup.">Ready for pickup</button><button data-quick="🚚 Your order is out for delivery.">Out for delivery</button><button data-quick="🎉 Your order has been completed. Thank you for choosing PATAPATA Print-O-Matic.">Completed</button></div><div class="composer"><textarea id="replyText" class="control" placeholder="Type a WhatsApp reply to this customer…"></textarea><div class="composer-row"><span id="replyStatus" class="status-text"></span><button id="sendReply" class="btn primary">Send WhatsApp Reply</button></div></div></div></div>
-        </div></div>
-      </div>
-    </section>
-  </main>
-</div>
-<script>
-const params=new URLSearchParams(location.search),DASH_KEY=params.get('key')||'';
-const INITIAL_PRINTER=${initialPrinterSafe};
-const ROUTES=${routeOptionsJson};
-const els={printer:document.getElementById('printer'),status:document.getElementById('status'),q:document.getElementById('q'),limit:document.getElementById('limit'),refresh:document.getElementById('refresh'),auto:document.getElementById('auto'),jobs:document.getElementById('jobs'),error:document.getElementById('error'),load:document.getElementById('loadState'),result:document.getElementById('resultCount'),details:document.getElementById('details'),empty:document.getElementById('detailsEmpty')};
-let jobs=[],selected=null,timer=null,localChat={};
-function esc(v){return String(v??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));}
-function apiUrl(path){return path+(path.includes('?')?'&':'?')+'key='+encodeURIComponent(DASH_KEY)}
-async function apiPost(path,body){const r=await fetch(apiUrl(path),{method:'POST',headers:{'content-type':'application/json','x-dashboard-key':DASH_KEY},body:JSON.stringify(body||{})});const d=await r.json().catch(()=>({}));if(!r.ok)throw new Error(d.error||('HTTP '+r.status));return d}
-function statusClass(s){return String(s||'pending').toLowerCase()}
-function fileType(j){const n=String(j.original_name||j.file_url||'').toLowerCase(),m=String(j.mime_type||'').toLowerCase();if(m.startsWith('image/')||/\.(png|jpg|jpeg|webp|gif)(\?|$)/.test(n))return'image';if(m.startsWith('video/')||/\.(mp4|mov|webm|m4v)(\?|$)/.test(n))return'video';if(m.includes('pdf')||/\.pdf(\?|$)/.test(n))return'pdf';if(m.startsWith('audio/')||/\.(mp3|wav|ogg|m4a|aac)(\?|$)/.test(n))return'audio';return'file'}
-function counts(){document.getElementById('countAll').textContent=jobs.length;document.getElementById('countPending').textContent=jobs.filter(j=>j.status==='pending').length;document.getElementById('countPrinting').textContent=jobs.filter(j=>['printing','claimed'].includes(j.status)).length;document.getElementById('countCompleted').textContent=jobs.filter(j=>['completed','done'].includes(j.status)).length;els.result.textContent=jobs.length+' results'}
-function renderJobs(){counts();if(!jobs.length){els.jobs.innerHTML='<div class="details-empty" style="min-height:250px">No jobs found for this filter.</div>';return}els.jobs.innerHTML=jobs.map(j=>'<article class="job '+(selected&&String(selected.id)===String(j.id)?'active':'')+'" data-job="'+esc(j.id)+'"><div class="job-top"><div><div class="job-id">Job #'+esc(j.id)+'</div><div class="service">'+esc((j.service_type||'Service').replaceAll('_',' '))+'</div></div><span class="pill '+statusClass(j.status)+'">'+esc(j.status||'pending')+'</span></div><div class="job-grid"><div><div class="tiny">Customer</div><div class="small">'+esc(j.customer_name||j.customer_phone||'Not provided')+'</div></div><div><div class="tiny">Queue</div><div class="small">'+esc(j.printer_id||'Unassigned')+'</div></div><div><div class="tiny">File</div><div class="small">'+esc(j.original_name||'No filename')+'</div></div><div><div class="tiny">Created</div><div class="small">'+esc(j.created_at?new Date(j.created_at).toLocaleString():'—')+'</div></div></div><div class="job-actions"><button class="btn sm primary" data-open="'+esc(j.id)+'">Open & Chat</button></div></article>').join('');document.querySelectorAll('[data-open],[data-job]').forEach(n=>n.addEventListener('click',e=>{e.stopPropagation();openJob(n.getAttribute('data-open')||n.getAttribute('data-job'))}))}
-function info(label,value){return '<div class="info"><span class="tiny">'+esc(label)+'</span><b>'+esc(value||'—')+'</b></div>'}
-function buildMessages(j){const arr=[];if(j.instructions)arr.push({side:'customer',text:j.instructions});if(j.notes)arr.push({side:'system',text:j.notes});(localChat[j.id]||[]).forEach(x=>arr.push(x));if(!arr.length)arr.push({side:'system',text:'No conversation text has been saved for this job yet.'});return arr.map(x=>'<div class="bubble '+x.side+'">'+esc(x.text)+'</div>').join('')}
-function openJob(id){selected=jobs.find(j=>String(j.id)===String(id));if(!selected)return;renderJobs();els.empty.style.display='none';els.details.classList.add('show');document.getElementById('dTitle').textContent='Job #'+selected.id+' — '+String(selected.service_type||'Service').replaceAll('_',' ');document.getElementById('dCustomer').textContent=selected.customer_name||selected.customer_phone||'Customer details not provided';const sp=document.getElementById('dStatus');sp.textContent=selected.status||'pending';sp.className='pill '+statusClass(selected.status);document.getElementById('dInfo').innerHTML=info('Phone',selected.customer_phone)+info('Email',selected.customer_email)+info('Paper / color',(selected.paper_size||'—')+' / '+(selected.color_mode||'—'))+info('Copies / pages',(selected.copies||1)+' / '+(selected.pages||1))+info('Queue',selected.printer_id)+info('Amount',selected.total_cost??'—');const pv=document.getElementById('dPreview'),u=selected.file_url,t=fileType(selected);if(!u)pv.innerHTML='<span class="muted">No file attached.</span>';else if(t==='image')pv.innerHTML='<a href="'+esc(u)+'" target="_blank"><img src="'+esc(u)+'" alt="Job file"/></a>';else if(t==='video')pv.innerHTML='<video controls src="'+esc(u)+'"></video><p><a href="'+esc(u)+'" target="_blank">Open video in new tab</a></p>';else if(t==='audio')pv.innerHTML='<audio controls style="width:100%" src="'+esc(u)+'"></audio>';else if(t==='pdf')pv.innerHTML='<iframe src="'+esc(u)+'"></iframe><p><a href="'+esc(u)+'" target="_blank">Open PDF in new tab</a></p>';else pv.innerHTML='<a class="btn primary" href="'+esc(u)+'" target="_blank">Open attached file</a>';document.getElementById('dInstructions').textContent=[selected.instructions,selected.notes].filter(Boolean).join('\n\n')||'No instructions saved.';const rs=document.getElementById('routeSelect');rs.innerHTML=ROUTES.map(r=>'<option value="'+esc(r.id)+'" '+(r.id===selected.printer_id?'selected':'')+'>'+esc(r.label)+'</option>').join('');document.getElementById('chatPerson').textContent=selected.customer_name||'Customer';document.getElementById('chatPhone').textContent=selected.customer_phone||'No WhatsApp number';document.getElementById('messages').innerHTML=buildMessages(selected);document.getElementById('messages').scrollTop=99999;document.getElementById('replyText').value='';document.getElementById('replyStatus').textContent=''}
-async function load(){els.error.textContent='';if(!DASH_KEY){els.error.textContent='Missing dashboard key in URL.';return}els.load.textContent='Loading…';let url='/api/dashboard/jobs?limit='+encodeURIComponent(Number(els.limit.value||100));if(els.printer.value)url+='&printer_id='+encodeURIComponent(els.printer.value);if(els.status.value)url+='&status='+encodeURIComponent(els.status.value);if(els.q.value)url+='&q='+encodeURIComponent(els.q.value);try{const r=await fetch(apiUrl(url),{headers:{'x-dashboard-key':DASH_KEY}}),d=await r.json().catch(()=>({}));if(!r.ok)throw new Error(d.error||('HTTP '+r.status));jobs=d.jobs||[];renderJobs();if(selected){const fresh=jobs.find(j=>String(j.id)===String(selected.id));if(fresh){selected=fresh;openJob(selected.id)}else{selected=null;els.details.classList.remove('show');els.empty.style.display='grid'}}els.load.textContent='Updated '+new Date().toLocaleTimeString()}catch(e){els.error.textContent=String(e.message||e);els.load.textContent='Error'}}
-function setAuto(){clearInterval(timer);timer=els.auto.checked?setInterval(()=>{if(document.activeElement?.tagName!=='TEXTAREA'&&document.activeElement?.tagName!=='INPUT')load()},8000):null}
-els.refresh.onclick=load;els.printer.onchange=load;els.status.onchange=load;els.q.addEventListener('keydown',e=>{if(e.key==='Enter')load()});els.auto.onchange=setAuto;
-document.getElementById('routeBtn').onclick=async()=>{if(!selected)return;try{await apiPost('/api/dashboard/jobs/'+selected.id+'/route',{printer_id:document.getElementById('routeSelect').value});await load()}catch(e){els.error.textContent=e.message}};
-document.querySelectorAll('[data-mark]').forEach(b=>b.onclick=async()=>{if(!selected)return;try{await apiPost('/api/dashboard/jobs/'+selected.id+'/mark',{status:b.dataset.mark});await load()}catch(e){els.error.textContent=e.message}});
-document.getElementById('deleteBtn').onclick=async()=>{if(!selected||!confirm('Delete job #'+selected.id+'?'))return;try{await apiPost('/api/dashboard/jobs/'+selected.id+'/delete',{});selected=null;await load();els.details.classList.remove('show');els.empty.style.display='grid'}catch(e){els.error.textContent=e.message}};
-document.querySelectorAll('[data-quick]').forEach(b=>b.onclick=()=>{document.getElementById('replyText').value=b.dataset.quick;document.getElementById('replyText').focus()});
-document.getElementById('sendReply').onclick=async()=>{if(!selected)return;const text=document.getElementById('replyText').value.trim(),st=document.getElementById('replyStatus');if(!text){st.textContent='Type a message first.';return}st.textContent='Sending…';try{await apiPost('/api/dashboard/jobs/'+selected.id+'/reply',{message:text});localChat[selected.id]=localChat[selected.id]||[];localChat[selected.id].push({side:'agent',text});document.getElementById('messages').innerHTML=buildMessages(selected);document.getElementById('messages').scrollTop=99999;document.getElementById('replyText').value='';st.textContent='Sent successfully on WhatsApp.'}catch(e){st.textContent='Could not send: '+e.message}};
-document.getElementById('openWorker').onclick=()=>location.href='/worker?key='+encodeURIComponent(DASH_KEY);document.getElementById('openAgent').onclick=()=>location.href='/agent?key='+encodeURIComponent(DASH_KEY);document.getElementById('manualUpload').onclick=()=>{alert('Use the existing Manual Upload endpoint/page configured for your dashboard. This button is preserved for the next Liquid/dashboard upload screen update.')};
-if(INITIAL_PRINTER)els.printer.value=INITIAL_PRINTER;load();
-</script>
-</body></html>`;
-}
-
 app.get("/dashboard", (req, res) => {
   const key = req.query.key;
-  if (!key || key !== process.env.DASHBOARD_KEY) {
-    return res.status(403).send("Access denied");
-  }
-  res.setHeader("content-type", "text/html; charset=utf-8");
-  return res.end(dashboardHtml({
-    initialPrinter: safeTrim(req.query.printer_id || "")
-  }));
-});
 
-app.get("/worker", (req, res) => {
-  const key = req.query.key;
   if (!key || key !== process.env.DASHBOARD_KEY) {
     return res.status(403).send("Access denied");
   }
-  res.setHeader("content-type", "text/html; charset=utf-8");
-  return res.end(dashboardHtml({ initialPrinter: DISPATCH_QUEUE_ID }));
-});
 
-app.get("/agent", (req, res) => {
-  const key = req.query.key;
-  if (!key || key !== process.env.DASHBOARD_KEY) {
-    return res.status(403).send("Access denied");
-  }
-  res.setHeader("content-type", "text/html; charset=utf-8");
-  return res.end(dashboardHtml({ initialPrinter: AGENT_QUEUE_ID }));
+  res.send(renderDashboardHtml());
 });
 
 /**
@@ -11536,18 +11402,20 @@ app.get("/api/dashboard/jobs", requireDashboardKey, async (req, res) => {
       where.push(`status = $${params.length}`);
     }
 
-    // Keep queue filtering compatible with the existing database schema.
-    // The long-standing print_jobs table routes jobs through printer_id.
     if (queue === "agent") {
-      params.push(AGENT_QUEUE_ID);
-      where.push(`printer_id = $${params.length}`);
-    } else if (queue === "dispatch") {
-      params.push(DISPATCH_QUEUE_ID);
-      where.push(`printer_id = $${params.length}`);
-    } else if (queue === "worker") {
-      params.push(AGENT_QUEUE_ID, DISPATCH_QUEUE_ID);
-      where.push(`COALESCE(printer_id, '') NOT IN ($${params.length - 1}, $${params.length})`);
-    }
+  where.push(`(queue_type = 'AGENT' OR printer_id = $${params.length + 1})`);
+  params.push(AGENT_QUEUE_ID);
+
+} else if (queue === "dispatch") {
+  where.push(`(queue_type = 'DISPATCH' OR printer_id = $${params.length + 1})`);
+  params.push(DISPATCH_QUEUE_ID);
+
+} else if (queue === "worker") {
+  where.push(`(
+    COALESCE(queue_type, '') <> 'AGENT'
+    AND COALESCE(queue_type, '') <> 'DISPATCH'
+  )`);
+}
 
     if (printer_id) {
       params.push(printer_id);
@@ -11561,8 +11429,6 @@ app.get("/api/dashboard/jobs", requireDashboardKey, async (req, res) => {
         OR COALESCE(file_url, '') ILIKE $${params.length}
         OR COALESCE(instructions, '') ILIKE $${params.length}
         OR COALESCE(customer_phone, '') ILIKE $${params.length}
-        OR COALESCE(customer_name, '') ILIKE $${params.length}
-        OR COALESCE(customer_email, '') ILIKE $${params.length}
         OR COALESCE(printer_id, '') ILIKE $${params.length}
         OR COALESCE(service_type, '') ILIKE $${params.length}
       )`);
@@ -11570,23 +11436,38 @@ app.get("/api/dashboard/jobs", requireDashboardKey, async (req, res) => {
 
     params.push(Math.min(parseInt(limit, 10) || 100, 300));
 
-    const sql = `
-      SELECT *
-      FROM print_jobs
-      ${where.length ? `WHERE ${where.join(" AND ")}` : ""}
-      ORDER BY id DESC
-      LIMIT $${params.length}
-    `;
+ const sql = `
+  SELECT
+    id,
+    printer_id,
+    queue_type,
+    status,
+    file_url,
+    original_name,
+    paper_size,
+    color_mode,
+    copies,
+    pages,
+    instructions,
+    instruction_audio_url,
+    service_type,
+    customer_phone,
+    customer_name,
+    customer_email,
+    mime_type,
+    created_at,
+    updated_at
+  FROM print_jobs
+  ${where.length ? `WHERE ${where.join(" AND ")}` : ""}
+  ORDER BY id DESC
+  LIMIT $${params.length}
+`;
 
     const result = await pool.query(sql, params);
-    return res.json({
-      ok: true,
-      jobs: result.rows,
-      printers: getPrinterRegistry()
-    });
+    res.json({ ok: true, jobs: result.rows, printers: getPrinterRegistry() });
   } catch (err) {
     console.error("Dashboard jobs error:", err);
-    return res.status(500).json({ ok: false, error: err.message });
+    res.status(500).json({ ok: false, error: err.message });
   }
 });
 
@@ -11596,38 +11477,30 @@ app.get("/api/dashboard/jobs", requireDashboardKey, async (req, res) => {
 app.post("/api/dashboard/jobs/:id/route", requireDashboardKey, express.json(), async (req, res) => {
   try {
     const id = req.params.id;
-    const target_printer_id = String(
-      req.body?.printer_id ||
-      req.body?.to_printer_id ||
-      DISPATCH_QUEUE_ID
-    ).trim();
-
-    if (!target_printer_id) {
-      return res.status(400).json({ ok: false, error: "Printer or queue is required" });
-    }
+    const target_printer_id = req.body?.printer_id || DISPATCH_QUEUE_ID;
+    const queue_type =
+      target_printer_id === AGENT_QUEUE_ID
+        ? "AGENT"
+        : target_printer_id === DISPATCH_QUEUE_ID
+          ? "DISPATCH"
+          : "WORKER";
 
     const result = await pool.query(
       `
       UPDATE print_jobs
       SET printer_id = $1,
-          status = CASE
-            WHEN status IN ('completed', 'done') THEN status
-            ELSE 'pending'
-          END
-      WHERE id = $2
+          queue_type = $2,
+          status = CASE WHEN status = 'completed' THEN status ELSE 'pending' END
+      WHERE id = $3
       RETURNING *
       `,
-      [target_printer_id, id]
+      [target_printer_id, queue_type, id]
     );
 
-    if (!result.rows[0]) {
-      return res.status(404).json({ ok: false, error: "Job not found" });
-    }
-
-    return res.json({ ok: true, job: result.rows[0] });
+    res.json({ ok: true, job: result.rows[0] || null });
   } catch (err) {
     console.error("Dashboard route error:", err);
-    return res.status(500).json({ ok: false, error: err.message });
+    res.status(500).json({ ok: false, error: err.message });
   }
 });
 
@@ -11694,21 +11567,7 @@ app.post("/api/dashboard/jobs/:id/reply", requireDashboardKey, express.json(), a
     if (!sendResult.ok) {
       return res.status(500).json({ ok: false, error: sendResult.error });
     }
-try {
-      const cols = await getPrintJobsColumns();
-      if (cols.has("notes")) {
-        await pool.query(
-          `UPDATE print_jobs
-           SET notes = CONCAT(COALESCE(notes, ''), CASE WHEN COALESCE(notes, '') = '' THEN '' ELSE E'\n\n' END, $1)
-           WHERE id = $2`,
-          [`Agent reply: ${message}`, id]
-        );
-      }
-    } catch (noteErr) {
-      console.warn("Could not append dashboard reply to notes:", noteErr.message);
-    }
-
-    const customerSession = getSession(phone);
+const customerSession = getSession(phone);
 customerSession.selectedService = job.service_type || "SERVICE";
 customerSession.lastServiceJobId = job.id;
 customerSession.pendingFile = null;
@@ -13062,12 +12921,7 @@ function loadGreetingMetadata(greetingId) {
   }
 }
 
-const premiumGreetingUpload = upload.fields([
-  { name: "recipientPhoto", maxCount: 1 },
-  { name: "tributeMusic", maxCount: 1 }
-]);
-
-app.post("/api/greeting/birthday/generate", premiumGreetingUpload, async (req, res) => {
+app.post("/api/greeting/birthday/generate", async (req, res) => {
   let accessReservation = null;
   let customerIdentity = null;
 
@@ -13083,31 +12937,6 @@ app.post("/api/greeting/birthday/generate", premiumGreetingUpload, async (req, r
       req.body.message || "Wishing you happiness, laughter, and a wonderful celebration!",
       BIRTHDAY_MESSAGE_MAX
     );
-
-    const greetingPlan = String(req.body.plan || "standard").toLowerCase() === "premium"
-      ? "premium"
-      : "standard";
-    const recipientPhotoFile = req.files?.recipientPhoto?.[0] || null;
-    const tributeMusicFile = req.files?.tributeMusic?.[0] || null;
-    const isPremium = greetingPlan === "premium";
-
-    if (isPremium && (!recipientPhotoFile || !tributeMusicFile)) {
-      return res.status(400).json({
-        ok: false,
-        error: "Premium Personalized requires both a recipient photo and personal tribute music."
-      });
-    }
-
-    if (recipientPhotoFile && !/^image\/(jpeg|png|webp)$/i.test(recipientPhotoFile.mimetype || "")) {
-      return res.status(400).json({ ok: false, error: "Recipient photo must be JPG, PNG, or WEBP." });
-    }
-
-    if (tributeMusicFile && !/^audio\/(mpeg|mp4|x-m4a|wav|x-wav|aac|ogg)$/i.test(tributeMusicFile.mimetype || "")) {
-      return res.status(400).json({ ok: false, error: "Tribute music must be MP3, M4A, WAV, AAC, or OGG." });
-    }
-
-    const recipientPhotoPath = recipientPhotoFile?.path || "";
-    const tributeMusicPath = tributeMusicFile?.path || "";
 
     const toNameLines = wrapGreetingName(toNameRaw);
     const fromNameLines = wrapGreetingName(fromNameRaw);
@@ -13220,29 +13049,12 @@ Africa Payment: ${payment.africa}`
     const hasPrintoVoice = Boolean(voiceResult.ok && fs.existsSync(voicePath));
 
     // Stable Printo Birthday production layout.
-    // Premium Personalized adds the recipient photo as an elegant picture-in-picture
-    // and replaces the default soundtrack with the uploaded tribute music.
-    const photoInputIndex = 3 + (hasPrintoVoice ? 1 : 0);
-    const tributeInputIndex = photoInputIndex + (isPremium ? 1 : 0);
-
-    const standardVisualBase =
+    // No animation filters. The master video is scaled/cropped safely
+    // into the center window so FFmpeg does not fail on pad dimensions.
+    const videoFilter =
       `[0:v]scale=1024:1536[bg];` +
       `[1:v]scale=462:610:force_original_aspect_ratio=increase,crop=462:610[vid];` +
-      `[bg][vid]overlay=281:342[base]`;
-
-    const premiumVisualBase = isPremium
-      ? standardVisualBase + `;` +
-        `[${photoInputIndex}:v]scale=272:272:force_original_aspect_ratio=increase,` +
-        `crop=272:272,format=rgba,fade=t=in:st=0.35:d=0.8:alpha=1[recipientphoto];` +
-        `[base]drawbox=x=371:y=493:w=282:h=282:color=#ffd166@0.96:t=8[premiumframe];` +
-        `[premiumframe][recipientphoto]overlay=376:498[premiumbase]`
-      : standardVisualBase;
-
-    const visualSource = isPremium ? "[premiumbase]" : "[base]";
-
-    const videoFilter =
-      premiumVisualBase + `;` +
-      `${visualSource}` +
+      `[bg][vid]overlay=281:342,` +
       `drawbox=x=42:y=404:w=180:h=250:color=#f9e7c9@0.96:t=fill,` +
       `drawbox=x=802:y=404:w=180:h=250:color=#f9e7c9@0.96:t=fill,` +
       `drawtext=text=${quoteDrawtextText(toNameLines[0])}:x=42+(180-text_w)/2:y=${toNameStartY}:fontsize=${toFontSize}:fontcolor=#d6333f:borderw=2:bordercolor=white@0.45,` +
@@ -13262,15 +13074,12 @@ Africa Payment: ${payment.africa}`
       `drawtext=text=${quoteDrawtextText(messageLines[8])}:x=218+(590-text_w)/2:y=${messageStartY + (8 * messageLineGap)}:fontsize=${messageFontSize}:fontcolor=#2f267f:borderw=1:bordercolor=white@0.35,` +
       `drawtext=text=${quoteDrawtextText(messageLines[9])}:x=218+(590-text_w)/2:y=${messageStartY + (9 * messageLineGap)}:fontsize=${messageFontSize}:fontcolor=#2f267f:borderw=1:bordercolor=white@0.35[outv]`;
 
-    const soundtrackInputIndex = isPremium ? tributeInputIndex : 2;
     const audioFilter = hasPrintoVoice
-      ? `[${soundtrackInputIndex}:a]volume=${isPremium ? "0.52" : "0.30"},` +
-        `apad=pad_dur=10,atrim=0:10[music];` +
+      ? `[2:a]volume=0.30,apad=pad_dur=10,atrim=0:10[music];` +
         `[3:a]adelay=900|900,volume=1.25,apad=pad_dur=10,atrim=0:10[voice];` +
         `[music][voice]amix=inputs=2:duration=longest:dropout_transition=2,` +
         `loudnorm=I=-16:TP=-1.5:LRA=11,atrim=0:10[aout]`
-      : `[${soundtrackInputIndex}:a]volume=${isPremium ? "0.82" : "1.0"},` +
-        `apad=pad_dur=10,atrim=0:10,loudnorm=I=-16:TP=-1.5:LRA=11[aout]`;
+      : `[2:a]apad=pad_dur=10,atrim=0:10[aout]`;
 
     const ffmpegArgs = [
       "-y",
@@ -13281,7 +13090,6 @@ Africa Payment: ${payment.africa}`
       "-i", masterPath,
       "-i", audioPath,
       ...(hasPrintoVoice ? ["-i", voicePath] : []),
-      ...(isPremium ? ["-loop", "1", "-i", recipientPhotoPath, "-i", tributeMusicPath] : []),
       "-t", "10",
       "-filter_complex", `${videoFilter};${audioFilter}`,
       "-map", "[outv]",
@@ -13309,10 +13117,7 @@ Africa Payment: ${payment.africa}`
       messageFontSize,
       messageLineGap,
       messageStartY,
-      messageUsedLines: messageLayout.usedLines,
-      greetingPlan,
-      recipientPhoto: recipientPhotoFile?.originalname || "",
-      tributeMusic: tributeMusicFile?.originalname || ""
+      messageUsedLines: messageLayout.usedLines
     });
     console.log("Birthday output path:", outputPath);
     console.log("FFmpeg command:", "ffmpeg " + ffmpegArgs.join(" "));
@@ -13406,10 +13211,6 @@ Africa Payment: ${payment.africa}`
             toName: toNameRaw,
             fromName: fromNameRaw,
             language: requestLanguage,
-            greetingPlan,
-            premiumPersonalized: isPremium,
-            recipientPhotoUrl: recipientPhotoFile ? buildUploadUrl(req, path.basename(recipientPhotoFile.path)) : "",
-            tributeMusicUrl: tributeMusicFile ? buildUploadUrl(req, path.basename(tributeMusicFile.path)) : "",
             fullResultUrl,
             createdAt: new Date().toISOString()
           });
@@ -13429,10 +13230,6 @@ Africa Payment: ${payment.africa}`
             greetingId,
             file: fileName,
             hasPrintoVoice,
-            greetingPlan,
-            premiumPersonalized: isPremium,
-            recipientPhotoUrl: recipientPhotoFile ? buildUploadUrl(req, path.basename(recipientPhotoFile.path)) : "",
-            tributeMusicUrl: tributeMusicFile ? buildUploadUrl(req, path.basename(tributeMusicFile.path)) : "",
             limits: {
               name: BIRTHDAY_NAME_MAX,
               message: BIRTHDAY_MESSAGE_MAX
@@ -13620,6 +13417,76 @@ function buildGreetingStudioHomePage(language = "en") {
     zh: { title: "Printo 祝福工作室", hero: "使用 Printo 音乐、声音、姓名和留言制作个性化祝福视频。", choose: "选择祝福类型", play: "播放 Printo 主题音乐", pause: "暂停 Printo 主题音乐", app: "下载 Print-O-Matic", create: "立即制作", soon: "即将推出", help: "联系 Printo", home: "Print-O-Matic 首页", sub: "为这个特殊场合制作个性化 Printo 祝福视频。" }
   };
   const t = copy[lang] || copy.en;
+  const premiumCopy = {
+    en: {
+      badge: "PREMIUM EXPERIENCE",
+      title: "Personal Tribute Music Video Card",
+      description: "Create a powerful personal tribute for one special person using their photo, your personal introduction video, an original tribute song, names, a heartfelt message, and a premium Printo-branded presentation.",
+      features: ["Recipient photo on screen", "Personal introduction video", "Original tribute song", "Recipient and sender names", "Personal message", "Downloadable finished video"],
+      notice: "Premium orders are prepared with a Printo worker while full automation is being completed. The first free standard greeting does not apply.",
+      order: "Order Premium"
+    },
+    es: {
+      badge: "EXPERIENCIA PREMIUM",
+      title: "Tarjeta musical de homenaje personal",
+      description: "Crea un homenaje personal para alguien especial con su foto, tu video de introducción, una canción original, nombres, mensaje personal y presentación premium de Printo.",
+      features: ["Foto del destinatario", "Video personal de introducción", "Canción original de homenaje", "Nombres del destinatario y remitente", "Mensaje personal", "Video final descargable"],
+      notice: "Un trabajador de Printo prepara los pedidos premium mientras completamos la automatización. El primer saludo estándar gratuito no se aplica.",
+      order: "Pedir Premium"
+    },
+    fr: {
+      badge: "EXPÉRIENCE PREMIUM",
+      title: "Carte vidéo musicale d’hommage personnel",
+      description: "Créez un hommage pour une personne spéciale avec sa photo, votre vidéo d’introduction, une chanson originale, les noms, un message personnel et une présentation premium Printo.",
+      features: ["Photo du destinataire", "Vidéo d’introduction personnelle", "Chanson d’hommage originale", "Noms du destinataire et de l’expéditeur", "Message personnel", "Vidéo finale téléchargeable"],
+      notice: "Les commandes premium sont préparées avec un agent Printo pendant la finalisation de l’automatisation. Le premier message standard gratuit ne s’applique pas.",
+      order: "Commander Premium"
+    },
+    de: {
+      badge: "PREMIUM-ERLEBNIS",
+      title: "Persönliche Tribute-Musik-Videokarte",
+      description: "Erstellen Sie ein persönliches Tribut mit Foto, Einführungsvideo, eigenem Tribute-Song, Namen, persönlicher Nachricht und hochwertiger Printo-Präsentation.",
+      features: ["Foto des Empfängers", "Persönliches Einführungsvideo", "Originaler Tribute-Song", "Empfänger- und Absendername", "Persönliche Nachricht", "Herunterladbares fertiges Video"],
+      notice: "Premium-Bestellungen werden mit einem Printo-Mitarbeiter vorbereitet. Der erste kostenlose Standardgruß gilt nicht.",
+      order: "Premium bestellen"
+    },
+    pt: {
+      badge: "EXPERIÊNCIA PREMIUM",
+      title: "Cartão musical de homenagem pessoal",
+      description: "Crie uma homenagem especial com foto, vídeo de introdução, música original, nomes, mensagem pessoal e apresentação premium Printo.",
+      features: ["Foto do destinatário", "Vídeo pessoal de introdução", "Música original de homenagem", "Nomes do destinatário e remetente", "Mensagem pessoal", "Vídeo final para download"],
+      notice: "Os pedidos premium são preparados com um trabalhador Printo enquanto concluímos a automação. A primeira saudação padrão grátis não se aplica.",
+      order: "Pedir Premium"
+    },
+    ar: {
+      badge: "تجربة مميزة",
+      title: "بطاقة فيديو موسيقية للتكريم الشخصي",
+      description: "أنشئ تكريمًا شخصيًا مميزًا باستخدام صورة المستلم وفيديو تقديم شخصي وأغنية أصلية والأسماء والرسالة وعرض Printo المميز.",
+      features: ["صورة المستلم", "فيديو تقديم شخصي", "أغنية تكريم أصلية", "اسم المستلم والمرسل", "رسالة شخصية", "فيديو نهائي قابل للتنزيل"],
+      notice: "يتم تجهيز الطلبات المميزة مع أحد موظفي Printo أثناء استكمال الأتمتة. لا تنطبق التهنئة القياسية الأولى المجانية.",
+      order: "طلب Premium"
+    },
+    zh: {
+      badge: "尊享体验",
+      title: "个人致敬音乐视频贺卡",
+      description: "使用收件人照片、您的介绍视频、原创致敬歌曲、姓名、个人留言和高级 Printo 品牌展示制作特别致敬视频。",
+      features: ["收件人照片", "个人介绍视频", "原创致敬歌曲", "收件人和发件人姓名", "个人留言", "可下载成品视频"],
+      notice: "在完整自动化完成前，高级订单由 Printo 工作人员协助制作。首次免费标准祝福不适用。",
+      order: "订购 Premium"
+    }
+  };
+  const p = premiumCopy[lang] || premiumCopy.en;
+  const premiumOrderMessage = [
+    "Video editing request",
+    "Service code: CARD_PERSONALIZATION_AGENT",
+    "Package: GREETING_PREMIUM",
+    `Language: ${lang}`,
+    "Selected card: Personal Tribute Music Video Card",
+    "Please route this request directly to a worker agent for premium order details and payment assistance."
+  ].join("\n");
+  const premiumWhatsAppUrl = `https://wa.me/${SUPPORT_PHONE}?text=${encodeURIComponent(premiumOrderMessage)}`;
+  const premiumFeatures = p.features.map((feature) => `<li>✓ ${feature}</li>`).join("");
+  const premiumCard = `<section class="premium-card"><div class="premium-shine"></div><div class="premium-badge">🌟 ${p.badge}</div><div class="premium-layout"><div class="premium-visual"><div class="premium-icon">🎵</div><div class="premium-photo">📸</div><div class="premium-play">▶</div></div><div class="premium-content"><h2>${p.title}</h2><p>${p.description}</p><ul>${premiumFeatures}</ul><div class="premium-note">${p.notice}</div><a class="premium-order" href="${premiumWhatsAppUrl}" target="_blank" rel="noopener">✨ ${p.order}</a></div></div></section>`;
   const dir = lang === "ar" ? "rtl" : "ltr";
   const cards = GREETING_TEMPLATES.map((item) => {
     const ready = item.id === "birthday";
@@ -13636,8 +13503,8 @@ function buildGreetingStudioHomePage(language = "en") {
   return `<!DOCTYPE html>
 <html lang="${lang}" dir="${dir}">
 <head><meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/><meta name="theme-color" content="#082a8f"/><title>${t.title}</title>
-<style>*{box-sizing:border-box}body{margin:0;font-family:Arial,sans-serif;background:radial-gradient(circle at top,#164ec1 0,#082a8f 38%,#041443 100%);color:#fff;min-height:100vh}.wrap{max-width:1120px;margin:auto;padding:22px 18px 56px}.hero{text-align:center;padding:25px 12px}.hero h1{font-size:42px;margin:0 0 10px}.hero p{font-size:18px;line-height:1.55;max-width:780px;margin:auto}.language{margin:16px auto 0;padding:10px 14px;border-radius:12px;border:0;font-weight:700}.actions{display:flex;gap:12px;justify-content:center;flex-wrap:wrap;margin-top:18px}.btn{border:0;border-radius:999px;padding:13px 20px;font-weight:900;text-decoration:none;cursor:pointer}.music{background:#fff;color:#0b2f89}.app{background:#111;color:#fff}.section-title{text-align:center;font-size:27px;margin:17px 0 20px}.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:20px}.card{background:#fff;color:#13234a;border-radius:22px;overflow:hidden;text-align:center;box-shadow:0 14px 34px rgba(0,0,0,.28);min-height:300px;text-decoration:none}.preview{height:155px;display:grid;place-items:center;font-size:62px;background:linear-gradient(135deg,#eef4ff,#dbeafe)}.preview.birthday{background-image:url('/templates/birthday/frame.png');background-size:cover;background-position:center}.content{padding:18px}.title{font-size:21px;font-weight:900}.sub{font-size:14px;line-height:20px;color:#53617f;min-height:44px;margin-top:8px}.ready,.soon{display:inline-block;padding:10px 18px;border-radius:999px;margin-top:14px;font-weight:900}.ready{display:inline-block;background:linear-gradient(90deg,#7b2cbf,#d63384);color:#fff;text-decoration:none;position:relative;z-index:5;pointer-events:auto}.soon{background:#e2e8f0;color:#475569}.support{display:flex;gap:12px;justify-content:center;flex-wrap:wrap;margin-top:28px}.support a{color:#fff;text-decoration:none;font-weight:900;padding:14px 20px;border-radius:14px;background:#25D366}.support a:last-child{background:#f59e0b}.footer{text-align:center;margin-top:28px;color:#dbeafe}@media(max-width:820px){.grid{grid-template-columns:repeat(2,1fr)}}@media(max-width:540px){.grid{grid-template-columns:1fr}.hero h1{font-size:30px}.preview{height:165px}}</style></head>
-<body><main class="wrap"><section class="hero"><h1>🎬 ${t.title}</h1><p>${t.hero}</p><select class="language" onchange="location.href='/greetings?lang='+this.value"><option value="en" ${lang==='en'?'selected':''}>English</option><option value="es" ${lang==='es'?'selected':''}>Español</option><option value="fr" ${lang==='fr'?'selected':''}>Français</option><option value="de" ${lang==='de'?'selected':''}>Deutsch</option><option value="pt" ${lang==='pt'?'selected':''}>Português</option><option value="ar" ${lang==='ar'?'selected':''}>العربية</option><option value="zh" ${lang==='zh'?'selected':''}>中文</option></select><div class="actions"><button id="musicBtn" class="btn music">▶ ${t.play}</button><a class="btn app" href="https://play.google.com/store/apps/details?id=com.patapata.printomatic" target="_blank" rel="noopener">📱 ${t.app}</a></div></section><h2 class="section-title">${t.choose}</h2><section class="grid">${cards}</section><div class="support"><a href="https://wa.me/18622306637?text=Hello%20Printo%2C%20I%20need%20help%20with%20a%20greeting%20video" target="_blank" rel="noopener">💬 ${t.help}</a><a href="/">🏠 ${t.home}</a></div><div class="footer">Printo Greeting Studio • Powered by PATAPATA LLC</div><audio id="theme" preload="none" loop playsinline><source src="/printo-theme" type="audio/mp4"><source src="/printo-theme" type="audio/mpeg"></audio></main><script>
+<style>*{box-sizing:border-box}body{margin:0;font-family:Arial,sans-serif;background:radial-gradient(circle at top,#164ec1 0,#082a8f 38%,#041443 100%);color:#fff;min-height:100vh}.wrap{max-width:1120px;margin:auto;padding:22px 18px 56px}.hero{text-align:center;padding:25px 12px}.hero h1{font-size:42px;margin:0 0 10px}.hero p{font-size:18px;line-height:1.55;max-width:780px;margin:auto}.language{margin:16px auto 0;padding:10px 14px;border-radius:12px;border:0;font-weight:700}.actions{display:flex;gap:12px;justify-content:center;flex-wrap:wrap;margin-top:18px}.btn{border:0;border-radius:999px;padding:13px 20px;font-weight:900;text-decoration:none;cursor:pointer}.music{background:#fff;color:#0b2f89}.app{background:#111;color:#fff}.premium-card{position:relative;overflow:hidden;background:linear-gradient(135deg,#fff7cc 0,#ffd84d 28%,#fff 63%,#dbeafe 100%);color:#10204f;border:3px solid #ffd21f;border-radius:28px;padding:24px;margin:8px 0 30px;box-shadow:0 18px 44px rgba(0,0,0,.35)}.premium-shine{position:absolute;width:240px;height:240px;border-radius:50%;background:rgba(255,255,255,.46);filter:blur(12px);top:-130px;right:-70px}.premium-badge{position:relative;display:inline-block;background:#082a8f;color:#ffd21f;border-radius:999px;padding:9px 14px;font-size:13px;font-weight:900;letter-spacing:.8px}.premium-layout{position:relative;display:grid;grid-template-columns:260px 1fr;gap:26px;align-items:center;margin-top:16px}.premium-visual{height:250px;border-radius:24px;background:radial-gradient(circle at 50% 25%,#3c7cff,#071b61 68%);position:relative;display:grid;place-items:center;box-shadow:inset 0 0 0 2px rgba(255,255,255,.3)}.premium-icon{font-size:86px}.premium-photo{position:absolute;left:20px;bottom:18px;font-size:42px;background:#fff;border-radius:15px;padding:8px}.premium-play{position:absolute;right:20px;bottom:20px;width:58px;height:58px;border-radius:50%;display:grid;place-items:center;background:#ffd21f;color:#082a8f;font-size:25px;font-weight:900}.premium-content h2{font-size:30px;margin:0 0 10px}.premium-content p{font-size:16px;line-height:1.55;margin:0}.premium-content ul{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px 18px;list-style:none;padding:0;margin:16px 0}.premium-content li{font-weight:800}.premium-note{background:#fff7d6;border-radius:13px;padding:11px;font-size:13px;line-height:1.45}.premium-order{display:inline-block;margin-top:15px;background:linear-gradient(90deg,#7b2cbf,#d63384);color:#fff;text-decoration:none;font-weight:900;padding:13px 20px;border-radius:999px}.section-title{text-align:center;font-size:27px;margin:17px 0 20px}.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:20px}.card{background:#fff;color:#13234a;border-radius:22px;overflow:hidden;text-align:center;box-shadow:0 14px 34px rgba(0,0,0,.28);min-height:300px;text-decoration:none}.preview{height:155px;display:grid;place-items:center;font-size:62px;background:linear-gradient(135deg,#eef4ff,#dbeafe)}.preview.birthday{background-image:url('/templates/birthday/frame.png');background-size:cover;background-position:center}.content{padding:18px}.title{font-size:21px;font-weight:900}.sub{font-size:14px;line-height:20px;color:#53617f;min-height:44px;margin-top:8px}.ready,.soon{display:inline-block;padding:10px 18px;border-radius:999px;margin-top:14px;font-weight:900}.ready{display:inline-block;background:linear-gradient(90deg,#7b2cbf,#d63384);color:#fff;text-decoration:none;position:relative;z-index:5;pointer-events:auto}.soon{background:#e2e8f0;color:#475569}.support{display:flex;gap:12px;justify-content:center;flex-wrap:wrap;margin-top:28px}.support a{color:#fff;text-decoration:none;font-weight:900;padding:14px 20px;border-radius:14px;background:#25D366}.support a:last-child{background:#f59e0b}.footer{text-align:center;margin-top:28px;color:#dbeafe}@media(max-width:820px){.premium-layout{grid-template-columns:1fr}.premium-visual{height:220px}.grid{grid-template-columns:repeat(2,1fr)}}@media(max-width:540px){.premium-card{padding:17px}.premium-content h2{font-size:24px}.premium-content ul{grid-template-columns:1fr}.grid{grid-template-columns:1fr}.hero h1{font-size:30px}.preview{height:165px}}</style></head>
+<body><main class="wrap"><section class="hero"><h1>🎬 ${t.title}</h1><p>${t.hero}</p><select class="language" onchange="location.href='/greetings?lang='+this.value"><option value="en" ${lang==='en'?'selected':''}>English</option><option value="es" ${lang==='es'?'selected':''}>Español</option><option value="fr" ${lang==='fr'?'selected':''}>Français</option><option value="de" ${lang==='de'?'selected':''}>Deutsch</option><option value="pt" ${lang==='pt'?'selected':''}>Português</option><option value="ar" ${lang==='ar'?'selected':''}>العربية</option><option value="zh" ${lang==='zh'?'selected':''}>中文</option></select><div class="actions"><button id="musicBtn" class="btn music">▶ ${t.play}</button><a class="btn app" href="https://play.google.com/store/apps/details?id=com.patapata.printomatic" target="_blank" rel="noopener">📱 ${t.app}</a></div></section>${premiumCard}<h2 class="section-title">${t.choose}</h2><section class="grid">${cards}</section><div class="support"><a href="https://wa.me/18622306637?text=Hello%20Printo%2C%20I%20need%20help%20with%20a%20greeting%20video" target="_blank" rel="noopener">💬 ${t.help}</a><a href="/">🏠 ${t.home}</a></div><div class="footer">Printo Greeting Studio • Powered by PATAPATA LLC</div><audio id="theme" preload="none" loop playsinline><source src="/printo-theme" type="audio/mp4"><source src="/printo-theme" type="audio/mpeg"></audio></main><script>
 const audio=document.getElementById('theme'),btn=document.getElementById('musicBtn');
 let themeLoaded=false;
 btn.onclick=async()=>{
@@ -13661,7 +13528,7 @@ audio.addEventListener('ended',()=>{btn.textContent='▶ ${t.play}'});
 function buildBirthdayGeneratorPage(language = "en") {
   const lang = ["en", "es", "fr", "de", "pt", "ar", "zh"].includes(language) ? language : "en";
   const copy = {
-    en: { title:"Printo Birthday Generator", back:"All Greeting Cards", intro:"Create a Standard greeting or upgrade to Premium with the recipient’s photo and a personal tribute song.", recipient:"Recipient Name", sender:"Sender Name", recipientExample:"Example: Michael", senderExample:"Example: Ana", personal:"Personal Message", messagePlaceholder:"Write a short birthday message...", generate:"Generate Birthday Video", generating:"Generating...", waiting:"Printo is creating your birthday video. Please wait.", failed:"Generation failed.", voiceReady:"Video and Printo voice are ready!", musicReady:"Video is ready. Music was used because voice was unavailable.", shopify:"Buy via Shopify", nigeria:"Nigeria Payment", note:"Premium Personalized includes the recipient photo on screen and your uploaded tribute music underneath the video.", plan:"Greeting Type", standard:"Standard Personalized", premium:"Premium Photo + Tribute Music", premiumTitle:"Premium Personalized Add-ons", photo:"Recipient Photo", music:"Personal Tribute Music", photoHelp:"JPG, PNG or WEBP. The photo will appear inside the video.", musicHelp:"MP3, M4A, WAV, AAC or OGG. The tribute song will play as the soundtrack.", premiumRequired:"Premium requires both a recipient photo and tribute music.", preview:"Preview" },
+    en: { title:"Printo Birthday Generator", back:"All Greeting Cards", intro:"Enter the recipient, sender and personal message. Printo will create the finished video with music and personalized voice.", recipient:"Recipient Name", sender:"Sender Name", recipientExample:"Example: Michael", senderExample:"Example: Ana", personal:"Personal Message", messagePlaceholder:"Write a short birthday message...", generate:"Generate Birthday Video", generating:"Generating...", waiting:"Printo is creating your birthday video. Please wait.", failed:"Generation failed.", voiceReady:"Video and Printo voice are ready!", musicReady:"Video is ready. Music was used because voice was unavailable.", shopify:"Buy via Shopify", nigeria:"Nigeria Payment", note:"Your generated page will include a large Play button, Download, WhatsApp, Facebook, X/Twitter, Instagram, TikTok, YouTube, Email and Copy Link options." },
     es: { title:"Generador de cumpleaños Printo", back:"Todas las tarjetas de saludo", intro:"Ingresa el nombre del destinatario, el remitente y un mensaje personal. Printo creará el video final con música y voz personalizada.", recipient:"Nombre del destinatario", sender:"Nombre del remitente", recipientExample:"Ejemplo: Miguel", senderExample:"Ejemplo: Ana", personal:"Mensaje personal", messagePlaceholder:"Escribe un mensaje corto de cumpleaños...", generate:"Generar video de cumpleaños", generating:"Generando...", waiting:"Printo está creando tu video de cumpleaños. Espera, por favor.", failed:"No se pudo generar el video.", voiceReady:"¡El video y la voz de Printo están listos!", musicReady:"El video está listo. Se usó música porque la voz no estaba disponible.", shopify:"Comprar por Shopify", nigeria:"Pago en Nigeria", note:"La página generada incluirá un botón grande de reproducción, descarga, WhatsApp, Facebook, Instagram, TikTok, YouTube, correo electrónico y copiar enlace." },
     fr: { title:"Générateur d’anniversaire Printo", back:"Toutes les cartes de vœux", intro:"Saisissez le nom du destinataire, de l’expéditeur et un message personnel. Printo créera la vidéo finale avec musique et voix personnalisée.", recipient:"Nom du destinataire", sender:"Nom de l’expéditeur", recipientExample:"Exemple : Michel", senderExample:"Exemple : Ana", personal:"Message personnel", messagePlaceholder:"Écrivez un court message d’anniversaire...", generate:"Créer la vidéo d’anniversaire", generating:"Création...", waiting:"Printo crée votre vidéo d’anniversaire. Veuillez patienter.", failed:"La création a échoué.", voiceReady:"La vidéo et la voix de Printo sont prêtes !", musicReady:"La vidéo est prête. La musique a été utilisée car la voix n’était pas disponible.", shopify:"Acheter via Shopify", nigeria:"Paiement Nigeria", note:"La page générée comprendra un grand bouton Lecture, Télécharger, WhatsApp, Facebook, Instagram, TikTok, YouTube, E-mail et Copier le lien." },
     de: { title:"Printo Geburtstagsgenerator", back:"Alle Grußkarten", intro:"Geben Sie den Namen des Empfängers, des Absenders und eine persönliche Nachricht ein. Printo erstellt das fertige Video mit Musik und personalisierter Stimme.", recipient:"Name des Empfängers", sender:"Name des Absenders", recipientExample:"Beispiel: Michael", senderExample:"Beispiel: Ana", personal:"Persönliche Nachricht", messagePlaceholder:"Schreiben Sie eine kurze Geburtstagsnachricht...", generate:"Geburtstagsvideo erstellen", generating:"Wird erstellt...", waiting:"Printo erstellt Ihr Geburtstagsvideo. Bitte warten.", failed:"Erstellung fehlgeschlagen.", voiceReady:"Video und Printo-Stimme sind fertig!", musicReady:"Das Video ist fertig. Musik wurde verwendet, da die Stimme nicht verfügbar war.", shopify:"Über Shopify kaufen", nigeria:"Nigeria-Zahlung", note:"Die erstellte Seite enthält eine große Wiedergabetaste sowie Download-, WhatsApp-, Facebook-, Instagram-, TikTok-, YouTube-, E-Mail- und Link-kopieren-Optionen." },
@@ -13678,7 +13545,7 @@ function buildBirthdayGeneratorPage(language = "en") {
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>${t.title}</title>
   <style>
-    *{box-sizing:border-box}body{margin:0;font-family:Arial,sans-serif;background:linear-gradient(180deg,#071b61,#0b63ce);color:#fff;min-height:100vh;padding:20px}.wrap{max-width:760px;margin:auto}.top{text-align:center;margin-bottom:18px}.top h1{font-size:34px;margin:7px 0}.top p{opacity:.92;line-height:23px}.panel{background:#fff;color:#172554;border-radius:22px;padding:22px;box-shadow:0 14px 38px rgba(0,0,0,.32)}label{display:block;font-weight:900;margin:13px 0 7px}.row{display:grid;grid-template-columns:1fr 1fr;gap:14px}.field{position:relative}input,textarea{width:100%;border:2px solid #cbd5e1;border-radius:13px;padding:13px 15px;font-size:17px;outline:none;text-align:start}input:focus,textarea:focus{border-color:#7b2cbf;box-shadow:0 0 0 3px rgba(123,44,191,.14)}textarea{min-height:120px;resize:vertical}.counter{text-align:end;font-size:13px;font-weight:800;color:#64748b;margin-top:5px}.counter.warn{color:#dc2626}.generate{width:100%;border:0;border-radius:15px;padding:16px;background:linear-gradient(90deg,#7b2cbf,#d63384);color:#fff;font-size:19px;font-weight:900;cursor:pointer;margin-top:18px}.generate:disabled{opacity:.55;cursor:not-allowed}.status{text-align:center;min-height:28px;margin-top:13px;font-weight:800;color:#7b2cbf}.payments{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:15px}.pay{display:block;text-align:center;text-decoration:none;color:#fff;font-weight:900;padding:13px;border-radius:13px}.shopify{background:#4f772d}.nigeria{background:#008751}.back{display:inline-block;color:#ffd21f;text-decoration:none;font-weight:900;margin-bottom:10px}.note{font-size:13px;line-height:19px;color:#475569;background:#f1f5f9;padding:12px;border-radius:12px;margin-top:14px}.plan-switch{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:10px 0 16px}.plan-option{border:2px solid #cbd5e1;border-radius:14px;padding:13px;background:#f8fafc;font-weight:900;cursor:pointer;text-align:center}.plan-option.active{border-color:#7b2cbf;background:#f3e8ff;color:#6b21a8}.premium-box{display:none;margin-top:16px;padding:16px;border:2px solid #f59e0b;border-radius:16px;background:linear-gradient(180deg,#fff7ed,#fffbeb)}.premium-box.show{display:block}.premium-box h3{margin:0 0 6px;color:#9a3412}.upload-card{border:2px dashed #cbd5e1;border-radius:14px;padding:13px;margin-top:12px;background:#fff}.upload-card input[type=file]{padding:9px;background:#f8fafc}.help{font-size:12px;line-height:18px;color:#64748b;margin-top:6px}.media-preview{display:none;margin-top:10px;border-radius:14px;overflow:hidden;background:#0f172a;padding:8px}.media-preview.show{display:block}.media-preview img{display:block;width:100%;max-height:280px;object-fit:contain;border-radius:10px}.media-preview audio{width:100%}.premium-badge{display:inline-block;background:#7b2cbf;color:#fff;padding:5px 10px;border-radius:999px;font-size:12px;font-weight:900;margin-left:6px}@media(max-width:580px){body{padding:12px}.row,.payments{grid-template-columns:1fr}.top h1{font-size:29px}}
+    *{box-sizing:border-box}body{margin:0;font-family:Arial,sans-serif;background:linear-gradient(180deg,#071b61,#0b63ce);color:#fff;min-height:100vh;padding:20px}.wrap{max-width:760px;margin:auto}.top{text-align:center;margin-bottom:18px}.top h1{font-size:34px;margin:7px 0}.top p{opacity:.92;line-height:23px}.panel{background:#fff;color:#172554;border-radius:22px;padding:22px;box-shadow:0 14px 38px rgba(0,0,0,.32)}label{display:block;font-weight:900;margin:13px 0 7px}.row{display:grid;grid-template-columns:1fr 1fr;gap:14px}.field{position:relative}input,textarea{width:100%;border:2px solid #cbd5e1;border-radius:13px;padding:13px 15px;font-size:17px;outline:none;text-align:start}input:focus,textarea:focus{border-color:#7b2cbf;box-shadow:0 0 0 3px rgba(123,44,191,.14)}textarea{min-height:120px;resize:vertical}.counter{text-align:end;font-size:13px;font-weight:800;color:#64748b;margin-top:5px}.counter.warn{color:#dc2626}.generate{width:100%;border:0;border-radius:15px;padding:16px;background:linear-gradient(90deg,#7b2cbf,#d63384);color:#fff;font-size:19px;font-weight:900;cursor:pointer;margin-top:18px}.generate:disabled{opacity:.55;cursor:not-allowed}.status{text-align:center;min-height:28px;margin-top:13px;font-weight:800;color:#7b2cbf}.payments{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:15px}.pay{display:block;text-align:center;text-decoration:none;color:#fff;font-weight:900;padding:13px;border-radius:13px}.shopify{background:#4f772d}.nigeria{background:#008751}.back{display:inline-block;color:#ffd21f;text-decoration:none;font-weight:900;margin-bottom:10px}.note{font-size:13px;line-height:19px;color:#475569;background:#f1f5f9;padding:12px;border-radius:12px;margin-top:14px}@media(max-width:580px){body{padding:12px}.row,.payments{grid-template-columns:1fr}.top h1{font-size:29px}}
   </style>
 </head>
 <body>
@@ -13691,34 +13558,9 @@ function buildBirthdayGeneratorPage(language = "en") {
         <div class="field"><label for="toName">${t.recipient}</label><input id="toName" maxlength="${BIRTHDAY_NAME_MAX}" required placeholder="${t.recipientExample}" /><div id="toCount" class="counter">0 / ${BIRTHDAY_NAME_MAX}</div></div>
         <div class="field"><label for="fromName">${t.sender}</label><input id="fromName" maxlength="${BIRTHDAY_NAME_MAX}" required placeholder="${t.senderExample}" /><div id="fromCount" class="counter">0 / ${BIRTHDAY_NAME_MAX}</div></div>
       </div>
-      <label>${t.plan}</label>
-      <div class="plan-switch">
-        <button type="button" class="plan-option active" data-plan="standard">✨ ${t.standard}</button>
-        <button type="button" class="plan-option" data-plan="premium">👑 ${t.premium}</button>
-      </div>
-      <input type="hidden" id="greetingPlan" value="standard" />
-
       <label for="message">${t.personal}</label>
       <textarea id="message" maxlength="${BIRTHDAY_MESSAGE_MAX}" required placeholder="${t.messagePlaceholder}"></textarea>
       <div id="messageCount" class="counter">0 / ${BIRTHDAY_MESSAGE_MAX}</div>
-
-      <section id="premiumBox" class="premium-box">
-        <h3>👑 ${t.premiumTitle}<span class="premium-badge">PREMIUM</span></h3>
-        <div class="upload-card">
-          <label for="recipientPhoto">📷 ${t.photo}</label>
-          <input id="recipientPhoto" name="recipientPhoto" type="file" accept="image/jpeg,image/png,image/webp" />
-          <div class="help">${t.photoHelp}</div>
-          <div id="photoPreview" class="media-preview"><img id="photoPreviewImage" alt="${t.preview}" /></div>
-        </div>
-        <div class="upload-card">
-          <label for="tributeMusic">🎵 ${t.music}</label>
-          <input id="tributeMusic" name="tributeMusic" type="file" accept="audio/mpeg,audio/mp4,audio/x-m4a,audio/wav,audio/aac,audio/ogg" />
-          <div class="help">${t.musicHelp}</div>
-          <div id="musicPreview" class="media-preview"><audio id="musicPreviewAudio" controls preload="metadata"></audio></div>
-        </div>
-        <div class="note">${t.premiumRequired}</div>
-      </section>
-
       <button id="generateBtn" class="generate" type="submit">✨ ${t.generate}</button>
       <div id="status" class="status"></div>
     </form>
@@ -13738,35 +13580,6 @@ function buildBirthdayGeneratorPage(language = "en") {
   const statusBox=document.getElementById('status'),button=document.getElementById('generateBtn');
   const shopifyPayment=document.getElementById('shopifyPayment');
   const africaPayment=document.getElementById('africaPayment');
-  const greetingPlan=document.getElementById('greetingPlan');
-  const premiumBox=document.getElementById('premiumBox');
-  const recipientPhoto=document.getElementById('recipientPhoto');
-  const tributeMusic=document.getElementById('tributeMusic');
-  const photoPreview=document.getElementById('photoPreview');
-  const photoPreviewImage=document.getElementById('photoPreviewImage');
-  const musicPreview=document.getElementById('musicPreview');
-  const musicPreviewAudio=document.getElementById('musicPreviewAudio');
-  let photoObjectUrl='',musicObjectUrl='';
-  document.querySelectorAll('[data-plan]').forEach(option=>option.addEventListener('click',()=>{
-    document.querySelectorAll('[data-plan]').forEach(x=>x.classList.remove('active'));
-    option.classList.add('active');
-    greetingPlan.value=option.dataset.plan;
-    premiumBox.classList.toggle('show',greetingPlan.value==='premium');
-    recipientPhoto.required=greetingPlan.value==='premium';
-    tributeMusic.required=greetingPlan.value==='premium';
-  }));
-  recipientPhoto.addEventListener('change',()=>{
-    if(photoObjectUrl)URL.revokeObjectURL(photoObjectUrl);
-    const file=recipientPhoto.files&&recipientPhoto.files[0];
-    if(!file){photoPreview.classList.remove('show');photoPreviewImage.removeAttribute('src');return}
-    photoObjectUrl=URL.createObjectURL(file);photoPreviewImage.src=photoObjectUrl;photoPreview.classList.add('show');
-  });
-  tributeMusic.addEventListener('change',()=>{
-    if(musicObjectUrl)URL.revokeObjectURL(musicObjectUrl);
-    const file=tributeMusic.files&&tributeMusic.files[0];
-    if(!file){musicPreview.classList.remove('show');musicPreviewAudio.removeAttribute('src');return}
-    musicObjectUrl=URL.createObjectURL(file);musicPreviewAudio.src=musicObjectUrl;musicPreview.classList.add('show');
-  });
   let customerId=localStorage.getItem('printoGreetingCustomerId');
   if(!customerId){
     customerId=(window.crypto&&crypto.randomUUID)?crypto.randomUUID():'pg-'+Date.now()+'-'+Math.random().toString(36).slice(2);
@@ -13783,19 +13596,7 @@ function buildBirthdayGeneratorPage(language = "en") {
     e.preventDefault();
     button.disabled=true;button.textContent='⏳ '+ui.generating;statusBox.textContent=ui.waiting;
     try{
-      if(greetingPlan.value==='premium'&&(!recipientPhoto.files[0]||!tributeMusic.files[0])){
-        throw new Error(ui.premiumRequired||'Premium requires a recipient photo and tribute music.');
-      }
-      const formData=new FormData();
-      formData.append('to',to.value.trim());
-      formData.append('from',from.value.trim());
-      formData.append('message',message.value.trim());
-      formData.append('language',currentLanguage);
-      formData.append('customerId',customerId);
-      formData.append('plan',greetingPlan.value);
-      if(recipientPhoto.files[0])formData.append('recipientPhoto',recipientPhoto.files[0]);
-      if(tributeMusic.files[0])formData.append('tributeMusic',tributeMusic.files[0]);
-      const response=await fetch('/api/greeting/birthday/generate',{method:'POST',headers:{'x-printo-customer-id':customerId},body:formData});
+      const response=await fetch('/api/greeting/birthday/generate',{method:'POST',headers:{'Content-Type':'application/json','x-printo-customer-id':customerId},body:JSON.stringify({to:to.value.trim(),from:from.value.trim(),message:message.value.trim(),language:currentLanguage,customerId})});
       const data=await response.json();
       if(data.paymentRequired){
         if(data.payment?.shopify)shopifyPayment.href=data.payment.shopify;
