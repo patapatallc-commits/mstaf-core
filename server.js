@@ -12751,7 +12751,7 @@ return parts.join("");
       job.instructions || "",
       job.notes || "",
       job.error_message || ""
-    ].join("\n");
+    ].join("\\n");
 
     const match = combined.match(/Customer key:\s*(g_[a-f0-9]{64})/i);
     return match ? match[1] : "";
@@ -12762,7 +12762,7 @@ return parts.join("");
       job.instructions || "",
       job.notes || "",
       job.error_message || ""
-    ].join("\n");
+    ].join("\\n");
     const match = combined.match(/Premium order ID:\s*(PPM-[A-Z0-9-]+)/i);
     return match ? match[1] : "";
   }
