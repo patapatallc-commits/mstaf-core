@@ -2229,6 +2229,42 @@ async function ensureGreetingAccessTables() {
   `);
 }
 
+async function syncPremiumDashboardProductionStatus() {
+  // Restore Premium production links on existing dashboard jobs after deploys.
+  // This also covers older orders whose dashboard_job_id was not saved.
+  await pool.query(`
+    UPDATE print_jobs AS job
+    SET instructions = COALESCE(job.instructions, '') ||
+        E'\n\n🎵 CUSTOM TRIBUTE MUSIC READY\n' || premium.tribute_music_url,
+        updated_at = NOW()
+    FROM premium_greeting_orders AS premium
+    WHERE premium.tribute_music_data IS NOT NULL
+      AND COALESCE(premium.tribute_music_url, '') <> ''
+      AND COALESCE(job.instructions, '') NOT LIKE '%🎵 CUSTOM TRIBUTE MUSIC READY%'
+      AND (
+        (COALESCE(premium.dashboard_job_id, '') <> ''
+          AND job.id::text = premium.dashboard_job_id)
+        OR COALESCE(job.instructions, '') ILIKE '%' || premium.order_id || '%'
+      )
+  `);
+
+  await pool.query(`
+    UPDATE print_jobs AS job
+    SET instructions = COALESCE(job.instructions, '') ||
+        E'\n\n🎬 FINISHED PREMIUM VIDEO\n' || premium.final_video_url,
+        updated_at = NOW()
+    FROM premium_greeting_orders AS premium
+    WHERE premium.final_video_data IS NOT NULL
+      AND COALESCE(premium.final_video_url, '') <> ''
+      AND COALESCE(job.instructions, '') NOT LIKE '%🎬 FINISHED PREMIUM VIDEO%'
+      AND (
+        (COALESCE(premium.dashboard_job_id, '') <> ''
+          AND job.id::text = premium.dashboard_job_id)
+        OR COALESCE(job.instructions, '') ILIKE '%' || premium.order_id || '%'
+      )
+  `);
+}
+
 async function ensureGreetingCustomerRow(customerKey, contactPhone = "") {
   if (!customerKey) {
     throw new Error("Greeting customer identity is required.");
@@ -14972,12 +15008,25 @@ app.post(
         [orderId, musicBuffer, music.mimetype || "audio/mpeg", safeBaseName(music.originalname || "tribute-music"), musicUrl]
       );
 
-      if (order.dashboard_job_id) {
-        await pool.query(
-          `UPDATE print_jobs SET instructions = COALESCE(instructions, '') || $2, updated_at = NOW() WHERE id::text = $1::text`,
-          [String(order.dashboard_job_id), `\n\n🎵 CUSTOM TRIBUTE MUSIC READY\n${musicUrl}`]
-        );
-      }
+      // Update the matching dashboard job even when an older order has no
+      // dashboard_job_id saved. Matching by Premium order ID keeps the worker
+      // dashboard music status reliable for existing orders.
+      await pool.query(
+        `UPDATE print_jobs
+         SET instructions = CASE
+               WHEN COALESCE(instructions, '') LIKE '%🎵 CUSTOM TRIBUTE MUSIC READY%'
+                 THEN COALESCE(instructions, '')
+               ELSE COALESCE(instructions, '') || $3
+             END,
+             updated_at = NOW()
+         WHERE (($1 <> '' AND id::text = $1)
+                OR COALESCE(instructions, '') ILIKE $2)`,
+        [
+          String(order.dashboard_job_id || ''),
+          `%${orderId}%`,
+          `\n\n🎵 CUSTOM TRIBUTE MUSIC READY\n${musicUrl}`
+        ]
+      );
 
       console.log(
         "Premium music upload completed:",
@@ -15047,7 +15096,7 @@ async function renderPremiumOrderVideo({ orderId, req, publicBaseUrl = "" }) {
             recipient_name,
             sender_name,
             personal_message,
-            story_notes,
+            tribute_notes,
             song_style,
             status,
             media_token,
@@ -15335,15 +15384,25 @@ async function renderPremiumOrderVideo({ orderId, req, publicBaseUrl = "" }) {
       ]
     );
 
-    if (order.dashboard_job_id) {
-      await pool.query(
-        `UPDATE print_jobs
-         SET instructions = COALESCE(instructions, '') || $2,
-             updated_at = NOW()
-         WHERE id::text = $1::text`,
-        [String(order.dashboard_job_id), `\n\n🎬 FINISHED PREMIUM VIDEO\n${finalVideoUrl}`]
-      );
-    }
+    // Keep the finished-video link visible on the worker dashboard. Fall back
+    // to matching the Premium order ID for orders created before dashboard_job_id
+    // was reliably saved.
+    await pool.query(
+      `UPDATE print_jobs
+       SET instructions = CASE
+             WHEN COALESCE(instructions, '') LIKE '%🎬 FINISHED PREMIUM VIDEO%'
+               THEN COALESCE(instructions, '')
+             ELSE COALESCE(instructions, '') || $3
+           END,
+           updated_at = NOW()
+       WHERE (($1 <> '' AND id::text = $1)
+              OR COALESCE(instructions, '') ILIKE $2)`,
+      [
+        String(order.dashboard_job_id || ''),
+        `%${orderId}%`,
+        `\n\n🎬 FINISHED PREMIUM VIDEO\n${finalVideoUrl}`
+      ]
+    );
 
     return {
       orderId,
@@ -15885,7 +15944,8 @@ async function generate() {
 async function startServer() {
   try {
     await ensureGreetingAccessTables();
-    console.log("Greeting access tables are ready.");
+    await syncPremiumDashboardProductionStatus();
+    console.log("Greeting access tables and Premium dashboard status are ready.");
   } catch (error) {
     console.error(
       "Greeting access table setup failed. Greeting generation will stay protected until the database is available:",
