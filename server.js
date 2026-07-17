@@ -185,7 +185,7 @@ require("dotenv").config();
 const app = express();
 
 
-app.use("/uploads", express.static(uploadsDir));
+// /uploads is served by the safe route below; do not use express.static here.
 app.use("/generated", express.static(generatedDir));
 
 app.get("/greeting-assets/birthday-v2.png", (req, res) => {
@@ -230,11 +230,17 @@ app.use(cors({
 app.options("*", cors());
 
 
-app.use("/uploads", express.static(uploadsDir));
+// /uploads is served by the safe route below; do not use express.static here.
 
 app.get("/uploads/:file", (req, res) => {
-  const filePath = path.join(uploadsDir, req.params.file);
-  res.sendFile(filePath);
+  const safeFileName = path.basename(String(req.params.file || ""));
+  const filePath = path.join(uploadsDir, safeFileName);
+
+  if (!safeFileName || !fs.existsSync(filePath)) {
+    return res.status(404).send("Uploaded file is no longer available.");
+  }
+
+  return res.sendFile(filePath);
 });
 const PORT = process.env.PORT || 10000;
 const SUPPORT_PHONE = process.env.SUPPORT_PHONE || process.env.PATAPATA_PHONE || "18622306637";
@@ -12896,8 +12902,11 @@ app.get("/worker-dashboard", requireDashboardKey, async (req, res) => {
       return;
     }
 
-    const originalLabel = input.parentElement ? input.parentElement.firstChild.textContent : "🎵 Upload Custom Music";
-    if (input.parentElement) input.parentElement.firstChild.textContent = "⏳ Uploading music...";
+    const labelNode = input.parentElement ? input.parentElement.firstChild : null;
+    const originalLabel = labelNode ? labelNode.textContent : "🎵 Upload Custom Music";
+    let uploadSucceeded = false;
+
+    if (labelNode) labelNode.textContent = "⏳ Uploading music...";
     try {
       const fd = new FormData();
       fd.append("orderId", orderId);
@@ -12908,14 +12917,65 @@ app.get("/worker-dashboard", requireDashboardKey, async (req, res) => {
       );
       const data = await response.json().catch(() => ({}));
       if (!response.ok || !data.ok) throw new Error(data.error || "Music upload failed.");
-      alert("Custom tribute music saved. You can now render the complete Premium video.");
-      loadJobs();
+
+      uploadSucceeded = true;
+      if (labelNode) labelNode.textContent = "✅ Music uploaded";
+      alert(
+        "✅ Custom tribute music uploaded successfully.\\n\\n" +
+        "Duration: " + Number(data.durationSeconds || 0).toFixed(0) + " seconds.\\n" +
+        "You may now render the complete Premium video."
+      );
+      await loadJobs();
     } catch (error) {
       alert("Premium music upload failed: " + error.message);
     } finally {
       input.value = "";
-      if (input.parentElement) input.parentElement.firstChild.textContent = originalLabel;
+      if (labelNode && !uploadSucceeded) labelNode.textContent = originalLabel;
     }
+  }
+
+  function delay(ms) {
+    return new Promise(resolve => setTimeout(resolve, ms));
+  }
+
+  async function waitForPremiumRender(orderId, button, oldText) {
+    const maxChecks = 180;
+    for (let check = 1; check <= maxChecks; check += 1) {
+      await delay(5000);
+
+      const status = await api(
+        "/api/greeting/premium/render-status?orderId=" + encodeURIComponent(orderId)
+      );
+
+      const state = String(status.renderStatus || status.status || "").toLowerCase();
+      if (button) {
+        const elapsedSeconds = check * 5;
+        button.textContent = state === "queued"
+          ? "⏳ Render queued..."
+          : "🎬 Rendering... " + elapsedSeconds + "s";
+      }
+
+      if (state === "completed") {
+        alert(
+          "✅ Premium video completed. Duration: " +
+          Number(status.totalDuration || 0).toFixed(0) +
+          " seconds."
+        );
+        if (status.finalVideoUrl) {
+          window.open(status.finalVideoUrl, "_blank", "noopener");
+        }
+        loadJobs();
+        return;
+      }
+
+      if (state === "failed") {
+        throw new Error(status.renderError || "Premium video rendering failed.");
+      }
+    }
+
+    throw new Error(
+      "Rendering is still running. Refresh the dashboard shortly and check the Premium order again."
+    );
   }
 
   async function renderPremiumOrder(orderId, button) {
@@ -12928,7 +12988,7 @@ app.get("/worker-dashboard", requireDashboardKey, async (req, res) => {
     const oldText = button ? button.textContent : "🎬 Render Complete Video";
     if (button) {
       button.disabled = true;
-      button.textContent = "⏳ Rendering video...";
+      button.textContent = "⏳ Starting render...";
     }
 
     try {
@@ -12937,9 +12997,15 @@ app.get("/worker-dashboard", requireDashboardKey, async (req, res) => {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ orderId })
       });
-      alert("Premium video completed. Duration: " + Number(data.totalDuration || 0).toFixed(0) + " seconds.");
-      if (data.finalVideoUrl) window.open(data.finalVideoUrl, "_blank", "noopener");
-      loadJobs();
+
+      if (data.status === "completed" && data.finalVideoUrl) {
+        alert("✅ Premium video is already completed.");
+        window.open(data.finalVideoUrl, "_blank", "noopener");
+        loadJobs();
+        return;
+      }
+
+      await waitForPremiumRender(orderId, button, oldText);
     } catch (error) {
       alert("Premium render failed: " + error.message);
     } finally {
@@ -14913,6 +14979,12 @@ app.post(
         );
       }
 
+      console.log(
+        "Premium music upload completed:",
+        orderId,
+        safeBaseName(music.originalname || "tribute-music"),
+        Number(probe.duration || 0).toFixed(1) + "s"
+      );
       return res.json({ ok: true, orderId, musicUrl, durationSeconds: probe.duration });
     } catch (error) {
       console.error("Premium music upload error:", error);
@@ -14923,147 +14995,352 @@ app.post(
   }
 );
 
-async function renderPremiumOrderVideo({ orderId, req }) {
-  const found = await pool.query(`SELECT * FROM premium_greeting_orders WHERE order_id = $1 LIMIT 1`, [orderId]);
+const activePremiumRenders = new Set();
+
+async function readPremiumBinaryToFile(orderId, columnName, outputPath, missingMessage) {
+  const allowedColumns = new Set([
+    "recipient_photo_data",
+    "intro_video_data",
+    "tribute_music_data"
+  ]);
+  if (!allowedColumns.has(columnName)) {
+    throw new Error("Unsupported Premium media column.");
+  }
+
+  const result = await pool.query(
+    `SELECT ${columnName} AS media_data
+     FROM premium_greeting_orders
+     WHERE order_id = $1
+     LIMIT 1`,
+    [orderId]
+  );
+  const media = result.rows[0]?.media_data;
+  if (!media || !Buffer.isBuffer(media) || media.length === 0) {
+    throw new Error(missingMessage);
+  }
+
+  await fs.promises.writeFile(outputPath, media);
+  // Release the PostgreSQL bytea reference before FFmpeg starts.
+  result.rows[0].media_data = null;
+  return media.length;
+}
+
+function premiumSegmentVideoArgs({ duration, outputPath }) {
+  return [
+    "-t", String(duration),
+    "-r", "24",
+    "-an",
+    "-c:v", "libx264",
+    "-preset", "ultrafast",
+    "-crf", "32",
+    "-threads", "1",
+    "-filter_threads", "1",
+    "-pix_fmt", "yuv420p",
+    "-movflags", "+faststart",
+    outputPath
+  ];
+}
+
+async function renderPremiumOrderVideo({ orderId, req, publicBaseUrl = "" }) {
+  const found = await pool.query(
+    `SELECT order_id,
+            recipient_name,
+            sender_name,
+            personal_message,
+            story_notes,
+            song_style,
+            status,
+            media_token,
+            dashboard_job_id,
+            recipient_photo_mime,
+            intro_video_mime,
+            tribute_music_mime,
+            tribute_music_data IS NOT NULL AS has_custom_music
+     FROM premium_greeting_orders
+     WHERE order_id = $1
+     LIMIT 1`,
+    [orderId]
+  );
   const order = found.rows[0];
   if (!order) throw new Error("Premium order was not found.");
-  if (!order.recipient_photo_data || !order.intro_video_data) {
-    throw new Error("Recipient photo or introduction video is missing.");
-  }
 
   const runId = `${Date.now()}_${crypto.randomBytes(5).toString("hex")}`;
   const photoExt = getExtFromMime(order.recipient_photo_mime) || ".jpg";
+  const musicExt = getExtFromMime(order.tribute_music_mime) || ".mp3";
   const photoPath = path.join(premiumTempDir, `${runId}_photo${photoExt}`);
   const introPath = path.join(premiumTempDir, `${runId}_intro.mp4`);
-  const musicPath = path.join(premiumTempDir, `${runId}_music`);
+  const customMusicPath = path.join(premiumTempDir, `${runId}_music${musicExt}`);
   const voicePath = path.join(premiumTempDir, `${runId}_voice.mp3`);
+  const openingPath = path.join(premiumTempDir, `${runId}_opening.mp4`);
+  const introSegmentPath = path.join(premiumTempDir, `${runId}_intro_segment.mp4`);
+  const tributePath = path.join(premiumTempDir, `${runId}_tribute.mp4`);
+  const concatListPath = path.join(premiumTempDir, `${runId}_concat.txt`);
+  const silentVideoPath = path.join(premiumTempDir, `${runId}_silent.mp4`);
   const outputPath = path.join(premiumTempDir, `${runId}_final.mp4`);
-  const cleanup = [photoPath, introPath, voicePath, outputPath];
+  const cleanup = [
+    photoPath,
+    introPath,
+    customMusicPath,
+    voicePath,
+    openingPath,
+    introSegmentPath,
+    tributePath,
+    concatListPath,
+    silentVideoPath,
+    outputPath
+  ];
 
   try {
-    fs.writeFileSync(photoPath, Buffer.from(order.recipient_photo_data));
-    fs.writeFileSync(introPath, Buffer.from(order.intro_video_data));
+    await pool.query(
+      `UPDATE premium_greeting_orders
+       SET render_status = 'rendering', render_error = '', updated_at = NOW()
+       WHERE order_id = $1`,
+      [orderId]
+    );
+
+    console.log("Premium render stage 1/7 - loading photo:", orderId);
+    await readPremiumBinaryToFile(
+      orderId,
+      "recipient_photo_data",
+      photoPath,
+      "Recipient photo is missing."
+    );
+
+    console.log("Premium render stage 2/7 - loading introduction:", orderId);
+    await readPremiumBinaryToFile(
+      orderId,
+      "intro_video_data",
+      introPath,
+      "Introduction video is missing."
+    );
 
     let selectedMusicPath = "";
-    if (order.tribute_music_data) {
-      const musicExt = getExtFromMime(order.tribute_music_mime) || ".mp3";
-      selectedMusicPath = `${musicPath}${musicExt}`;
-      cleanup.push(selectedMusicPath);
-      fs.writeFileSync(selectedMusicPath, Buffer.from(order.tribute_music_data));
+    if (order.has_custom_music) {
+      console.log("Premium render stage 3/7 - loading custom music:", orderId);
+      await readPremiumBinaryToFile(
+        orderId,
+        "tribute_music_data",
+        customMusicPath,
+        "Custom tribute music is missing."
+      );
+      selectedMusicPath = customMusicPath;
     } else {
       selectedMusicPath = findPremiumDefaultMusic();
     }
     if (!selectedMusicPath) {
-      throw new Error("No tribute music is available. Upload the custom song or add templates/premium/premium_demo_music.mp3.");
+      throw new Error(
+        "No tribute music is available. Upload the custom song or add templates/premium/premium_demo_music.mp3."
+      );
     }
 
-    await pool.query(
-      `UPDATE premium_greeting_orders SET render_status = 'rendering', render_error = '', updated_at = NOW() WHERE order_id = $1`,
-      [orderId]
-    );
-
     const introProbe = await probePremiumMedia(introPath);
-    const voiceResult = await generatePrintoPremiumVoice({ order, outputPath: voicePath });
-    const hasVoice = Boolean(voiceResult.ok && fs.existsSync(voicePath));
-    const voiceProbe = hasVoice ? await probePremiumMedia(voicePath) : { duration: 0 };
-
-    const introDuration = Math.max(1, Math.min(PREMIUM_VIDEO_MAX_SECONDS, Number(introProbe.duration || 1)));
+    const introDuration = Math.max(
+      1,
+      Math.min(PREMIUM_VIDEO_MAX_SECONDS, Number(introProbe.duration || 1))
+    );
     const openingDuration = 5;
     const tributeDuration = Math.max(28, 68 - openingDuration - introDuration);
     const totalDuration = openingDuration + introDuration + tributeDuration;
     const introEnd = openingDuration + introDuration;
-    const voiceStart = Math.min(totalDuration - Math.max(voiceProbe.duration || 0, 16) - 3, introEnd + 5);
-    const voiceEnd = voiceStart + Number(voiceProbe.duration || 0);
-    const messageLines = wrapGreetingMessage(order.personal_message || "A special tribute created with love.", 34, 3);
+
+    const voiceResult = await generatePrintoPremiumVoice({ order, outputPath: voicePath });
+    const hasVoice = Boolean(voiceResult.ok && fs.existsSync(voicePath));
+    const voiceProbe = hasVoice ? await probePremiumMedia(voicePath) : { duration: 0 };
+    const voiceDuration = Math.max(0, Number(voiceProbe.duration || 0));
+    const voiceStart = Math.max(
+      introEnd + 3,
+      Math.min(totalDuration - Math.max(voiceDuration, 12) - 3, introEnd + 6)
+    );
+    const voiceEnd = Math.min(totalDuration, voiceStart + voiceDuration);
+
+    const messageLines = wrapGreetingMessage(
+      order.personal_message || "A special tribute created with love.",
+      32,
+      3
+    );
     const fontFile = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf";
     const fontOption = fs.existsSync(fontFile) ? `fontfile=${fontFile}:` : "";
     const q = quoteDrawtextText;
 
-    const videoFilter = [
-      `[1:v]scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,format=yuv420p,split=2[p0][p2]`,
-      `[p0]trim=duration=${openingDuration},setpts=PTS-STARTPTS,drawbox=x=45:y=90:w=990:h=330:color=#06184f@0.82:t=fill,drawtext=${fontOption}text=${q("PRINTO PREMIUM TRIBUTE")}:x=(w-text_w)/2:y=150:fontsize=48:fontcolor=#ffd35a:borderw=2:bordercolor=#071b61,drawtext=${fontOption}text=${q(order.recipient_name)}:x=(w-text_w)/2:y=245:fontsize=86:fontcolor=white:borderw=3:bordercolor=#071b61,drawtext=${fontOption}text=${q(`From ${order.sender_name}`)}:x=(w-text_w)/2:y=355:fontsize=40:fontcolor=#ffd35a:borderw=2:bordercolor=#071b61[s0]`,
-      `color=c=#06184f:s=1080x1920:d=${introDuration}[ibg]`,
-      `[0:v]scale=940:1180:force_original_aspect_ratio=decrease,pad=940:1180:(ow-iw)/2:(oh-ih)/2:color=#000000,setsar=1,trim=duration=${introDuration},setpts=PTS-STARTPTS[iv]`,
-      `[ibg][iv]overlay=70:330,drawbox=x=50:y=120:w=980:h=150:color=#123c91@0.94:t=fill,drawtext=${fontOption}text=${q(`A personal message from ${order.sender_name}`)}:x=(w-text_w)/2:y=165:fontsize=42:fontcolor=white:borderw=2:bordercolor=#06184f,drawtext=${fontOption}text=${q("Original tribute music continues underneath")}:x=(w-text_w)/2:y=1580:fontsize=30:fontcolor=#ffd35a[s1]`,
-      `[p2]trim=duration=${tributeDuration},setpts=PTS-STARTPTS,drawbox=x=40:y=80:w=1000:h=400:color=#06184f@0.78:t=fill,drawtext=${fontOption}text=${q(`Celebrating ${order.recipient_name}`)}:x=(w-text_w)/2:y=130:fontsize=64:fontcolor=#ffd35a:borderw=2:bordercolor=#06184f,drawtext=${fontOption}text=${q(messageLines[0] || "")}:x=(w-text_w)/2:y=255:fontsize=38:fontcolor=white:borderw=2:bordercolor=#06184f,drawtext=${fontOption}text=${q(messageLines[1] || "")}:x=(w-text_w)/2:y=315:fontsize=38:fontcolor=white:borderw=2:bordercolor=#06184f,drawtext=${fontOption}text=${q(messageLines[2] || "")}:x=(w-text_w)/2:y=375:fontsize=38:fontcolor=white:borderw=2:bordercolor=#06184f,drawbox=x=60:y=1680:w=960:h=150:color=#06184f@0.86:t=fill,drawtext=${fontOption}text=${q("Created with love by Printo Studio")}:x=(w-text_w)/2:y=1725:fontsize=40:fontcolor=#ffd35a[s2]`,
-      `[s0][s1][s2]concat=n=3:v=1:a=0[vbase]`
-    ];
+    console.log("Premium render stage 4/7 - creating low-memory video segments:", orderId);
 
-    const printoPath = path.join(__dirname, "templates", "premium", "original_printo.png");
-    const inputArgs = [
+    const openingFilter = [
+      "scale=540:960:force_original_aspect_ratio=increase",
+      "crop=540:960",
+      "format=yuv420p",
+      "drawbox=x=20:y=45:w=500:h=220:color=#06184f@0.82:t=fill",
+      `drawtext=${fontOption}text=${q("PRINTO PREMIUM TRIBUTE")}:x=(w-text_w)/2:y=75:fontsize=25:fontcolor=#ffd35a:borderw=2:bordercolor=#071b61`,
+      `drawtext=${fontOption}text=${q(order.recipient_name || "Special Recipient")}:x=(w-text_w)/2:y=135:fontsize=43:fontcolor=white:borderw=2:bordercolor=#071b61`,
+      `drawtext=${fontOption}text=${q(`From ${order.sender_name || "With love"}`)}:x=(w-text_w)/2:y=205:fontsize=23:fontcolor=#ffd35a:borderw=2:bordercolor=#071b61`
+    ].join(",");
+
+    await execFilePromise("ffmpeg", [
+      "-y", "-nostdin", "-loglevel", "error",
+      "-loop", "1", "-i", photoPath,
+      "-vf", openingFilter,
+      ...premiumSegmentVideoArgs({ duration: openingDuration, outputPath: openingPath })
+    ], { timeout: 300000, maxBuffer: 8 * 1024 * 1024 });
+
+    const introFilter = [
+      "scale=500:760:force_original_aspect_ratio=decrease",
+      "pad=540:960:(ow-iw)/2:(oh-ih)/2:color=#06184f",
+      "setsar=1",
+      "format=yuv420p",
+      "drawbox=x=18:y=42:w=504:h=92:color=#123c91@0.94:t=fill",
+      `drawtext=${fontOption}text=${q(`A personal message from ${order.sender_name || "someone special"}`)}:x=(w-text_w)/2:y=72:fontsize=22:fontcolor=white:borderw=2:bordercolor=#06184f`,
+      "drawbox=x=18:y=856:w=504:h=62:color=#06184f@0.86:t=fill",
+      `drawtext=${fontOption}text=${q("The tribute music continues underneath")}:x=(w-text_w)/2:y=878:fontsize=17:fontcolor=#ffd35a`
+    ].join(",");
+
+    await execFilePromise("ffmpeg", [
       "-y", "-nostdin", "-loglevel", "error",
       "-i", introPath,
-      "-loop", "1", "-i", photoPath,
-      "-stream_loop", "-1", "-i", selectedMusicPath,
-      ...(hasVoice ? ["-i", voicePath] : [])
-    ];
+      "-vf", introFilter,
+      ...premiumSegmentVideoArgs({ duration: introDuration, outputPath: introSegmentPath })
+    ], { timeout: 300000, maxBuffer: 8 * 1024 * 1024 });
 
-    let finalVideoLabel = "vbase";
+    const printoPath = path.join(__dirname, "templates", "premium", "original_printo.png");
+    const tributeBase = [
+      "scale=540:960:force_original_aspect_ratio=increase",
+      "crop=540:960",
+      "format=yuv420p",
+      "drawbox=x=18:y=42:w=504:h=245:color=#06184f@0.78:t=fill",
+      `drawtext=${fontOption}text=${q(`Celebrating ${order.recipient_name || "You"}`)}:x=(w-text_w)/2:y=72:fontsize=33:fontcolor=#ffd35a:borderw=2:bordercolor=#06184f`,
+      `drawtext=${fontOption}text=${q(messageLines[0] || "")}:x=(w-text_w)/2:y=145:fontsize=20:fontcolor=white:borderw=2:bordercolor=#06184f`,
+      `drawtext=${fontOption}text=${q(messageLines[1] || "")}:x=(w-text_w)/2:y=180:fontsize=20:fontcolor=white:borderw=2:bordercolor=#06184f`,
+      `drawtext=${fontOption}text=${q(messageLines[2] || "")}:x=(w-text_w)/2:y=215:fontsize=20:fontcolor=white:borderw=2:bordercolor=#06184f`,
+      "drawbox=x=25:y=858:w=490:h=67:color=#06184f@0.86:t=fill",
+      `drawtext=${fontOption}text=${q("Created with love by Printo Studio")}:x=(w-text_w)/2:y=881:fontsize=20:fontcolor=#ffd35a`
+    ].join(",");
+
     if (fs.existsSync(printoPath)) {
-      const printoIndex = hasVoice ? 4 : 3;
-      inputArgs.push("-loop", "1", "-i", printoPath);
-      videoFilter.push(`[${printoIndex}:v]scale=320:-1[printo]`);
-      videoFilter.push(`[vbase][printo]overlay=15:H-h-35:enable='gte(t,${introEnd})'[vout]`);
-      finalVideoLabel = "vout";
+      await execFilePromise("ffmpeg", [
+        "-y", "-nostdin", "-loglevel", "error",
+        "-loop", "1", "-i", photoPath,
+        "-loop", "1", "-i", printoPath,
+        "-filter_complex",
+        `[0:v]${tributeBase}[base];[1:v]scale=150:-1,format=rgba[printo];[base][printo]overlay=8:H-h-18[v]`,
+        "-map", "[v]",
+        ...premiumSegmentVideoArgs({ duration: tributeDuration, outputPath: tributePath })
+      ], { timeout: 300000, maxBuffer: 8 * 1024 * 1024 });
+    } else {
+      await execFilePromise("ffmpeg", [
+        "-y", "-nostdin", "-loglevel", "error",
+        "-loop", "1", "-i", photoPath,
+        "-vf", tributeBase,
+        ...premiumSegmentVideoArgs({ duration: tributeDuration, outputPath: tributePath })
+      ], { timeout: 300000, maxBuffer: 8 * 1024 * 1024 });
     }
 
-    const audioParts = [
-      `[2:a]atrim=0:${totalDuration},asetpts=PTS-STARTPTS,volume='if(between(t,${openingDuration},${introEnd}),0.18,if(between(t,${voiceStart},${voiceEnd}),0.18,0.72))':eval=frame,afade=t=in:st=0:d=1.2,afade=t=out:st=${Math.max(0, totalDuration - 4)}:d=4[music]`
+    const escapeConcatPath = (value) => String(value).replace(/'/g, "'\\''");
+    await fs.promises.writeFile(
+      concatListPath,
+      [openingPath, introSegmentPath, tributePath]
+        .map(file => `file '${escapeConcatPath(file)}'`)
+        .join("\n") + "\n",
+      "utf8"
+    );
+
+    console.log("Premium render stage 5/7 - joining segments:", orderId);
+    await execFilePromise("ffmpeg", [
+      "-y", "-nostdin", "-loglevel", "error",
+      "-f", "concat", "-safe", "0", "-i", concatListPath,
+      "-c", "copy",
+      "-movflags", "+faststart",
+      silentVideoPath
+    ], { timeout: 300000, maxBuffer: 8 * 1024 * 1024 });
+
+    console.log("Premium render stage 6/7 - mixing continuous music and speech:", orderId);
+    const audioInputArgs = [
+      "-i", silentVideoPath,
+      "-stream_loop", "-1", "-i", selectedMusicPath
+    ];
+    let introAudioIndex = -1;
+    let voiceAudioIndex = -1;
+    if (introProbe.hasAudio) {
+      introAudioIndex = 2;
+      audioInputArgs.push("-i", introPath);
+    }
+    if (hasVoice) {
+      voiceAudioIndex = introProbe.hasAudio ? 3 : 2;
+      audioInputArgs.push("-i", voicePath);
+    }
+
+    const audioFilters = [
+      `[1:a]atrim=0:${totalDuration},asetpts=PTS-STARTPTS,volume='if(between(t,${openingDuration},${introEnd}),0.16,if(between(t,${voiceStart},${voiceEnd}),0.16,0.70))':eval=frame,afade=t=in:st=0:d=1,afade=t=out:st=${Math.max(0, totalDuration - 4)}:d=4[music]`
     ];
     const mixLabels = ["[music]"];
 
-    if (introProbe.hasAudio) {
-      audioParts.push(`[0:a]atrim=0:${introDuration},asetpts=PTS-STARTPTS,adelay=${openingDuration * 1000}|${openingDuration * 1000},volume=1.25[introa]`);
+    if (introAudioIndex >= 0) {
+      audioFilters.push(
+        `[${introAudioIndex}:a]atrim=0:${introDuration},asetpts=PTS-STARTPTS,adelay=${openingDuration * 1000}|${openingDuration * 1000},volume=1.20[introa]`
+      );
       mixLabels.push("[introa]");
     }
-    if (hasVoice) {
-      audioParts.push(`[3:a]adelay=${Math.round(voiceStart * 1000)}|${Math.round(voiceStart * 1000)},volume=1.15[voice]`);
+    if (voiceAudioIndex >= 0) {
+      audioFilters.push(
+        `[${voiceAudioIndex}:a]atrim=0:${Math.max(voiceDuration, 0.1)},asetpts=PTS-STARTPTS,adelay=${Math.round(voiceStart * 1000)}|${Math.round(voiceStart * 1000)},volume=1.10[voice]`
+      );
       mixLabels.push("[voice]");
     }
-    audioParts.push(`${mixLabels.join("")}amix=inputs=${mixLabels.length}:duration=longest:dropout_transition=2,loudnorm=I=-15:TP=-1.5:LRA=10,atrim=0:${totalDuration}[aout]`);
+    audioFilters.push(
+      `${mixLabels.join("")}amix=inputs=${mixLabels.length}:duration=longest:dropout_transition=2,alimiter=limit=0.95,atrim=0:${totalDuration}[aout]`
+    );
 
     await execFilePromise("ffmpeg", [
-      ...inputArgs,
-      "-t", String(totalDuration),
-      "-filter_complex", `${videoFilter.join(";")};${audioParts.join(";")}`,
-      "-map", `[${finalVideoLabel}]`,
+      "-y", "-nostdin", "-loglevel", "error",
+      ...audioInputArgs,
+      "-filter_complex", audioFilters.join(";"),
+      "-map", "0:v:0",
       "-map", "[aout]",
-      "-c:v", "libx264",
-      "-preset", "veryfast",
-      "-crf", "27",
-      "-pix_fmt", "yuv420p",
+      "-t", String(totalDuration),
+      "-c:v", "copy",
       "-c:a", "aac",
-      "-b:a", "160k",
+      "-b:a", "112k",
+      "-threads", "1",
+      "-filter_complex_threads", "1",
       "-movflags", "+faststart",
       outputPath
-    ], { timeout: 600000, maxBuffer: 16 * 1024 * 1024 });
+    ], { timeout: 600000, maxBuffer: 8 * 1024 * 1024 });
 
-    const finalBytes = fs.readFileSync(outputPath);
-    if (finalBytes.length > PREMIUM_FINAL_VIDEO_MAX_BYTES) {
+    const outputStat = await fs.promises.stat(outputPath);
+    if (outputStat.size > PREMIUM_FINAL_VIDEO_MAX_BYTES) {
       throw new Error("Finished Premium video is larger than the temporary launch storage limit.");
     }
 
-    const finalVideoUrl = buildPremiumMediaUrl(req, orderId, order.media_token, "final");
+    console.log("Premium render stage 7/7 - saving finished video:", orderId);
+    const finalBytes = await fs.promises.readFile(outputPath);
+    const finalVideoUrl = publicBaseUrl
+      ? `${String(publicBaseUrl).replace(/\/$/, "")}/premium-media/${encodeURIComponent(orderId)}/final?token=${encodeURIComponent(order.media_token)}`
+      : buildPremiumMediaUrl(req, orderId, order.media_token, "final");
+
     await pool.query(
-      `
-      UPDATE premium_greeting_orders
-      SET final_video_data = $2,
-          final_video_mime = 'video/mp4',
-          final_video_name = $3,
-          final_video_url = $4,
-          voice_script = $5,
-          render_status = 'completed',
-          render_error = '',
-          status = CASE WHEN status = 'paid' THEN 'completed' ELSE status END,
-          updated_at = NOW()
-      WHERE order_id = $1
-      `,
-      [orderId, finalBytes, `Printo-Premium-${orderId}.mp4`, finalVideoUrl, voiceResult.text || buildPremiumVoiceScript(order)]
+      `UPDATE premium_greeting_orders
+       SET final_video_data = $2,
+           final_video_mime = 'video/mp4',
+           final_video_name = $3,
+           final_video_url = $4,
+           voice_script = $5,
+           render_status = 'completed',
+           render_error = '',
+           status = CASE WHEN status = 'paid' THEN 'completed' ELSE status END,
+           updated_at = NOW()
+       WHERE order_id = $1`,
+      [
+        orderId,
+        finalBytes,
+        `Printo-Premium-${orderId}.mp4`,
+        finalVideoUrl,
+        voiceResult.text || buildPremiumVoiceScript(order)
+      ]
     );
 
     if (order.dashboard_job_id) {
       await pool.query(
-        `UPDATE print_jobs SET instructions = COALESCE(instructions, '') || $2, updated_at = NOW() WHERE id::text = $1::text`,
+        `UPDATE print_jobs
+         SET instructions = COALESCE(instructions, '') || $2,
+             updated_at = NOW()
+         WHERE id::text = $1::text`,
         [String(order.dashboard_job_id), `\n\n🎬 FINISHED PREMIUM VIDEO\n${finalVideoUrl}`]
       );
     }
@@ -15073,11 +15350,13 @@ async function renderPremiumOrderVideo({ orderId, req }) {
       finalVideoUrl,
       totalDuration,
       hasVoice,
-      usedCustomMusic: Boolean(order.tribute_music_data)
+      usedCustomMusic: Boolean(order.has_custom_music)
     };
   } catch (error) {
     await pool.query(
-      `UPDATE premium_greeting_orders SET render_status = 'failed', render_error = $2, updated_at = NOW() WHERE order_id = $1`,
+      `UPDATE premium_greeting_orders
+       SET render_status = 'failed', render_error = $2, updated_at = NOW()
+       WHERE order_id = $1`,
       [orderId, String(error.message || "Render failed").slice(0, 1000)]
     ).catch(() => {});
     throw error;
@@ -15089,12 +15368,130 @@ async function renderPremiumOrderVideo({ orderId, req }) {
 app.post("/api/greeting/premium/render", requireDashboardKey, express.json(), async (req, res) => {
   try {
     const orderId = String(req.body?.orderId || req.body?.order_id || "").trim();
-    if (!orderId) return res.status(400).json({ ok: false, error: "Premium order ID is required." });
-    const result = await renderPremiumOrderVideo({ orderId, req });
-    return res.json({ ok: true, ...result });
+    if (!orderId) {
+      return res.status(400).json({ ok: false, error: "Premium order ID is required." });
+    }
+
+    const found = await pool.query(
+      `SELECT order_id, render_status, render_error, final_video_url
+       FROM premium_greeting_orders
+       WHERE order_id = $1
+       LIMIT 1`,
+      [orderId]
+    );
+    const order = found.rows[0];
+    if (!order) {
+      return res.status(404).json({ ok: false, error: "Premium order was not found." });
+    }
+
+    if (String(order.render_status || "").toLowerCase() === "completed" && order.final_video_url) {
+      return res.json({
+        ok: true,
+        accepted: false,
+        status: "completed",
+        finalVideoUrl: order.final_video_url
+      });
+    }
+
+    if (activePremiumRenders.has(orderId)) {
+      return res.status(202).json({
+        ok: true,
+        accepted: true,
+        status: "rendering",
+        message: "Premium rendering is already in progress."
+      });
+    }
+
+    const publicBaseUrl = getPublicBaseUrl(req);
+    await pool.query(
+      `UPDATE premium_greeting_orders
+       SET render_status = 'queued', render_error = '', updated_at = NOW()
+       WHERE order_id = $1`,
+      [orderId]
+    );
+
+    // Start FFmpeg only after the 202 response has fully left the server.
+    res.once("finish", () => {
+      setTimeout(async () => {
+        if (activePremiumRenders.has(orderId)) return;
+        activePremiumRenders.add(orderId);
+        console.log("Premium low-memory background render started:", orderId);
+        try {
+          const result = await renderPremiumOrderVideo({
+            orderId,
+            req: null,
+            publicBaseUrl
+          });
+          console.log(
+            "Premium low-memory background render completed:",
+            orderId,
+            result.finalVideoUrl || ""
+          );
+        } catch (error) {
+          console.error(
+            "Premium low-memory background render failed:",
+            orderId,
+            error?.stderr || error?.message || error
+          );
+        } finally {
+          activePremiumRenders.delete(orderId);
+        }
+      }, 750);
+    });
+
+    console.log("Premium low-memory render queued:", orderId);
+    return res.status(202).json({
+      ok: true,
+      accepted: true,
+      status: "queued",
+      message: "Premium rendering was queued successfully."
+    });
   } catch (error) {
-    console.error("Premium complete video render error:", error);
-    return res.status(500).json({ ok: false, error: error.message || "Premium video render failed." });
+    console.error("Premium render start error:", error);
+    return res.status(500).json({
+      ok: false,
+      error: error.message || "Premium video rendering could not start."
+    });
+  }
+});
+
+app.get("/api/greeting/premium/render-status", requireDashboardKey, async (req, res) => {
+  try {
+    const orderId = String(req.query.orderId || req.query.order_id || "").trim();
+    if (!orderId) {
+      return res.status(400).json({ ok: false, error: "Premium order ID is required." });
+    }
+
+    const found = await pool.query(
+      `SELECT order_id,
+              render_status,
+              render_error,
+              final_video_url,
+              updated_at
+       FROM premium_greeting_orders
+       WHERE order_id = $1
+       LIMIT 1`,
+      [orderId]
+    );
+    const order = found.rows[0];
+    if (!order) {
+      return res.status(404).json({ ok: false, error: "Premium order was not found." });
+    }
+
+    return res.json({
+      ok: true,
+      orderId,
+      renderStatus: String(order.render_status || "not_started").toLowerCase(),
+      renderError: order.render_error || "",
+      finalVideoUrl: order.final_video_url || "",
+      updatedAt: order.updated_at || null
+    });
+  } catch (error) {
+    console.error("Premium render status error:", error);
+    return res.status(500).json({
+      ok: false,
+      error: error.message || "Could not read Premium render status."
+    });
   }
 });
 
