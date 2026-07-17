@@ -6,7 +6,11 @@ function getExtFromMime(mimeType = "") {
     "image/webp": ".webp",
     "video/mp4": ".mp4",
     "video/quicktime": ".mov",
+    "video/webm": ".webm",
     "audio/mpeg": ".mp3",
+    "audio/wav": ".wav",
+    "audio/x-wav": ".wav",
+    "audio/mp4": ".m4a",
     "audio/mp3": ".mp3",
     "audio/ogg": ".ogg",
     "audio/opus": ".opus",
@@ -111,16 +115,33 @@ const storage = multer.diskStorage({
 
 const upload = multer({ storage });
 
-// Premium tribute media is kept in memory only long enough to save it in PostgreSQL.
-// This avoids Render's temporary /uploads disk, which is cleared by redeploys/restarts.
-// Keep introduction videos short so database storage remains practical during launch.
+// Premium tribute uploads use Render's local disk only as a temporary work area.
+// The original introduction video is compressed to a short 720p MP4, then the
+// compressed bytes are stored permanently in PostgreSQL. Temporary files are deleted.
 const PREMIUM_PHOTO_MAX_BYTES = 10 * 1024 * 1024;
-const PREMIUM_VIDEO_MAX_BYTES = 40 * 1024 * 1024;
+const PREMIUM_VIDEO_UPLOAD_MAX_BYTES = 100 * 1024 * 1024;
+const PREMIUM_VIDEO_STORED_MAX_BYTES = 40 * 1024 * 1024;
+const PREMIUM_VIDEO_MAX_SECONDS = 60;
+const PREMIUM_MUSIC_MAX_BYTES = 30 * 1024 * 1024;
+const PREMIUM_FINAL_VIDEO_MAX_BYTES = 70 * 1024 * 1024;
+
+const premiumTempDir = path.join(uploadsDir, "premium-temp");
+if (!fs.existsSync(premiumTempDir)) {
+  fs.mkdirSync(premiumTempDir, { recursive: true });
+}
+
+const premiumTempStorage = multer.diskStorage({
+  destination: (_req, _file, cb) => cb(null, premiumTempDir),
+  filename: (_req, file, cb) => {
+    const safe = safeBaseName(file.originalname || "premium-upload").slice(-120);
+    cb(null, `${Date.now()}_${crypto.randomBytes(6).toString("hex")}_${safe}`);
+  }
+});
 
 const premiumUpload = multer({
-  storage: multer.memoryStorage(),
+  storage: premiumTempStorage,
   limits: {
-    fileSize: PREMIUM_VIDEO_MAX_BYTES,
+    fileSize: PREMIUM_VIDEO_UPLOAD_MAX_BYTES,
     files: 2,
     fields: 20
   },
@@ -140,6 +161,18 @@ const premiumUpload = multer({
       return cb(new Error("Unexpected Premium upload field."));
     }
 
+    return cb(null, true);
+  }
+});
+
+const premiumMusicUpload = multer({
+  storage: premiumTempStorage,
+  limits: { fileSize: PREMIUM_MUSIC_MAX_BYTES, files: 1, fields: 5 },
+  fileFilter: (_req, file, cb) => {
+    const mime = String(file.mimetype || "").toLowerCase();
+    if (!mime.startsWith("audio/")) {
+      return cb(new Error("The tribute music must be an audio file."));
+    }
     return cb(null, true);
   }
 });
@@ -2124,6 +2157,20 @@ async function ensureGreetingAccessTables() {
       intro_video_data BYTEA,
       intro_video_mime TEXT NOT NULL DEFAULT '',
       intro_video_name TEXT NOT NULL DEFAULT '',
+      intro_video_duration_seconds NUMERIC NOT NULL DEFAULT 0,
+      intro_video_original_bytes BIGINT NOT NULL DEFAULT 0,
+      intro_video_stored_bytes BIGINT NOT NULL DEFAULT 0,
+      tribute_music_data BYTEA,
+      tribute_music_mime TEXT NOT NULL DEFAULT '',
+      tribute_music_name TEXT NOT NULL DEFAULT '',
+      tribute_music_url TEXT NOT NULL DEFAULT '',
+      voice_script TEXT NOT NULL DEFAULT '',
+      final_video_data BYTEA,
+      final_video_mime TEXT NOT NULL DEFAULT '',
+      final_video_name TEXT NOT NULL DEFAULT '',
+      final_video_url TEXT NOT NULL DEFAULT '',
+      render_status TEXT NOT NULL DEFAULT 'not_started',
+      render_error TEXT NOT NULL DEFAULT '',
       media_token TEXT NOT NULL DEFAULT '',
       status TEXT NOT NULL DEFAULT 'payment_required',
       payment_provider TEXT NOT NULL DEFAULT '',
@@ -2143,6 +2190,20 @@ async function ensureGreetingAccessTables() {
   await pool.query(`ALTER TABLE premium_greeting_orders ADD COLUMN IF NOT EXISTS intro_video_data BYTEA`);
   await pool.query(`ALTER TABLE premium_greeting_orders ADD COLUMN IF NOT EXISTS intro_video_mime TEXT NOT NULL DEFAULT ''`);
   await pool.query(`ALTER TABLE premium_greeting_orders ADD COLUMN IF NOT EXISTS intro_video_name TEXT NOT NULL DEFAULT ''`);
+  await pool.query(`ALTER TABLE premium_greeting_orders ADD COLUMN IF NOT EXISTS intro_video_duration_seconds NUMERIC NOT NULL DEFAULT 0`);
+  await pool.query(`ALTER TABLE premium_greeting_orders ADD COLUMN IF NOT EXISTS intro_video_original_bytes BIGINT NOT NULL DEFAULT 0`);
+  await pool.query(`ALTER TABLE premium_greeting_orders ADD COLUMN IF NOT EXISTS intro_video_stored_bytes BIGINT NOT NULL DEFAULT 0`);
+  await pool.query(`ALTER TABLE premium_greeting_orders ADD COLUMN IF NOT EXISTS tribute_music_data BYTEA`);
+  await pool.query(`ALTER TABLE premium_greeting_orders ADD COLUMN IF NOT EXISTS tribute_music_mime TEXT NOT NULL DEFAULT ''`);
+  await pool.query(`ALTER TABLE premium_greeting_orders ADD COLUMN IF NOT EXISTS tribute_music_name TEXT NOT NULL DEFAULT ''`);
+  await pool.query(`ALTER TABLE premium_greeting_orders ADD COLUMN IF NOT EXISTS tribute_music_url TEXT NOT NULL DEFAULT ''`);
+  await pool.query(`ALTER TABLE premium_greeting_orders ADD COLUMN IF NOT EXISTS voice_script TEXT NOT NULL DEFAULT ''`);
+  await pool.query(`ALTER TABLE premium_greeting_orders ADD COLUMN IF NOT EXISTS final_video_data BYTEA`);
+  await pool.query(`ALTER TABLE premium_greeting_orders ADD COLUMN IF NOT EXISTS final_video_mime TEXT NOT NULL DEFAULT ''`);
+  await pool.query(`ALTER TABLE premium_greeting_orders ADD COLUMN IF NOT EXISTS final_video_name TEXT NOT NULL DEFAULT ''`);
+  await pool.query(`ALTER TABLE premium_greeting_orders ADD COLUMN IF NOT EXISTS final_video_url TEXT NOT NULL DEFAULT ''`);
+  await pool.query(`ALTER TABLE premium_greeting_orders ADD COLUMN IF NOT EXISTS render_status TEXT NOT NULL DEFAULT 'not_started'`);
+  await pool.query(`ALTER TABLE premium_greeting_orders ADD COLUMN IF NOT EXISTS render_error TEXT NOT NULL DEFAULT ''`);
   await pool.query(`ALTER TABLE premium_greeting_orders ADD COLUMN IF NOT EXISTS media_token TEXT NOT NULL DEFAULT ''`);
 
   await pool.query(`
@@ -2606,7 +2667,10 @@ function getPublicBaseUrl(req) {
 }
 
 function buildPremiumMediaUrl(req, orderId, mediaToken, kind) {
-  const safeKind = kind === "video" ? "video" : "photo";
+  const allowedKinds = new Set(["photo", "video", "music", "final"]);
+  const safeKind = allowedKinds.has(String(kind || "").toLowerCase())
+    ? String(kind).toLowerCase()
+    : "photo";
   return `${getPublicBaseUrl(req)}/premium-media/${encodeURIComponent(orderId)}/${safeKind}?token=${encodeURIComponent(mediaToken)}`;
 }
 
@@ -2615,7 +2679,12 @@ function sendPremiumMediaBuffer(req, res, media) {
   if (!data.length) return res.status(404).send("Premium media not found.");
 
   const mime = String(media.mime || "application/octet-stream");
-  const fileName = safeBaseName(media.name || (mime.startsWith("video/") ? "introduction-video" : "recipient-photo"));
+  const defaultName = mime.startsWith("video/")
+    ? "premium-video.mp4"
+    : mime.startsWith("audio/")
+      ? "tribute-music.mp3"
+      : "recipient-photo.jpg";
+  const fileName = safeBaseName(media.name || defaultName);
 
   res.setHeader("Content-Type", mime);
   res.setHeader("Content-Disposition", `inline; filename="${fileName}"`);
@@ -2654,6 +2723,161 @@ function sendPremiumMediaBuffer(req, res, media) {
   return res.end(data);
 }
 
+function safeUnlink(filePath) {
+  try {
+    if (filePath && fs.existsSync(filePath)) fs.unlinkSync(filePath);
+  } catch (error) {
+    console.error("Temporary Premium file cleanup failed:", error.message);
+  }
+}
+
+function execFilePromise(command, args, options = {}) {
+  return new Promise((resolve, reject) => {
+    execFile(command, args, {
+      timeout: options.timeout || 180000,
+      maxBuffer: options.maxBuffer || 8 * 1024 * 1024,
+      ...options
+    }, (error, stdout, stderr) => {
+      if (error) {
+        error.stdout = stdout;
+        error.stderr = stderr;
+        return reject(error);
+      }
+      return resolve({ stdout, stderr });
+    });
+  });
+}
+
+async function probePremiumMedia(filePath) {
+  const { stdout } = await execFilePromise("ffprobe", [
+    "-v", "error",
+    "-show_entries", "format=duration,size:stream=codec_type",
+    "-of", "json",
+    filePath
+  ], { timeout: 30000, maxBuffer: 2 * 1024 * 1024 });
+
+  const parsed = JSON.parse(stdout || "{}");
+  const streams = Array.isArray(parsed.streams) ? parsed.streams : [];
+  return {
+    duration: Number(parsed?.format?.duration || 0),
+    size: Number(parsed?.format?.size || 0),
+    hasAudio: streams.some((stream) => stream.codec_type === "audio"),
+    hasVideo: streams.some((stream) => stream.codec_type === "video")
+  };
+}
+
+async function compressPremiumIntroductionVideo(inputPath, outputPath) {
+  const source = await probePremiumMedia(inputPath);
+  if (!source.hasVideo) throw new Error("The introduction file does not contain a valid video stream.");
+  if (!Number.isFinite(source.duration) || source.duration <= 0) {
+    throw new Error("The introduction video duration could not be read.");
+  }
+  if (source.duration > PREMIUM_VIDEO_MAX_SECONDS + 0.25) {
+    throw new Error(`Introduction video must be ${PREMIUM_VIDEO_MAX_SECONDS} seconds or shorter.`);
+  }
+
+  const common = [
+    "-y", "-nostdin", "-loglevel", "error",
+    "-i", inputPath,
+    "-t", String(Math.min(source.duration, PREMIUM_VIDEO_MAX_SECONDS)),
+    "-vf", "scale=1280:720:force_original_aspect_ratio=decrease",
+    "-c:v", "libx264",
+    "-preset", "veryfast",
+    "-pix_fmt", "yuv420p",
+    "-c:a", "aac",
+    "-b:a", "96k",
+    "-ar", "44100",
+    "-ac", "2",
+    "-movflags", "+faststart"
+  ];
+
+  await execFilePromise("ffmpeg", [...common, "-crf", "27", outputPath], {
+    timeout: 240000,
+    maxBuffer: 8 * 1024 * 1024
+  });
+
+  let outputSize = fs.statSync(outputPath).size;
+  if (outputSize > PREMIUM_VIDEO_STORED_MAX_BYTES) {
+    const secondPass = `${outputPath}.smaller.mp4`;
+    await execFilePromise("ffmpeg", [...common, "-crf", "31", secondPass], {
+      timeout: 240000,
+      maxBuffer: 8 * 1024 * 1024
+    });
+    safeUnlink(outputPath);
+    fs.renameSync(secondPass, outputPath);
+    outputSize = fs.statSync(outputPath).size;
+  }
+
+  if (outputSize > PREMIUM_VIDEO_STORED_MAX_BYTES) {
+    throw new Error("The compressed introduction video is still too large. Please upload a shorter video.");
+  }
+
+  return {
+    duration: source.duration,
+    originalBytes: source.size || fs.statSync(inputPath).size,
+    storedBytes: outputSize,
+    mime: "video/mp4",
+    name: "introduction-video.mp4"
+  };
+}
+
+function buildPremiumVoiceScript(order = {}) {
+  const recipient = String(order.recipient_name || "the recipient").trim();
+  const sender = String(order.sender_name || "someone special").trim();
+  const message = String(order.personal_message || "Wishing you happiness, good health, and a beautiful celebration.").trim();
+  return `Hello ${recipient}. Printo Studio has created this special personal tribute for you. ${message} With love from ${sender}.`;
+}
+
+async function generatePrintoPremiumVoice({ order, outputPath }) {
+  const apiKey = process.env.ELEVENLABS_API_KEY;
+  const voiceId = process.env.ELEVENLABS_VOICE_ID;
+  const text = buildPremiumVoiceScript(order);
+
+  if (!apiKey || !voiceId) {
+    return { ok: false, reason: "missing_elevenlabs_config", text };
+  }
+
+  try {
+    const response = await axios.post(
+      `https://api.elevenlabs.io/v1/text-to-speech/${encodeURIComponent(voiceId)}`,
+      {
+        text,
+        model_id: process.env.ELEVENLABS_MODEL_ID || "eleven_multilingual_v2",
+        voice_settings: {
+          stability: Number(process.env.ELEVENLABS_STABILITY || 0.5),
+          similarity_boost: Number(process.env.ELEVENLABS_SIMILARITY_BOOST || 0.75),
+          style: Number(process.env.ELEVENLABS_STYLE || 0.2),
+          use_speaker_boost: true
+        }
+      },
+      {
+        responseType: "arraybuffer",
+        timeout: 60000,
+        headers: {
+          "xi-api-key": apiKey,
+          "Content-Type": "application/json",
+          Accept: "audio/mpeg"
+        }
+      }
+    );
+    fs.writeFileSync(outputPath, Buffer.from(response.data));
+    return { ok: true, outputPath, text };
+  } catch (error) {
+    console.error("Premium voice generation failed:", error.response?.data || error.message);
+    return { ok: false, reason: "voice_generation_failed", error: error.message, text };
+  }
+}
+
+function findPremiumDefaultMusic() {
+  const candidates = [
+    path.join(__dirname, "templates", "premium", "premium_demo_music.mp3"),
+    path.join(__dirname, "templates", "premium", "premium_demo_music.m4a"),
+    path.join(__dirname, "templates", "birthday", "birthday_audio.m4a"),
+    path.join(__dirname, "templates", "birthday", "music.mp3")
+  ];
+  return candidates.find((candidate) => fs.existsSync(candidate)) || "";
+}
+
 async function createPremiumGreetingDashboardJob({
   orderId,
   customerKey,
@@ -2670,7 +2894,10 @@ async function createPremiumGreetingDashboardJob({
   recipientPhotoMime,
   shopifyUrl,
   africaUrl,
-  language = "en"
+  language = "en",
+  introDuration = 0,
+  originalVideoBytes = 0,
+  storedVideoBytes = 0
 }) {
   const instructions = `PRINTO PREMIUM PERSONAL TRIBUTE ORDER
 
@@ -2698,6 +2925,14 @@ ${recipientPhotoUrl || "Not uploaded"}
 
 Personal introduction video:
 ${introVideoUrl || "Not uploaded"}
+
+Introduction processing:
+Duration: ${Number(introDuration || 0).toFixed(1)} seconds
+Original upload: ${Math.round(Number(originalVideoBytes || 0) / 1024 / 1024)} MB
+Stored compressed MP4: ${Math.round(Number(storedVideoBytes || 0) / 1024 / 1024)} MB
+
+Custom tribute music:
+Upload the completed song from this dashboard, then render the complete Premium video. The music will loop or extend continuously to the final Printo screen.
 
 Shopify Premium Checkout:
 ${shopifyUrl || "Premium Shopify product not configured yet"}
@@ -12652,6 +12887,79 @@ app.get("/worker-dashboard", requireDashboardKey, async (req, res) => {
     return data;
   }
 
+  async function uploadPremiumMusic(orderId, input) {
+    const file = input && input.files ? input.files[0] : null;
+    if (!file) return;
+    if (file.size > 30 * 1024 * 1024) {
+      alert("Tribute music must be 30 MB or smaller.");
+      input.value = "";
+      return;
+    }
+
+    const originalLabel = input.parentElement ? input.parentElement.firstChild.textContent : "🎵 Upload Custom Music";
+    if (input.parentElement) input.parentElement.firstChild.textContent = "⏳ Uploading music...";
+    try {
+      const fd = new FormData();
+      fd.append("orderId", orderId);
+      fd.append("tributeMusic", file);
+      const response = await fetch(
+        "/api/greeting/premium/music?key=" + encodeURIComponent(DASHBOARD_KEY),
+        { method: "POST", body: fd }
+      );
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || !data.ok) throw new Error(data.error || "Music upload failed.");
+      alert("Custom tribute music saved. You can now render the complete Premium video.");
+      loadJobs();
+    } catch (error) {
+      alert("Premium music upload failed: " + error.message);
+    } finally {
+      input.value = "";
+      if (input.parentElement) input.parentElement.firstChild.textContent = originalLabel;
+    }
+  }
+
+  async function renderPremiumOrder(orderId, button) {
+    if (!orderId) return;
+    const confirmed = confirm(
+      "Render the complete Premium video now? The music will play continuously to the final Printo screen."
+    );
+    if (!confirmed) return;
+
+    const oldText = button ? button.textContent : "🎬 Render Complete Video";
+    if (button) {
+      button.disabled = true;
+      button.textContent = "⏳ Rendering video...";
+    }
+
+    try {
+      const data = await api("/api/greeting/premium/render", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ orderId })
+      });
+      alert("Premium video completed. Duration: " + Number(data.totalDuration || 0).toFixed(0) + " seconds.");
+      if (data.finalVideoUrl) window.open(data.finalVideoUrl, "_blank", "noopener");
+      loadJobs();
+    } catch (error) {
+      alert("Premium render failed: " + error.message);
+    } finally {
+      if (button) {
+        button.disabled = false;
+        button.textContent = oldText;
+      }
+    }
+  }
+
+  document.addEventListener("change", (event) => {
+    const input = event.target.closest && event.target.closest(".premiumMusicInput");
+    if (input) uploadPremiumMusic(input.dataset.orderId || "", input);
+  });
+
+  document.addEventListener("click", (event) => {
+    const button = event.target.closest && event.target.closest(".premiumRenderButton");
+    if (button) renderPremiumOrder(button.dataset.orderId || "", button);
+  });
+
   function summarize(jobs) {
     const all = jobs.length;
     const pending = jobs.filter(j => j.status === "pending").length;
@@ -12774,6 +13082,11 @@ app.get("/worker-dashboard", requireDashboardKey, async (req, res) => {
 
     const photoUrl = extractLabeledInstructionUrl(job, "Recipient photo");
     const videoUrl = extractLabeledInstructionUrl(job, "Personal introduction video");
+    const orderId = extractPremiumOrderId(job);
+    const combined = [job.instructions || "", job.notes || "", job.error_message || ""].join("\n");
+    const urls = combined.match(/https?:\/\/[^\s<]+/g) || [];
+    const musicUrl = urls.find((url) => url.includes("/premium-media/") && url.includes("/music?")) || "";
+    const finalUrl = urls.find((url) => url.includes("/premium-media/") && url.includes("/final?")) || "";
     const buttons = [];
 
     if (photoUrl) {
@@ -12782,12 +13095,22 @@ app.get("/worker-dashboard", requireDashboardKey, async (req, res) => {
     if (videoUrl) {
       buttons.push('<a class="fileLink" href="' + h(videoUrl) + '" target="_blank" rel="noopener noreferrer">🎥 Play Introduction Video</a>');
     }
-
-    if (!buttons.length) {
-      return '<div class="insBox"><b>Premium Uploads</b><br><span class="small">No premium upload links were found on this job.</span></div>';
+    if (musicUrl) {
+      buttons.push('<a class="fileLink" href="' + h(musicUrl) + '" target="_blank" rel="noopener noreferrer">🎵 Play Tribute Music</a>');
+    }
+    if (finalUrl) {
+      buttons.push('<a class="fileLink" href="' + h(finalUrl) + '" target="_blank" rel="noopener noreferrer">🎬 Play Finished Premium Video</a>');
+    }
+    if (orderId) {
+      buttons.push('<label class="btn secondary" style="display:inline-flex;align-items:center;cursor:pointer;">🎵 Upload Custom Music<input class="premiumMusicInput" data-order-id="' + h(orderId) + '" type="file" accept="audio/*" hidden></label>');
+      buttons.push('<button type="button" class="btn premiumRenderButton" data-order-id="' + h(orderId) + '">🎬 Render Complete Video</button>');
     }
 
-    return '<div class="insBox"><b>Premium Uploads</b><br><div class="actionRow" style="margin-top:10px;">' + buttons.join(' ') + '</div></div>';
+    if (!buttons.length) {
+      return '<div class="insBox"><b>Premium Production</b><br><span class="small">No Premium assets were found on this job.</span></div>';
+    }
+
+    return '<div class="insBox"><b>Premium Production</b><br><div class="actionRow" style="margin-top:10px;">' + buttons.join(' ') + '</div><div class="small" style="margin-top:8px;">Music remains continuous to the final Printo screen. The server lowers it automatically while the introduction or AI dedication is speaking.</div></div>';
   }
 
   function renderInstructions(job) {
@@ -14236,12 +14559,13 @@ function buildPremiumGreetingOrderPage(language = "en") {
 *{box-sizing:border-box}body{margin:0;font-family:Arial,sans-serif;background:linear-gradient(150deg,#071b61,#0b63ce);color:#fff;min-height:100vh;padding:18px}.wrap{max-width:820px;margin:auto}.back{color:#ffd21f;font-weight:900;text-decoration:none}.hero{text-align:center;margin:12px 0 20px}.hero h1{font-size:34px;margin:8px}.hero p{line-height:1.55}.panel{background:#fff;color:#172554;border:3px solid #ffd21f;border-radius:25px;padding:22px;box-shadow:0 18px 44px rgba(0,0,0,.35)}.grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}.full{grid-column:1/-1}label{display:block;font-weight:900;margin:5px 0 7px}input,textarea,select{width:100%;padding:13px;border:2px solid #cbd5e1;border-radius:13px;font-size:16px}textarea{min-height:110px}.hint{font-size:12px;color:#64748b;margin-top:5px}.submit{width:100%;border:0;border-radius:15px;padding:16px;background:linear-gradient(90deg,#7b2cbf,#d63384);color:#fff;font-size:19px;font-weight:900;margin-top:15px;cursor:pointer}.submit:disabled{opacity:.55}.status{text-align:center;font-weight:900;min-height:26px;margin-top:12px}.result{display:none;background:#f1f5f9;padding:16px;border-radius:16px;margin-top:15px}.orderId{font-size:20px;font-weight:900}.payments{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:12px}.pay{display:block;text-align:center;text-decoration:none;color:#fff;font-weight:900;padding:14px;border-radius:13px}.shopify{background:#4f772d}.africa{background:#008751}.worker{background:#25D366;grid-column:1/-1}.disabled{opacity:.45;pointer-events:none}@media(max-width:620px){.grid,.payments{grid-template-columns:1fr}.full,.worker{grid-column:auto}.hero h1{font-size:28px}}
 </style></head><body><main class="wrap"><a class="back" href="/greetings?lang=${lang}">← ${t.back}</a><section class="hero"><h1>🌟 ${t.title}</h1><p>${t.intro}</p></section><section class="panel">
 <form id="premiumForm" enctype="multipart/form-data"><input type="hidden" name="language" value="${lang}"><input type="hidden" id="customerId" name="customerId">
-<div class="grid"><div><label>${t.recipient} *</label><input name="recipientName" maxlength="24" required></div><div><label>${t.sender} *</label><input name="senderName" maxlength="24" required></div><div><label>${t.phone} *</label><input name="customerPhone" inputmode="tel" required></div><div><label>${t.email}</label><input name="customerEmail" type="email"></div><div class="full"><label>${t.message} *</label><textarea name="personalMessage" maxlength="220" required></textarea></div><div><label>${t.songStyle}</label><select name="songStyle"><option value="">Worker will discuss with me</option><option>Afrobeat</option><option>Gospel</option><option>R&B / Soul</option><option>Pop</option><option>Highlife</option><option>Hip-Hop / Rap</option><option>Soft acoustic</option><option>Other</option></select></div><div><label>${t.notes}</label><textarea name="tributeNotes" maxlength="1000"></textarea></div><div><label>${t.photo} *</label><input name="recipientPhoto" type="file" accept="image/*" required><div class="hint">JPG, PNG or WebP. Clear portrait preferred.</div></div><div><label>${t.video} *</label><input name="introVideo" type="file" accept="video/*" required><div class="hint">MP4 or MOV. Keep it short for faster upload.</div></div></div>
+<div class="grid"><div><label>${t.recipient} *</label><input name="recipientName" maxlength="24" required></div><div><label>${t.sender} *</label><input name="senderName" maxlength="24" required></div><div><label>${t.phone} *</label><input name="customerPhone" inputmode="tel" required></div><div><label>${t.email}</label><input name="customerEmail" type="email"></div><div class="full"><label>${t.message} *</label><textarea name="personalMessage" maxlength="220" required></textarea></div><div><label>${t.songStyle}</label><select name="songStyle"><option value="">Worker will discuss with me</option><option>Afrobeat</option><option>Gospel</option><option>R&B / Soul</option><option>Pop</option><option>Highlife</option><option>Hip-Hop / Rap</option><option>Soft acoustic</option><option>Other</option></select></div><div><label>${t.notes}</label><textarea name="tributeNotes" maxlength="1000"></textarea></div><div><label>${t.photo} *</label><input name="recipientPhoto" type="file" accept="image/*" required><div class="hint">JPG, PNG or WebP. Clear portrait preferred.</div></div><div><label>${t.video} *</label><input name="introVideo" type="file" accept="video/mp4,video/quicktime,video/webm,video/*" required><div class="hint">Maximum 60 seconds and 100 MB. Large files are compressed automatically to a smaller 720p MP4 before permanent storage.</div></div></div>
 <button id="submitBtn" class="submit" type="submit">✨ ${t.submit}</button><div id="status" class="status"></div></form><div id="result" class="result"><div>${t.success}</div><div id="orderId" class="orderId"></div><h3>${t.pay}</h3><div class="payments"><a id="shopifyPay" class="pay shopify" target="_blank" rel="noopener">🛒 ${t.shopify}</a><a id="africaPay" class="pay africa" target="_blank" rel="noopener">🌍 ${t.africa}</a><a id="workerLink" class="pay worker" target="_blank" rel="noopener">💬 ${t.worker}</a></div></div></section></main>
 <script>
 const form=document.getElementById('premiumForm'),button=document.getElementById('submitBtn'),statusBox=document.getElementById('status'),result=document.getElementById('result'),orderIdBox=document.getElementById('orderId'),shopifyPay=document.getElementById('shopifyPay'),africaPay=document.getElementById('africaPay'),workerLink=document.getElementById('workerLink');
 let customerId=localStorage.getItem('printoPremiumCustomerId');if(!customerId){customerId='premium_'+Date.now()+'_'+Math.random().toString(36).slice(2,11);localStorage.setItem('printoPremiumCustomerId',customerId)}document.getElementById('customerId').value=customerId;
-form.addEventListener('submit',async(e)=>{e.preventDefault();button.disabled=true;button.textContent='⏳ ${t.saving}';statusBox.textContent='';result.style.display='none';try{const fd=new FormData(form);const photo=fd.get('recipientPhoto'),video=fd.get('introVideo');if(!photo||!photo.size||!video||!video.size)throw new Error('${t.required}');if(photo.size>10*1024*1024)throw new Error('Recipient photo must be 10 MB or smaller.');if(video.size>40*1024*1024)throw new Error('Introduction video must be 40 MB or smaller. Keep the introduction short.');const response=await fetch('/api/greeting/premium/request',{method:'POST',headers:{'x-printo-customer-id':customerId},body:fd});const data=await response.json();if(!response.ok||!data.ok)throw new Error(data.error||'Could not save premium order.');statusBox.textContent='✅ ${t.success}';orderIdBox.textContent='Order: '+data.orderId;shopifyPay.href=data.payment?.shopify||'#';africaPay.href=data.payment?.africa||'#';if(!data.payment?.shopify)shopifyPay.classList.add('disabled');else shopifyPay.classList.remove('disabled');workerLink.href=data.whatsappUrl;result.style.display='block';result.scrollIntoView({behavior:'smooth'});}catch(error){statusBox.textContent='❌ '+error.message;}finally{button.disabled=false;button.textContent='✨ ${t.submit}';}});
+function readVideoDuration(file){return new Promise((resolve,reject)=>{const url=URL.createObjectURL(file),video=document.createElement('video');video.preload='metadata';video.onloadedmetadata=()=>{const duration=Number(video.duration||0);URL.revokeObjectURL(url);resolve(duration)};video.onerror=()=>{URL.revokeObjectURL(url);reject(new Error('The introduction video could not be read.'))};video.src=url;});}
+form.addEventListener('submit',async(e)=>{e.preventDefault();button.disabled=true;button.textContent='⏳ ${t.saving}';statusBox.textContent='';result.style.display='none';try{const fd=new FormData(form);const photo=fd.get('recipientPhoto'),video=fd.get('introVideo');if(!photo||!photo.size||!video||!video.size)throw new Error('${t.required}');if(photo.size>10*1024*1024)throw new Error('Recipient photo must be 10 MB or smaller.');if(video.size>100*1024*1024)throw new Error('Introduction video must be 100 MB or smaller.');const duration=await readVideoDuration(video);if(duration>60.25)throw new Error('Introduction video must be 60 seconds or shorter.');statusBox.textContent='⏳ Uploading and compressing your introduction video…';const response=await fetch('/api/greeting/premium/request',{method:'POST',headers:{'x-printo-customer-id':customerId},body:fd});const data=await response.json();if(!response.ok||!data.ok)throw new Error(data.error||'Could not save premium order.');statusBox.textContent='✅ ${t.success} Introduction video compressed and stored safely.';orderIdBox.textContent='Order: '+data.orderId;shopifyPay.href=data.payment?.shopify||'#';africaPay.href=data.payment?.africa||'#';if(!data.payment?.shopify)shopifyPay.classList.add('disabled');else shopifyPay.classList.remove('disabled');workerLink.href=data.whatsappUrl;result.style.display='block';result.scrollIntoView({behavior:'smooth'});}catch(error){statusBox.textContent='❌ '+error.message;}finally{button.disabled=false;button.textContent='✨ ${t.submit}';}});
 </script></body></html>`;
 }
 
@@ -14258,7 +14582,7 @@ app.get(
       const kind = String(req.params.kind || "").toLowerCase();
       const token = String(req.query.token || "").trim();
 
-      if (!orderId || !token || !["photo", "video"].includes(kind)) {
+      if (!orderId || !token || !["photo", "video", "music", "final"].includes(kind)) {
         return res.status(404).send("Premium media not found.");
       }
 
@@ -14270,7 +14594,13 @@ app.get(
           recipient_photo_name,
           intro_video_data,
           intro_video_mime,
-          intro_video_name
+          intro_video_name,
+          tribute_music_data,
+          tribute_music_mime,
+          tribute_music_name,
+          final_video_data,
+          final_video_mime,
+          final_video_name
         FROM premium_greeting_orders
         WHERE order_id = $1 AND media_token = $2
         LIMIT 1
@@ -14286,6 +14616,22 @@ app.get(
           data: row.recipient_photo_data,
           mime: row.recipient_photo_mime,
           name: row.recipient_photo_name
+        });
+      }
+
+      if (kind === "music") {
+        return sendPremiumMediaBuffer(req, res, {
+          data: row.tribute_music_data,
+          mime: row.tribute_music_mime,
+          name: row.tribute_music_name
+        });
+      }
+
+      if (kind === "final") {
+        return sendPremiumMediaBuffer(req, res, {
+          data: row.final_video_data,
+          mime: row.final_video_mime,
+          name: row.final_video_name
         });
       }
 
@@ -14316,12 +14662,18 @@ app.post(
       return res.status(400).json({
         ok: false,
         error: isLimit
-          ? "Premium upload is too large. Use a photo up to 10 MB and a short video up to 40 MB."
+          ? "Premium upload is too large. Use a photo up to 10 MB and an introduction video up to 100 MB."
           : error.message || "Could not receive Premium uploads."
       });
     });
   },
   async (req, res) => {
+    const photo = req.files?.recipientPhoto?.[0];
+    const introVideo = req.files?.introVideo?.[0];
+    const compressedVideoPath = introVideo?.path
+      ? path.join(premiumTempDir, `${path.parse(introVideo.path).name}_compressed.mp4`)
+      : "";
+
     try {
       const body = req.body || {};
       const recipientName = String(body.recipientName || "").trim().slice(0, 24);
@@ -14332,8 +14684,6 @@ app.post(
       const songStyle = String(body.songStyle || "").trim().slice(0, 100);
       const tributeNotes = String(body.tributeNotes || "").trim().slice(0, 1000);
       const language = String(body.language || "en").toLowerCase();
-      const photo = req.files?.recipientPhoto?.[0];
-      const introVideo = req.files?.introVideo?.[0];
 
       if (!recipientName || !senderName || !personalMessage || !customerPhone) {
         return res.status(400).json({
@@ -14342,24 +14692,29 @@ app.post(
         });
       }
 
-      if (!photo || !String(photo.mimetype || "").startsWith("image/") || !photo.buffer?.length) {
+      if (!photo || !photo.path || !String(photo.mimetype || "").startsWith("image/")) {
         return res.status(400).json({ ok: false, error: "A recipient photo is required." });
       }
 
-      if (!introVideo || !String(introVideo.mimetype || "").startsWith("video/") || !introVideo.buffer?.length) {
+      if (!introVideo || !introVideo.path || !String(introVideo.mimetype || "").startsWith("video/")) {
         return res.status(400).json({ ok: false, error: "A personal introduction video is required." });
       }
 
-      if (photo.size > PREMIUM_PHOTO_MAX_BYTES) {
+      const photoBytes = fs.statSync(photo.path).size;
+      const originalVideoBytes = fs.statSync(introVideo.path).size;
+      if (photoBytes > PREMIUM_PHOTO_MAX_BYTES) {
         return res.status(400).json({ ok: false, error: "Recipient photo must be 10 MB or smaller." });
       }
-
-      if (introVideo.size > PREMIUM_VIDEO_MAX_BYTES) {
-        return res.status(400).json({
-          ok: false,
-          error: "Introduction video must be 40 MB or smaller. Keep the introduction short."
-        });
+      if (originalVideoBytes > PREMIUM_VIDEO_UPLOAD_MAX_BYTES) {
+        return res.status(400).json({ ok: false, error: "Introduction video must be 100 MB or smaller." });
       }
+
+      const compression = await compressPremiumIntroductionVideo(
+        introVideo.path,
+        compressedVideoPath
+      );
+      const photoBuffer = fs.readFileSync(photo.path);
+      const compressedVideoBuffer = fs.readFileSync(compressedVideoPath);
 
       const identity = getGreetingCustomerIdentity(req, {
         customerId: body.customerId,
@@ -14371,14 +14726,18 @@ app.post(
       const mediaToken = crypto.randomBytes(24).toString("hex");
       const recipientPhotoUrl = buildPremiumMediaUrl(req, orderId, mediaToken, "photo");
       const introVideoUrl = buildPremiumMediaUrl(req, orderId, mediaToken, "video");
+      const finalVideoUrl = buildPremiumMediaUrl(req, orderId, mediaToken, "final");
+      const voiceScript = buildPremiumVoiceScript({
+        recipient_name: recipientName,
+        sender_name: senderName,
+        personal_message: personalMessage
+      });
       const payment = buildPremiumPaymentLinks({
         orderId,
         customerKey,
         contactPhone: customerPhone
       });
 
-      // Save the order and both media files permanently in PostgreSQL first.
-      // The dashboard job is created afterward so a dashboard failure cannot lose the order.
       await pool.query(
         `
         INSERT INTO premium_greeting_orders (
@@ -14386,13 +14745,16 @@ app.post(
           recipient_name, sender_name, personal_message, song_style,
           tribute_notes, recipient_photo_url, intro_video_url,
           recipient_photo_data, recipient_photo_mime, recipient_photo_name,
-          intro_video_data, intro_video_mime, intro_video_name, media_token,
-          status, dashboard_job_id, created_at, updated_at
+          intro_video_data, intro_video_mime, intro_video_name,
+          intro_video_duration_seconds, intro_video_original_bytes,
+          intro_video_stored_bytes, voice_script, final_video_url,
+          media_token, status, dashboard_job_id, render_status,
+          created_at, updated_at
         )
         VALUES (
           $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,
-          $12,$13,$14,$15,$16,$17,$18,
-          'payment_required','',NOW(),NOW()
+          $12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,
+          $23,'payment_required','','not_started',NOW(),NOW()
         )
         `,
         [
@@ -14407,12 +14769,17 @@ app.post(
           tributeNotes,
           recipientPhotoUrl,
           introVideoUrl,
-          photo.buffer,
+          photoBuffer,
           photo.mimetype,
           safeBaseName(photo.originalname || "recipient-photo"),
-          introVideo.buffer,
-          introVideo.mimetype,
-          safeBaseName(introVideo.originalname || "introduction-video"),
+          compressedVideoBuffer,
+          compression.mime,
+          compression.name,
+          compression.duration,
+          originalVideoBytes,
+          compression.storedBytes,
+          voiceScript,
+          finalVideoUrl,
           mediaToken
         ]
       );
@@ -14429,11 +14796,14 @@ app.post(
         tributeNotes,
         recipientPhotoUrl,
         introVideoUrl,
-        introVideoMime: introVideo.mimetype,
+        introVideoMime: compression.mime,
         recipientPhotoMime: photo.mimetype,
         shopifyUrl: payment.shopify,
         africaUrl: payment.africa,
-        language
+        language,
+        introDuration: compression.duration,
+        originalVideoBytes,
+        storedVideoBytes: compression.storedBytes
       });
 
       if (job?.id) {
@@ -14449,7 +14819,8 @@ app.post(
         `Recipient: ${recipientName}`,
         `Sender: ${senderName}`,
         `Customer phone: ${customerPhone}`,
-        "I have submitted the photo, introduction video, message, and tribute-song details on Printo Studio.",
+        `Introduction: ${compression.duration.toFixed(1)} seconds; compressed from ${Math.round(originalVideoBytes / 1024 / 1024)} MB to ${Math.round(compression.storedBytes / 1024 / 1024)} MB.`,
+        "I submitted the photo, introduction video, message, and tribute-song details on Printo Studio.",
         "Please confirm payment and help complete this premium order."
       ].join("\n");
       const whatsappUrl = `https://wa.me/${SUPPORT_PHONE}?text=${encodeURIComponent(workerMessage)}`;
@@ -14462,20 +14833,270 @@ app.post(
         payment,
         whatsappUrl,
         status: "payment_required",
+        compression: {
+          durationSeconds: Number(compression.duration.toFixed(2)),
+          originalBytes: originalVideoBytes,
+          storedBytes: compression.storedBytes
+        },
         media: {
           photo: recipientPhotoUrl,
-          video: introVideoUrl
+          video: introVideoUrl,
+          final: finalVideoUrl
         }
       });
     } catch (error) {
       console.error("Premium greeting request error:", error);
-      return res.status(500).json({
+      const clientError = /must be|too large|duration|valid video|could not be read/i.test(String(error.message || ""));
+      return res.status(clientError ? 400 : 500).json({
         ok: false,
         error: error.message || "Could not save premium greeting order."
       });
+    } finally {
+      safeUnlink(photo?.path);
+      safeUnlink(introVideo?.path);
+      safeUnlink(compressedVideoPath);
     }
   }
 );
+
+app.post(
+  "/api/greeting/premium/music",
+  requireDashboardKey,
+  (req, res, next) => {
+    premiumMusicUpload.single("tributeMusic")(req, res, (error) => {
+      if (!error) return next();
+      return res.status(400).json({
+        ok: false,
+        error: error.code === "LIMIT_FILE_SIZE"
+          ? "Tribute music must be 30 MB or smaller."
+          : error.message || "Could not receive tribute music."
+      });
+    });
+  },
+  async (req, res) => {
+    const music = req.file;
+    try {
+      const orderId = String(req.body?.orderId || "").trim();
+      if (!orderId) return res.status(400).json({ ok: false, error: "Premium order ID is required." });
+      if (!music?.path) return res.status(400).json({ ok: false, error: "Choose the completed tribute music file." });
+
+      const probe = await probePremiumMedia(music.path);
+      if (!probe.hasAudio) return res.status(400).json({ ok: false, error: "The selected file does not contain audio." });
+      const found = await pool.query(
+        `SELECT order_id, media_token, dashboard_job_id FROM premium_greeting_orders WHERE order_id = $1 LIMIT 1`,
+        [orderId]
+      );
+      const order = found.rows[0];
+      if (!order) return res.status(404).json({ ok: false, error: "Premium order was not found." });
+
+      const musicUrl = buildPremiumMediaUrl(req, orderId, order.media_token, "music");
+      const musicBuffer = fs.readFileSync(music.path);
+      await pool.query(
+        `
+        UPDATE premium_greeting_orders
+        SET tribute_music_data = $2,
+            tribute_music_mime = $3,
+            tribute_music_name = $4,
+            tribute_music_url = $5,
+            render_status = 'ready_to_render',
+            render_error = '',
+            updated_at = NOW()
+        WHERE order_id = $1
+        `,
+        [orderId, musicBuffer, music.mimetype || "audio/mpeg", safeBaseName(music.originalname || "tribute-music"), musicUrl]
+      );
+
+      if (order.dashboard_job_id) {
+        await pool.query(
+          `UPDATE print_jobs SET instructions = COALESCE(instructions, '') || $2, updated_at = NOW() WHERE id::text = $1::text`,
+          [String(order.dashboard_job_id), `\n\n🎵 CUSTOM TRIBUTE MUSIC READY\n${musicUrl}`]
+        );
+      }
+
+      return res.json({ ok: true, orderId, musicUrl, durationSeconds: probe.duration });
+    } catch (error) {
+      console.error("Premium music upload error:", error);
+      return res.status(500).json({ ok: false, error: error.message || "Could not save tribute music." });
+    } finally {
+      safeUnlink(music?.path);
+    }
+  }
+);
+
+async function renderPremiumOrderVideo({ orderId, req }) {
+  const found = await pool.query(`SELECT * FROM premium_greeting_orders WHERE order_id = $1 LIMIT 1`, [orderId]);
+  const order = found.rows[0];
+  if (!order) throw new Error("Premium order was not found.");
+  if (!order.recipient_photo_data || !order.intro_video_data) {
+    throw new Error("Recipient photo or introduction video is missing.");
+  }
+
+  const runId = `${Date.now()}_${crypto.randomBytes(5).toString("hex")}`;
+  const photoExt = getExtFromMime(order.recipient_photo_mime) || ".jpg";
+  const photoPath = path.join(premiumTempDir, `${runId}_photo${photoExt}`);
+  const introPath = path.join(premiumTempDir, `${runId}_intro.mp4`);
+  const musicPath = path.join(premiumTempDir, `${runId}_music`);
+  const voicePath = path.join(premiumTempDir, `${runId}_voice.mp3`);
+  const outputPath = path.join(premiumTempDir, `${runId}_final.mp4`);
+  const cleanup = [photoPath, introPath, voicePath, outputPath];
+
+  try {
+    fs.writeFileSync(photoPath, Buffer.from(order.recipient_photo_data));
+    fs.writeFileSync(introPath, Buffer.from(order.intro_video_data));
+
+    let selectedMusicPath = "";
+    if (order.tribute_music_data) {
+      const musicExt = getExtFromMime(order.tribute_music_mime) || ".mp3";
+      selectedMusicPath = `${musicPath}${musicExt}`;
+      cleanup.push(selectedMusicPath);
+      fs.writeFileSync(selectedMusicPath, Buffer.from(order.tribute_music_data));
+    } else {
+      selectedMusicPath = findPremiumDefaultMusic();
+    }
+    if (!selectedMusicPath) {
+      throw new Error("No tribute music is available. Upload the custom song or add templates/premium/premium_demo_music.mp3.");
+    }
+
+    await pool.query(
+      `UPDATE premium_greeting_orders SET render_status = 'rendering', render_error = '', updated_at = NOW() WHERE order_id = $1`,
+      [orderId]
+    );
+
+    const introProbe = await probePremiumMedia(introPath);
+    const voiceResult = await generatePrintoPremiumVoice({ order, outputPath: voicePath });
+    const hasVoice = Boolean(voiceResult.ok && fs.existsSync(voicePath));
+    const voiceProbe = hasVoice ? await probePremiumMedia(voicePath) : { duration: 0 };
+
+    const introDuration = Math.max(1, Math.min(PREMIUM_VIDEO_MAX_SECONDS, Number(introProbe.duration || 1)));
+    const openingDuration = 5;
+    const tributeDuration = Math.max(28, 68 - openingDuration - introDuration);
+    const totalDuration = openingDuration + introDuration + tributeDuration;
+    const introEnd = openingDuration + introDuration;
+    const voiceStart = Math.min(totalDuration - Math.max(voiceProbe.duration || 0, 16) - 3, introEnd + 5);
+    const voiceEnd = voiceStart + Number(voiceProbe.duration || 0);
+    const messageLines = wrapGreetingMessage(order.personal_message || "A special tribute created with love.", 34, 3);
+    const fontFile = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf";
+    const fontOption = fs.existsSync(fontFile) ? `fontfile=${fontFile}:` : "";
+    const q = quoteDrawtextText;
+
+    const videoFilter = [
+      `[1:v]scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,format=yuv420p,split=2[p0][p2]`,
+      `[p0]trim=duration=${openingDuration},setpts=PTS-STARTPTS,drawbox=x=45:y=90:w=990:h=330:color=#06184f@0.82:t=fill,drawtext=${fontOption}text=${q("PRINTO PREMIUM TRIBUTE")}:x=(w-text_w)/2:y=150:fontsize=48:fontcolor=#ffd35a:borderw=2:bordercolor=#071b61,drawtext=${fontOption}text=${q(order.recipient_name)}:x=(w-text_w)/2:y=245:fontsize=86:fontcolor=white:borderw=3:bordercolor=#071b61,drawtext=${fontOption}text=${q(`From ${order.sender_name}`)}:x=(w-text_w)/2:y=355:fontsize=40:fontcolor=#ffd35a:borderw=2:bordercolor=#071b61[s0]`,
+      `color=c=#06184f:s=1080x1920:d=${introDuration}[ibg]`,
+      `[0:v]scale=940:1180:force_original_aspect_ratio=decrease,pad=940:1180:(ow-iw)/2:(oh-ih)/2:color=#000000,setsar=1,trim=duration=${introDuration},setpts=PTS-STARTPTS[iv]`,
+      `[ibg][iv]overlay=70:330,drawbox=x=50:y=120:w=980:h=150:color=#123c91@0.94:t=fill,drawtext=${fontOption}text=${q(`A personal message from ${order.sender_name}`)}:x=(w-text_w)/2:y=165:fontsize=42:fontcolor=white:borderw=2:bordercolor=#06184f,drawtext=${fontOption}text=${q("Original tribute music continues underneath")}:x=(w-text_w)/2:y=1580:fontsize=30:fontcolor=#ffd35a[s1]`,
+      `[p2]trim=duration=${tributeDuration},setpts=PTS-STARTPTS,drawbox=x=40:y=80:w=1000:h=400:color=#06184f@0.78:t=fill,drawtext=${fontOption}text=${q(`Celebrating ${order.recipient_name}`)}:x=(w-text_w)/2:y=130:fontsize=64:fontcolor=#ffd35a:borderw=2:bordercolor=#06184f,drawtext=${fontOption}text=${q(messageLines[0] || "")}:x=(w-text_w)/2:y=255:fontsize=38:fontcolor=white:borderw=2:bordercolor=#06184f,drawtext=${fontOption}text=${q(messageLines[1] || "")}:x=(w-text_w)/2:y=315:fontsize=38:fontcolor=white:borderw=2:bordercolor=#06184f,drawtext=${fontOption}text=${q(messageLines[2] || "")}:x=(w-text_w)/2:y=375:fontsize=38:fontcolor=white:borderw=2:bordercolor=#06184f,drawbox=x=60:y=1680:w=960:h=150:color=#06184f@0.86:t=fill,drawtext=${fontOption}text=${q("Created with love by Printo Studio")}:x=(w-text_w)/2:y=1725:fontsize=40:fontcolor=#ffd35a[s2]`,
+      `[s0][s1][s2]concat=n=3:v=1:a=0[vbase]`
+    ];
+
+    const printoPath = path.join(__dirname, "templates", "premium", "original_printo.png");
+    const inputArgs = [
+      "-y", "-nostdin", "-loglevel", "error",
+      "-i", introPath,
+      "-loop", "1", "-i", photoPath,
+      "-stream_loop", "-1", "-i", selectedMusicPath,
+      ...(hasVoice ? ["-i", voicePath] : [])
+    ];
+
+    let finalVideoLabel = "vbase";
+    if (fs.existsSync(printoPath)) {
+      const printoIndex = hasVoice ? 4 : 3;
+      inputArgs.push("-loop", "1", "-i", printoPath);
+      videoFilter.push(`[${printoIndex}:v]scale=320:-1[printo]`);
+      videoFilter.push(`[vbase][printo]overlay=15:H-h-35:enable='gte(t,${introEnd})'[vout]`);
+      finalVideoLabel = "vout";
+    }
+
+    const audioParts = [
+      `[2:a]atrim=0:${totalDuration},asetpts=PTS-STARTPTS,volume='if(between(t,${openingDuration},${introEnd}),0.18,if(between(t,${voiceStart},${voiceEnd}),0.18,0.72))':eval=frame,afade=t=in:st=0:d=1.2,afade=t=out:st=${Math.max(0, totalDuration - 4)}:d=4[music]`
+    ];
+    const mixLabels = ["[music]"];
+
+    if (introProbe.hasAudio) {
+      audioParts.push(`[0:a]atrim=0:${introDuration},asetpts=PTS-STARTPTS,adelay=${openingDuration * 1000}|${openingDuration * 1000},volume=1.25[introa]`);
+      mixLabels.push("[introa]");
+    }
+    if (hasVoice) {
+      audioParts.push(`[3:a]adelay=${Math.round(voiceStart * 1000)}|${Math.round(voiceStart * 1000)},volume=1.15[voice]`);
+      mixLabels.push("[voice]");
+    }
+    audioParts.push(`${mixLabels.join("")}amix=inputs=${mixLabels.length}:duration=longest:dropout_transition=2,loudnorm=I=-15:TP=-1.5:LRA=10,atrim=0:${totalDuration}[aout]`);
+
+    await execFilePromise("ffmpeg", [
+      ...inputArgs,
+      "-t", String(totalDuration),
+      "-filter_complex", `${videoFilter.join(";")};${audioParts.join(";")}`,
+      "-map", `[${finalVideoLabel}]`,
+      "-map", "[aout]",
+      "-c:v", "libx264",
+      "-preset", "veryfast",
+      "-crf", "27",
+      "-pix_fmt", "yuv420p",
+      "-c:a", "aac",
+      "-b:a", "160k",
+      "-movflags", "+faststart",
+      outputPath
+    ], { timeout: 600000, maxBuffer: 16 * 1024 * 1024 });
+
+    const finalBytes = fs.readFileSync(outputPath);
+    if (finalBytes.length > PREMIUM_FINAL_VIDEO_MAX_BYTES) {
+      throw new Error("Finished Premium video is larger than the temporary launch storage limit.");
+    }
+
+    const finalVideoUrl = buildPremiumMediaUrl(req, orderId, order.media_token, "final");
+    await pool.query(
+      `
+      UPDATE premium_greeting_orders
+      SET final_video_data = $2,
+          final_video_mime = 'video/mp4',
+          final_video_name = $3,
+          final_video_url = $4,
+          voice_script = $5,
+          render_status = 'completed',
+          render_error = '',
+          status = CASE WHEN status = 'paid' THEN 'completed' ELSE status END,
+          updated_at = NOW()
+      WHERE order_id = $1
+      `,
+      [orderId, finalBytes, `Printo-Premium-${orderId}.mp4`, finalVideoUrl, voiceResult.text || buildPremiumVoiceScript(order)]
+    );
+
+    if (order.dashboard_job_id) {
+      await pool.query(
+        `UPDATE print_jobs SET instructions = COALESCE(instructions, '') || $2, updated_at = NOW() WHERE id::text = $1::text`,
+        [String(order.dashboard_job_id), `\n\n🎬 FINISHED PREMIUM VIDEO\n${finalVideoUrl}`]
+      );
+    }
+
+    return {
+      orderId,
+      finalVideoUrl,
+      totalDuration,
+      hasVoice,
+      usedCustomMusic: Boolean(order.tribute_music_data)
+    };
+  } catch (error) {
+    await pool.query(
+      `UPDATE premium_greeting_orders SET render_status = 'failed', render_error = $2, updated_at = NOW() WHERE order_id = $1`,
+      [orderId, String(error.message || "Render failed").slice(0, 1000)]
+    ).catch(() => {});
+    throw error;
+  } finally {
+    cleanup.forEach(safeUnlink);
+  }
+}
+
+app.post("/api/greeting/premium/render", requireDashboardKey, express.json(), async (req, res) => {
+  try {
+    const orderId = String(req.body?.orderId || req.body?.order_id || "").trim();
+    if (!orderId) return res.status(400).json({ ok: false, error: "Premium order ID is required." });
+    const result = await renderPremiumOrderVideo({ orderId, req });
+    return res.json({ ok: true, ...result });
+  } catch (error) {
+    console.error("Premium complete video render error:", error);
+    return res.status(500).json({ ok: false, error: error.message || "Premium video render failed." });
+  }
+});
 
 app.get(["/greetings", "/greeting"], (req, res) => {
   const language = String(req.query.lang || "en").toLowerCase();
