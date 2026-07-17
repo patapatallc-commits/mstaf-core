@@ -111,21 +111,35 @@ const storage = multer.diskStorage({
 
 const upload = multer({ storage });
 
-// Premium tribute orders may include one recipient photo and one introduction video.
-// Keep the limits conservative enough for mobile uploads while preventing accidental
-// very large files from exhausting the web service.
+// Premium tribute media is kept in memory only long enough to save it in PostgreSQL.
+// This avoids Render's temporary /uploads disk, which is cleared by redeploys/restarts.
+// Keep introduction videos short so database storage remains practical during launch.
+const PREMIUM_PHOTO_MAX_BYTES = 10 * 1024 * 1024;
+const PREMIUM_VIDEO_MAX_BYTES = 40 * 1024 * 1024;
+
 const premiumUpload = multer({
-  storage,
+  storage: multer.memoryStorage(),
   limits: {
-    fileSize: 120 * 1024 * 1024,
-    files: 2
+    fileSize: PREMIUM_VIDEO_MAX_BYTES,
+    files: 2,
+    fields: 20
   },
   fileFilter: (_req, file, cb) => {
+    const fieldName = String(file.fieldname || "");
     const mime = String(file.mimetype || "").toLowerCase();
-    const allowed = mime.startsWith("image/") || mime.startsWith("video/");
-    if (!allowed) {
-      return cb(new Error("Premium uploads must be an image or video file."));
+
+    if (fieldName === "recipientPhoto" && !mime.startsWith("image/")) {
+      return cb(new Error("The recipient photo must be an image file."));
     }
+
+    if (fieldName === "introVideo" && !mime.startsWith("video/")) {
+      return cb(new Error("The personal introduction must be a video file."));
+    }
+
+    if (!["recipientPhoto", "introVideo"].includes(fieldName)) {
+      return cb(new Error("Unexpected Premium upload field."));
+    }
+
     return cb(null, true);
   }
 });
@@ -2104,6 +2118,13 @@ async function ensureGreetingAccessTables() {
       tribute_notes TEXT NOT NULL DEFAULT '',
       recipient_photo_url TEXT NOT NULL DEFAULT '',
       intro_video_url TEXT NOT NULL DEFAULT '',
+      recipient_photo_data BYTEA,
+      recipient_photo_mime TEXT NOT NULL DEFAULT '',
+      recipient_photo_name TEXT NOT NULL DEFAULT '',
+      intro_video_data BYTEA,
+      intro_video_mime TEXT NOT NULL DEFAULT '',
+      intro_video_name TEXT NOT NULL DEFAULT '',
+      media_token TEXT NOT NULL DEFAULT '',
       status TEXT NOT NULL DEFAULT 'payment_required',
       payment_provider TEXT NOT NULL DEFAULT '',
       payment_reference TEXT NOT NULL DEFAULT '',
@@ -2115,6 +2136,15 @@ async function ensureGreetingAccessTables() {
     )
   `);
 
+  // Upgrade existing databases without deleting any Premium orders.
+  await pool.query(`ALTER TABLE premium_greeting_orders ADD COLUMN IF NOT EXISTS recipient_photo_data BYTEA`);
+  await pool.query(`ALTER TABLE premium_greeting_orders ADD COLUMN IF NOT EXISTS recipient_photo_mime TEXT NOT NULL DEFAULT ''`);
+  await pool.query(`ALTER TABLE premium_greeting_orders ADD COLUMN IF NOT EXISTS recipient_photo_name TEXT NOT NULL DEFAULT ''`);
+  await pool.query(`ALTER TABLE premium_greeting_orders ADD COLUMN IF NOT EXISTS intro_video_data BYTEA`);
+  await pool.query(`ALTER TABLE premium_greeting_orders ADD COLUMN IF NOT EXISTS intro_video_mime TEXT NOT NULL DEFAULT ''`);
+  await pool.query(`ALTER TABLE premium_greeting_orders ADD COLUMN IF NOT EXISTS intro_video_name TEXT NOT NULL DEFAULT ''`);
+  await pool.query(`ALTER TABLE premium_greeting_orders ADD COLUMN IF NOT EXISTS media_token TEXT NOT NULL DEFAULT ''`);
+
   await pool.query(`
     CREATE INDEX IF NOT EXISTS premium_greeting_orders_customer_idx
     ON premium_greeting_orders(customer_key)
@@ -2123,6 +2153,12 @@ async function ensureGreetingAccessTables() {
   await pool.query(`
     CREATE INDEX IF NOT EXISTS premium_greeting_orders_status_idx
     ON premium_greeting_orders(status)
+  `);
+
+  await pool.query(`
+    CREATE UNIQUE INDEX IF NOT EXISTS premium_greeting_orders_media_token_idx
+    ON premium_greeting_orders(media_token)
+    WHERE media_token <> ''
   `);
 }
 
@@ -2558,6 +2594,64 @@ function buildPremiumPaymentLinks({
 
   const africa = appendUrlParameters(GREETING_AFRICA_PAYMENT_URL, common);
   return { shopify, africa };
+}
+
+
+function getPublicBaseUrl(req) {
+  return String(
+    process.env.PUBLIC_BASE_URL ||
+    process.env.RENDER_EXTERNAL_URL ||
+    `${req.protocol}://${req.get("host")}`
+  ).replace(/\/$/, "");
+}
+
+function buildPremiumMediaUrl(req, orderId, mediaToken, kind) {
+  const safeKind = kind === "video" ? "video" : "photo";
+  return `${getPublicBaseUrl(req)}/premium-media/${encodeURIComponent(orderId)}/${safeKind}?token=${encodeURIComponent(mediaToken)}`;
+}
+
+function sendPremiumMediaBuffer(req, res, media) {
+  const data = Buffer.isBuffer(media.data) ? media.data : Buffer.from(media.data || []);
+  if (!data.length) return res.status(404).send("Premium media not found.");
+
+  const mime = String(media.mime || "application/octet-stream");
+  const fileName = safeBaseName(media.name || (mime.startsWith("video/") ? "introduction-video" : "recipient-photo"));
+
+  res.setHeader("Content-Type", mime);
+  res.setHeader("Content-Disposition", `inline; filename="${fileName}"`);
+  res.setHeader("X-Content-Type-Options", "nosniff");
+  res.setHeader("Cache-Control", "private, no-store, max-age=0");
+
+  if (mime.startsWith("video/")) {
+    res.setHeader("Accept-Ranges", "bytes");
+    const range = String(req.headers.range || "");
+
+    if (range) {
+      const match = range.match(/^bytes=(\d*)-(\d*)$/);
+      if (!match) {
+        res.setHeader("Content-Range", `bytes */${data.length}`);
+        return res.status(416).end();
+      }
+
+      const start = match[1] ? Number(match[1]) : 0;
+      const requestedEnd = match[2] ? Number(match[2]) : data.length - 1;
+      const end = Math.min(requestedEnd, data.length - 1);
+
+      if (!Number.isFinite(start) || !Number.isFinite(end) || start < 0 || start > end || start >= data.length) {
+        res.setHeader("Content-Range", `bytes */${data.length}`);
+        return res.status(416).end();
+      }
+
+      const chunk = data.subarray(start, end + 1);
+      res.status(206);
+      res.setHeader("Content-Range", `bytes ${start}-${end}/${data.length}`);
+      res.setHeader("Content-Length", String(chunk.length));
+      return res.end(chunk);
+    }
+  }
+
+  res.setHeader("Content-Length", String(data.length));
+  return res.end(data);
 }
 
 async function createPremiumGreetingDashboardJob({
@@ -14147,7 +14241,7 @@ function buildPremiumGreetingOrderPage(language = "en") {
 <script>
 const form=document.getElementById('premiumForm'),button=document.getElementById('submitBtn'),statusBox=document.getElementById('status'),result=document.getElementById('result'),orderIdBox=document.getElementById('orderId'),shopifyPay=document.getElementById('shopifyPay'),africaPay=document.getElementById('africaPay'),workerLink=document.getElementById('workerLink');
 let customerId=localStorage.getItem('printoPremiumCustomerId');if(!customerId){customerId='premium_'+Date.now()+'_'+Math.random().toString(36).slice(2,11);localStorage.setItem('printoPremiumCustomerId',customerId)}document.getElementById('customerId').value=customerId;
-form.addEventListener('submit',async(e)=>{e.preventDefault();button.disabled=true;button.textContent='⏳ ${t.saving}';statusBox.textContent='';result.style.display='none';try{const fd=new FormData(form);const photo=fd.get('recipientPhoto'),video=fd.get('introVideo');if(!photo||!photo.size||!video||!video.size)throw new Error('${t.required}');if(photo.size>15*1024*1024)throw new Error('Recipient photo must be 15 MB or smaller.');if(video.size>120*1024*1024)throw new Error('Introduction video must be 120 MB or smaller.');const response=await fetch('/api/greeting/premium/request',{method:'POST',headers:{'x-printo-customer-id':customerId},body:fd});const data=await response.json();if(!response.ok||!data.ok)throw new Error(data.error||'Could not save premium order.');statusBox.textContent='✅ ${t.success}';orderIdBox.textContent='Order: '+data.orderId;shopifyPay.href=data.payment?.shopify||'#';africaPay.href=data.payment?.africa||'#';if(!data.payment?.shopify)shopifyPay.classList.add('disabled');else shopifyPay.classList.remove('disabled');workerLink.href=data.whatsappUrl;result.style.display='block';result.scrollIntoView({behavior:'smooth'});}catch(error){statusBox.textContent='❌ '+error.message;}finally{button.disabled=false;button.textContent='✨ ${t.submit}';}});
+form.addEventListener('submit',async(e)=>{e.preventDefault();button.disabled=true;button.textContent='⏳ ${t.saving}';statusBox.textContent='';result.style.display='none';try{const fd=new FormData(form);const photo=fd.get('recipientPhoto'),video=fd.get('introVideo');if(!photo||!photo.size||!video||!video.size)throw new Error('${t.required}');if(photo.size>10*1024*1024)throw new Error('Recipient photo must be 10 MB or smaller.');if(video.size>40*1024*1024)throw new Error('Introduction video must be 40 MB or smaller. Keep the introduction short.');const response=await fetch('/api/greeting/premium/request',{method:'POST',headers:{'x-printo-customer-id':customerId},body:fd});const data=await response.json();if(!response.ok||!data.ok)throw new Error(data.error||'Could not save premium order.');statusBox.textContent='✅ ${t.success}';orderIdBox.textContent='Order: '+data.orderId;shopifyPay.href=data.payment?.shopify||'#';africaPay.href=data.payment?.africa||'#';if(!data.payment?.shopify)shopifyPay.classList.add('disabled');else shopifyPay.classList.remove('disabled');workerLink.href=data.whatsappUrl;result.style.display='block';result.scrollIntoView({behavior:'smooth'});}catch(error){statusBox.textContent='❌ '+error.message;}finally{button.disabled=false;button.textContent='✨ ${t.submit}';}});
 </script></body></html>`;
 }
 
@@ -14156,12 +14250,77 @@ app.get(["/greetings/premium", "/premium-greeting"], (req, res) => {
   res.type("html").send(buildPremiumGreetingOrderPage(language));
 });
 
+app.get(
+  ["/premium-media/:orderId/:kind", "/api/greeting/premium/media/:orderId/:kind"],
+  async (req, res) => {
+    try {
+      const orderId = String(req.params.orderId || "").trim();
+      const kind = String(req.params.kind || "").toLowerCase();
+      const token = String(req.query.token || "").trim();
+
+      if (!orderId || !token || !["photo", "video"].includes(kind)) {
+        return res.status(404).send("Premium media not found.");
+      }
+
+      const result = await pool.query(
+        `
+        SELECT
+          recipient_photo_data,
+          recipient_photo_mime,
+          recipient_photo_name,
+          intro_video_data,
+          intro_video_mime,
+          intro_video_name
+        FROM premium_greeting_orders
+        WHERE order_id = $1 AND media_token = $2
+        LIMIT 1
+        `,
+        [orderId, token]
+      );
+
+      const row = result.rows[0];
+      if (!row) return res.status(404).send("Premium media not found.");
+
+      if (kind === "photo") {
+        return sendPremiumMediaBuffer(req, res, {
+          data: row.recipient_photo_data,
+          mime: row.recipient_photo_mime,
+          name: row.recipient_photo_name
+        });
+      }
+
+      return sendPremiumMediaBuffer(req, res, {
+        data: row.intro_video_data,
+        mime: row.intro_video_mime,
+        name: row.intro_video_name
+      });
+    } catch (error) {
+      console.error("Premium media delivery error:", error);
+      return res.status(500).send("Could not open Premium media.");
+    }
+  }
+);
+
+const handlePremiumUpload = premiumUpload.fields([
+  { name: "recipientPhoto", maxCount: 1 },
+  { name: "introVideo", maxCount: 1 }
+]);
+
 app.post(
   "/api/greeting/premium/request",
-  premiumUpload.fields([
-    { name: "recipientPhoto", maxCount: 1 },
-    { name: "introVideo", maxCount: 1 }
-  ]),
+  (req, res, next) => {
+    handlePremiumUpload(req, res, (error) => {
+      if (!error) return next();
+
+      const isLimit = error && error.code === "LIMIT_FILE_SIZE";
+      return res.status(400).json({
+        ok: false,
+        error: isLimit
+          ? "Premium upload is too large. Use a photo up to 10 MB and a short video up to 40 MB."
+          : error.message || "Could not receive Premium uploads."
+      });
+    });
+  },
   async (req, res) => {
     try {
       const body = req.body || {};
@@ -14182,11 +14341,24 @@ app.post(
           error: "Recipient name, sender name, personal message, and WhatsApp phone are required."
         });
       }
-      if (!photo || !String(photo.mimetype || "").startsWith("image/")) {
+
+      if (!photo || !String(photo.mimetype || "").startsWith("image/") || !photo.buffer?.length) {
         return res.status(400).json({ ok: false, error: "A recipient photo is required." });
       }
-      if (!introVideo || !String(introVideo.mimetype || "").startsWith("video/")) {
+
+      if (!introVideo || !String(introVideo.mimetype || "").startsWith("video/") || !introVideo.buffer?.length) {
         return res.status(400).json({ ok: false, error: "A personal introduction video is required." });
+      }
+
+      if (photo.size > PREMIUM_PHOTO_MAX_BYTES) {
+        return res.status(400).json({ ok: false, error: "Recipient photo must be 10 MB or smaller." });
+      }
+
+      if (introVideo.size > PREMIUM_VIDEO_MAX_BYTES) {
+        return res.status(400).json({
+          ok: false,
+          error: "Introduction video must be 40 MB or smaller. Keep the introduction short."
+        });
       }
 
       const identity = getGreetingCustomerIdentity(req, {
@@ -14196,13 +14368,54 @@ app.post(
       });
       const customerKey = identity.customerKey;
       const orderId = makePremiumOrderId();
-      const recipientPhotoUrl = buildUploadUrl(req, photo.filename);
-      const introVideoUrl = buildUploadUrl(req, introVideo.filename);
+      const mediaToken = crypto.randomBytes(24).toString("hex");
+      const recipientPhotoUrl = buildPremiumMediaUrl(req, orderId, mediaToken, "photo");
+      const introVideoUrl = buildPremiumMediaUrl(req, orderId, mediaToken, "video");
       const payment = buildPremiumPaymentLinks({
         orderId,
         customerKey,
         contactPhone: customerPhone
       });
+
+      // Save the order and both media files permanently in PostgreSQL first.
+      // The dashboard job is created afterward so a dashboard failure cannot lose the order.
+      await pool.query(
+        `
+        INSERT INTO premium_greeting_orders (
+          order_id, customer_key, contact_phone, customer_email,
+          recipient_name, sender_name, personal_message, song_style,
+          tribute_notes, recipient_photo_url, intro_video_url,
+          recipient_photo_data, recipient_photo_mime, recipient_photo_name,
+          intro_video_data, intro_video_mime, intro_video_name, media_token,
+          status, dashboard_job_id, created_at, updated_at
+        )
+        VALUES (
+          $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,
+          $12,$13,$14,$15,$16,$17,$18,
+          'payment_required','',NOW(),NOW()
+        )
+        `,
+        [
+          orderId,
+          customerKey,
+          customerPhone,
+          customerEmail,
+          recipientName,
+          senderName,
+          personalMessage,
+          songStyle,
+          tributeNotes,
+          recipientPhotoUrl,
+          introVideoUrl,
+          photo.buffer,
+          photo.mimetype,
+          safeBaseName(photo.originalname || "recipient-photo"),
+          introVideo.buffer,
+          introVideo.mimetype,
+          safeBaseName(introVideo.originalname || "introduction-video"),
+          mediaToken
+        ]
+      );
 
       const job = await createPremiumGreetingDashboardJob({
         orderId,
@@ -14223,31 +14436,12 @@ app.post(
         language
       });
 
-      await pool.query(
-        `
-        INSERT INTO premium_greeting_orders (
-          order_id, customer_key, contact_phone, customer_email,
-          recipient_name, sender_name, personal_message, song_style,
-          tribute_notes, recipient_photo_url, intro_video_url,
-          status, dashboard_job_id, created_at, updated_at
-        )
-        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,'payment_required',$12,NOW(),NOW())
-        `,
-        [
-          orderId,
-          customerKey,
-          customerPhone,
-          customerEmail,
-          recipientName,
-          senderName,
-          personalMessage,
-          songStyle,
-          tributeNotes,
-          recipientPhotoUrl,
-          introVideoUrl,
-          job?.id ? String(job.id) : ""
-        ]
-      );
+      if (job?.id) {
+        await pool.query(
+          `UPDATE premium_greeting_orders SET dashboard_job_id = $2, updated_at = NOW() WHERE order_id = $1`,
+          [orderId, String(job.id)]
+        );
+      }
 
       const workerMessage = [
         "Printo Premium Tribute order saved",
@@ -14267,7 +14461,11 @@ app.post(
         jobId: job?.id || null,
         payment,
         whatsappUrl,
-        status: "payment_required"
+        status: "payment_required",
+        media: {
+          photo: recipientPhotoUrl,
+          video: introVideoUrl
+        }
       });
     } catch (error) {
       console.error("Premium greeting request error:", error);
