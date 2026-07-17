@@ -13083,8 +13083,8 @@ app.get("/worker-dashboard", requireDashboardKey, async (req, res) => {
     const photoUrl = extractLabeledInstructionUrl(job, "Recipient photo");
     const videoUrl = extractLabeledInstructionUrl(job, "Personal introduction video");
     const orderId = extractPremiumOrderId(job);
-    const combined = [job.instructions || "", job.notes || "", job.error_message || ""].join("\n");
-    const urls = combined.match(/https?:\/\/[^\s<]+/g) || [];
+    const combined = [job.instructions || "", job.notes || "", job.error_message || ""].join("\\n");
+    const urls = combined.match(/https?:\\/\\/[^\\s<]+/g) || [];
     const musicUrl = urls.find((url) => url.includes("/premium-media/") && url.includes("/music?")) || "";
     const finalUrl = urls.find((url) => url.includes("/premium-media/") && url.includes("/final?")) || "";
     const buttons = [];
@@ -13180,7 +13180,7 @@ return parts.join("");
       job.notes || "",
       job.error_message || ""
     ].join("\\n");
-    const match = combined.match(/Premium order ID:\\s*(PPM-[A-Z0-9-]+)/i);
+    const match = combined.match(/(?:Premium order ID:\\s*)?(PPM-[A-Z0-9-]+)/i);
     return match ? match[1] : "";
   }
 
