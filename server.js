@@ -12648,19 +12648,67 @@ app.get("/worker-dashboard", requireDashboardKey, async (req, res) => {
     return '<div class="noPreview">Preview not available for this file type.<br><br><a class="fileLink" href="' + h(fileUrl) + '" target="_blank">Open file</a></div>';
   }
 
+  function renderInstructionText(value) {
+    const lines = String(value || "").split("\\n");
+    return lines.map((line) => {
+      const trimmed = String(line || "").trim();
+      if (trimmed.startsWith("https://") || trimmed.startsWith("http://")) {
+        return '<a class="fileLink" href="' + h(trimmed) + '" target="_blank" rel="noopener noreferrer">Open uploaded file</a>';
+      }
+      return h(line);
+    }).join("<br>");
+  }
+
+  function extractLabeledInstructionUrl(job, label) {
+    const combined = [job.instructions || "", job.notes || "", job.error_message || ""].join("\\n");
+    const lines = combined.split("\\n");
+    const wanted = String(label || "").trim().toLowerCase() + ":";
+
+    for (let index = 0; index < lines.length; index += 1) {
+      if (String(lines[index] || "").trim().toLowerCase() !== wanted) continue;
+      const possibleUrl = String(lines[index + 1] || "").trim();
+      if (possibleUrl.startsWith("https://") || possibleUrl.startsWith("http://")) {
+        return possibleUrl;
+      }
+    }
+
+    return "";
+  }
+
+  function renderPremiumAssetLinks(job) {
+    if (String(job.service_type || "").toUpperCase() !== "GREETING_PREMIUM") return "";
+
+    const photoUrl = extractLabeledInstructionUrl(job, "Recipient photo");
+    const videoUrl = extractLabeledInstructionUrl(job, "Personal introduction video");
+    const buttons = [];
+
+    if (photoUrl) {
+      buttons.push('<a class="fileLink" href="' + h(photoUrl) + '" target="_blank" rel="noopener noreferrer">📸 Open Recipient Photo</a>');
+    }
+    if (videoUrl) {
+      buttons.push('<a class="fileLink" href="' + h(videoUrl) + '" target="_blank" rel="noopener noreferrer">🎥 Play Introduction Video</a>');
+    }
+
+    if (!buttons.length) {
+      return '<div class="insBox"><b>Premium Uploads</b><br><span class="small">No premium upload links were found on this job.</span></div>';
+    }
+
+    return '<div class="insBox"><b>Premium Uploads</b><br><div class="actionRow" style="margin-top:10px;">' + buttons.join(' ') + '</div></div>';
+  }
+
   function renderInstructions(job) {
     const parts = [];
 
     if (job.instructions) {
-      parts.push('<div class="insBox"><b>Text Instruction</b><br>' + h(job.instructions).replace(/\\n/g, "<br>") + '</div>');
+      parts.push('<div class="insBox"><b>Text Instruction</b><br>' + renderInstructionText(job.instructions) + '</div>');
     }
 
     if (job.notes) {
-      parts.push('<div class="insBox"><b>Notes</b><br>' + h(job.notes).replace(/\\n/g, "<br>") + '</div>');
+      parts.push('<div class="insBox"><b>Notes</b><br>' + renderInstructionText(job.notes) + '</div>');
     }
 
     if (job.error_message) {
-      parts.push('<div class="insBox"><b>Error / Status Note</b><br>' + h(job.error_message).replace(/\\n/g, "<br>") + '</div>');
+      parts.push('<div class="insBox"><b>Error / Status Note</b><br>' + renderInstructionText(job.error_message) + '</div>');
     }
 
     if (!parts.length) {
@@ -12777,6 +12825,7 @@ return parts.join("");
             <div class="detailRow"><b>Customer</b><div>\${h(job.customer_phone || "-")}</div></div>
 
             \${renderInstructions(job)}
+            \${renderPremiumAssetLinks(job)}
 
             <div class="routeRow">
               <select id="route_\${h(job.id)}">
