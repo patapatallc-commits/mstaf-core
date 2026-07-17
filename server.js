@@ -2780,7 +2780,7 @@ async function compressPremiumIntroductionVideo(inputPath, outputPath) {
     "-y", "-nostdin", "-loglevel", "error",
     "-i", inputPath,
     "-t", String(Math.min(source.duration, PREMIUM_VIDEO_MAX_SECONDS)),
-    "-vf", "scale=1280:720:force_original_aspect_ratio=decrease",
+    "-vf", "scale=1280:720:force_original_aspect_ratio=decrease,scale=trunc(iw/2)*2:trunc(ih/2)*2,setsar=1",
     "-c:v", "libx264",
     "-preset", "veryfast",
     "-pix_fmt", "yuv420p",
