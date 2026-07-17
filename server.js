@@ -12753,7 +12753,7 @@ return parts.join("");
       job.error_message || ""
     ].join("\\n");
 
-    const match = combined.match(/Customer key:\s*(g_[a-f0-9]{64})/i);
+    const match = combined.match(/Customer key:\\s*(g_[a-f0-9]{64})/i);
     return match ? match[1] : "";
   }
 
@@ -12763,7 +12763,7 @@ return parts.join("");
       job.notes || "",
       job.error_message || ""
     ].join("\\n");
-    const match = combined.match(/Premium order ID:\s*(PPM-[A-Z0-9-]+)/i);
+    const match = combined.match(/Premium order ID:\\s*(PPM-[A-Z0-9-]+)/i);
     return match ? match[1] : "";
   }
 
@@ -12774,22 +12774,22 @@ return parts.join("");
     const greetingApprovalButton =
       String(job.service_type || "").toUpperCase() === "GREETING_CARD" &&
       greetingCustomerKey
-        ? '<button class="btn green" onclick="approveGreetingCredit(\'' +
-          greetingCustomerKey +
-          '\',\'' +
+        ? '<button class="btn green" onclick="approveGreetingCredit(&quot;' +
+          h(greetingCustomerKey) +
+          '&quot;,&quot;' +
           h(job.customer_phone || "") +
-          '\',\'' +
+          '&quot;,&quot;' +
           h(job.id || "") +
-          '\')">Approve Greeting Payment</button>'
+          '&quot;)">Approve Greeting Payment</button>'
         : "";
     const premiumOrderId = extractPremiumOrderId(job);
     const premiumApprovalButton =
       String(job.service_type || "").toUpperCase() === "GREETING_PREMIUM" && premiumOrderId
-        ? '<button class="btn green" onclick="approvePremiumPayment(\'' +
-          premiumOrderId +
-          '\',\'' +
+        ? '<button class="btn green" onclick="approvePremiumPayment(&quot;' +
+          h(premiumOrderId) +
+          '&quot;,&quot;' +
           h(job.id || "") +
-          '\')">Approve Premium Payment</button>'
+          '&quot;)">Approve Premium Payment</button>'
         : "";
     return \`
       <div class="jobCard">
