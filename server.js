@@ -15411,7 +15411,7 @@ async function renderPremiumOrderVideo({ orderId, req, publicBaseUrl = "" }) {
       orderId,
       finalVideoUrl,
       totalDuration,
-      hasVoice: false,
+      hasVoice: Boolean(introProbe.hasAudio),
       usedCustomMusic: Boolean(order.has_custom_music),
       usedPremiumFrame: true
     };
