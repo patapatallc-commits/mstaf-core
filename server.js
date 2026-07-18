@@ -15090,6 +15090,15 @@ function premiumSegmentVideoArgs({ duration, outputPath }) {
   ];
 }
 
+function findPremiumTributeFrame() {
+  const candidates = [
+    path.join(__dirname, "templates", "premium", "premium_tribute_frame.png"),
+    path.join(__dirname, "templates", "premium", "printo_premium_tribute_frame.png"),
+    path.join(__dirname, "templates", "premium", "premium_tribute_music_video.png")
+  ];
+  return candidates.find((candidate) => fs.existsSync(candidate)) || "";
+}
+
 async function renderPremiumOrderVideo({ orderId, req, publicBaseUrl = "" }) {
   const found = await pool.query(
     `SELECT order_id,
@@ -15113,13 +15122,19 @@ async function renderPremiumOrderVideo({ orderId, req, publicBaseUrl = "" }) {
   const order = found.rows[0];
   if (!order) throw new Error("Premium order was not found.");
 
+  const premiumFramePath = findPremiumTributeFrame();
+  if (!premiumFramePath) {
+    throw new Error(
+      "Premium tribute frame is missing. Add templates/premium/premium_tribute_frame.png to the repository."
+    );
+  }
+
   const runId = `${Date.now()}_${crypto.randomBytes(5).toString("hex")}`;
   const photoExt = getExtFromMime(order.recipient_photo_mime) || ".jpg";
   const musicExt = getExtFromMime(order.tribute_music_mime) || ".mp3";
   const photoPath = path.join(premiumTempDir, `${runId}_photo${photoExt}`);
   const introPath = path.join(premiumTempDir, `${runId}_intro.mp4`);
   const customMusicPath = path.join(premiumTempDir, `${runId}_music${musicExt}`);
-  const voicePath = path.join(premiumTempDir, `${runId}_voice.mp3`);
   const openingPath = path.join(premiumTempDir, `${runId}_opening.mp4`);
   const introSegmentPath = path.join(premiumTempDir, `${runId}_intro_segment.mp4`);
   const tributePath = path.join(premiumTempDir, `${runId}_tribute.mp4`);
@@ -15130,7 +15145,6 @@ async function renderPremiumOrderVideo({ orderId, req, publicBaseUrl = "" }) {
     photoPath,
     introPath,
     customMusicPath,
-    voicePath,
     openingPath,
     introSegmentPath,
     tributePath,
@@ -15178,119 +15192,117 @@ async function renderPremiumOrderVideo({ orderId, req, publicBaseUrl = "" }) {
     }
     if (!selectedMusicPath) {
       throw new Error(
-        "No tribute music is available. Upload the custom song or add templates/premium/premium_demo_music.mp3."
+        "No tribute music is available. Upload the completed song or add templates/premium/premium_demo_music.mp3."
       );
     }
 
     const introProbe = await probePremiumMedia(introPath);
+    const musicProbe = await probePremiumMedia(selectedMusicPath);
     const introDuration = Math.max(
       1,
       Math.min(PREMIUM_VIDEO_MAX_SECONDS, Number(introProbe.duration || 1))
     );
     const openingDuration = 5;
-    const tributeDuration = Math.max(28, 68 - openingDuration - introDuration);
+    const musicDuration = Math.max(20, Math.min(180, Number(musicProbe.duration || 45)));
+    const closingDuration = 6;
+    const tributeDuration = musicDuration + closingDuration;
     const totalDuration = openingDuration + introDuration + tributeDuration;
     const introEnd = openingDuration + introDuration;
 
-    const voiceResult = await generatePrintoPremiumVoice({ order, outputPath: voicePath });
-    const hasVoice = Boolean(voiceResult.ok && fs.existsSync(voicePath));
-    const voiceProbe = hasVoice ? await probePremiumMedia(voicePath) : { duration: 0 };
-    const voiceDuration = Math.max(0, Number(voiceProbe.duration || 0));
-    const voiceStart = Math.max(
-      introEnd + 3,
-      Math.min(totalDuration - Math.max(voiceDuration, 12) - 3, introEnd + 6)
-    );
-    const voiceEnd = Math.min(totalDuration, voiceStart + voiceDuration);
-
+    const recipientName = String(order.recipient_name || "Special Recipient").trim().slice(0, 24);
+    const senderName = String(order.sender_name || "With Love").trim().slice(0, 24);
     const messageLines = wrapGreetingMessage(
       order.personal_message || "A special tribute created with love.",
-      32,
-      3
+      34,
+      4
     );
+    while (messageLines.length < 4) messageLines.push("");
+
     const fontFile = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf";
     const fontOption = fs.existsSync(fontFile) ? `fontfile=${fontFile}:` : "";
     const q = quoteDrawtextText;
 
-    console.log("Premium render stage 4/7 - creating low-memory video segments:", orderId);
+    // Coordinates below are for the low-memory 540 x 960 Render output.
+    const baseFrame = "scale=540:960,setsar=1,format=yuv420p";
+    const photoFilter =
+      "scale=230:230:force_original_aspect_ratio=increase,crop=230:230," +
+      "format=rgba,geq=r='r(X,Y)':g='g(X,Y)':b='b(X,Y)':a='if(lte((X-115)*(X-115)+(Y-115)*(Y-115),112*112),255,0)'";
 
-    const openingFilter = [
-      "scale=540:960:force_original_aspect_ratio=increase",
-      "crop=540:960",
-      "format=yuv420p",
-      "drawbox=x=20:y=45:w=500:h=220:color=#06184f@0.82:t=fill",
-      `drawtext=${fontOption}text=${q("PRINTO PREMIUM TRIBUTE")}:x=(w-text_w)/2:y=75:fontsize=25:fontcolor=#ffd35a:borderw=2:bordercolor=#071b61`,
-      `drawtext=${fontOption}text=${q(order.recipient_name || "Special Recipient")}:x=(w-text_w)/2:y=135:fontsize=43:fontcolor=white:borderw=2:bordercolor=#071b61`,
-      `drawtext=${fontOption}text=${q(`From ${order.sender_name || "With love"}`)}:x=(w-text_w)/2:y=205:fontsize=23:fontcolor=#ffd35a:borderw=2:bordercolor=#071b61`
+    const commonTextOverlay = [
+      // Hide the sample placeholder words while preserving the gold boxes.
+      "drawbox=x=66:y=604:w=176:h=43:color=#fff7e6@0.98:t=fill",
+      "drawbox=x=298:y=604:w=176:h=43:color=#fff7e6@0.98:t=fill",
+      "drawbox=x=77:y=711:w=386:h=78:color=#fff7e6@0.98:t=fill",
+      `drawtext=${fontOption}text=${q(recipientName)}:x=154-text_w/2:y=614:fontsize=18:fontcolor=#082b6a:borderw=1:bordercolor=#fff7e6`,
+      `drawtext=${fontOption}text=${q(senderName)}:x=386-text_w/2:y=614:fontsize=18:fontcolor=#082b6a:borderw=1:bordercolor=#fff7e6`,
+      `drawtext=${fontOption}text=${q(messageLines[0])}:x=(w-text_w)/2:y=716:fontsize=17:fontcolor=#082b6a:borderw=1:bordercolor=#fff7e6`,
+      `drawtext=${fontOption}text=${q(messageLines[1])}:x=(w-text_w)/2:y=738:fontsize=17:fontcolor=#082b6a:borderw=1:bordercolor=#fff7e6`,
+      `drawtext=${fontOption}text=${q(messageLines[2])}:x=(w-text_w)/2:y=760:fontsize=17:fontcolor=#082b6a:borderw=1:bordercolor=#fff7e6`,
+      `drawtext=${fontOption}text=${q(messageLines[3])}:x=(w-text_w)/2:y=782:fontsize=17:fontcolor=#082b6a:borderw=1:bordercolor=#fff7e6`
     ].join(",");
 
+    console.log("Premium render stage 4/7 - creating branded Printo segments:", orderId);
+
+    // Opening: the recipient photo appears in the circular photo area, and the
+    // introduction window displays a clean opening message.
     await execFilePromise("ffmpeg", [
       "-y", "-nostdin", "-loglevel", "error",
+      "-loop", "1", "-i", premiumFramePath,
       "-loop", "1", "-i", photoPath,
-      "-vf", openingFilter,
+      "-filter_complex",
+      `[0:v]${baseFrame},${commonTextOverlay},drawbox=x=139:y=384:w=318:h=184:color=#06184f@0.96:t=fill,` +
+      `drawtext=${fontOption}text=${q("A SPECIAL TRIBUTE FOR")}:x=(w-text_w)/2:y=424:fontsize=20:fontcolor=#ffd35a:borderw=2:bordercolor=#06184f,` +
+      `drawtext=${fontOption}text=${q(recipientName)}:x=(w-text_w)/2:y=463:fontsize=30:fontcolor=white:borderw=2:bordercolor=#06184f,` +
+      `drawtext=${fontOption}text=${q(`FROM ${senderName}`)}:x=(w-text_w)/2:y=510:fontsize=18:fontcolor=#ffd35a:borderw=2:bordercolor=#06184f[base];` +
+      `[1:v]${photoFilter}[photo];[base][photo]overlay=166:124:shortest=1[v]`,
+      "-map", "[v]",
       ...premiumSegmentVideoArgs({ duration: openingDuration, outputPath: openingPath })
     ], { timeout: 300000, maxBuffer: 8 * 1024 * 1024 });
 
-    const introFilter = [
-      "scale=500:760:force_original_aspect_ratio=decrease",
-      "pad=540:960:(ow-iw)/2:(oh-ih)/2:color=#06184f",
-      "setsar=1",
-      "format=yuv420p",
-      "drawbox=x=18:y=42:w=504:h=92:color=#123c91@0.94:t=fill",
-      `drawtext=${fontOption}text=${q(`A personal message from ${order.sender_name || "someone special"}`)}:x=(w-text_w)/2:y=72:fontsize=22:fontcolor=white:borderw=2:bordercolor=#06184f`,
-      "drawbox=x=18:y=856:w=504:h=62:color=#06184f@0.86:t=fill",
-      `drawtext=${fontOption}text=${q("The tribute music continues underneath")}:x=(w-text_w)/2:y=878:fontsize=17:fontcolor=#ffd35a`
-    ].join(",");
-
+    // Introduction: place the customer's real introduction video inside the
+    // exact YOUR VIDEO INTRO window while keeping the full Printo poster visible.
     await execFilePromise("ffmpeg", [
       "-y", "-nostdin", "-loglevel", "error",
+      "-loop", "1", "-i", premiumFramePath,
+      "-loop", "1", "-i", photoPath,
       "-i", introPath,
-      "-vf", introFilter,
+      "-filter_complex",
+      `[0:v]${baseFrame},${commonTextOverlay}[base];` +
+      `[1:v]${photoFilter}[photo];` +
+      `[2:v]scale=318:184:force_original_aspect_ratio=increase,crop=318:184,setsar=1,format=yuv420p[intro];` +
+      `[base][photo]overlay=166:124:shortest=1[withphoto];` +
+      `[withphoto][intro]overlay=139:384:shortest=1[v]`,
+      "-map", "[v]",
       ...premiumSegmentVideoArgs({ duration: introDuration, outputPath: introSegmentPath })
     ], { timeout: 300000, maxBuffer: 8 * 1024 * 1024 });
 
-    const printoPath = path.join(__dirname, "templates", "premium", "original_printo.png");
-    const tributeBase = [
-      "scale=540:960:force_original_aspect_ratio=increase",
-      "crop=540:960",
-      "format=yuv420p",
-      "drawbox=x=18:y=42:w=504:h=245:color=#06184f@0.78:t=fill",
-      `drawtext=${fontOption}text=${q(`Celebrating ${order.recipient_name || "You"}`)}:x=(w-text_w)/2:y=72:fontsize=33:fontcolor=#ffd35a:borderw=2:bordercolor=#06184f`,
-      `drawtext=${fontOption}text=${q(messageLines[0] || "")}:x=(w-text_w)/2:y=145:fontsize=20:fontcolor=white:borderw=2:bordercolor=#06184f`,
-      `drawtext=${fontOption}text=${q(messageLines[1] || "")}:x=(w-text_w)/2:y=180:fontsize=20:fontcolor=white:borderw=2:bordercolor=#06184f`,
-      `drawtext=${fontOption}text=${q(messageLines[2] || "")}:x=(w-text_w)/2:y=215:fontsize=20:fontcolor=white:borderw=2:bordercolor=#06184f`,
-      "drawbox=x=25:y=858:w=490:h=67:color=#06184f@0.86:t=fill",
-      `drawtext=${fontOption}text=${q("Created with love by Printo Studio")}:x=(w-text_w)/2:y=881:fontsize=20:fontcolor=#ffd35a`
-    ].join(",");
-
-    if (fs.existsSync(printoPath)) {
-      await execFilePromise("ffmpeg", [
-        "-y", "-nostdin", "-loglevel", "error",
-        "-loop", "1", "-i", photoPath,
-        "-loop", "1", "-i", printoPath,
-        "-filter_complex",
-        `[0:v]${tributeBase}[base];[1:v]scale=150:-1,format=rgba[printo];[base][printo]overlay=8:H-h-18[v]`,
-        "-map", "[v]",
-        ...premiumSegmentVideoArgs({ duration: tributeDuration, outputPath: tributePath })
-      ], { timeout: 300000, maxBuffer: 8 * 1024 * 1024 });
-    } else {
-      await execFilePromise("ffmpeg", [
-        "-y", "-nostdin", "-loglevel", "error",
-        "-loop", "1", "-i", photoPath,
-        "-vf", tributeBase,
-        ...premiumSegmentVideoArgs({ duration: tributeDuration, outputPath: tributePath })
-      ], { timeout: 300000, maxBuffer: 8 * 1024 * 1024 });
-    }
+    // Tribute music: retain the premium poster, gently zoom the recipient photo,
+    // and use the video window for a readable music dedication panel.
+    await execFilePromise("ffmpeg", [
+      "-y", "-nostdin", "-loglevel", "error",
+      "-loop", "1", "-i", premiumFramePath,
+      "-loop", "1", "-i", photoPath,
+      "-filter_complex",
+      `[0:v]${baseFrame},${commonTextOverlay},drawbox=x=139:y=384:w=318:h=184:color=#06184f@0.94:t=fill,` +
+      `drawtext=${fontOption}text=${q("NOW PLAYING")}:x=(w-text_w)/2:y=407:fontsize=18:fontcolor=#ffd35a:borderw=2:bordercolor=#06184f,` +
+      `drawtext=${fontOption}text=${q(`A TRIBUTE FOR ${recipientName}`)}:x=(w-text_w)/2:y=444:fontsize=24:fontcolor=white:borderw=2:bordercolor=#06184f,` +
+      `drawtext=${fontOption}text=${q(`WITH LOVE FROM ${senderName}`)}:x=(w-text_w)/2:y=490:fontsize=17:fontcolor=#ffd35a:borderw=2:bordercolor=#06184f,` +
+      `drawtext=${fontOption}text=${q("PRINTO PREMIUM TRIBUTE MUSIC")}:x=(w-text_w)/2:y=528:fontsize=15:fontcolor=white:borderw=1:bordercolor=#06184f[base];` +
+      `[1:v]${photoFilter}[photo];[base][photo]overlay=166:124:shortest=1[v]`,
+      "-map", "[v]",
+      ...premiumSegmentVideoArgs({ duration: tributeDuration, outputPath: tributePath })
+    ], { timeout: 300000, maxBuffer: 8 * 1024 * 1024 });
 
     const escapeConcatPath = (value) => String(value).replace(/'/g, "'\\''");
     await fs.promises.writeFile(
       concatListPath,
       [openingPath, introSegmentPath, tributePath]
-        .map(file => `file '${escapeConcatPath(file)}'`)
+        .map((file) => `file '${escapeConcatPath(file)}'`)
         .join("\n") + "\n",
       "utf8"
     );
 
-    console.log("Premium render stage 5/7 - joining segments:", orderId);
+    console.log("Premium render stage 5/7 - joining branded segments:", orderId);
     await execFilePromise("ffmpeg", [
       "-y", "-nostdin", "-loglevel", "error",
       "-f", "concat", "-safe", "0", "-i", concatListPath,
@@ -15299,41 +15311,35 @@ async function renderPremiumOrderVideo({ orderId, req, publicBaseUrl = "" }) {
       silentVideoPath
     ], { timeout: 300000, maxBuffer: 8 * 1024 * 1024 });
 
-    console.log("Premium render stage 6/7 - mixing continuous music and speech:", orderId);
+    console.log("Premium render stage 6/7 - mixing intro audio and tribute music:", orderId);
     const audioInputArgs = [
       "-i", silentVideoPath,
       "-stream_loop", "-1", "-i", selectedMusicPath
     ];
     let introAudioIndex = -1;
-    let voiceAudioIndex = -1;
     if (introProbe.hasAudio) {
       introAudioIndex = 2;
       audioInputArgs.push("-i", introPath);
     }
-    if (hasVoice) {
-      voiceAudioIndex = introProbe.hasAudio ? 3 : 2;
-      audioInputArgs.push("-i", voicePath);
-    }
 
     const audioFilters = [
-      `[1:a]atrim=0:${totalDuration},asetpts=PTS-STARTPTS,volume='if(between(t,${openingDuration},${introEnd}),0.16,if(between(t,${voiceStart},${voiceEnd}),0.16,0.70))':eval=frame,afade=t=in:st=0:d=1,afade=t=out:st=${Math.max(0, totalDuration - 4)}:d=4[music]`
+      `[1:a]atrim=0:${totalDuration},asetpts=PTS-STARTPTS,` +
+      `volume='if(between(t,${openingDuration},${introEnd}),0.10,0.86)':eval=frame,` +
+      `afade=t=in:st=0:d=1,afade=t=out:st=${Math.max(0, totalDuration - 5)}:d=5[music]`
     ];
     const mixLabels = ["[music]"];
 
     if (introAudioIndex >= 0) {
       audioFilters.push(
-        `[${introAudioIndex}:a]atrim=0:${introDuration},asetpts=PTS-STARTPTS,adelay=${openingDuration * 1000}|${openingDuration * 1000},volume=1.20[introa]`
+        `[${introAudioIndex}:a]atrim=0:${introDuration},asetpts=PTS-STARTPTS,` +
+        `adelay=${openingDuration * 1000}|${openingDuration * 1000},volume=1.20[introa]`
       );
       mixLabels.push("[introa]");
     }
-    if (voiceAudioIndex >= 0) {
-      audioFilters.push(
-        `[${voiceAudioIndex}:a]atrim=0:${Math.max(voiceDuration, 0.1)},asetpts=PTS-STARTPTS,adelay=${Math.round(voiceStart * 1000)}|${Math.round(voiceStart * 1000)},volume=1.10[voice]`
-      );
-      mixLabels.push("[voice]");
-    }
+
     audioFilters.push(
-      `${mixLabels.join("")}amix=inputs=${mixLabels.length}:duration=longest:dropout_transition=2,alimiter=limit=0.95,atrim=0:${totalDuration}[aout]`
+      `${mixLabels.join("")}amix=inputs=${mixLabels.length}:duration=longest:` +
+      `dropout_transition=2,alimiter=limit=0.95,atrim=0:${totalDuration}[aout]`
     );
 
     await execFilePromise("ffmpeg", [
@@ -15380,13 +15386,10 @@ async function renderPremiumOrderVideo({ orderId, req, publicBaseUrl = "" }) {
         finalBytes,
         `Printo-Premium-${orderId}.mp4`,
         finalVideoUrl,
-        voiceResult.text || buildPremiumVoiceScript(order)
+        `Personal introduction by ${senderName}, followed by a tribute song for ${recipientName}.`
       ]
     );
 
-    // Keep the finished-video link visible on the worker dashboard. Fall back
-    // to matching the Premium order ID for orders created before dashboard_job_id
-    // was reliably saved.
     await pool.query(
       `UPDATE print_jobs
        SET instructions = CASE
@@ -15398,7 +15401,7 @@ async function renderPremiumOrderVideo({ orderId, req, publicBaseUrl = "" }) {
        WHERE (($1 <> '' AND id::text = $1)
               OR COALESCE(instructions, '') ILIKE $2)`,
       [
-        String(order.dashboard_job_id || ''),
+        String(order.dashboard_job_id || ""),
         `%${orderId}%`,
         `\n\n🎬 FINISHED PREMIUM VIDEO\n${finalVideoUrl}`
       ]
@@ -15408,8 +15411,9 @@ async function renderPremiumOrderVideo({ orderId, req, publicBaseUrl = "" }) {
       orderId,
       finalVideoUrl,
       totalDuration,
-      hasVoice,
-      usedCustomMusic: Boolean(order.has_custom_music)
+      hasVoice: false,
+      usedCustomMusic: Boolean(order.has_custom_music),
+      usedPremiumFrame: true
     };
   } catch (error) {
     await pool.query(
