@@ -15716,9 +15716,13 @@ async function renderPremiumOrderVideo({ orderId, req, publicBaseUrl = "" }) {
       `[0:v]${baseFrame},${commonTextOverlay},` +
       `drawbox=x=${introWindowX}:y=${introWindowY}:w=${introWindowW}:h=${introWindowH}:color=#e8b83f:t=fill[base];` +
       `[1:v]${photoFilter}[photo];` +
-      `[2:v]scale=${introInnerW}:${introInnerH}:force_original_aspect_ratio=increase,` +
-      `crop=${introInnerW}:${introInnerH}:(iw-ow)/2:(ih-oh),` +
-      `setsar=1,format=yuv420p[intro];` +
+      `[2:v]split=2[introbgsrc][introfgsrc];` +
+      `[introbgsrc]scale=${introInnerW}:${introInnerH}:force_original_aspect_ratio=increase,` +
+      `crop=${introInnerW}:${introInnerH},boxblur=18:8,setsar=1,format=yuv420p[introbg];` +
+      `[introfgsrc]scale=${introInnerW}:${introInnerH}:force_original_aspect_ratio=decrease,` +
+      `pad=${introInnerW}:${introInnerH}:(ow-iw)/2:(oh-ih)/2:color=black@0,` +
+      `setsar=1,format=yuva420p[introfg];` +
+      `[introbg][introfg]overlay=(W-w)/2:(H-h)/2:shortest=1[intro];` +
       `[base][photo]overlay=166:124:shortest=1[withphoto];` +
       `[withphoto][intro]overlay=${introInnerX}:${introInnerY}:shortest=1[v]`,
       "-map", "[v]",
@@ -15737,9 +15741,13 @@ async function renderPremiumOrderVideo({ orderId, req, publicBaseUrl = "" }) {
       `[0:v]${baseFrame},${commonTextOverlay},` +
       `drawbox=x=${introWindowX}:y=${introWindowY}:w=${introWindowW}:h=${introWindowH}:color=#e8b83f:t=fill[base];` +
       `[1:v]${photoFilter}[photo];` +
-      `[2:v]scale=${introInnerW}:${introInnerH}:force_original_aspect_ratio=increase,` +
-      `crop=${introInnerW}:${introInnerH}:(iw-ow)/2:(ih-oh),` +
-      `setsar=1,format=yuv420p,` +
+      `[2:v]split=2[stillbgsrc][stillfgsrc];` +
+      `[stillbgsrc]scale=${introInnerW}:${introInnerH}:force_original_aspect_ratio=increase,` +
+      `crop=${introInnerW}:${introInnerH},boxblur=18:8,setsar=1,format=yuv420p[stillbg];` +
+      `[stillfgsrc]scale=${introInnerW}:${introInnerH}:force_original_aspect_ratio=decrease,` +
+      `pad=${introInnerW}:${introInnerH}:(ow-iw)/2:(oh-ih)/2:color=black@0,` +
+      `setsar=1,format=yuva420p[stillfg];` +
+      `[stillbg][stillfg]overlay=(W-w)/2:(H-h)/2:shortest=1,` +
       `tpad=stop_mode=clone:stop_duration=${tributeDuration}[introstill];` +
       `[base][photo]overlay=166:124:shortest=1[withphoto];` +
       `[withphoto][introstill]overlay=${introInnerX}:${introInnerY}:shortest=1[withintro];` +
