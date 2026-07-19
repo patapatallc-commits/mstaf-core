@@ -13204,7 +13204,8 @@ app.get("/worker-dashboard", requireDashboardKey, async (req, res) => {
       buttons.push('<a class="fileLink" href="' + h(finalUrl) + '" target="_blank" rel="noopener noreferrer">🎬 Play Finished Premium Video</a>');
     }
     if (orderId) {
-      buttons.push('<label class="btn secondary" style="display:inline-flex;align-items:center;cursor:pointer;">🎵 Upload Custom Music<input class="premiumMusicInput" data-order-id="' + h(orderId) + '" type="file" accept="audio/*" hidden></label>');
+      const uploadLabel = musicUrl ? "✅ Replace Tribute Music" : "🎵 Upload Custom Music";
+      buttons.push('<label class="btn secondary" style="display:inline-flex;align-items:center;cursor:pointer;">' + uploadLabel + '<input class="premiumMusicInput" data-order-id="' + h(orderId) + '" type="file" accept="audio/*" hidden></label>');
       buttons.push('<button type="button" class="btn premiumRenderButton" data-order-id="' + h(orderId) + '">🎬 Render Complete Video</button>');
     }
 
@@ -13212,7 +13213,7 @@ app.get("/worker-dashboard", requireDashboardKey, async (req, res) => {
       return '<div class="insBox"><b>Premium Production</b><br><span class="small">No Premium assets were found on this job.</span></div>';
     }
 
-    return '<div class="insBox"><b>Premium Production</b><br><div class="actionRow" style="margin-top:10px;">' + buttons.join(' ') + '</div><div class="small" style="margin-top:8px;">Music remains continuous to the final Printo screen. The server lowers it automatically while the introduction or AI dedication is speaking.</div></div>';
+    return '<div class="insBox"><b>Premium Production</b><br><div class="actionRow" style="margin-top:10px;">' + buttons.join(' ') + '</div><div class="small" style="margin-top:8px;">The introduction plays first. The uploaded Suno tribute song starts immediately afterward and continues to the final Printo screen.</div></div>';
   }
 
   function renderInstructions(job) {
@@ -15177,24 +15178,28 @@ async function renderPremiumOrderVideo({ orderId, req, publicBaseUrl = "" }) {
       "Introduction video is missing."
     );
 
-    let selectedMusicPath = "";
-    if (order.has_custom_music) {
-      console.log("Premium render stage 3/7 - loading custom music:", orderId);
-      await readPremiumBinaryToFile(
-        orderId,
-        "tribute_music_data",
-        customMusicPath,
-        "Custom tribute music is missing."
-      );
-      selectedMusicPath = customMusicPath;
-    } else {
-      selectedMusicPath = findPremiumDefaultMusic();
-    }
-    if (!selectedMusicPath) {
+    // Premium production must use the worker-uploaded Suno/custom tribute song.
+    // Never fall back to the demo or intro music for a paid Premium order.
+    if (!order.has_custom_music) {
       throw new Error(
-        "No tribute music is available. Upload the completed song or add templates/premium/premium_demo_music.mp3."
+        "Custom tribute music is required. Upload the completed Suno song before rendering."
       );
     }
+
+    console.log("Premium render stage 3/7 - loading uploaded Suno/custom music:", orderId);
+    const storedMusicBytes = await readPremiumBinaryToFile(
+      orderId,
+      "tribute_music_data",
+      customMusicPath,
+      "Custom tribute music is missing. Upload the completed Suno song again."
+    );
+    const selectedMusicPath = customMusicPath;
+    console.log(
+      "Premium custom music ready:",
+      orderId,
+      `${Math.round(storedMusicBytes / 1024)} KB`,
+      order.tribute_music_mime || "audio/mpeg"
+    );
 
     const introProbe = await probePremiumMedia(introPath);
     const musicProbe = await probePremiumMedia(selectedMusicPath);
@@ -15322,17 +15327,21 @@ async function renderPremiumOrderVideo({ orderId, req, publicBaseUrl = "" }) {
       audioInputArgs.push("-i", introPath);
     }
 
+    // Keep the opening clean, play the customer's introduction audio during
+    // the introduction segment, then start the uploaded Suno tribute song at
+    // full volume immediately after the introduction finishes.
+    const musicDelayMs = Math.round(introEnd * 1000);
     const audioFilters = [
-      `[1:a]atrim=0:${totalDuration},asetpts=PTS-STARTPTS,` +
-      `volume='if(between(t,${openingDuration},${introEnd}),0.10,0.86)':eval=frame,` +
-      `afade=t=in:st=0:d=1,afade=t=out:st=${Math.max(0, totalDuration - 5)}:d=5[music]`
+      `[1:a]atrim=0:${tributeDuration},asetpts=PTS-STARTPTS,` +
+      `afade=t=in:st=0:d=1,afade=t=out:st=${Math.max(0, tributeDuration - 5)}:d=5,` +
+      `volume=1.0,adelay=${musicDelayMs}|${musicDelayMs}[music]`
     ];
     const mixLabels = ["[music]"];
 
     if (introAudioIndex >= 0) {
       audioFilters.push(
         `[${introAudioIndex}:a]atrim=0:${introDuration},asetpts=PTS-STARTPTS,` +
-        `adelay=${openingDuration * 1000}|${openingDuration * 1000},volume=1.20[introa]`
+        `adelay=${openingDuration * 1000}|${openingDuration * 1000},volume=1.08[introa]`
       );
       mixLabels.push("[introa]");
     }
@@ -15412,7 +15421,7 @@ async function renderPremiumOrderVideo({ orderId, req, publicBaseUrl = "" }) {
       finalVideoUrl,
       totalDuration,
       hasVoice: Boolean(introProbe.hasAudio),
-      usedCustomMusic: Boolean(order.has_custom_music),
+      usedCustomMusic: true,
       usedPremiumFrame: true
     };
   } catch (error) {
