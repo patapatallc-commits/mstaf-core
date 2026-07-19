@@ -13125,43 +13125,66 @@ app.get("/worker-dashboard", requireDashboardKey, async (req, res) => {
   }
 
   async function waitForPremiumRender(orderId, button, oldText) {
-    const maxChecks = 180;
-    for (let check = 1; check <= maxChecks; check += 1) {
-      await delay(5000);
+    const startedAt = Date.now();
+    let consecutiveStatusErrors = 0;
 
-      const status = await api(
-        "/api/greeting/premium/render-status?orderId=" + encodeURIComponent(orderId)
-      );
+    while (true) {
+      await delay(10000);
 
-      const state = String(status.renderStatus || status.status || "").toLowerCase();
-      if (button) {
-        const elapsedSeconds = check * 5;
-        button.textContent = state === "queued"
-          ? "⏳ Render queued..."
-          : "🎬 Rendering... " + elapsedSeconds + "s";
-      }
-
-      if (state === "completed") {
-        alert(
-          "✅ Premium video completed. Duration: " +
-          Number(status.totalDuration || 0).toFixed(0) +
-          " seconds."
+      try {
+        const status = await api(
+          "/api/greeting/premium/render-status?orderId=" + encodeURIComponent(orderId)
         );
-        if (status.finalVideoUrl) {
-          window.open(status.finalVideoUrl, "_blank", "noopener");
-        }
-        loadJobs();
-        return;
-      }
+        consecutiveStatusErrors = 0;
 
-      if (state === "failed") {
-        throw new Error(status.renderError || "Premium video rendering failed.");
+        const state = String(status.renderStatus || status.status || "").toLowerCase();
+        const elapsedSeconds = Math.max(
+          0,
+          Math.round((Date.now() - startedAt) / 1000)
+        );
+
+        if (button) {
+          button.textContent = state === "queued"
+            ? "⏳ Render queued..."
+            : "🎬 Rendering... " + elapsedSeconds + "s";
+        }
+
+        if (state === "completed") {
+          alert(
+            "✅ Premium video completed. Duration: " +
+            Number(status.totalDuration || 0).toFixed(0) +
+            " seconds."
+          );
+          if (status.finalVideoUrl) {
+            window.open(status.finalVideoUrl, "_blank", "noopener");
+          }
+          await loadJobs();
+          return;
+        }
+
+        if (state === "failed") {
+          throw new Error(status.renderError || "Premium video rendering failed.");
+        }
+      } catch (error) {
+        const message = String(error?.message || error || "");
+        if (
+          message.toLowerCase().includes("rendering failed") ||
+          message.toLowerCase().includes("premium video rendering failed")
+        ) {
+          throw error;
+        }
+
+        // Temporary 502/503/network interruptions must not turn an active render
+        // into a false failure message. Keep monitoring and let the server recover.
+        consecutiveStatusErrors += 1;
+        if (button) {
+          button.textContent = consecutiveStatusErrors >= 3
+            ? "⏳ Server reconnecting — render continues..."
+            : "🎬 Rendering — checking status...";
+        }
+        await delay(Math.min(30000, consecutiveStatusErrors * 5000));
       }
     }
-
-    throw new Error(
-      "Rendering is still running. Refresh the dashboard shortly and check the Premium order again."
-    );
   }
 
   async function renderPremiumOrder(orderId, button) {
@@ -13194,7 +13217,13 @@ app.get("/worker-dashboard", requireDashboardKey, async (req, res) => {
 
       await waitForPremiumRender(orderId, button, oldText);
     } catch (error) {
-      alert("Premium render failed: " + error.message);
+      const message = String(error?.message || error || "");
+      if (message.toLowerCase().includes("still running")) {
+        if (button) button.textContent = "🎬 Rendering — monitoring...";
+        await waitForPremiumRender(orderId, button, oldText);
+      } else {
+        alert("Premium render failed: " + message);
+      }
     } finally {
       isRenderingPremiumVideo = false;
       if (button) {
@@ -15427,10 +15456,10 @@ async function readPremiumBinaryToFile(orderId, columnName, outputPath, missingM
   return media.length;
 }
 
-function premiumSegmentVideoArgs({ duration, outputPath }) {
+function premiumSegmentVideoArgs({ duration, outputPath, fps = 15 }) {
   return [
     "-t", String(duration),
-    "-r", "24",
+    "-r", String(fps),
     "-an",
     "-c:v", "libx264",
     "-preset", "ultrafast",
@@ -15628,7 +15657,7 @@ async function renderPremiumOrderVideo({ orderId, req, publicBaseUrl = "" }) {
       `drawtext=${fontOption}text=${q(`FROM ${senderName}`)}:x=(w-text_w)/2:y=510:fontsize=18:fontcolor=#ffd35a:borderw=2:bordercolor=#06184f[base];` +
       `[1:v]${photoFilter}[photo];[base][photo]overlay=166:124:shortest=1[v]`,
       "-map", "[v]",
-      ...premiumSegmentVideoArgs({ duration: openingDuration, outputPath: openingPath })
+      ...premiumSegmentVideoArgs({ duration: openingDuration, outputPath: openingPath, fps: 10 })
     ], { timeout: PREMIUM_RENDER_STAGE_TIMEOUT_MS, maxBuffer: 8 * 1024 * 1024 });
 
     // Introduction: place the customer's real introduction video inside the
@@ -15648,7 +15677,7 @@ async function renderPremiumOrderVideo({ orderId, req, publicBaseUrl = "" }) {
       `[base][photo]overlay=166:124:shortest=1[withphoto];` +
       `[withphoto][intro]overlay=${introInnerX}:${introInnerY}:shortest=1[v]`,
       "-map", "[v]",
-      ...premiumSegmentVideoArgs({ duration: introDuration, outputPath: introSegmentPath })
+      ...premiumSegmentVideoArgs({ duration: introDuration, outputPath: introSegmentPath, fps: 18 })
     ], { timeout: PREMIUM_RENDER_STAGE_TIMEOUT_MS, maxBuffer: 8 * 1024 * 1024 });
 
     // Tribute music: show the dedication panel briefly, then remove it so the
@@ -15680,7 +15709,7 @@ async function renderPremiumOrderVideo({ orderId, req, publicBaseUrl = "" }) {
       `drawtext=${fontOption}text=${q("PRINTO PREMIUM TRIBUTE MUSIC")}:x=(w-text_w)/2:y=520:fontsize=15:` +
       `fontcolor=white:borderw=1:bordercolor=#06184f:enable='between(t,0,${dedicationPanelSeconds})'[v]`,
       "-map", "[v]",
-      ...premiumSegmentVideoArgs({ duration: tributeDuration, outputPath: tributePath })
+      ...premiumSegmentVideoArgs({ duration: tributeDuration, outputPath: tributePath, fps: 10 })
     ], { timeout: PREMIUM_RENDER_STAGE_TIMEOUT_MS, maxBuffer: 8 * 1024 * 1024 });
 
     const escapeConcatPath = (value) => String(value).replace(/'/g, "'\\''");
@@ -15751,7 +15780,7 @@ async function renderPremiumOrderVideo({ orderId, req, publicBaseUrl = "" }) {
       "-filter_complex_threads", "1",
       "-movflags", "+faststart",
       outputPath
-    ], { timeout: 600000, maxBuffer: 8 * 1024 * 1024 });
+    ], { timeout: PREMIUM_RENDER_STAGE_TIMEOUT_MS, maxBuffer: 8 * 1024 * 1024 });
 
     const outputStat = await fs.promises.stat(outputPath);
     if (outputStat.size > PREMIUM_FINAL_VIDEO_MAX_BYTES) {
