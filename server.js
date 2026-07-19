@@ -12948,7 +12948,8 @@ app.get("/worker-dashboard", requireDashboardKey, async (req, res) => {
       fd.append("orderId", orderId);
       fd.append("tributeMusic", file);
       const response = await fetch(
-        "/api/greeting/premium/music?key=" + encodeURIComponent(DASHBOARD_KEY),
+        "/api/greeting/premium/music?key=" + encodeURIComponent(DASHBOARD_KEY) +
+          "&orderId=" + encodeURIComponent(orderId),
         { method: "POST", body: fd }
       );
       const data = await response.json().catch(() => ({}));
@@ -12957,8 +12958,10 @@ app.get("/worker-dashboard", requireDashboardKey, async (req, res) => {
       uploadSucceeded = true;
       if (labelNode) labelNode.textContent = "✅ Music uploaded";
       alert(
-        "✅ Custom tribute music uploaded successfully.\\n\\n" +
+        "✅ Custom tribute music uploaded and stored successfully.\\n\\n" +
+        "File: " + (data.musicName || file.name) + "\\n" +
         "Duration: " + Number(data.durationSeconds || 0).toFixed(0) + " seconds.\\n" +
+        "Saved size: " + Math.max(1, Math.round(Number(data.musicBytes || file.size) / 1024)) + " KB\\n\\n" +
         "You may now render the complete Premium video."
       );
       await loadJobs();
@@ -14979,9 +14982,27 @@ app.post(
   async (req, res) => {
     const music = req.file;
     try {
-      const orderId = String(req.body?.orderId || "").trim();
-      if (!orderId) return res.status(400).json({ ok: false, error: "Premium order ID is required." });
-      if (!music?.path) return res.status(400).json({ ok: false, error: "Choose the completed tribute music file." });
+      const orderId = String(req.body?.orderId || req.query?.orderId || "").trim();
+      if (!orderId) {
+        return res.status(400).json({
+          ok: false,
+          error: "Premium order ID is required. Refresh the Worker Dashboard and try again."
+        });
+      }
+      if (!music?.path) {
+        return res.status(400).json({
+          ok: false,
+          error: "Choose the completed Suno tribute music file."
+        });
+      }
+
+      console.log(
+        "Premium music upload received:",
+        orderId,
+        safeBaseName(music.originalname || "tribute-music"),
+        music.mimetype || "unknown",
+        `${Math.round(Number(music.size || 0) / 1024)} KB`
+      );
 
       const probe = await probePremiumMedia(music.path);
       if (!probe.hasAudio) return res.status(400).json({ ok: false, error: "The selected file does not contain audio." });
@@ -14994,7 +15015,9 @@ app.post(
 
       const musicUrl = buildPremiumMediaUrl(req, orderId, order.media_token, "music");
       const musicBuffer = fs.readFileSync(music.path);
-      await pool.query(
+      const savedMusicName = safeBaseName(music.originalname || "tribute-music");
+      const savedMusicMime = music.mimetype || "audio/mpeg";
+      const saved = await pool.query(
         `
         UPDATE premium_greeting_orders
         SET tribute_music_data = $2,
@@ -15005,9 +15028,19 @@ app.post(
             render_error = '',
             updated_at = NOW()
         WHERE order_id = $1
+        RETURNING order_id,
+                  tribute_music_name,
+                  tribute_music_mime,
+                  OCTET_LENGTH(tribute_music_data) AS tribute_music_bytes
         `,
-        [orderId, musicBuffer, music.mimetype || "audio/mpeg", safeBaseName(music.originalname || "tribute-music"), musicUrl]
+        [orderId, musicBuffer, savedMusicMime, savedMusicName, musicUrl]
       );
+
+      const savedRow = saved.rows[0];
+      const savedBytes = Number(savedRow?.tribute_music_bytes || 0);
+      if (!savedRow || savedBytes <= 0) {
+        throw new Error("The tribute music could not be stored in the Premium order.");
+      }
 
       // Update the matching dashboard job even when an older order has no
       // dashboard_job_id saved. Matching by Premium order ID keeps the worker
@@ -15030,12 +15063,21 @@ app.post(
       );
 
       console.log(
-        "Premium music upload completed:",
+        "Premium music upload completed and verified:",
         orderId,
-        safeBaseName(music.originalname || "tribute-music"),
+        savedMusicName,
+        `${Math.round(savedBytes / 1024)} KB`,
         Number(probe.duration || 0).toFixed(1) + "s"
       );
-      return res.json({ ok: true, orderId, musicUrl, durationSeconds: probe.duration });
+      return res.json({
+        ok: true,
+        orderId,
+        musicUrl,
+        musicName: savedMusicName,
+        musicBytes: savedBytes,
+        durationSeconds: probe.duration,
+        message: "Custom tribute music uploaded and stored successfully."
+      });
     } catch (error) {
       console.error("Premium music upload error:", error);
       return res.status(500).json({ ok: false, error: error.message || "Could not save tribute music." });
