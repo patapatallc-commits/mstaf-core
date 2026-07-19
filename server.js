@@ -15559,7 +15559,7 @@ async function renderPremiumOrderVideo({ orderId, req, publicBaseUrl = "" }) {
       1,
       Math.min(PREMIUM_VIDEO_MAX_SECONDS, Number(introProbe.duration || 1))
     );
-    const openingDuration = 5;
+    const openingDuration = 3;
     const musicDuration = Math.max(20, Math.min(180, Number(musicProbe.duration || 45)));
     const closingDuration = 6;
     const tributeDuration = musicDuration + closingDuration;
@@ -15570,22 +15570,22 @@ async function renderPremiumOrderVideo({ orderId, req, publicBaseUrl = "" }) {
     const senderName = String(order.sender_name || "With Love").trim().slice(0, 24);
     const messageLines = wrapGreetingMessage(
       order.personal_message || "A special tribute created with love.",
-      44,
-      5
+      32,
+      7
     ).split("\\n");
-    while (messageLines.length < 5) messageLines.push("");
+    while (messageLines.length < 7) messageLines.push("");
 
     const fontFile = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf";
     const fontOption = fs.existsSync(fontFile) ? `fontfile=${fontFile}:` : "";
     const q = quoteDrawtextText;
 
     // Larger Premium introduction window with a rounded gold border.
-    const introWindowX = 90;
-    const introWindowY = 354;
-    const introWindowW = 360;
-    const introWindowH = 224;
-    const introInnerW = 348;
-    const introInnerH = 212;
+    const introWindowX = 64;
+    const introWindowY = 332;
+    const introWindowW = 412;
+    const introWindowH = 252;
+    const introInnerW = 400;
+    const introInnerH = 240;
     const introInnerX = introWindowX + 6;
     const introInnerY = introWindowY + 6;
 
@@ -15599,14 +15599,16 @@ async function renderPremiumOrderVideo({ orderId, req, publicBaseUrl = "" }) {
       // Hide the sample placeholder words while preserving the gold boxes.
       "drawbox=x=66:y=604:w=176:h=43:color=#fff7e6@0.98:t=fill",
       "drawbox=x=298:y=604:w=176:h=43:color=#fff7e6@0.98:t=fill",
-      "drawbox=x=77:y=705:w=386:h=88:color=#fff7e6@0.98:t=fill",
+      "drawbox=x=77:y=696:w=386:h=103:color=#fff7e6@0.98:t=fill",
       `drawtext=${fontOption}text=${q(recipientName)}:x=154-text_w/2:y=614:fontsize=18:fontcolor=#082b6a:borderw=1:bordercolor=#fff7e6`,
       `drawtext=${fontOption}text=${q(senderName)}:x=386-text_w/2:y=614:fontsize=18:fontcolor=#082b6a:borderw=1:bordercolor=#fff7e6`,
-      `drawtext=${fontOption}text=${q(messageLines[0])}:x=(w-text_w)/2:y=708:fontsize=12:fontcolor=#082b6a:borderw=1:bordercolor=#fff7e6`,
-      `drawtext=${fontOption}text=${q(messageLines[1])}:x=(w-text_w)/2:y=725:fontsize=12:fontcolor=#082b6a:borderw=1:bordercolor=#fff7e6`,
-      `drawtext=${fontOption}text=${q(messageLines[2])}:x=(w-text_w)/2:y=742:fontsize=12:fontcolor=#082b6a:borderw=1:bordercolor=#fff7e6`,
-      `drawtext=${fontOption}text=${q(messageLines[3])}:x=(w-text_w)/2:y=759:fontsize=12:fontcolor=#082b6a:borderw=1:bordercolor=#fff7e6`,
-      `drawtext=${fontOption}text=${q(messageLines[4])}:x=(w-text_w)/2:y=776:fontsize=12:fontcolor=#082b6a:borderw=1:bordercolor=#fff7e6`
+      `drawtext=${fontOption}text=${q(messageLines[0])}:x=(w-text_w)/2:y=699:fontsize=10:fontcolor=#082b6a:borderw=1:bordercolor=#fff7e6`,
+      `drawtext=${fontOption}text=${q(messageLines[1])}:x=(w-text_w)/2:y=713:fontsize=10:fontcolor=#082b6a:borderw=1:bordercolor=#fff7e6`,
+      `drawtext=${fontOption}text=${q(messageLines[2])}:x=(w-text_w)/2:y=727:fontsize=10:fontcolor=#082b6a:borderw=1:bordercolor=#fff7e6`,
+      `drawtext=${fontOption}text=${q(messageLines[3])}:x=(w-text_w)/2:y=741:fontsize=10:fontcolor=#082b6a:borderw=1:bordercolor=#fff7e6`,
+      `drawtext=${fontOption}text=${q(messageLines[4])}:x=(w-text_w)/2:y=755:fontsize=10:fontcolor=#082b6a:borderw=1:bordercolor=#fff7e6`,
+      `drawtext=${fontOption}text=${q(messageLines[5])}:x=(w-text_w)/2:y=769:fontsize=10:fontcolor=#082b6a:borderw=1:bordercolor=#fff7e6`,
+      `drawtext=${fontOption}text=${q(messageLines[6])}:x=(w-text_w)/2:y=783:fontsize=10:fontcolor=#082b6a:borderw=1:bordercolor=#fff7e6`
     ].join(",");
 
     console.log("Premium render stage 4/7 - creating branded Printo segments:", orderId);
@@ -15621,9 +15623,9 @@ async function renderPremiumOrderVideo({ orderId, req, publicBaseUrl = "" }) {
       `[0:v]${baseFrame},${commonTextOverlay},` +
       `drawbox=x=${introWindowX}:y=${introWindowY}:w=${introWindowW}:h=${introWindowH}:color=#e8b83f:t=fill,` +
       `drawbox=x=${introInnerX}:y=${introInnerY}:w=${introInnerW}:h=${introInnerH}:color=#06184f@0.98:t=fill,` +
-      `drawtext=${fontOption}text=${q("A SPECIAL TRIBUTE FOR")}:x=(w-text_w)/2:y=407:fontsize=20:fontcolor=#ffd35a:borderw=2:bordercolor=#06184f,` +
-      `drawtext=${fontOption}text=${q(recipientName)}:x=(w-text_w)/2:y=455:fontsize=30:fontcolor=white:borderw=2:bordercolor=#06184f,` +
-      `drawtext=${fontOption}text=${q(`FROM ${senderName}`)}:x=(w-text_w)/2:y=508:fontsize=18:fontcolor=#ffd35a:borderw=2:bordercolor=#06184f[base];` +
+      `drawtext=${fontOption}text=${q("A SPECIAL TRIBUTE FOR")}:x=(w-text_w)/2:y=392:fontsize=20:fontcolor=#ffd35a:borderw=2:bordercolor=#06184f,` +
+      `drawtext=${fontOption}text=${q(recipientName)}:x=(w-text_w)/2:y=447:fontsize=30:fontcolor=white:borderw=2:bordercolor=#06184f,` +
+      `drawtext=${fontOption}text=${q(`FROM ${senderName}`)}:x=(w-text_w)/2:y=510:fontsize=18:fontcolor=#ffd35a:borderw=2:bordercolor=#06184f[base];` +
       `[1:v]${photoFilter}[photo];[base][photo]overlay=166:124:shortest=1[v]`,
       "-map", "[v]",
       ...premiumSegmentVideoArgs({ duration: openingDuration, outputPath: openingPath })
@@ -15640,8 +15642,8 @@ async function renderPremiumOrderVideo({ orderId, req, publicBaseUrl = "" }) {
       `[0:v]${baseFrame},${commonTextOverlay},` +
       `drawbox=x=${introWindowX}:y=${introWindowY}:w=${introWindowW}:h=${introWindowH}:color=#e8b83f:t=fill[base];` +
       `[1:v]${photoFilter}[photo];` +
-      `[2:v]scale=${introInnerW}:${introInnerH}:force_original_aspect_ratio=decrease,` +
-      `pad=${introInnerW}:${introInnerH}:(ow-iw)/2:(oh-ih)/2:color=#06184f,` +
+      `[2:v]scale=${introInnerW}:${introInnerH}:force_original_aspect_ratio=increase,` +
+      `crop=${introInnerW}:${introInnerH}:(iw-ow)/2:0,` +
       `setsar=1,format=yuv420p[intro];` +
       `[base][photo]overlay=166:124:shortest=1[withphoto];` +
       `[withphoto][intro]overlay=${introInnerX}:${introInnerY}:shortest=1[v]`,
@@ -15661,21 +15663,21 @@ async function renderPremiumOrderVideo({ orderId, req, publicBaseUrl = "" }) {
       `[0:v]${baseFrame},${commonTextOverlay},` +
       `drawbox=x=${introWindowX}:y=${introWindowY}:w=${introWindowW}:h=${introWindowH}:color=#e8b83f:t=fill[base];` +
       `[1:v]${photoFilter}[photo];` +
-      `[2:v]scale=${introInnerW}:${introInnerH}:force_original_aspect_ratio=decrease,` +
-      `pad=${introInnerW}:${introInnerH}:(ow-iw)/2:(oh-ih)/2:color=#06184f,` +
+      `[2:v]scale=${introInnerW}:${introInnerH}:force_original_aspect_ratio=increase,` +
+      `crop=${introInnerW}:${introInnerH}:(iw-ow)/2:0,` +
       `setsar=1,format=yuv420p,` +
       `tpad=stop_mode=clone:stop_duration=${tributeDuration}[introstill];` +
       `[base][photo]overlay=166:124:shortest=1[withphoto];` +
       `[withphoto][introstill]overlay=${introInnerX}:${introInnerY}:shortest=1[withintro];` +
       `[withintro]drawbox=x=${introInnerX}:y=${introInnerY}:w=${introInnerW}:h=${introInnerH}:color=#06184f@0.94:t=fill:` +
       `enable='between(t,0,${dedicationPanelSeconds})',` +
-      `drawtext=${fontOption}text=${q("NOW PLAYING")}:x=(w-text_w)/2:y=395:fontsize=18:` +
+      `drawtext=${fontOption}text=${q("NOW PLAYING")}:x=(w-text_w)/2:y=378:fontsize=18:` +
       `fontcolor=#ffd35a:borderw=2:bordercolor=#06184f:enable='between(t,0,${dedicationPanelSeconds})',` +
-      `drawtext=${fontOption}text=${q(`A TRIBUTE FOR ${recipientName}`)}:x=(w-text_w)/2:y=438:fontsize=24:` +
+      `drawtext=${fontOption}text=${q(`A TRIBUTE FOR ${recipientName}`)}:x=(w-text_w)/2:y=424:fontsize=24:` +
       `fontcolor=white:borderw=2:bordercolor=#06184f:enable='between(t,0,${dedicationPanelSeconds})',` +
-      `drawtext=${fontOption}text=${q(`WITH LOVE FROM ${senderName}`)}:x=(w-text_w)/2:y=486:fontsize=17:` +
+      `drawtext=${fontOption}text=${q(`WITH LOVE FROM ${senderName}`)}:x=(w-text_w)/2:y=474:fontsize=17:` +
       `fontcolor=#ffd35a:borderw=2:bordercolor=#06184f:enable='between(t,0,${dedicationPanelSeconds})',` +
-      `drawtext=${fontOption}text=${q("PRINTO PREMIUM TRIBUTE MUSIC")}:x=(w-text_w)/2:y=530:fontsize=15:` +
+      `drawtext=${fontOption}text=${q("PRINTO PREMIUM TRIBUTE MUSIC")}:x=(w-text_w)/2:y=520:fontsize=15:` +
       `fontcolor=white:borderw=1:bordercolor=#06184f:enable='between(t,0,${dedicationPanelSeconds})'[v]`,
       "-map", "[v]",
       ...premiumSegmentVideoArgs({ duration: tributeDuration, outputPath: tributePath })
