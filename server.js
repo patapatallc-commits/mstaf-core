@@ -15527,11 +15527,6 @@ async function renderPremiumOrderVideo({ orderId, req, publicBaseUrl = "" }) {
     const introInnerH = 212;
     const introInnerX = introWindowX + 6;
     const introInnerY = introWindowY + 6;
-    const introCornerRadius = 18;
-    const introRoundedAlpha =
-      `if(lte(pow(max(abs(X-W/2)-(W/2-${introCornerRadius}),0),2)+` +
-      `pow(max(abs(Y-H/2)-(H/2-${introCornerRadius}),0),2),` +
-      `${introCornerRadius * introCornerRadius}),255,0)`;
 
     // Coordinates below are for the low-memory 540 x 960 Render output.
     const baseFrame = "scale=540:960,setsar=1,format=yuv420p";
@@ -15586,7 +15581,7 @@ async function renderPremiumOrderVideo({ orderId, req, publicBaseUrl = "" }) {
       `[1:v]${photoFilter}[photo];` +
       `[2:v]scale=${introInnerW}:${introInnerH}:force_original_aspect_ratio=decrease,` +
       `pad=${introInnerW}:${introInnerH}:(ow-iw)/2:(oh-ih)/2:color=#06184f,` +
-      `setsar=1,format=rgba,geq=a='${introRoundedAlpha}'[intro];` +
+      `setsar=1,format=yuv420p[intro];` +
       `[base][photo]overlay=166:124:shortest=1[withphoto];` +
       `[withphoto][intro]overlay=${introInnerX}:${introInnerY}:shortest=1[v]`,
       "-map", "[v]",
@@ -15607,7 +15602,7 @@ async function renderPremiumOrderVideo({ orderId, req, publicBaseUrl = "" }) {
       `[1:v]${photoFilter}[photo];` +
       `[2:v]scale=${introInnerW}:${introInnerH}:force_original_aspect_ratio=decrease,` +
       `pad=${introInnerW}:${introInnerH}:(ow-iw)/2:(oh-ih)/2:color=#06184f,` +
-      `setsar=1,format=rgba,geq=a='${introRoundedAlpha}',` +
+      `setsar=1,format=yuv420p,` +
       `tpad=stop_mode=clone:stop_duration=${tributeDuration}[introstill];` +
       `[base][photo]overlay=166:124:shortest=1[withphoto];` +
       `[withphoto][introstill]overlay=${introInnerX}:${introInnerY}:shortest=1[withintro];` +
