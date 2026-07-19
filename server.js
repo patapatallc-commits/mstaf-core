@@ -125,6 +125,10 @@ const PREMIUM_VIDEO_MAX_SECONDS = 60;
 const PREMIUM_MUSIC_MAX_BYTES = 30 * 1024 * 1024;
 const PREMIUM_FINAL_VIDEO_MAX_BYTES = 70 * 1024 * 1024;
 
+// Render's smaller instances may need more than five minutes to encode a
+// full-length Premium tribute video. Allow each long FFmpeg stage up to 20 minutes.
+const PREMIUM_RENDER_STAGE_TIMEOUT_MS = 20 * 60 * 1000;
+
 const premiumTempDir = path.join(uploadsDir, "premium-temp");
 if (!fs.existsSync(premiumTempDir)) {
   fs.mkdirSync(premiumTempDir, { recursive: true });
@@ -15537,7 +15541,7 @@ async function renderPremiumOrderVideo({ orderId, req, publicBaseUrl = "" }) {
       `[1:v]${photoFilter}[photo];[base][photo]overlay=166:124:shortest=1[v]`,
       "-map", "[v]",
       ...premiumSegmentVideoArgs({ duration: openingDuration, outputPath: openingPath })
-    ], { timeout: 300000, maxBuffer: 8 * 1024 * 1024 });
+    ], { timeout: PREMIUM_RENDER_STAGE_TIMEOUT_MS, maxBuffer: 8 * 1024 * 1024 });
 
     // Introduction: place the customer's real introduction video inside the
     // exact YOUR VIDEO INTRO window while keeping the full Printo poster visible.
@@ -15554,7 +15558,7 @@ async function renderPremiumOrderVideo({ orderId, req, publicBaseUrl = "" }) {
       `[withphoto][intro]overlay=139:384:shortest=1[v]`,
       "-map", "[v]",
       ...premiumSegmentVideoArgs({ duration: introDuration, outputPath: introSegmentPath })
-    ], { timeout: 300000, maxBuffer: 8 * 1024 * 1024 });
+    ], { timeout: PREMIUM_RENDER_STAGE_TIMEOUT_MS, maxBuffer: 8 * 1024 * 1024 });
 
     // Tribute music: retain the premium poster, gently zoom the recipient photo,
     // and use the video window for a readable music dedication panel.
@@ -15571,7 +15575,7 @@ async function renderPremiumOrderVideo({ orderId, req, publicBaseUrl = "" }) {
       `[1:v]${photoFilter}[photo];[base][photo]overlay=166:124:shortest=1[v]`,
       "-map", "[v]",
       ...premiumSegmentVideoArgs({ duration: tributeDuration, outputPath: tributePath })
-    ], { timeout: 300000, maxBuffer: 8 * 1024 * 1024 });
+    ], { timeout: PREMIUM_RENDER_STAGE_TIMEOUT_MS, maxBuffer: 8 * 1024 * 1024 });
 
     const escapeConcatPath = (value) => String(value).replace(/'/g, "'\\''");
     await fs.promises.writeFile(
@@ -15589,7 +15593,7 @@ async function renderPremiumOrderVideo({ orderId, req, publicBaseUrl = "" }) {
       "-c", "copy",
       "-movflags", "+faststart",
       silentVideoPath
-    ], { timeout: 300000, maxBuffer: 8 * 1024 * 1024 });
+    ], { timeout: PREMIUM_RENDER_STAGE_TIMEOUT_MS, maxBuffer: 8 * 1024 * 1024 });
 
     console.log("Premium render stage 6/7 - mixing intro audio and tribute music:", orderId);
     const audioInputArgs = [
