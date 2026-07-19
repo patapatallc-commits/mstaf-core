@@ -15717,7 +15717,7 @@ async function renderPremiumOrderVideo({ orderId, req, publicBaseUrl = "" }) {
       `drawbox=x=${introWindowX}:y=${introWindowY}:w=${introWindowW}:h=${introWindowH}:color=#e8b83f:t=fill[base];` +
       `[1:v]${photoFilter}[photo];` +
       `[2:v]scale=${introInnerW}:${introInnerH}:force_original_aspect_ratio=increase,` +
-      `crop=${introInnerW}:${introInnerH}:(iw-ow)/2:0,` +
+      `crop=${introInnerW}:${introInnerH}:(iw-ow)/2:(ih-oh),` +
       `setsar=1,format=yuv420p[intro];` +
       `[base][photo]overlay=166:124:shortest=1[withphoto];` +
       `[withphoto][intro]overlay=${introInnerX}:${introInnerY}:shortest=1[v]`,
@@ -15738,7 +15738,7 @@ async function renderPremiumOrderVideo({ orderId, req, publicBaseUrl = "" }) {
       `drawbox=x=${introWindowX}:y=${introWindowY}:w=${introWindowW}:h=${introWindowH}:color=#e8b83f:t=fill[base];` +
       `[1:v]${photoFilter}[photo];` +
       `[2:v]scale=${introInnerW}:${introInnerH}:force_original_aspect_ratio=increase,` +
-      `crop=${introInnerW}:${introInnerH}:(iw-ow)/2:0,` +
+      `crop=${introInnerW}:${introInnerH}:(iw-ow)/2:(ih-oh),` +
       `setsar=1,format=yuv420p,` +
       `tpad=stop_mode=clone:stop_duration=${tributeDuration}[introstill];` +
       `[base][photo]overlay=166:124:shortest=1[withphoto];` +
