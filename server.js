@@ -15497,9 +15497,9 @@ async function renderPremiumOrderVideo({ orderId, req, publicBaseUrl = "" }) {
     const senderName = String(order.sender_name || "With Love").trim().slice(0, 24);
     const messageLines = wrapGreetingMessage(
       order.personal_message || "A special tribute created with love.",
-      34,
+      42,
       4
-    );
+    ).split("\\n");
     while (messageLines.length < 4) messageLines.push("");
 
     const fontFile = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf";
@@ -15519,10 +15519,10 @@ async function renderPremiumOrderVideo({ orderId, req, publicBaseUrl = "" }) {
       "drawbox=x=77:y=711:w=386:h=78:color=#fff7e6@0.98:t=fill",
       `drawtext=${fontOption}text=${q(recipientName)}:x=154-text_w/2:y=614:fontsize=18:fontcolor=#082b6a:borderw=1:bordercolor=#fff7e6`,
       `drawtext=${fontOption}text=${q(senderName)}:x=386-text_w/2:y=614:fontsize=18:fontcolor=#082b6a:borderw=1:bordercolor=#fff7e6`,
-      `drawtext=${fontOption}text=${q(messageLines[0])}:x=(w-text_w)/2:y=716:fontsize=17:fontcolor=#082b6a:borderw=1:bordercolor=#fff7e6`,
-      `drawtext=${fontOption}text=${q(messageLines[1])}:x=(w-text_w)/2:y=738:fontsize=17:fontcolor=#082b6a:borderw=1:bordercolor=#fff7e6`,
-      `drawtext=${fontOption}text=${q(messageLines[2])}:x=(w-text_w)/2:y=760:fontsize=17:fontcolor=#082b6a:borderw=1:bordercolor=#fff7e6`,
-      `drawtext=${fontOption}text=${q(messageLines[3])}:x=(w-text_w)/2:y=782:fontsize=17:fontcolor=#082b6a:borderw=1:bordercolor=#fff7e6`
+      `drawtext=${fontOption}text=${q(messageLines[0])}:x=(w-text_w)/2:y=714:fontsize=14:fontcolor=#082b6a:borderw=1:bordercolor=#fff7e6`,
+      `drawtext=${fontOption}text=${q(messageLines[1])}:x=(w-text_w)/2:y=733:fontsize=14:fontcolor=#082b6a:borderw=1:bordercolor=#fff7e6`,
+      `drawtext=${fontOption}text=${q(messageLines[2])}:x=(w-text_w)/2:y=752:fontsize=14:fontcolor=#082b6a:borderw=1:bordercolor=#fff7e6`,
+      `drawtext=${fontOption}text=${q(messageLines[3])}:x=(w-text_w)/2:y=771:fontsize=14:fontcolor=#082b6a:borderw=1:bordercolor=#fff7e6`
     ].join(",");
 
     console.log("Premium render stage 4/7 - creating branded Printo segments:", orderId);
@@ -15553,26 +15553,40 @@ async function renderPremiumOrderVideo({ orderId, req, publicBaseUrl = "" }) {
       "-filter_complex",
       `[0:v]${baseFrame},${commonTextOverlay}[base];` +
       `[1:v]${photoFilter}[photo];` +
-      `[2:v]scale=318:184:force_original_aspect_ratio=increase,crop=318:184,setsar=1,format=yuv420p[intro];` +
+      `[2:v]scale=318:184:force_original_aspect_ratio=decrease,` +
+      `pad=318:184:(ow-iw)/2:(oh-ih)/2:color=#06184f,setsar=1,format=yuv420p[intro];` +
       `[base][photo]overlay=166:124:shortest=1[withphoto];` +
       `[withphoto][intro]overlay=139:384:shortest=1[v]`,
       "-map", "[v]",
       ...premiumSegmentVideoArgs({ duration: introDuration, outputPath: introSegmentPath })
     ], { timeout: PREMIUM_RENDER_STAGE_TIMEOUT_MS, maxBuffer: 8 * 1024 * 1024 });
 
-    // Tribute music: retain the premium poster, gently zoom the recipient photo,
-    // and use the video window for a readable music dedication panel.
+    // Tribute music: show the dedication panel briefly, then remove it so the
+    // customer's introduction image remains visible while the song continues.
+    const dedicationPanelSeconds = Math.min(4, Math.max(2, tributeDuration - 1));
     await execFilePromise("ffmpeg", [
       "-y", "-nostdin", "-loglevel", "error",
       "-loop", "1", "-i", premiumFramePath,
       "-loop", "1", "-i", photoPath,
+      "-sseof", "-0.15", "-i", introPath,
       "-filter_complex",
-      `[0:v]${baseFrame},${commonTextOverlay},drawbox=x=139:y=384:w=318:h=184:color=#06184f@0.94:t=fill,` +
-      `drawtext=${fontOption}text=${q("NOW PLAYING")}:x=(w-text_w)/2:y=407:fontsize=18:fontcolor=#ffd35a:borderw=2:bordercolor=#06184f,` +
-      `drawtext=${fontOption}text=${q(`A TRIBUTE FOR ${recipientName}`)}:x=(w-text_w)/2:y=444:fontsize=24:fontcolor=white:borderw=2:bordercolor=#06184f,` +
-      `drawtext=${fontOption}text=${q(`WITH LOVE FROM ${senderName}`)}:x=(w-text_w)/2:y=490:fontsize=17:fontcolor=#ffd35a:borderw=2:bordercolor=#06184f,` +
-      `drawtext=${fontOption}text=${q("PRINTO PREMIUM TRIBUTE MUSIC")}:x=(w-text_w)/2:y=528:fontsize=15:fontcolor=white:borderw=1:bordercolor=#06184f[base];` +
-      `[1:v]${photoFilter}[photo];[base][photo]overlay=166:124:shortest=1[v]`,
+      `[0:v]${baseFrame},${commonTextOverlay}[base];` +
+      `[1:v]${photoFilter}[photo];` +
+      `[2:v]scale=318:184:force_original_aspect_ratio=decrease,` +
+      `pad=318:184:(ow-iw)/2:(oh-ih)/2:color=#06184f,setsar=1,format=yuv420p,` +
+      `tpad=stop_mode=clone:stop_duration=${tributeDuration}[introstill];` +
+      `[base][photo]overlay=166:124:shortest=1[withphoto];` +
+      `[withphoto][introstill]overlay=139:384:shortest=1[withintro];` +
+      `[withintro]drawbox=x=139:y=384:w=318:h=184:color=#06184f@0.94:t=fill:` +
+      `enable='between(t,0,${dedicationPanelSeconds})',` +
+      `drawtext=${fontOption}text=${q("NOW PLAYING")}:x=(w-text_w)/2:y=407:fontsize=18:` +
+      `fontcolor=#ffd35a:borderw=2:bordercolor=#06184f:enable='between(t,0,${dedicationPanelSeconds})',` +
+      `drawtext=${fontOption}text=${q(`A TRIBUTE FOR ${recipientName}`)}:x=(w-text_w)/2:y=444:fontsize=24:` +
+      `fontcolor=white:borderw=2:bordercolor=#06184f:enable='between(t,0,${dedicationPanelSeconds})',` +
+      `drawtext=${fontOption}text=${q(`WITH LOVE FROM ${senderName}`)}:x=(w-text_w)/2:y=490:fontsize=17:` +
+      `fontcolor=#ffd35a:borderw=2:bordercolor=#06184f:enable='between(t,0,${dedicationPanelSeconds})',` +
+      `drawtext=${fontOption}text=${q("PRINTO PREMIUM TRIBUTE MUSIC")}:x=(w-text_w)/2:y=528:fontsize=15:` +
+      `fontcolor=white:borderw=1:bordercolor=#06184f:enable='between(t,0,${dedicationPanelSeconds})'[v]`,
       "-map", "[v]",
       ...premiumSegmentVideoArgs({ duration: tributeDuration, outputPath: tributePath })
     ], { timeout: PREMIUM_RENDER_STAGE_TIMEOUT_MS, maxBuffer: 8 * 1024 * 1024 });
@@ -15598,7 +15612,7 @@ async function renderPremiumOrderVideo({ orderId, req, publicBaseUrl = "" }) {
     console.log("Premium render stage 6/7 - mixing intro audio and tribute music:", orderId);
     const audioInputArgs = [
       "-i", silentVideoPath,
-      "-stream_loop", "-1", "-i", selectedMusicPath
+      "-i", selectedMusicPath
     ];
     let introAudioIndex = -1;
     if (introProbe.hasAudio) {
@@ -15611,8 +15625,8 @@ async function renderPremiumOrderVideo({ orderId, req, publicBaseUrl = "" }) {
     // full volume immediately after the introduction finishes.
     const musicDelayMs = Math.round(introEnd * 1000);
     const audioFilters = [
-      `[1:a]atrim=0:${tributeDuration},asetpts=PTS-STARTPTS,` +
-      `afade=t=in:st=0:d=1,afade=t=out:st=${Math.max(0, tributeDuration - 5)}:d=5,` +
+      `[1:a]atrim=0:${musicDuration},asetpts=PTS-STARTPTS,` +
+      `afade=t=in:st=0:d=1,afade=t=out:st=${Math.max(0, musicDuration - 4)}:d=4,` +
       `volume=1.0,adelay=${musicDelayMs}|${musicDelayMs}[music]`
     ];
     const mixLabels = ["[music]"];
@@ -15620,7 +15634,8 @@ async function renderPremiumOrderVideo({ orderId, req, publicBaseUrl = "" }) {
     if (introAudioIndex >= 0) {
       audioFilters.push(
         `[${introAudioIndex}:a]atrim=0:${introDuration},asetpts=PTS-STARTPTS,` +
-        `adelay=${openingDuration * 1000}|${openingDuration * 1000},volume=1.08[introa]`
+        `loudnorm=I=-16:TP=-1.5:LRA=11,volume=1.22,` +
+        `adelay=${openingDuration * 1000}|${openingDuration * 1000}[introa]`
       );
       mixLabels.push("[introa]");
     }
