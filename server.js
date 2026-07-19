@@ -170,8 +170,19 @@ const premiumMusicUpload = multer({
   limits: { fileSize: PREMIUM_MUSIC_MAX_BYTES, files: 1, fields: 5 },
   fileFilter: (_req, file, cb) => {
     const mime = String(file.mimetype || "").toLowerCase();
-    if (!mime.startsWith("audio/")) {
-      return cb(new Error("The tribute music must be an audio file."));
+    const ext = path.extname(String(file.originalname || "")).toLowerCase();
+    const allowedExtensions = new Set([
+      ".mp3", ".wav", ".m4a", ".aac", ".ogg", ".opus", ".flac"
+    ]);
+    const mimeLooksAudio =
+      mime.startsWith("audio/") ||
+      mime === "application/octet-stream" ||
+      mime === "application/x-mpegurl";
+
+    if (!mimeLooksAudio && !allowedExtensions.has(ext)) {
+      return cb(new Error(
+        "The tribute music must be an MP3, WAV, M4A, AAC, OGG, OPUS, or FLAC audio file."
+      ));
     }
     return cb(null, true);
   }
@@ -12978,6 +12989,13 @@ app.get("/worker-dashboard", requireDashboardKey, async (req, res) => {
         statusNode.textContent = "✅ " + (data.musicName || file.name) +
           " stored (" + (Number(data.storedBytes || file.size) / 1024 / 1024).toFixed(1) + " MB)";
       }
+      const renderButton = Array.from(document.querySelectorAll(".premiumRenderButton")).find(
+        (node) => String(node.dataset.orderId || "") === String(orderId || "")
+      ) || null;
+      if (renderButton) {
+        renderButton.disabled = false;
+        renderButton.removeAttribute("title");
+      }
       alert(
         "✅ Custom tribute music uploaded successfully.\\n\\n" +
         "File: " + (data.musicName || file.name) + "\\n" +
@@ -12996,6 +13014,20 @@ app.get("/worker-dashboard", requireDashboardKey, async (req, res) => {
         if (!uploadSucceeded) chooseButton.textContent = originalLabel;
       }
     }
+  }
+
+  function submitPremiumMusicForm(event, orderId) {
+    if (event && typeof event.preventDefault === "function") event.preventDefault();
+
+    const form = event && event.currentTarget ? event.currentTarget : null;
+    const input = form ? form.querySelector(".premiumMusicInput") : null;
+    if (!input || !input.files || !input.files[0]) {
+      alert("Choose the completed Suno tribute music file first.");
+      return false;
+    }
+
+    uploadPremiumMusic(orderId, input);
+    return false;
   }
 
   function delay(ms) {
@@ -13096,7 +13128,7 @@ app.get("/worker-dashboard", requireDashboardKey, async (req, res) => {
 
   document.addEventListener("click", (event) => {
     const chooseButton = event.target.closest && event.target.closest(".premiumMusicChooseButton");
-    if (chooseButton) {
+    if (chooseButton && chooseButton.type !== "submit") {
       const input = findPremiumMusicInput(chooseButton.dataset.orderId || "");
       if (!input) return alert("Music upload control was not found. Refresh and try again.");
       input.click();
@@ -13249,11 +13281,20 @@ app.get("/worker-dashboard", requireDashboardKey, async (req, res) => {
       buttons.push('<a class="fileLink" href="' + h(finalUrl) + '" target="_blank" rel="noopener noreferrer">🎬 Play Finished Premium Video</a>');
     }
     if (orderId) {
-      const uploadLabel = musicUrl ? "✅ Replace Tribute Music" : "🎵 Upload Custom Music";
-      buttons.push('<button type="button" class="btn secondary premiumMusicChooseButton" data-order-id="' + h(orderId) + '">' + uploadLabel + '</button>');
-      buttons.push('<input class="premiumMusicInput" data-order-id="' + h(orderId) + '" type="file" accept="audio/mpeg,audio/mp3,audio/wav,audio/x-wav,audio/mp4,audio/aac,audio/ogg,audio/opus" style="display:none">');
-      buttons.push('<span class="small premiumMusicStatus" data-order-id="' + h(orderId) + '">' + (musicUrl ? '✅ Tribute music stored' : 'No tribute music uploaded yet') + '</span>');
-      buttons.push('<button type="button" class="btn premiumRenderButton" data-order-id="' + h(orderId) + '">🎬 Render Complete Video</button>');
+      const uploadLabel = musicUrl ? "✅ Replace Tribute Music" : "🎵 Upload Tribute Music";
+      const safeOrderForJs = JSON.stringify(String(orderId));
+      buttons.push(
+        '<form class="premiumMusicForm" data-order-id="' + h(orderId) + '" ' +
+        'onsubmit="return submitPremiumMusicForm(event,' + h(safeOrderForJs) + ')" ' +
+        'style="display:inline-flex;gap:7px;align-items:center;flex-wrap:wrap;" enctype="multipart/form-data">' +
+          '<input class="premiumMusicInput" data-order-id="' + h(orderId) + '" name="tributeMusic" type="file" ' +
+          'accept=".mp3,.wav,.m4a,.aac,.ogg,.opus,.flac,audio/*" required ' +
+          'style="max-width:260px;background:#fff;color:#111;padding:5px;border-radius:5px;">' +
+          '<button type="submit" class="btn secondary premiumMusicChooseButton" data-order-id="' + h(orderId) + '">' + uploadLabel + '</button>' +
+        '</form>'
+      );
+      buttons.push('<span class="small premiumMusicStatus" data-order-id="' + h(orderId) + '">' + (musicUrl ? '✅ Tribute music stored' : 'Choose the Suno song, then click Upload Tribute Music') + '</span>');
+      buttons.push('<button type="button" class="btn premiumRenderButton" data-order-id="' + h(orderId) + '"' + (musicUrl ? '' : ' disabled title="Upload tribute music first"') + '>🎬 Render Complete Video</button>');
     }
 
     if (!buttons.length) {
