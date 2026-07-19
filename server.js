@@ -12938,36 +12938,63 @@ app.get("/worker-dashboard", requireDashboardKey, async (req, res) => {
       return;
     }
 
-    const labelNode = input.parentElement ? input.parentElement.firstChild : null;
-    const originalLabel = labelNode ? labelNode.textContent : "🎵 Upload Custom Music";
+    const chooseButton = Array.from(document.querySelectorAll(".premiumMusicChooseButton")).find(
+      (node) => String(node.dataset.orderId || "") === String(orderId || "")
+    ) || null;
+    const statusNode = Array.from(document.querySelectorAll(".premiumMusicStatus")).find(
+      (node) => String(node.dataset.orderId || "") === String(orderId || "")
+    ) || null;
+    const originalLabel = chooseButton ? chooseButton.textContent : "🎵 Upload Custom Music";
     let uploadSucceeded = false;
 
-    if (labelNode) labelNode.textContent = "⏳ Uploading music...";
+    if (chooseButton) {
+      chooseButton.disabled = true;
+      chooseButton.textContent = "⏳ Uploading music...";
+    }
+    if (statusNode) statusNode.textContent = "Uploading " + file.name + "...";
+
     try {
       const fd = new FormData();
       fd.append("orderId", orderId);
-      fd.append("tributeMusic", file);
+      fd.append("tributeMusic", file, file.name);
+
+      console.log("Starting Premium music upload", { orderId, name: file.name, bytes: file.size, type: file.type });
+
       const response = await fetch(
         "/api/greeting/premium/music?key=" + encodeURIComponent(DASHBOARD_KEY) +
           "&orderId=" + encodeURIComponent(orderId),
-        { method: "POST", body: fd }
+        { method: "POST", body: fd, credentials: "same-origin" }
       );
-      const data = await response.json().catch(() => ({}));
-      if (!response.ok || !data.ok) throw new Error(data.error || "Music upload failed.");
+      const rawText = await response.text();
+      let data = {};
+      try { data = rawText ? JSON.parse(rawText) : {}; } catch (_) {}
+      if (!response.ok || !data.ok) {
+        throw new Error(data.error || rawText || ("Music upload failed with HTTP " + response.status));
+      }
 
       uploadSucceeded = true;
-      if (labelNode) labelNode.textContent = "✅ Music uploaded";
+      if (chooseButton) chooseButton.textContent = "✅ Replace Tribute Music";
+      if (statusNode) {
+        statusNode.textContent = "✅ " + (data.musicName || file.name) +
+          " stored (" + (Number(data.storedBytes || file.size) / 1024 / 1024).toFixed(1) + " MB)";
+      }
       alert(
-        "✅ Custom tribute music uploaded successfully.\\n\\n" +
-        "Duration: " + Number(data.durationSeconds || 0).toFixed(0) + " seconds.\\n" +
+        "✅ Custom tribute music uploaded successfully.\n\n" +
+        "File: " + (data.musicName || file.name) + "\n" +
+        "Duration: " + Number(data.durationSeconds || 0).toFixed(0) + " seconds.\n" +
         "You may now render the complete Premium video."
       );
       await loadJobs();
     } catch (error) {
+      console.error("Premium music upload failed", error);
+      if (statusNode) statusNode.textContent = "❌ " + error.message;
       alert("Premium music upload failed: " + error.message);
     } finally {
       input.value = "";
-      if (labelNode && !uploadSucceeded) labelNode.textContent = originalLabel;
+      if (chooseButton) {
+        chooseButton.disabled = false;
+        if (!uploadSucceeded) chooseButton.textContent = originalLabel;
+      }
     }
   }
 
@@ -13053,12 +13080,29 @@ app.get("/worker-dashboard", requireDashboardKey, async (req, res) => {
     }
   }
 
+  function findPremiumMusicInput(orderId) {
+    return Array.from(document.querySelectorAll(".premiumMusicInput")).find(
+      (node) => String(node.dataset.orderId || "") === String(orderId || "")
+    ) || null;
+  }
+
   document.addEventListener("change", (event) => {
-    const input = event.target.closest && event.target.closest(".premiumMusicInput");
+    const input = event.target && event.target.classList &&
+      event.target.classList.contains("premiumMusicInput")
+      ? event.target
+      : null;
     if (input) uploadPremiumMusic(input.dataset.orderId || "", input);
   });
 
   document.addEventListener("click", (event) => {
+    const chooseButton = event.target.closest && event.target.closest(".premiumMusicChooseButton");
+    if (chooseButton) {
+      const input = findPremiumMusicInput(chooseButton.dataset.orderId || "");
+      if (!input) return alert("Music upload control was not found. Refresh and try again.");
+      input.click();
+      return;
+    }
+
     const button = event.target.closest && event.target.closest(".premiumRenderButton");
     if (button) renderPremiumOrder(button.dataset.orderId || "", button);
   });
@@ -13206,7 +13250,9 @@ app.get("/worker-dashboard", requireDashboardKey, async (req, res) => {
     }
     if (orderId) {
       const uploadLabel = musicUrl ? "✅ Replace Tribute Music" : "🎵 Upload Custom Music";
-      buttons.push('<label class="btn secondary" style="display:inline-flex;align-items:center;cursor:pointer;">' + uploadLabel + '<input class="premiumMusicInput" data-order-id="' + h(orderId) + '" type="file" accept="audio/*" hidden></label>');
+      buttons.push('<button type="button" class="btn secondary premiumMusicChooseButton" data-order-id="' + h(orderId) + '">' + uploadLabel + '</button>');
+      buttons.push('<input class="premiumMusicInput" data-order-id="' + h(orderId) + '" type="file" accept="audio/mpeg,audio/mp3,audio/wav,audio/x-wav,audio/mp4,audio/aac,audio/ogg,audio/opus" style="display:none">');
+      buttons.push('<span class="small premiumMusicStatus" data-order-id="' + h(orderId) + '">' + (musicUrl ? '✅ Tribute music stored' : 'No tribute music uploaded yet') + '</span>');
       buttons.push('<button type="button" class="btn premiumRenderButton" data-order-id="' + h(orderId) + '">🎬 Render Complete Video</button>');
     }
 
