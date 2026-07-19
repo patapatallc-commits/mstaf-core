@@ -80,6 +80,18 @@ const pool = new Pool({
     rejectUnauthorized: false,
   },
 });
+
+// Prevent an idle PostgreSQL connection error from crashing the entire Node process.
+// node-postgres removes the failed client from the pool automatically; logging the
+// error here allows Render to keep serving requests instead of returning a 502.
+pool.on("error", (err) => {
+  console.error("Unexpected PostgreSQL pool error:", {
+    message: err?.message || String(err),
+    code: err?.code || "",
+    severity: err?.severity || "",
+    detail: err?.detail || ""
+  });
+});
 // Ensure uploads folder exists
 const path = require("path");
 
