@@ -15597,12 +15597,56 @@ async function renderPremiumOrderVideo({ orderId, req, publicBaseUrl = "" }) {
 
     const recipientName = String(order.recipient_name || "Special Recipient").trim().slice(0, 24);
     const senderName = String(order.sender_name || "With Love").trim().slice(0, 24);
+    const fullPersonalMessage = String(
+      order.personal_message || "A special tribute created with love."
+    ).trim().slice(0, 220);
+
+    // Auto-fit the complete customer message inside the Premium panel.
+    let messageFontSize = 13;
+    let messageMaxCharsPerLine = 36;
+    let messageMaxLines = 6;
+    let messageLineGap = 17;
+
+    if (fullPersonalMessage.length > 180) {
+      messageFontSize = 9;
+      messageMaxCharsPerLine = 38;
+      messageMaxLines = 8;
+      messageLineGap = 12;
+    } else if (fullPersonalMessage.length > 140) {
+      messageFontSize = 10;
+      messageMaxCharsPerLine = 36;
+      messageMaxLines = 8;
+      messageLineGap = 13;
+    } else if (fullPersonalMessage.length > 100) {
+      messageFontSize = 11;
+      messageMaxCharsPerLine = 34;
+      messageMaxLines = 7;
+      messageLineGap = 14;
+    } else if (fullPersonalMessage.length > 60) {
+      messageFontSize = 12;
+      messageMaxCharsPerLine = 32;
+      messageMaxLines = 6;
+      messageLineGap = 16;
+    }
+
     const messageLines = wrapGreetingMessage(
-      order.personal_message || "A special tribute created with love.",
-      32,
-      7
+      fullPersonalMessage,
+      messageMaxCharsPerLine,
+      messageMaxLines
     ).split("\\n");
-    while (messageLines.length < 7) messageLines.push("");
+
+    while (messageLines.length < 8) messageLines.push("");
+
+    const messagePanelTop = 686;
+    const messagePanelHeight = 116;
+    const visibleMessageLines = Math.max(
+      1,
+      messageLines.slice(0, messageMaxLines).filter(Boolean).length
+    );
+    const messageBlockHeight = visibleMessageLines * messageLineGap;
+    const messageStartY =
+      messagePanelTop +
+      Math.max(4, Math.floor((messagePanelHeight - messageBlockHeight) / 2));
 
     const fontFile = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf";
     const fontOption = fs.existsSync(fontFile) ? `fontfile=${fontFile}:` : "";
@@ -15628,16 +15672,17 @@ async function renderPremiumOrderVideo({ orderId, req, publicBaseUrl = "" }) {
       // Hide the sample placeholder words while preserving the gold boxes.
       "drawbox=x=66:y=604:w=176:h=43:color=#fff7e6@0.98:t=fill",
       "drawbox=x=298:y=604:w=176:h=43:color=#fff7e6@0.98:t=fill",
-      "drawbox=x=77:y=696:w=386:h=103:color=#fff7e6@0.98:t=fill",
+      `drawbox=x=77:y=${messagePanelTop}:w=386:h=${messagePanelHeight}:color=#fff7e6@0.98:t=fill`,
       `drawtext=${fontOption}text=${q(recipientName)}:x=154-text_w/2:y=614:fontsize=18:fontcolor=#082b6a:borderw=1:bordercolor=#fff7e6`,
       `drawtext=${fontOption}text=${q(senderName)}:x=386-text_w/2:y=614:fontsize=18:fontcolor=#082b6a:borderw=1:bordercolor=#fff7e6`,
-      `drawtext=${fontOption}text=${q(messageLines[0])}:x=(w-text_w)/2:y=699:fontsize=10:fontcolor=#082b6a:borderw=1:bordercolor=#fff7e6`,
-      `drawtext=${fontOption}text=${q(messageLines[1])}:x=(w-text_w)/2:y=713:fontsize=10:fontcolor=#082b6a:borderw=1:bordercolor=#fff7e6`,
-      `drawtext=${fontOption}text=${q(messageLines[2])}:x=(w-text_w)/2:y=727:fontsize=10:fontcolor=#082b6a:borderw=1:bordercolor=#fff7e6`,
-      `drawtext=${fontOption}text=${q(messageLines[3])}:x=(w-text_w)/2:y=741:fontsize=10:fontcolor=#082b6a:borderw=1:bordercolor=#fff7e6`,
-      `drawtext=${fontOption}text=${q(messageLines[4])}:x=(w-text_w)/2:y=755:fontsize=10:fontcolor=#082b6a:borderw=1:bordercolor=#fff7e6`,
-      `drawtext=${fontOption}text=${q(messageLines[5])}:x=(w-text_w)/2:y=769:fontsize=10:fontcolor=#082b6a:borderw=1:bordercolor=#fff7e6`,
-      `drawtext=${fontOption}text=${q(messageLines[6])}:x=(w-text_w)/2:y=783:fontsize=10:fontcolor=#082b6a:borderw=1:bordercolor=#fff7e6`
+      `drawtext=${fontOption}text=${q(messageLines[0] || "")}:x=(w-text_w)/2:y=${messageStartY}:fontsize=${messageFontSize}:fontcolor=#082b6a:borderw=1:bordercolor=#fff7e6`,
+      `drawtext=${fontOption}text=${q(messageLines[1] || "")}:x=(w-text_w)/2:y=${messageStartY + messageLineGap}:fontsize=${messageFontSize}:fontcolor=#082b6a:borderw=1:bordercolor=#fff7e6`,
+      `drawtext=${fontOption}text=${q(messageLines[2] || "")}:x=(w-text_w)/2:y=${messageStartY + messageLineGap * 2}:fontsize=${messageFontSize}:fontcolor=#082b6a:borderw=1:bordercolor=#fff7e6`,
+      `drawtext=${fontOption}text=${q(messageLines[3] || "")}:x=(w-text_w)/2:y=${messageStartY + messageLineGap * 3}:fontsize=${messageFontSize}:fontcolor=#082b6a:borderw=1:bordercolor=#fff7e6`,
+      `drawtext=${fontOption}text=${q(messageLines[4] || "")}:x=(w-text_w)/2:y=${messageStartY + messageLineGap * 4}:fontsize=${messageFontSize}:fontcolor=#082b6a:borderw=1:bordercolor=#fff7e6`,
+      `drawtext=${fontOption}text=${q(messageLines[5] || "")}:x=(w-text_w)/2:y=${messageStartY + messageLineGap * 5}:fontsize=${messageFontSize}:fontcolor=#082b6a:borderw=1:bordercolor=#fff7e6`,
+      `drawtext=${fontOption}text=${q(messageLines[6] || "")}:x=(w-text_w)/2:y=${messageStartY + messageLineGap * 6}:fontsize=${messageFontSize}:fontcolor=#082b6a:borderw=1:bordercolor=#fff7e6`,
+      `drawtext=${fontOption}text=${q(messageLines[7] || "")}:x=(w-text_w)/2:y=${messageStartY + messageLineGap * 7}:fontsize=${messageFontSize}:fontcolor=#082b6a:borderw=1:bordercolor=#fff7e6`
     ].join(",");
 
     console.log("Premium render stage 4/7 - creating branded Printo segments:", orderId);
