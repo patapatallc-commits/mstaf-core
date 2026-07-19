@@ -12918,6 +12918,13 @@ app.get("/worker-dashboard", requireDashboardKey, async (req, res) => {
 <script>
   const DASHBOARD_KEY = ${JSON.stringify(req.query.key || "")};
   let currentQueue = "";
+  let isPremiumFilePickerOpen = false;
+  let isUploadingPremiumMusic = false;
+  let isRenderingPremiumVideo = false;
+
+  function premiumWorkIsActive() {
+    return isPremiumFilePickerOpen || isUploadingPremiumMusic || isRenderingPremiumVideo;
+  }
 
   function toggleUpload() {
     const el = document.getElementById("uploadPanel");
@@ -12941,11 +12948,19 @@ app.get("/worker-dashboard", requireDashboardKey, async (req, res) => {
   }
 
   async function uploadPremiumMusic(orderId, input) {
+    isPremiumFilePickerOpen = false;
     const file = input && input.files ? input.files[0] : null;
-    if (!file) return;
+    if (!file) {
+      isUploadingPremiumMusic = false;
+      return;
+    }
+
+    isUploadingPremiumMusic = true;
+
     if (file.size > 30 * 1024 * 1024) {
       alert("Tribute music must be 30 MB or smaller.");
       input.value = "";
+      isUploadingPremiumMusic = false;
       return;
     }
 
@@ -13002,12 +13017,15 @@ app.get("/worker-dashboard", requireDashboardKey, async (req, res) => {
         "Duration: " + Number(data.durationSeconds || 0).toFixed(0) + " seconds.\\n" +
         "You may now render the complete Premium video."
       );
+      isUploadingPremiumMusic = false;
       await loadJobs();
     } catch (error) {
       console.error("Premium music upload failed", error);
       if (statusNode) statusNode.textContent = "❌ " + error.message;
       alert("Premium music upload failed: " + error.message);
     } finally {
+      isUploadingPremiumMusic = false;
+      isPremiumFilePickerOpen = false;
       input.value = "";
       if (chooseButton) {
         chooseButton.disabled = false;
@@ -13081,6 +13099,7 @@ app.get("/worker-dashboard", requireDashboardKey, async (req, res) => {
     );
     if (!confirmed) return;
 
+    isRenderingPremiumVideo = true;
     const oldText = button ? button.textContent : "🎬 Render Complete Video";
     if (button) {
       button.disabled = true;
@@ -13105,6 +13124,7 @@ app.get("/worker-dashboard", requireDashboardKey, async (req, res) => {
     } catch (error) {
       alert("Premium render failed: " + error.message);
     } finally {
+      isRenderingPremiumVideo = false;
       if (button) {
         button.disabled = false;
         button.textContent = oldText;
@@ -13126,6 +13146,19 @@ app.get("/worker-dashboard", requireDashboardKey, async (req, res) => {
     if (input) uploadPremiumMusic(input.dataset.orderId || "", input);
   });
 
+  window.addEventListener("focus", () => {
+    if (!isPremiumFilePickerOpen) return;
+    setTimeout(() => {
+      const selectedFileExists = Array.from(
+        document.querySelectorAll(".premiumMusicInput")
+      ).some((input) => input.files && input.files.length > 0);
+
+      if (!selectedFileExists && !isUploadingPremiumMusic) {
+        isPremiumFilePickerOpen = false;
+      }
+    }, 700);
+  });
+
   document.addEventListener("click", (event) => {
     const chooseButton = event.target.closest && event.target.closest(".premiumMusicChooseButton");
     if (chooseButton) {
@@ -13142,6 +13175,7 @@ app.get("/worker-dashboard", requireDashboardKey, async (req, res) => {
       ) || null;
 
       if (statusNode) statusNode.textContent = "Choose the completed Suno audio file...";
+      isPremiumFilePickerOpen = true;
       input.value = "";
       input.click();
       return;
@@ -13719,6 +13753,7 @@ document.addEventListener("focusout", (e) => {
 setInterval(() => {
   if (mediaIsPlaying()) return;
   if (isUserTyping) return;
+  if (premiumWorkIsActive()) return;
   loadJobs();
 }, 8000);
 </script>
