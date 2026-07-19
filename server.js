@@ -13424,32 +13424,76 @@ return parts.join("");
   }
 
   async function loadJobs() {
+    const grid = document.getElementById("jobGrid");
     try {
-      const q = document.getElementById("q").value.trim();
-      const status = document.getElementById("status").value;
-      const queue = document.getElementById("queue").value || currentQueue;
+      if (grid) {
+        grid.innerHTML = '<div class="emptyState">Loading jobs...</div>';
+      }
+
+      const q = (document.getElementById("q")?.value || "").trim();
+      const status = document.getElementById("status")?.value || "";
+      const queue = document.getElementById("queue")?.value || currentQueue || "";
 
       const params = new URLSearchParams();
+      params.set("key", DASHBOARD_KEY);
+      params.set("_", String(Date.now()));
       if (q) params.set("q", q);
       if (status) params.set("status", status);
       if (queue) params.set("queue", queue);
 
-      const data = await api("/api/dashboard/jobs?" + params.toString());
-      const jobs = data.jobs || [];
-      const printers = data.printers || [];
+      const response = await fetch("/api/dashboard/jobs?" + params.toString(), {
+        method: "GET",
+        credentials: "same-origin",
+        cache: "no-store",
+        headers: { "Accept": "application/json" }
+      });
+
+      const rawText = await response.text();
+      let data = {};
+      try {
+        data = rawText ? JSON.parse(rawText) : {};
+      } catch (_error) {
+        throw new Error("Jobs API returned invalid JSON: " + rawText.slice(0, 180));
+      }
+
+      if (!response.ok || data.ok === false) {
+        throw new Error(data.error || ("Jobs API failed with HTTP " + response.status));
+      }
+
+      const jobs = Array.isArray(data.jobs) ? data.jobs : [];
+      const printers = Array.isArray(data.printers) ? data.printers : [];
 
       summarize(jobs);
 
-      const grid = document.getElementById("jobGrid");
+      if (!grid) return;
       if (!jobs.length) {
         grid.innerHTML = '<div class="emptyState">No jobs found for the selected filter.</div>';
         return;
       }
 
-      grid.innerHTML = jobs.map(job => renderJob(job, printers)).join("");
+      const cards = jobs.map((job) => {
+        try {
+          return renderJob(job || {}, printers);
+        } catch (renderError) {
+          console.error("Job card render failed", job, renderError);
+          return '<div class="jobCard"><div class="jobHead"><div class="jobTitle">Job #' +
+            h(job?.id || "Unknown") +
+            '</div></div><div class="jobBody"><div class="emptyState">This job could not be displayed: ' +
+            h(renderError.message || String(renderError)) +
+            '</div></div></div>';
+        }
+      });
+
+      grid.innerHTML = cards.join("");
     } catch (err) {
-      document.getElementById("jobGrid").innerHTML =
-        '<div class="emptyState">Dashboard load failed: ' + h(err.message) + '</div>';
+      console.error("Worker dashboard load failed", err);
+      document.getElementById("s_all").textContent = "0";
+      document.getElementById("s_pending").textContent = "0";
+      document.getElementById("s_completed").textContent = "0";
+      document.getElementById("s_working").textContent = "0";
+      if (grid) {
+        grid.innerHTML = '<div class="emptyState">Dashboard load failed: ' + h(err.message || String(err)) + '</div>';
+      }
     }
   }
 
@@ -13557,29 +13601,50 @@ return parts.join("");
     }
   }
 
-  document.getElementById("q").addEventListener("input", () => loadJobs());
-  document.getElementById("status").addEventListener("change", () => loadJobs());
-  document.getElementById("queue").addEventListener("change", () => loadJobs());
+  function initializeWorkerDashboard() {
+    const qInput = document.getElementById("q");
+    const statusSelect = document.getElementById("status");
+    const queueSelect = document.getElementById("queue");
+    const manualUploadForm = document.getElementById("manualUploadForm");
 
-  document.getElementById("manualUploadForm").addEventListener("submit", async (e) => {
-    e.preventDefault();
-    try {
-      const fd = new FormData(e.target);
-      const res = await fetch("/api/dashboard/manual-upload?key=" + encodeURIComponent(DASHBOARD_KEY), {
-        method: "POST",
-        body: fd
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.error || "Upload failed");
-      alert("Dashboard upload created successfully.");
-      e.target.reset();
-      loadJobs();
-    } catch (err) {
-      alert("Manual upload failed: " + err.message);
-    }
-  });
+    qInput?.addEventListener("input", () => loadJobs());
+    statusSelect?.addEventListener("change", () => loadJobs());
+    queueSelect?.addEventListener("change", () => loadJobs());
 
-  loadJobs();
+    manualUploadForm?.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      try {
+        const fd = new FormData(e.target);
+        const res = await fetch("/api/dashboard/manual-upload?key=" + encodeURIComponent(DASHBOARD_KEY), {
+          method: "POST",
+          body: fd,
+          credentials: "same-origin"
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.error || "Upload failed");
+        alert("Dashboard upload created successfully.");
+        e.target.reset();
+        await loadJobs();
+      } catch (err) {
+        alert("Manual upload failed: " + err.message);
+      }
+    });
+
+    window.addEventListener("error", (event) => {
+      const grid = document.getElementById("jobGrid");
+      if (grid && !grid.children.length) {
+        grid.innerHTML = '<div class="emptyState">Dashboard JavaScript error: ' + h(event.message || "Unknown error") + '</div>';
+      }
+    });
+
+    loadJobs();
+  }
+
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", initializeWorkerDashboard, { once: true });
+  } else {
+    initializeWorkerDashboard();
+  }
   function mediaIsPlaying() {
   return [...document.querySelectorAll("video, audio")].some(
     el => !el.paused && !el.ended
