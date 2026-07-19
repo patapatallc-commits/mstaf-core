@@ -13128,9 +13128,21 @@ app.get("/worker-dashboard", requireDashboardKey, async (req, res) => {
 
   document.addEventListener("click", (event) => {
     const chooseButton = event.target.closest && event.target.closest(".premiumMusicChooseButton");
-    if (chooseButton && chooseButton.type !== "submit") {
-      const input = findPremiumMusicInput(chooseButton.dataset.orderId || "");
-      if (!input) return alert("Music upload control was not found. Refresh and try again.");
+    if (chooseButton) {
+      event.preventDefault();
+      const orderId = chooseButton.dataset.orderId || "";
+      const input = findPremiumMusicInput(orderId);
+      if (!input) {
+        alert("Music upload control was not found. Refresh the dashboard and try again.");
+        return;
+      }
+
+      const statusNode = Array.from(document.querySelectorAll(".premiumMusicStatus")).find(
+        (node) => String(node.dataset.orderId || "") === String(orderId)
+      ) || null;
+
+      if (statusNode) statusNode.textContent = "Choose the completed Suno audio file...";
+      input.value = "";
       input.click();
       return;
     }
@@ -13282,16 +13294,14 @@ app.get("/worker-dashboard", requireDashboardKey, async (req, res) => {
     }
     if (orderId) {
       const uploadLabel = musicUrl ? "✅ Replace Tribute Music" : "🎵 Upload Tribute Music";
-      const safeOrderForJs = JSON.stringify(String(orderId));
       buttons.push(
-        '<form class="premiumMusicForm" data-order-id="' + h(orderId) + '" ' +
-        'onsubmit="return submitPremiumMusicForm(event,' + h(safeOrderForJs) + ')" ' +
-        'style="display:inline-flex;gap:7px;align-items:center;flex-wrap:wrap;" enctype="multipart/form-data">' +
+        '<span class="premiumMusicForm" data-order-id="' + h(orderId) + '" ' +
+        'style="display:inline-flex;gap:7px;align-items:center;flex-wrap:wrap;">' +
           '<input class="premiumMusicInput" data-order-id="' + h(orderId) + '" name="tributeMusic" type="file" ' +
-          'accept=".mp3,.wav,.m4a,.aac,.ogg,.opus,.flac,audio/*" required ' +
-          'style="max-width:260px;background:#fff;color:#111;padding:5px;border-radius:5px;">' +
-          '<button type="submit" class="btn secondary premiumMusicChooseButton" data-order-id="' + h(orderId) + '">' + uploadLabel + '</button>' +
-        '</form>'
+          'accept=".mp3,.wav,.m4a,.aac,.ogg,.opus,.flac,audio/*" ' +
+          'style="display:none;">' +
+          '<button type="button" class="btn secondary premiumMusicChooseButton" data-order-id="' + h(orderId) + '">' + uploadLabel + '</button>' +
+        '</span>'
       );
       buttons.push('<span class="small premiumMusicStatus" data-order-id="' + h(orderId) + '">' + (musicUrl ? '✅ Tribute music stored' : 'Choose the Suno song, then click Upload Tribute Music') + '</span>');
       buttons.push('<button type="button" class="btn premiumRenderButton" data-order-id="' + h(orderId) + '"' + (musicUrl ? '' : ' disabled title="Upload tribute music first"') + '>🎬 Render Complete Video</button>');
