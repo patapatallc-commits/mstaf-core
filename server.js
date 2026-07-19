@@ -79,6 +79,11 @@ const pool = new Pool({
   ssl: {
     rejectUnauthorized: false,
   },
+  // Keep the Basic database from being flooded by dashboard/media requests.
+  max: Number(process.env.PG_POOL_MAX || 5),
+  idleTimeoutMillis: 30_000,
+  connectionTimeoutMillis: 15_000,
+  allowExitOnIdle: false
 });
 
 // Prevent an idle PostgreSQL connection error from crashing the entire Node process.
@@ -92,6 +97,57 @@ pool.on("error", (err) => {
     detail: err?.detail || ""
   });
 });
+
+const TRANSIENT_PG_CODES = new Set([
+  "57P03", // cannot_connect_now
+  "08000", "08001", "08003", "08004", "08006", "08007", "08P01",
+  "53300", // too_many_connections
+  "55000"
+]);
+
+function isTransientPostgresError(error) {
+  const code = String(error?.code || "");
+  const message = String(error?.message || "").toLowerCase();
+  return (
+    TRANSIENT_PG_CODES.has(code) ||
+    message.includes("connection terminated unexpectedly") ||
+    message.includes("connection ended unexpectedly") ||
+    message.includes("the database system is starting up") ||
+    message.includes("cannot connect now") ||
+    message.includes("timeout expired")
+  );
+}
+
+function wait(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function queryWithRetry(text, values = [], options = {}) {
+  const attempts = Math.max(1, Number(options.attempts || 5));
+  const baseDelayMs = Math.max(100, Number(options.baseDelayMs || 500));
+  let lastError;
+
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    try {
+      return await pool.query(text, values);
+    } catch (error) {
+      lastError = error;
+      if (!isTransientPostgresError(error) || attempt >= attempts) {
+        throw error;
+      }
+
+      const delayMs = Math.min(5000, baseDelayMs * (2 ** (attempt - 1)));
+      console.warn(
+        `Transient PostgreSQL error; retrying query (${attempt}/${attempts}) in ${delayMs}ms:`,
+        error?.code || "",
+        error?.message || error
+      );
+      await wait(delayMs);
+    }
+  }
+
+  throw lastError;
+}
 // Ensure uploads folder exists
 const path = require("path");
 
@@ -14899,66 +14955,71 @@ app.get(
       const kind = String(req.params.kind || "").toLowerCase();
       const token = String(req.query.token || "").trim();
 
-      if (!orderId || !token || !["photo", "video", "music", "final"].includes(kind)) {
+      const mediaColumns = {
+        photo: {
+          data: "recipient_photo_data",
+          mime: "recipient_photo_mime",
+          name: "recipient_photo_name"
+        },
+        video: {
+          data: "intro_video_data",
+          mime: "intro_video_mime",
+          name: "intro_video_name"
+        },
+        music: {
+          data: "tribute_music_data",
+          mime: "tribute_music_mime",
+          name: "tribute_music_name"
+        },
+        final: {
+          data: "final_video_data",
+          mime: "final_video_mime",
+          name: "final_video_name"
+        }
+      };
+
+      const selected = mediaColumns[kind];
+      if (!orderId || !token || !selected) {
         return res.status(404).send("Premium media not found.");
       }
 
-      const result = await pool.query(
-        `
-        SELECT
-          recipient_photo_data,
-          recipient_photo_mime,
-          recipient_photo_name,
-          intro_video_data,
-          intro_video_mime,
-          intro_video_name,
-          tribute_music_data,
-          tribute_music_mime,
-          tribute_music_name,
-          final_video_data,
-          final_video_mime,
-          final_video_name
-        FROM premium_greeting_orders
-        WHERE order_id = $1 AND media_token = $2
-        LIMIT 1
-        `,
-        [orderId, token]
+      // Read only the one requested media object. The previous query selected every
+      // large BYTEA column for every preview request, which unnecessarily loaded the
+      // photo, introduction, music and final video together and stressed PostgreSQL.
+      const result = await queryWithRetry(
+        `SELECT
+           ${selected.data} AS media_data,
+           ${selected.mime} AS media_mime,
+           ${selected.name} AS media_name
+         FROM premium_greeting_orders
+         WHERE order_id = $1 AND media_token = $2
+         LIMIT 1`,
+        [orderId, token],
+        { attempts: 6, baseDelayMs: 400 }
       );
 
       const row = result.rows[0];
       if (!row) return res.status(404).send("Premium media not found.");
 
-      if (kind === "photo") {
-        return sendPremiumMediaBuffer(req, res, {
-          data: row.recipient_photo_data,
-          mime: row.recipient_photo_mime,
-          name: row.recipient_photo_name
-        });
-      }
-
-      if (kind === "music") {
-        return sendPremiumMediaBuffer(req, res, {
-          data: row.tribute_music_data,
-          mime: row.tribute_music_mime,
-          name: row.tribute_music_name
-        });
-      }
-
-      if (kind === "final") {
-        return sendPremiumMediaBuffer(req, res, {
-          data: row.final_video_data,
-          mime: row.final_video_mime,
-          name: row.final_video_name
-        });
-      }
-
       return sendPremiumMediaBuffer(req, res, {
-        data: row.intro_video_data,
-        mime: row.intro_video_mime,
-        name: row.intro_video_name
+        data: row.media_data,
+        mime: row.media_mime,
+        name: row.media_name
       });
     } catch (error) {
-      console.error("Premium media delivery error:", error);
+      console.error("Premium media delivery error:", {
+        message: error?.message || String(error),
+        code: error?.code || "",
+        severity: error?.severity || ""
+      });
+
+      if (isTransientPostgresError(error)) {
+        res.setHeader("Retry-After", "3");
+        return res.status(503).send(
+          "Premium media is temporarily unavailable. Please try again in a few seconds."
+        );
+      }
+
       return res.status(500).send("Could not open Premium media.");
     }
   }
@@ -15055,7 +15116,7 @@ app.post(
         contactPhone: customerPhone
       });
 
-      await pool.query(
+      await queryWithRetry(
         `
         INSERT INTO premium_greeting_orders (
           order_id, customer_key, contact_phone, customer_email,
@@ -15124,7 +15185,7 @@ app.post(
       });
 
       if (job?.id) {
-        await pool.query(
+        await queryWithRetry(
           `UPDATE premium_greeting_orders SET dashboard_job_id = $2, updated_at = NOW() WHERE order_id = $1`,
           [orderId, String(job.id)]
         );
@@ -15348,7 +15409,7 @@ async function readPremiumBinaryToFile(orderId, columnName, outputPath, missingM
     throw new Error("Unsupported Premium media column.");
   }
 
-  const result = await pool.query(
+  const result = await queryWithRetry(
     `SELECT ${columnName} AS media_data
      FROM premium_greeting_orders
      WHERE order_id = $1
@@ -15392,7 +15453,7 @@ function findPremiumTributeFrame() {
 }
 
 async function renderPremiumOrderVideo({ orderId, req, publicBaseUrl = "" }) {
-  const found = await pool.query(
+  const found = await queryWithRetry(
     `SELECT order_id,
             recipient_name,
             sender_name,
@@ -15446,7 +15507,7 @@ async function renderPremiumOrderVideo({ orderId, req, publicBaseUrl = "" }) {
   ];
 
   try {
-    await pool.query(
+    await queryWithRetry(
       `UPDATE premium_greeting_orders
        SET render_status = 'rendering', render_error = '', updated_at = NOW()
        WHERE order_id = $1`,
@@ -15701,7 +15762,7 @@ async function renderPremiumOrderVideo({ orderId, req, publicBaseUrl = "" }) {
       ? `${String(publicBaseUrl).replace(/\/$/, "")}/premium-media/${encodeURIComponent(orderId)}/final?token=${encodeURIComponent(order.media_token)}`
       : buildPremiumMediaUrl(req, orderId, order.media_token, "final");
 
-    await pool.query(
+    await queryWithRetry(
       `UPDATE premium_greeting_orders
        SET final_video_data = $2,
            final_video_mime = 'video/mp4',
@@ -15722,7 +15783,7 @@ async function renderPremiumOrderVideo({ orderId, req, publicBaseUrl = "" }) {
       ]
     );
 
-    await pool.query(
+    await queryWithRetry(
       `UPDATE print_jobs
        SET instructions = CASE
              WHEN COALESCE(instructions, '') LIKE '%🎬 FINISHED PREMIUM VIDEO%'
@@ -15748,7 +15809,7 @@ async function renderPremiumOrderVideo({ orderId, req, publicBaseUrl = "" }) {
       usedPremiumFrame: true
     };
   } catch (error) {
-    await pool.query(
+    await queryWithRetry(
       `UPDATE premium_greeting_orders
        SET render_status = 'failed', render_error = $2, updated_at = NOW()
        WHERE order_id = $1`,
@@ -15767,7 +15828,7 @@ app.post("/api/greeting/premium/render", requireDashboardKey, express.json(), as
       return res.status(400).json({ ok: false, error: "Premium order ID is required." });
     }
 
-    const found = await pool.query(
+    const found = await queryWithRetry(
       `SELECT order_id, render_status, render_error, final_video_url
        FROM premium_greeting_orders
        WHERE order_id = $1
@@ -15798,7 +15859,7 @@ app.post("/api/greeting/premium/render", requireDashboardKey, express.json(), as
     }
 
     const publicBaseUrl = getPublicBaseUrl(req);
-    await pool.query(
+    await queryWithRetry(
       `UPDATE premium_greeting_orders
        SET render_status = 'queued', render_error = '', updated_at = NOW()
        WHERE order_id = $1`,
@@ -15857,7 +15918,7 @@ app.get("/api/greeting/premium/render-status", requireDashboardKey, async (req, 
       return res.status(400).json({ ok: false, error: "Premium order ID is required." });
     }
 
-    const found = await pool.query(
+    const found = await queryWithRetry(
       `SELECT order_id,
               render_status,
               render_error,
