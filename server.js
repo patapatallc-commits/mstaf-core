@@ -12979,9 +12979,9 @@ app.get("/worker-dashboard", requireDashboardKey, async (req, res) => {
           " stored (" + (Number(data.storedBytes || file.size) / 1024 / 1024).toFixed(1) + " MB)";
       }
       alert(
-        "✅ Custom tribute music uploaded successfully.\n\n" +
-        "File: " + (data.musicName || file.name) + "\n" +
-        "Duration: " + Number(data.durationSeconds || 0).toFixed(0) + " seconds.\n" +
+        "✅ Custom tribute music uploaded successfully.\\n\\n" +
+        "File: " + (data.musicName || file.name) + "\\n" +
+        "Duration: " + Number(data.durationSeconds || 0).toFixed(0) + " seconds.\\n" +
         "You may now render the complete Premium video."
       );
       await loadJobs();
