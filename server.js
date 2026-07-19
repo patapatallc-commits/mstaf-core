@@ -12958,10 +12958,8 @@ app.get("/worker-dashboard", requireDashboardKey, async (req, res) => {
       uploadSucceeded = true;
       if (labelNode) labelNode.textContent = "✅ Music uploaded";
       alert(
-        "✅ Custom tribute music uploaded and stored successfully.\\n\\n" +
-        "File: " + (data.musicName || file.name) + "\\n" +
+        "✅ Custom tribute music uploaded successfully.\\n\\n" +
         "Duration: " + Number(data.durationSeconds || 0).toFixed(0) + " seconds.\\n" +
-        "Saved size: " + Math.max(1, Math.round(Number(data.musicBytes || file.size) / 1024)) + " KB\\n\\n" +
         "You may now render the complete Premium video."
       );
       await loadJobs();
@@ -14971,6 +14969,7 @@ app.post(
   (req, res, next) => {
     premiumMusicUpload.single("tributeMusic")(req, res, (error) => {
       if (!error) return next();
+      console.error("Premium music receive error:", error);
       return res.status(400).json({
         ok: false,
         error: error.code === "LIMIT_FILE_SIZE"
@@ -14981,107 +14980,144 @@ app.post(
   },
   async (req, res) => {
     const music = req.file;
-    try {
-      const orderId = String(req.body?.orderId || req.query?.orderId || "").trim();
-      if (!orderId) {
-        return res.status(400).json({
-          ok: false,
-          error: "Premium order ID is required. Refresh the Worker Dashboard and try again."
-        });
-      }
-      if (!music?.path) {
-        return res.status(400).json({
-          ok: false,
-          error: "Choose the completed Suno tribute music file."
-        });
-      }
+    const orderId = String(
+      req.body?.orderId ||
+      req.body?.order_id ||
+      req.query?.orderId ||
+      req.query?.order_id ||
+      ""
+    ).trim();
 
-      console.log(
-        "Premium music upload received:",
-        orderId,
-        safeBaseName(music.originalname || "tribute-music"),
-        music.mimetype || "unknown",
-        `${Math.round(Number(music.size || 0) / 1024)} KB`
-      );
+    console.log("Premium music upload request received:", {
+      orderId,
+      hasFile: Boolean(music?.path),
+      filename: music?.originalname || "",
+      mime: music?.mimetype || "",
+      bytes: Number(music?.size || 0)
+    });
+
+    const client = await pool.connect();
+    try {
+      if (!orderId) {
+        return res.status(400).json({ ok: false, error: "Premium order ID is required." });
+      }
+      if (!music?.path || !fs.existsSync(music.path)) {
+        return res.status(400).json({ ok: false, error: "Choose the completed tribute music file." });
+      }
 
       const probe = await probePremiumMedia(music.path);
-      if (!probe.hasAudio) return res.status(400).json({ ok: false, error: "The selected file does not contain audio." });
-      const found = await pool.query(
-        `SELECT order_id, media_token, dashboard_job_id FROM premium_greeting_orders WHERE order_id = $1 LIMIT 1`,
+      if (!probe.hasAudio) {
+        return res.status(400).json({ ok: false, error: "The selected file does not contain audio." });
+      }
+
+      const musicBuffer = await fs.promises.readFile(music.path);
+      if (!Buffer.isBuffer(musicBuffer) || musicBuffer.length === 0) {
+        return res.status(400).json({ ok: false, error: "The selected tribute music file is empty." });
+      }
+
+      await client.query("BEGIN");
+
+      const found = await client.query(
+        `SELECT order_id, media_token, dashboard_job_id
+         FROM premium_greeting_orders
+         WHERE order_id = $1
+         LIMIT 1
+         FOR UPDATE`,
         [orderId]
       );
       const order = found.rows[0];
-      if (!order) return res.status(404).json({ ok: false, error: "Premium order was not found." });
+      if (!order) {
+        await client.query("ROLLBACK");
+        return res.status(404).json({ ok: false, error: "Premium order was not found." });
+      }
 
+      const musicName = safeBaseName(music.originalname || "tribute-music.mp3");
+      const musicMime = music.mimetype || "audio/mpeg";
       const musicUrl = buildPremiumMediaUrl(req, orderId, order.media_token, "music");
-      const musicBuffer = fs.readFileSync(music.path);
-      const savedMusicName = safeBaseName(music.originalname || "tribute-music");
-      const savedMusicMime = music.mimetype || "audio/mpeg";
-      const saved = await pool.query(
-        `
-        UPDATE premium_greeting_orders
-        SET tribute_music_data = $2,
-            tribute_music_mime = $3,
-            tribute_music_name = $4,
-            tribute_music_url = $5,
-            render_status = 'ready_to_render',
-            render_error = '',
-            updated_at = NOW()
-        WHERE order_id = $1
-        RETURNING order_id,
-                  tribute_music_name,
-                  tribute_music_mime,
-                  OCTET_LENGTH(tribute_music_data) AS tribute_music_bytes
-        `,
-        [orderId, musicBuffer, savedMusicMime, savedMusicName, musicUrl]
+
+      const saved = await client.query(
+        `UPDATE premium_greeting_orders
+         SET tribute_music_data = $2,
+             tribute_music_mime = $3,
+             tribute_music_name = $4,
+             tribute_music_url = $5,
+             render_status = 'ready_to_render',
+             render_error = '',
+             final_video_data = NULL,
+             final_video_mime = '',
+             final_video_name = '',
+             final_video_url = '',
+             updated_at = NOW()
+         WHERE order_id = $1
+         RETURNING order_id,
+                   tribute_music_name,
+                   tribute_music_mime,
+                   tribute_music_url,
+                   OCTET_LENGTH(tribute_music_data) AS stored_bytes`,
+        [orderId, musicBuffer, musicMime, musicName, musicUrl]
       );
 
       const savedRow = saved.rows[0];
-      const savedBytes = Number(savedRow?.tribute_music_bytes || 0);
-      if (!savedRow || savedBytes <= 0) {
-        throw new Error("The tribute music could not be stored in the Premium order.");
+      const storedBytes = Number(savedRow?.stored_bytes || 0);
+      if (!savedRow || storedBytes !== musicBuffer.length) {
+        throw new Error(
+          `Tribute music storage verification failed. Expected ${musicBuffer.length} bytes but stored ${storedBytes}.`
+        );
       }
 
-      // Update the matching dashboard job even when an older order has no
-      // dashboard_job_id saved. Matching by Premium order ID keeps the worker
-      // dashboard music status reliable for existing orders.
-      await pool.query(
+      await client.query(
         `UPDATE print_jobs
          SET instructions = CASE
                WHEN COALESCE(instructions, '') LIKE '%🎵 CUSTOM TRIBUTE MUSIC READY%'
-                 THEN COALESCE(instructions, '')
-               ELSE COALESCE(instructions, '') || $3
+                 THEN regexp_replace(
+                   COALESCE(instructions, ''),
+                   E'\\n\\n🎵 CUSTOM TRIBUTE MUSIC READY\\n[^\\n]*',
+                   E'\\n\\n🎵 CUSTOM TRIBUTE MUSIC READY\\n' || $3,
+                   'g'
+                 )
+               ELSE COALESCE(instructions, '') || E'\\n\\n🎵 CUSTOM TRIBUTE MUSIC READY\\n' || $3
              END,
              updated_at = NOW()
          WHERE (($1 <> '' AND id::text = $1)
                 OR COALESCE(instructions, '') ILIKE $2)`,
         [
-          String(order.dashboard_job_id || ''),
+          String(order.dashboard_job_id || ""),
           `%${orderId}%`,
-          `\n\n🎵 CUSTOM TRIBUTE MUSIC READY\n${musicUrl}`
+          musicUrl
         ]
       );
 
-      console.log(
-        "Premium music upload completed and verified:",
+      await client.query("COMMIT");
+
+      console.log("Premium music stored and verified:", {
         orderId,
-        savedMusicName,
-        `${Math.round(savedBytes / 1024)} KB`,
-        Number(probe.duration || 0).toFixed(1) + "s"
-      );
+        musicName,
+        musicMime,
+        uploadedBytes: musicBuffer.length,
+        storedBytes,
+        durationSeconds: Number(probe.duration || 0).toFixed(2),
+        musicUrl
+      });
+
       return res.json({
         ok: true,
         orderId,
         musicUrl,
-        musicName: savedMusicName,
-        musicBytes: savedBytes,
-        durationSeconds: probe.duration,
-        message: "Custom tribute music uploaded and stored successfully."
+        musicName,
+        musicMime,
+        uploadedBytes: musicBuffer.length,
+        storedBytes,
+        durationSeconds: Number(probe.duration || 0)
       });
     } catch (error) {
+      try { await client.query("ROLLBACK"); } catch (_) {}
       console.error("Premium music upload error:", error);
-      return res.status(500).json({ ok: false, error: error.message || "Could not save tribute music." });
+      return res.status(500).json({
+        ok: false,
+        error: error.message || "Could not save tribute music."
+      });
     } finally {
+      client.release();
       safeUnlink(music?.path);
     }
   }
