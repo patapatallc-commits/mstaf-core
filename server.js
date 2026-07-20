@@ -15602,31 +15602,33 @@ async function renderPremiumOrderVideo({ orderId, req, publicBaseUrl = "" }) {
     ).trim().slice(0, 220);
 
     // Auto-fit the complete customer message inside the Premium panel.
-    let messageFontSize = 13;
-    let messageMaxCharsPerLine = 36;
-    let messageMaxLines = 6;
-    let messageLineGap = 17;
+    // The final production layout uses larger, phone-readable text while
+    // still supporting the full 220-character customer message.
+    let messageFontSize = 16;
+    let messageMaxCharsPerLine = 29;
+    let messageMaxLines = 5;
+    let messageLineGap = 18;
 
     if (fullPersonalMessage.length > 180) {
-      messageFontSize = 9;
-      messageMaxCharsPerLine = 38;
-      messageMaxLines = 8;
+      messageFontSize = 11;
+      messageMaxCharsPerLine = 37;
+      messageMaxLines = 7;
       messageLineGap = 12;
     } else if (fullPersonalMessage.length > 140) {
-      messageFontSize = 10;
-      messageMaxCharsPerLine = 36;
-      messageMaxLines = 8;
+      messageFontSize = 12;
+      messageMaxCharsPerLine = 35;
+      messageMaxLines = 7;
       messageLineGap = 13;
     } else if (fullPersonalMessage.length > 100) {
-      messageFontSize = 11;
-      messageMaxCharsPerLine = 34;
-      messageMaxLines = 7;
+      messageFontSize = 13;
+      messageMaxCharsPerLine = 33;
+      messageMaxLines = 6;
       messageLineGap = 14;
     } else if (fullPersonalMessage.length > 60) {
-      messageFontSize = 12;
-      messageMaxCharsPerLine = 32;
+      messageFontSize = 14;
+      messageMaxCharsPerLine = 31;
       messageMaxLines = 6;
-      messageLineGap = 16;
+      messageLineGap = 15;
     }
 
     const messageLines = wrapGreetingMessage(
@@ -15639,27 +15641,33 @@ async function renderPremiumOrderVideo({ orderId, req, publicBaseUrl = "" }) {
 
     const messagePanelTop = 686;
     const messagePanelHeight = 116;
+    const messageLabelY = messagePanelTop - 13;
+    const messageLabelW = 250;
+    const messageLabelH = 26;
+    const messageContentTop = messagePanelTop + 20;
+    const messageContentHeight = messagePanelHeight - 24;
     const visibleMessageLines = Math.max(
       1,
       messageLines.slice(0, messageMaxLines).filter(Boolean).length
     );
     const messageBlockHeight = visibleMessageLines * messageLineGap;
     const messageStartY =
-      messagePanelTop +
-      Math.max(4, Math.floor((messagePanelHeight - messageBlockHeight) / 2));
+      messageContentTop +
+      Math.max(0, Math.floor((messageContentHeight - messageBlockHeight) / 2));
 
     const fontFile = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf";
     const fontOption = fs.existsSync(fontFile) ? `fontfile=${fontFile}:` : "";
     const q = quoteDrawtextText;
 
     // Final Premium introduction placement:
-    // move the window farther right and narrow it slightly so Printo's legs remain visible.
-    const introWindowX = 138;
-    const introWindowY = 332;
-    const introWindowW = 338;
-    const introWindowH = 252;
-    const introInnerW = 326;
-    const introInnerH = 240;
+    // keep the personal introduction clear of Printo's legs and the recipient portrait.
+    // The smaller window sits lower and farther right inside the dedication area.
+    const introWindowX = 180;
+    const introWindowY = 354;
+    const introWindowW = 294;
+    const introWindowH = 220;
+    const introInnerW = 282;
+    const introInnerH = 208;
     const introInnerX = introWindowX + 6;
     const introInnerY = introWindowY + 6;
 
@@ -15678,6 +15686,9 @@ async function renderPremiumOrderVideo({ orderId, req, publicBaseUrl = "" }) {
       "drawbox=x=66:y=604:w=176:h=43:color=#fff7e6@0.98:t=fill",
       "drawbox=x=298:y=604:w=176:h=43:color=#fff7e6@0.98:t=fill",
       `drawbox=x=77:y=${messagePanelTop}:w=386:h=${messagePanelHeight}:color=#fff7e6@0.98:t=fill`,
+      `drawbox=x=(w-${messageLabelW})/2:y=${messageLabelY}:w=${messageLabelW}:h=${messageLabelH}:color=#082b6a@0.98:t=fill`,
+      `drawbox=x=(w-${messageLabelW})/2:y=${messageLabelY}:w=${messageLabelW}:h=${messageLabelH}:color=#e8b83f:t=3`,
+      `drawtext=${fontOption}text=${q("HEARTFELT BIRTHDAY MESSAGE")}:x=(w-text_w)/2:y=${messageLabelY + 5}:fontsize=13:fontcolor=#ffd35a:borderw=1:bordercolor=#06184f`,
       `drawtext=${fontOption}text=${q(recipientName)}:x=154-text_w/2:y=614:fontsize=18:fontcolor=#082b6a:borderw=1:bordercolor=#fff7e6`,
       `drawtext=${fontOption}text=${q(senderName)}:x=386-text_w/2:y=614:fontsize=18:fontcolor=#082b6a:borderw=1:bordercolor=#fff7e6`,
       `drawtext=${fontOption}text=${q(messageLines[0] || "")}:x=(w-text_w)/2:y=${messageStartY}:fontsize=${messageFontSize}:fontcolor=#082b6a:borderw=1:bordercolor=#fff7e6`,
@@ -15702,9 +15713,9 @@ async function renderPremiumOrderVideo({ orderId, req, publicBaseUrl = "" }) {
       `[0:v]${baseFrame},${commonTextOverlay},` +
       `drawbox=x=${introWindowX}:y=${introWindowY}:w=${introWindowW}:h=${introWindowH}:color=#e8b83f:t=fill,` +
       `drawbox=x=${introInnerX}:y=${introInnerY}:w=${introInnerW}:h=${introInnerH}:color=#06184f@0.98:t=fill,` +
-      `drawtext=${fontOption}text=${q("A SPECIAL TRIBUTE FOR")}:x=(w-text_w)/2:y=392:fontsize=20:fontcolor=#ffd35a:borderw=2:bordercolor=#06184f,` +
-      `drawtext=${fontOption}text=${q(recipientName)}:x=(w-text_w)/2:y=447:fontsize=30:fontcolor=white:borderw=2:bordercolor=#06184f,` +
-      `drawtext=${fontOption}text=${q(`FROM ${senderName}`)}:x=(w-text_w)/2:y=510:fontsize=18:fontcolor=#ffd35a:borderw=2:bordercolor=#06184f[base];` +
+      `drawtext=${fontOption}text=${q("A SPECIAL TRIBUTE FOR")}:x=(w-text_w)/2:y=${introWindowY + 42}:fontsize=18:fontcolor=#ffd35a:borderw=2:bordercolor=#06184f,` +
+      `drawtext=${fontOption}text=${q(recipientName)}:x=(w-text_w)/2:y=${introWindowY + 91}:fontsize=27:fontcolor=white:borderw=2:bordercolor=#06184f,` +
+      `drawtext=${fontOption}text=${q(`FROM ${senderName}`)}:x=(w-text_w)/2:y=${introWindowY + 151}:fontsize=16:fontcolor=#ffd35a:borderw=2:bordercolor=#06184f[base];` +
       `[1:v]${photoFilter}[photo];[base][photo]overlay=166:124:shortest=1[v]`,
       "-map", "[v]",
       ...premiumSegmentVideoArgs({ duration: openingDuration, outputPath: openingPath, fps: 10 })
@@ -15760,13 +15771,13 @@ async function renderPremiumOrderVideo({ orderId, req, publicBaseUrl = "" }) {
       `[withphoto][introstill]overlay=${introInnerX}:${introInnerY}:shortest=1[withintro];` +
       `[withintro]drawbox=x=${introInnerX}:y=${introInnerY}:w=${introInnerW}:h=${introInnerH}:color=#06184f@0.94:t=fill:` +
       `enable='between(t,0,${dedicationPanelSeconds})',` +
-      `drawtext=${fontOption}text=${q("NOW PLAYING")}:x=(w-text_w)/2:y=378:fontsize=18:` +
+      `drawtext=${fontOption}text=${q("NOW PLAYING")}:x=(w-text_w)/2:y=${introWindowY + 24}:fontsize=16:` +
       `fontcolor=#ffd35a:borderw=2:bordercolor=#06184f:enable='between(t,0,${dedicationPanelSeconds})',` +
-      `drawtext=${fontOption}text=${q(`A TRIBUTE FOR ${recipientName}`)}:x=(w-text_w)/2:y=424:fontsize=24:` +
+      `drawtext=${fontOption}text=${q(`A TRIBUTE FOR ${recipientName}`)}:x=(w-text_w)/2:y=${introWindowY + 65}:fontsize=21:` +
       `fontcolor=white:borderw=2:bordercolor=#06184f:enable='between(t,0,${dedicationPanelSeconds})',` +
-      `drawtext=${fontOption}text=${q(`WITH LOVE FROM ${senderName}`)}:x=(w-text_w)/2:y=474:fontsize=17:` +
+      `drawtext=${fontOption}text=${q(`WITH LOVE FROM ${senderName}`)}:x=(w-text_w)/2:y=${introWindowY + 112}:fontsize=15:` +
       `fontcolor=#ffd35a:borderw=2:bordercolor=#06184f:enable='between(t,0,${dedicationPanelSeconds})',` +
-      `drawtext=${fontOption}text=${q("PRINTO PREMIUM TRIBUTE MUSIC")}:x=(w-text_w)/2:y=520:fontsize=15:` +
+      `drawtext=${fontOption}text=${q("PRINTO PREMIUM TRIBUTE MUSIC")}:x=(w-text_w)/2:y=${introWindowY + 157}:fontsize=13:` +
       `fontcolor=white:borderw=1:bordercolor=#06184f:enable='between(t,0,${dedicationPanelSeconds})'[v]`,
       "-map", "[v]",
       ...premiumSegmentVideoArgs({ duration: tributeDuration, outputPath: tributePath, fps: 10 })
