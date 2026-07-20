@@ -15671,9 +15671,11 @@ async function renderPremiumOrderVideo({ orderId, req, publicBaseUrl = "" }) {
     const introInnerX = introWindowX + 6;
     const introInnerY = introWindowY + 6;
 
-    // Enlarge the portrait foreground by about 12% to reduce the blurred side margins.
-    const introZoomW = Math.round((introInnerW * 1.12) / 2) * 2;
-    const introZoomH = Math.round((introInnerH * 1.12) / 2) * 2;
+    // Clean full-frame crop for the personal introduction video.
+    // Scale slightly beyond the window, then center-crop so no blurred or cream
+    // side background remains inside the gold frame.
+    const introFillW = Math.round((introInnerW * 1.08) / 2) * 2;
+    const introFillH = Math.round((introInnerH * 1.08) / 2) * 2;
 
     // Coordinates below are for the low-memory 540 x 960 Render output.
     const baseFrame = "scale=540:960,setsar=1,format=yuv420p";
@@ -15732,14 +15734,9 @@ async function renderPremiumOrderVideo({ orderId, req, publicBaseUrl = "" }) {
       `[0:v]${baseFrame},${commonTextOverlay},` +
       `drawbox=x=${introWindowX}:y=${introWindowY}:w=${introWindowW}:h=${introWindowH}:color=#e8b83f:t=fill[base];` +
       `[1:v]${photoFilter}[photo];` +
-      `[2:v]split=2[introbgsrc][introfgsrc];` +
-      `[introbgsrc]scale=${introInnerW}:${introInnerH}:force_original_aspect_ratio=increase,` +
-      `crop=${introInnerW}:${introInnerH},boxblur=18:8,setsar=1,format=yuv420p[introbg];` +
-      `[introfgsrc]scale=${introZoomW}:${introZoomH}:force_original_aspect_ratio=decrease,` +
-      `crop='min(iw,${introInnerW})':'min(ih,${introInnerH})':(iw-ow)/2:(ih-oh)/2,` +
-      `pad=${introInnerW}:${introInnerH}:(ow-iw)/2:(oh-ih)/2:color=black@0,` +
-      `setsar=1,format=yuva420p[introfg];` +
-      `[introbg][introfg]overlay=(W-w)/2:(H-h)/2:shortest=1[intro];` +
+      `[2:v]scale=${introFillW}:${introFillH}:force_original_aspect_ratio=increase,` +
+      `crop=${introInnerW}:${introInnerH}:(iw-${introInnerW})/2:(ih-${introInnerH})/2,` +
+      `setsar=1,format=yuv420p[intro];` +
       `[base][photo]overlay=166:124:shortest=1[withphoto];` +
       `[withphoto][intro]overlay=${introInnerX}:${introInnerY}:shortest=1[v]`,
       "-map", "[v]",
@@ -15758,14 +15755,9 @@ async function renderPremiumOrderVideo({ orderId, req, publicBaseUrl = "" }) {
       `[0:v]${baseFrame},${commonTextOverlay},` +
       `drawbox=x=${introWindowX}:y=${introWindowY}:w=${introWindowW}:h=${introWindowH}:color=#e8b83f:t=fill[base];` +
       `[1:v]${photoFilter}[photo];` +
-      `[2:v]split=2[stillbgsrc][stillfgsrc];` +
-      `[stillbgsrc]scale=${introInnerW}:${introInnerH}:force_original_aspect_ratio=increase,` +
-      `crop=${introInnerW}:${introInnerH},boxblur=18:8,setsar=1,format=yuv420p[stillbg];` +
-      `[stillfgsrc]scale=${introZoomW}:${introZoomH}:force_original_aspect_ratio=decrease,` +
-      `crop='min(iw,${introInnerW})':'min(ih,${introInnerH})':(iw-ow)/2:(ih-oh)/2,` +
-      `pad=${introInnerW}:${introInnerH}:(ow-iw)/2:(oh-ih)/2:color=black@0,` +
-      `setsar=1,format=yuva420p[stillfg];` +
-      `[stillbg][stillfg]overlay=(W-w)/2:(H-h)/2:shortest=1,` +
+      `[2:v]scale=${introFillW}:${introFillH}:force_original_aspect_ratio=increase,` +
+      `crop=${introInnerW}:${introInnerH}:(iw-${introInnerW})/2:(ih-${introInnerH})/2,` +
+      `setsar=1,format=yuv420p,` +
       `tpad=stop_mode=clone:stop_duration=${tributeDuration}[introstill];` +
       `[base][photo]overlay=166:124:shortest=1[withphoto];` +
       `[withphoto][introstill]overlay=${introInnerX}:${introInnerY}:shortest=1[withintro];` +
