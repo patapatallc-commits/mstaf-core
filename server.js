@@ -15653,13 +15653,12 @@ async function renderPremiumOrderVideo({ orderId, req, publicBaseUrl = "" }) {
     const q = quoteDrawtextText;
 
     // Larger Premium introduction window with a rounded gold border.
-    const introWindowX = 64;
-    // Raise the complete gold introduction window so it no longer covers
-    // the original Printo mascot's legs.
-    const introWindowY = 302;
-    const introWindowW = 412;
+    // Shift the personal-video window right so it no longer covers Printo's legs.
+    const introWindowX = 118;
+    const introWindowY = 332;
+    const introWindowW = 358;
     const introWindowH = 252;
-    const introInnerW = 400;
+    const introInnerW = 346;
     const introInnerH = 240;
     const introInnerX = introWindowX + 6;
     const introInnerY = introWindowY + 6;
