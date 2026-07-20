@@ -15652,16 +15652,20 @@ async function renderPremiumOrderVideo({ orderId, req, publicBaseUrl = "" }) {
     const fontOption = fs.existsSync(fontFile) ? `fontfile=${fontFile}:` : "";
     const q = quoteDrawtextText;
 
-    // Larger Premium introduction window with a rounded gold border.
-    // Shift the personal-video window right so it no longer covers Printo's legs.
-    const introWindowX = 118;
+    // Final Premium introduction placement:
+    // move the window farther right and narrow it slightly so Printo's legs remain visible.
+    const introWindowX = 138;
     const introWindowY = 332;
-    const introWindowW = 358;
+    const introWindowW = 338;
     const introWindowH = 252;
-    const introInnerW = 346;
+    const introInnerW = 326;
     const introInnerH = 240;
     const introInnerX = introWindowX + 6;
     const introInnerY = introWindowY + 6;
+
+    // Enlarge the portrait foreground by about 12% to reduce the blurred side margins.
+    const introZoomW = Math.round((introInnerW * 1.12) / 2) * 2;
+    const introZoomH = Math.round((introInnerH * 1.12) / 2) * 2;
 
     // Coordinates below are for the low-memory 540 x 960 Render output.
     const baseFrame = "scale=540:960,setsar=1,format=yuv420p";
@@ -15720,7 +15724,8 @@ async function renderPremiumOrderVideo({ orderId, req, publicBaseUrl = "" }) {
       `[2:v]split=2[introbgsrc][introfgsrc];` +
       `[introbgsrc]scale=${introInnerW}:${introInnerH}:force_original_aspect_ratio=increase,` +
       `crop=${introInnerW}:${introInnerH},boxblur=18:8,setsar=1,format=yuv420p[introbg];` +
-      `[introfgsrc]scale=${introInnerW}:${introInnerH}:force_original_aspect_ratio=decrease,` +
+      `[introfgsrc]scale=${introZoomW}:${introZoomH}:force_original_aspect_ratio=decrease,` +
+      `crop='min(iw,${introInnerW})':'min(ih,${introInnerH})':(iw-ow)/2:(ih-oh)/2,` +
       `pad=${introInnerW}:${introInnerH}:(ow-iw)/2:(oh-ih)/2:color=black@0,` +
       `setsar=1,format=yuva420p[introfg];` +
       `[introbg][introfg]overlay=(W-w)/2:(H-h)/2:shortest=1[intro];` +
@@ -15745,7 +15750,8 @@ async function renderPremiumOrderVideo({ orderId, req, publicBaseUrl = "" }) {
       `[2:v]split=2[stillbgsrc][stillfgsrc];` +
       `[stillbgsrc]scale=${introInnerW}:${introInnerH}:force_original_aspect_ratio=increase,` +
       `crop=${introInnerW}:${introInnerH},boxblur=18:8,setsar=1,format=yuv420p[stillbg];` +
-      `[stillfgsrc]scale=${introInnerW}:${introInnerH}:force_original_aspect_ratio=decrease,` +
+      `[stillfgsrc]scale=${introZoomW}:${introZoomH}:force_original_aspect_ratio=decrease,` +
+      `crop='min(iw,${introInnerW})':'min(ih,${introInnerH})':(iw-ow)/2:(ih-oh)/2,` +
       `pad=${introInnerW}:${introInnerH}:(ow-iw)/2:(oh-ih)/2:color=black@0,` +
       `setsar=1,format=yuva420p[stillfg];` +
       `[stillbg][stillfg]overlay=(W-w)/2:(H-h)/2:shortest=1,` +
