@@ -15474,6 +15474,8 @@ function premiumSegmentVideoArgs({ duration, outputPath, fps = 15 }) {
 
 function findPremiumTributeFrame() {
   const candidates = [
+    // Final approved vertical Premium Tribute design.
+    path.join(__dirname, "templates", "premium", "printo_premium_tribute_vertical.png"),
     path.join(__dirname, "templates", "premium", "premium_tribute_frame.png"),
     path.join(__dirname, "templates", "premium", "printo_premium_tribute_frame.png"),
     path.join(__dirname, "templates", "premium", "premium_tribute_music_video.png")
@@ -15659,121 +15661,110 @@ async function renderPremiumOrderVideo({ orderId, req, publicBaseUrl = "" }) {
     const fontOption = fs.existsSync(fontFile) ? `fontfile=${fontFile}:` : "";
     const q = quoteDrawtextText;
 
-    // Final Premium introduction placement:
-    // Use the full dedication width and cover the large Printo presenter on the left.
-    // This prevents the personal introduction from overlapping the mascot and gives
-    // the customer video a clean, wide, centered presentation area.
-    const introWindowX = 66;
-    const introWindowY = 354;
-    const introWindowW = 408;
-    const introWindowH = 220;
-    const introInnerW = 396;
-    const introInnerH = 208;
-    const introInnerX = introWindowX + 6;
-    const introInnerY = introWindowY + 6;
+    // FINAL APPROVED PREMIUM TRIBUTE LAYOUT
+    // The background artwork is a 2:3 vertical card. Render at 576 x 864 so
+    // the design keeps its original proportions without stretching.
+    const outputW = 576;
+    const outputH = 864;
 
-    // Clean full-frame crop for the personal introduction video.
-    // Scale slightly beyond the window, then center-crop so no blurred or cream
-    // side background remains inside the gold frame.
-    const introFillW = Math.round((introInnerW * 1.08) / 2) * 2;
-    const introFillH = Math.round((introInnerH * 1.08) / 2) * 2;
+    // Large portrait window in the final approved template.
+    // No Printo artwork, ribbon, badge, or decoration overlaps this inner area.
+    const introWindowX = 157;
+    const introWindowY = 137;
+    const introWindowW = 262;
+    const introWindowH = 373;
+    const introInnerX = 166;
+    const introInnerY = 148;
+    const introInnerW = 244;
+    const introInnerH = 347;
 
-    // Coordinates below are for the low-memory 540 x 960 Render output.
-    const baseFrame = "scale=540:960,setsar=1,format=yuv420p";
-    const photoFilter =
-      "scale=230:230:force_original_aspect_ratio=increase,crop=230:230," +
-      "format=rgba,geq=r='r(X,Y)':g='g(X,Y)':b='b(X,Y)':a='if(lte((X-115)*(X-115)+(Y-115)*(Y-115),112*112),255,0)'";
+    // Use "decrease + pad" for the sender introduction. This deliberately
+    // zooms OUT enough to preserve the full cap, head, face, and shoulders.
+    // Portrait recordings fill the frame naturally; landscape recordings get
+    // a clean cream background instead of being aggressively cropped.
+    const introVideoFilter =
+      `scale=${introInnerW}:${introInnerH}:force_original_aspect_ratio=decrease,` +
+      `pad=${introInnerW}:${introInnerH}:(ow-iw)/2:(oh-ih)/2:color=#fff7e6,` +
+      `setsar=1,format=yuv420p`;
+
+    // The recipient photograph replaces the sender video immediately after
+    // the speech ends. A very gentle zoom keeps the music section alive.
+    const recipientPhotoFilter =
+      `scale=${introInnerW + 34}:${introInnerH + 48}:force_original_aspect_ratio=increase,` +
+      `crop=${introInnerW}:${introInnerH}:(iw-${introInnerW})/2:(ih-${introInnerH})/2,` +
+      `setsar=1,format=yuv420p`;
+
+    // Coordinates are based on the approved 1024 x 1536 artwork scaled exactly
+    // to 576 x 864.
+    const baseFrame = `scale=${outputW}:${outputH},setsar=1,format=yuv420p`;
 
     const commonTextOverlay = [
-      // Hide the sample placeholder words while preserving the gold boxes.
-      "drawbox=x=66:y=604:w=176:h=43:color=#fff7e6@0.98:t=fill",
-      "drawbox=x=298:y=604:w=176:h=43:color=#fff7e6@0.98:t=fill",
-      `drawbox=x=77:y=${messagePanelTop}:w=386:h=${messagePanelHeight}:color=#fff7e6@0.98:t=fill`,
-      `drawbox=x=(w-${messageLabelW})/2:y=${messageLabelY}:w=${messageLabelW}:h=${messageLabelH}:color=#082b6a@0.98:t=fill`,
-      `drawbox=x=(w-${messageLabelW})/2:y=${messageLabelY}:w=${messageLabelW}:h=${messageLabelH}:color=#e8b83f:t=3`,
-      `drawtext=${fontOption}text=${q("HEARTFELT BIRTHDAY MESSAGE")}:x=(w-text_w)/2:y=${messageLabelY + 5}:fontsize=13:fontcolor=#ffd35a:borderw=1:bordercolor=#06184f`,
-      `drawtext=${fontOption}text=${q(recipientName)}:x=154-text_w/2:y=614:fontsize=18:fontcolor=#082b6a:borderw=1:bordercolor=#fff7e6`,
-      `drawtext=${fontOption}text=${q(senderName)}:x=386-text_w/2:y=614:fontsize=18:fontcolor=#082b6a:borderw=1:bordercolor=#fff7e6`,
-      `drawtext=${fontOption}text=${q(messageLines[0] || "")}:x=(w-text_w)/2:y=${messageStartY}:fontsize=${messageFontSize}:fontcolor=#082b6a:borderw=1:bordercolor=#fff7e6`,
-      `drawtext=${fontOption}text=${q(messageLines[1] || "")}:x=(w-text_w)/2:y=${messageStartY + messageLineGap}:fontsize=${messageFontSize}:fontcolor=#082b6a:borderw=1:bordercolor=#fff7e6`,
-      `drawtext=${fontOption}text=${q(messageLines[2] || "")}:x=(w-text_w)/2:y=${messageStartY + messageLineGap * 2}:fontsize=${messageFontSize}:fontcolor=#082b6a:borderw=1:bordercolor=#fff7e6`,
-      `drawtext=${fontOption}text=${q(messageLines[3] || "")}:x=(w-text_w)/2:y=${messageStartY + messageLineGap * 3}:fontsize=${messageFontSize}:fontcolor=#082b6a:borderw=1:bordercolor=#fff7e6`,
-      `drawtext=${fontOption}text=${q(messageLines[4] || "")}:x=(w-text_w)/2:y=${messageStartY + messageLineGap * 4}:fontsize=${messageFontSize}:fontcolor=#082b6a:borderw=1:bordercolor=#fff7e6`,
-      `drawtext=${fontOption}text=${q(messageLines[5] || "")}:x=(w-text_w)/2:y=${messageStartY + messageLineGap * 5}:fontsize=${messageFontSize}:fontcolor=#082b6a:borderw=1:bordercolor=#fff7e6`,
-      `drawtext=${fontOption}text=${q(messageLines[6] || "")}:x=(w-text_w)/2:y=${messageStartY + messageLineGap * 6}:fontsize=${messageFontSize}:fontcolor=#082b6a:borderw=1:bordercolor=#fff7e6`,
-      `drawtext=${fontOption}text=${q(messageLines[7] || "")}:x=(w-text_w)/2:y=${messageStartY + messageLineGap * 7}:fontsize=${messageFontSize}:fontcolor=#082b6a:borderw=1:bordercolor=#fff7e6`
+      // Cover the sample names and sample heartfelt message from the artwork.
+      "drawbox=x=53:y=574:w=199:h=48:color=#fff7e6@0.99:t=fill",
+      "drawbox=x=326:y=574:w=199:h=48:color=#fff7e6@0.99:t=fill",
+      "drawbox=x=58:y=681:w=460:h=116:color=#fff7e6@0.99:t=fill",
+
+      // Recipient and sender names.
+      `drawtext=${fontOption}text=${q(recipientName)}:x=153-text_w/2:y=583:fontsize=19:fontcolor=#082b6a:borderw=1:bordercolor=#fff7e6`,
+      `drawtext=${fontOption}text=${q(senderName)}:x=426-text_w/2:y=583:fontsize=19:fontcolor=#082b6a:borderw=1:bordercolor=#fff7e6`,
+
+      // Complete 220-character heartfelt message.
+      `drawtext=${fontOption}text=${q(messageLines[0] || "")}:x=(w-text_w)/2:y=697:fontsize=${messageFontSize}:fontcolor=#082b6a:borderw=1:bordercolor=#fff7e6`,
+      `drawtext=${fontOption}text=${q(messageLines[1] || "")}:x=(w-text_w)/2:y=${697 + messageLineGap}:fontsize=${messageFontSize}:fontcolor=#082b6a:borderw=1:bordercolor=#fff7e6`,
+      `drawtext=${fontOption}text=${q(messageLines[2] || "")}:x=(w-text_w)/2:y=${697 + messageLineGap * 2}:fontsize=${messageFontSize}:fontcolor=#082b6a:borderw=1:bordercolor=#fff7e6`,
+      `drawtext=${fontOption}text=${q(messageLines[3] || "")}:x=(w-text_w)/2:y=${697 + messageLineGap * 3}:fontsize=${messageFontSize}:fontcolor=#082b6a:borderw=1:bordercolor=#fff7e6`,
+      `drawtext=${fontOption}text=${q(messageLines[4] || "")}:x=(w-text_w)/2:y=${697 + messageLineGap * 4}:fontsize=${messageFontSize}:fontcolor=#082b6a:borderw=1:bordercolor=#fff7e6`,
+      `drawtext=${fontOption}text=${q(messageLines[5] || "")}:x=(w-text_w)/2:y=${697 + messageLineGap * 5}:fontsize=${messageFontSize}:fontcolor=#082b6a:borderw=1:bordercolor=#fff7e6`,
+      `drawtext=${fontOption}text=${q(messageLines[6] || "")}:x=(w-text_w)/2:y=${697 + messageLineGap * 6}:fontsize=${messageFontSize}:fontcolor=#082b6a:borderw=1:bordercolor=#fff7e6`,
+      `drawtext=${fontOption}text=${q(messageLines[7] || "")}:x=(w-text_w)/2:y=${697 + messageLineGap * 7}:fontsize=${messageFontSize}:fontcolor=#082b6a:borderw=1:bordercolor=#fff7e6`
     ].join(",");
 
-    console.log("Premium render stage 4/7 - creating branded Printo segments:", orderId);
+    console.log("Premium render stage 4/7 - creating final vertical Printo segments:", orderId);
 
-    // Opening: the recipient photo appears in the circular photo area, and the
-    // introduction window displays a clean opening message.
+    // Opening: keep the portrait window clean and display a short dedication.
+    // The recipient photograph does NOT appear yet.
     await execFilePromise("ffmpeg", [
       "-y", "-nostdin", "-loglevel", "error",
       "-loop", "1", "-i", premiumFramePath,
-      "-loop", "1", "-i", photoPath,
       "-filter_complex",
       `[0:v]${baseFrame},${commonTextOverlay},` +
-      `drawbox=x=${introWindowX}:y=${introWindowY}:w=${introWindowW}:h=${introWindowH}:color=#e8b83f:t=fill,` +
       `drawbox=x=${introInnerX}:y=${introInnerY}:w=${introInnerW}:h=${introInnerH}:color=#06184f@0.98:t=fill,` +
-      `drawtext=${fontOption}text=${q("A SPECIAL TRIBUTE FOR")}:x=(w-text_w)/2:y=${introWindowY + 42}:fontsize=18:fontcolor=#ffd35a:borderw=2:bordercolor=#06184f,` +
-      `drawtext=${fontOption}text=${q(recipientName)}:x=(w-text_w)/2:y=${introWindowY + 91}:fontsize=27:fontcolor=white:borderw=2:bordercolor=#06184f,` +
-      `drawtext=${fontOption}text=${q(`FROM ${senderName}`)}:x=(w-text_w)/2:y=${introWindowY + 151}:fontsize=16:fontcolor=#ffd35a:borderw=2:bordercolor=#06184f[base];` +
-      `[1:v]${photoFilter}[photo];[base][photo]overlay=166:124:shortest=1[v]`,
+      `drawtext=${fontOption}text=${q("A SPECIAL TRIBUTE FOR")}:x=(w-text_w)/2:y=${introInnerY + 92}:fontsize=18:fontcolor=#ffd35a:borderw=2:bordercolor=#06184f,` +
+      `drawtext=${fontOption}text=${q(recipientName)}:x=(w-text_w)/2:y=${introInnerY + 145}:fontsize=28:fontcolor=white:borderw=2:bordercolor=#06184f,` +
+      `drawtext=${fontOption}text=${q(`FROM ${senderName}`)}:x=(w-text_w)/2:y=${introInnerY + 209}:fontsize=17:fontcolor=#ffd35a:borderw=2:bordercolor=#06184f[v]`,
       "-map", "[v]",
       ...premiumSegmentVideoArgs({ duration: openingDuration, outputPath: openingPath, fps: 10 })
     ], { timeout: PREMIUM_RENDER_STAGE_TIMEOUT_MS, maxBuffer: 8 * 1024 * 1024 });
 
-    // Introduction: place the customer's real introduction video across the full
-    // dedication width. The new window intentionally covers the left presenter.
+    // Sender introduction: only the sender's portrait video is shown in the
+    // vertical window. The original sender audio is retained for this segment.
     await execFilePromise("ffmpeg", [
       "-y", "-nostdin", "-loglevel", "error",
       "-loop", "1", "-i", premiumFramePath,
-      "-loop", "1", "-i", photoPath,
       "-i", introPath,
       "-filter_complex",
-      `[0:v]${baseFrame},${commonTextOverlay},` +
-      `drawbox=x=${introWindowX}:y=${introWindowY}:w=${introWindowW}:h=${introWindowH}:color=#e8b83f:t=fill[base];` +
-      `[1:v]${photoFilter}[photo];` +
-      `[2:v]scale=${introFillW}:${introFillH}:force_original_aspect_ratio=increase,` +
-      `crop=${introInnerW}:${introInnerH}:(iw-${introInnerW})/2:(ih-${introInnerH})/2,` +
-      `setsar=1,format=yuv420p[intro];` +
-      `[base][photo]overlay=166:124:shortest=1[withphoto];` +
-      `[withphoto][intro]overlay=${introInnerX}:${introInnerY}:shortest=1[v]`,
+      `[0:v]${baseFrame},${commonTextOverlay}[base];` +
+      `[1:v]${introVideoFilter}[intro];` +
+      `[base][intro]overlay=${introInnerX}:${introInnerY}:shortest=1[v]`,
       "-map", "[v]",
       ...premiumSegmentVideoArgs({ duration: introDuration, outputPath: introSegmentPath, fps: 18 })
     ], { timeout: PREMIUM_RENDER_STAGE_TIMEOUT_MS, maxBuffer: 8 * 1024 * 1024 });
 
-    // Tribute music: show the dedication panel briefly, then remove it so the
-    // customer's introduction image remains visible while the song continues.
-    const dedicationPanelSeconds = Math.min(4, Math.max(2, tributeDuration - 1));
+    // Tribute section: as soon as the sender speech finishes, replace the
+    // sender video with the recipient photograph and play the custom music to
+    // the end. The sender video is never frozen or left talking under the song.
     await execFilePromise("ffmpeg", [
       "-y", "-nostdin", "-loglevel", "error",
       "-loop", "1", "-i", premiumFramePath,
       "-loop", "1", "-i", photoPath,
-      "-sseof", "-0.15", "-i", introPath,
       "-filter_complex",
-      `[0:v]${baseFrame},${commonTextOverlay},` +
-      `drawbox=x=${introWindowX}:y=${introWindowY}:w=${introWindowW}:h=${introWindowH}:color=#e8b83f:t=fill[base];` +
-      `[1:v]${photoFilter}[photo];` +
-      `[2:v]scale=${introFillW}:${introFillH}:force_original_aspect_ratio=increase,` +
-      `crop=${introInnerW}:${introInnerH}:(iw-${introInnerW})/2:(ih-${introInnerH})/2,` +
-      `setsar=1,format=yuv420p,` +
-      `tpad=stop_mode=clone:stop_duration=${tributeDuration}[introstill];` +
-      `[base][photo]overlay=166:124:shortest=1[withphoto];` +
-      `[withphoto][introstill]overlay=${introInnerX}:${introInnerY}:shortest=1[withintro];` +
-      `[withintro]drawbox=x=${introInnerX}:y=${introInnerY}:w=${introInnerW}:h=${introInnerH}:color=#06184f@0.94:t=fill:` +
-      `enable='between(t,0,${dedicationPanelSeconds})',` +
-      `drawtext=${fontOption}text=${q("NOW PLAYING")}:x=(w-text_w)/2:y=${introWindowY + 24}:fontsize=16:` +
-      `fontcolor=#ffd35a:borderw=2:bordercolor=#06184f:enable='between(t,0,${dedicationPanelSeconds})',` +
-      `drawtext=${fontOption}text=${q(`A TRIBUTE FOR ${recipientName}`)}:x=(w-text_w)/2:y=${introWindowY + 65}:fontsize=21:` +
-      `fontcolor=white:borderw=2:bordercolor=#06184f:enable='between(t,0,${dedicationPanelSeconds})',` +
-      `drawtext=${fontOption}text=${q(`WITH LOVE FROM ${senderName}`)}:x=(w-text_w)/2:y=${introWindowY + 112}:fontsize=15:` +
-      `fontcolor=#ffd35a:borderw=2:bordercolor=#06184f:enable='between(t,0,${dedicationPanelSeconds})',` +
-      `drawtext=${fontOption}text=${q("PRINTO PREMIUM TRIBUTE MUSIC")}:x=(w-text_w)/2:y=${introWindowY + 157}:fontsize=13:` +
-      `fontcolor=white:borderw=1:bordercolor=#06184f:enable='between(t,0,${dedicationPanelSeconds})'[v]`,
+      `[0:v]${baseFrame},${commonTextOverlay}[base];` +
+      `[1:v]${recipientPhotoFilter},` +
+      `fade=t=in:st=0:d=0.8,` +
+      `tpad=stop_mode=clone:stop_duration=${tributeDuration}[recipient];` +
+      `[base][recipient]overlay=${introInnerX}:${introInnerY}:shortest=1[v]`,
       "-map", "[v]",
-      ...premiumSegmentVideoArgs({ duration: tributeDuration, outputPath: tributePath, fps: 10 })
+      ...premiumSegmentVideoArgs({ duration: tributeDuration, outputPath: tributePath, fps: 12 })
     ], { timeout: PREMIUM_RENDER_STAGE_TIMEOUT_MS, maxBuffer: 8 * 1024 * 1024 });
 
     const escapeConcatPath = (value) => String(value).replace(/'/g, "'\\''");
