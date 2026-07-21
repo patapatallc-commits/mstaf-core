@@ -15678,19 +15678,21 @@ async function renderPremiumOrderVideo({ orderId, req, publicBaseUrl = "" }) {
     const introInnerX = 166;
     const introInnerY = 160;
     const introInnerW = 244;
-    const introInnerH = 347;
+    const introInnerH = 346;
 
     // Fit the complete sender vertically without cutting off the cap, head,
     // face, or shoulders. Any unused space stays a clean warm cream color.
     const introVideoFilter =
-      `scale=${introInnerW}:${introInnerH}:force_original_aspect_ratio=decrease,` +
+      `setsar=1,` +
+      `scale=${introInnerW}:${introInnerH}:force_original_aspect_ratio=decrease:force_divisible_by=2,` +
       `pad=${introInnerW}:${introInnerH}:(ow-iw)/2:(oh-ih)/2:color=#fff7e6,` +
       `setsar=1,format=yuv420p`;
 
     // The recipient photograph replaces the sender video immediately after
     // the speech ends. A very gentle zoom keeps the music section alive.
     const recipientPhotoFilter =
-      `scale=${introInnerW + 34}:${introInnerH + 48}:force_original_aspect_ratio=increase,` +
+      `setsar=1,` +
+      `scale=${introInnerW + 36}:${introInnerH + 48}:force_original_aspect_ratio=increase:force_divisible_by=2,` +
       `crop=${introInnerW}:${introInnerH}:(iw-${introInnerW})/2:(ih-${introInnerH})/2,` +
       `setsar=1,format=yuv420p`;
 
@@ -15720,7 +15722,14 @@ async function renderPremiumOrderVideo({ orderId, req, publicBaseUrl = "" }) {
       `drawtext=${fontOption}text=${q(messageLines[7] || "")}:x=(w-text_w)/2:y=${699 + messageLineGap * 7}:fontsize=${messageFontSize}:fontcolor=#082b6a:borderw=1:bordercolor=#fff7e6`
     ].join(",");
 
-    console.log("Premium render stage 4/7 - creating final vertical Printo segments:", orderId);
+    console.log("Premium render stage 4/7 - creating final vertical Printo segments:", orderId, {
+      outputW,
+      outputH,
+      introInnerX,
+      introInnerY,
+      introInnerW,
+      introInnerH
+    });
 
     // Opening: keep the portrait window clean and display a short dedication.
     // The recipient photograph does NOT appear yet.
