@@ -15474,9 +15474,9 @@ function premiumSegmentVideoArgs({ duration, outputPath, fps = 15 }) {
 
 function findPremiumTributeFrame() {
   const candidates = [
-    // Final approved vertical Premium Tribute design.
-    path.join(__dirname, "templates", "premium", "printo_premium_tribute_vertical.png"),
+    // Final approved blank vertical Premium Tribute master template.
     path.join(__dirname, "templates", "premium", "premium_tribute_frame.png"),
+    path.join(__dirname, "templates", "premium", "printo_premium_tribute_vertical.png"),
     path.join(__dirname, "templates", "premium", "printo_premium_tribute_frame.png"),
     path.join(__dirname, "templates", "premium", "premium_tribute_music_video.png")
   ];
@@ -15669,19 +15669,19 @@ async function renderPremiumOrderVideo({ orderId, req, publicBaseUrl = "" }) {
 
     // Large portrait window in the final approved template.
     // No Printo artwork, ribbon, badge, or decoration overlaps this inner area.
+    // One shared vertical media window: sender video first, recipient photo next.
+    // Coordinates match the final blank 1024 x 1536 artwork scaled to 576 x 864.
     const introWindowX = 157;
-    const introWindowY = 137;
+    const introWindowY = 150;
     const introWindowW = 262;
-    const introWindowH = 373;
+    const introWindowH = 371;
     const introInnerX = 166;
-    const introInnerY = 148;
+    const introInnerY = 160;
     const introInnerW = 244;
     const introInnerH = 347;
 
-    // Use "decrease + pad" for the sender introduction. This deliberately
-    // zooms OUT enough to preserve the full cap, head, face, and shoulders.
-    // Portrait recordings fill the frame naturally; landscape recordings get
-    // a clean cream background instead of being aggressively cropped.
+    // Fit the complete sender vertically without cutting off the cap, head,
+    // face, or shoulders. Any unused space stays a clean warm cream color.
     const introVideoFilter =
       `scale=${introInnerW}:${introInnerH}:force_original_aspect_ratio=decrease,` +
       `pad=${introInnerW}:${introInnerH}:(ow-iw)/2:(oh-ih)/2:color=#fff7e6,` +
@@ -15699,24 +15699,25 @@ async function renderPremiumOrderVideo({ orderId, req, publicBaseUrl = "" }) {
     const baseFrame = `scale=${outputW}:${outputH},setsar=1,format=yuv420p`;
 
     const commonTextOverlay = [
-      // Cover the sample names and sample heartfelt message from the artwork.
+      // Keep all customer fields blank in the master artwork, then write the
+      // current order's data into the dedicated panels at render time.
       "drawbox=x=53:y=574:w=199:h=48:color=#fff7e6@0.99:t=fill",
       "drawbox=x=326:y=574:w=199:h=48:color=#fff7e6@0.99:t=fill",
       "drawbox=x=58:y=681:w=460:h=116:color=#fff7e6@0.99:t=fill",
 
       // Recipient and sender names.
-      `drawtext=${fontOption}text=${q(recipientName)}:x=153-text_w/2:y=583:fontsize=19:fontcolor=#082b6a:borderw=1:bordercolor=#fff7e6`,
-      `drawtext=${fontOption}text=${q(senderName)}:x=426-text_w/2:y=583:fontsize=19:fontcolor=#082b6a:borderw=1:bordercolor=#fff7e6`,
+      `drawtext=${fontOption}text=${q(recipientName)}:x=153-text_w/2:y=586:fontsize=19:fontcolor=#082b6a:borderw=1:bordercolor=#fff7e6`,
+      `drawtext=${fontOption}text=${q(senderName)}:x=426-text_w/2:y=586:fontsize=19:fontcolor=#082b6a:borderw=1:bordercolor=#fff7e6`,
 
       // Complete 220-character heartfelt message.
-      `drawtext=${fontOption}text=${q(messageLines[0] || "")}:x=(w-text_w)/2:y=697:fontsize=${messageFontSize}:fontcolor=#082b6a:borderw=1:bordercolor=#fff7e6`,
-      `drawtext=${fontOption}text=${q(messageLines[1] || "")}:x=(w-text_w)/2:y=${697 + messageLineGap}:fontsize=${messageFontSize}:fontcolor=#082b6a:borderw=1:bordercolor=#fff7e6`,
-      `drawtext=${fontOption}text=${q(messageLines[2] || "")}:x=(w-text_w)/2:y=${697 + messageLineGap * 2}:fontsize=${messageFontSize}:fontcolor=#082b6a:borderw=1:bordercolor=#fff7e6`,
-      `drawtext=${fontOption}text=${q(messageLines[3] || "")}:x=(w-text_w)/2:y=${697 + messageLineGap * 3}:fontsize=${messageFontSize}:fontcolor=#082b6a:borderw=1:bordercolor=#fff7e6`,
-      `drawtext=${fontOption}text=${q(messageLines[4] || "")}:x=(w-text_w)/2:y=${697 + messageLineGap * 4}:fontsize=${messageFontSize}:fontcolor=#082b6a:borderw=1:bordercolor=#fff7e6`,
-      `drawtext=${fontOption}text=${q(messageLines[5] || "")}:x=(w-text_w)/2:y=${697 + messageLineGap * 5}:fontsize=${messageFontSize}:fontcolor=#082b6a:borderw=1:bordercolor=#fff7e6`,
-      `drawtext=${fontOption}text=${q(messageLines[6] || "")}:x=(w-text_w)/2:y=${697 + messageLineGap * 6}:fontsize=${messageFontSize}:fontcolor=#082b6a:borderw=1:bordercolor=#fff7e6`,
-      `drawtext=${fontOption}text=${q(messageLines[7] || "")}:x=(w-text_w)/2:y=${697 + messageLineGap * 7}:fontsize=${messageFontSize}:fontcolor=#082b6a:borderw=1:bordercolor=#fff7e6`
+      `drawtext=${fontOption}text=${q(messageLines[0] || "")}:x=(w-text_w)/2:y=699:fontsize=${messageFontSize}:fontcolor=#082b6a:borderw=1:bordercolor=#fff7e6`,
+      `drawtext=${fontOption}text=${q(messageLines[1] || "")}:x=(w-text_w)/2:y=${699 + messageLineGap}:fontsize=${messageFontSize}:fontcolor=#082b6a:borderw=1:bordercolor=#fff7e6`,
+      `drawtext=${fontOption}text=${q(messageLines[2] || "")}:x=(w-text_w)/2:y=${699 + messageLineGap * 2}:fontsize=${messageFontSize}:fontcolor=#082b6a:borderw=1:bordercolor=#fff7e6`,
+      `drawtext=${fontOption}text=${q(messageLines[3] || "")}:x=(w-text_w)/2:y=${699 + messageLineGap * 3}:fontsize=${messageFontSize}:fontcolor=#082b6a:borderw=1:bordercolor=#fff7e6`,
+      `drawtext=${fontOption}text=${q(messageLines[4] || "")}:x=(w-text_w)/2:y=${699 + messageLineGap * 4}:fontsize=${messageFontSize}:fontcolor=#082b6a:borderw=1:bordercolor=#fff7e6`,
+      `drawtext=${fontOption}text=${q(messageLines[5] || "")}:x=(w-text_w)/2:y=${699 + messageLineGap * 5}:fontsize=${messageFontSize}:fontcolor=#082b6a:borderw=1:bordercolor=#fff7e6`,
+      `drawtext=${fontOption}text=${q(messageLines[6] || "")}:x=(w-text_w)/2:y=${699 + messageLineGap * 6}:fontsize=${messageFontSize}:fontcolor=#082b6a:borderw=1:bordercolor=#fff7e6`,
+      `drawtext=${fontOption}text=${q(messageLines[7] || "")}:x=(w-text_w)/2:y=${699 + messageLineGap * 7}:fontsize=${messageFontSize}:fontcolor=#082b6a:borderw=1:bordercolor=#fff7e6`
     ].join(",");
 
     console.log("Premium render stage 4/7 - creating final vertical Printo segments:", orderId);
