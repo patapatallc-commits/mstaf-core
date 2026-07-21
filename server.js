@@ -15660,13 +15660,14 @@ async function renderPremiumOrderVideo({ orderId, req, publicBaseUrl = "" }) {
     const q = quoteDrawtextText;
 
     // Final Premium introduction placement:
-    // keep the personal introduction clear of Printo's legs and the recipient portrait.
-    // The smaller window sits lower and farther right inside the dedication area.
-    const introWindowX = 180;
+    // Use the full dedication width and cover the large Printo presenter on the left.
+    // This prevents the personal introduction from overlapping the mascot and gives
+    // the customer video a clean, wide, centered presentation area.
+    const introWindowX = 66;
     const introWindowY = 354;
-    const introWindowW = 294;
+    const introWindowW = 408;
     const introWindowH = 220;
-    const introInnerW = 282;
+    const introInnerW = 396;
     const introInnerH = 208;
     const introInnerX = introWindowX + 6;
     const introInnerY = introWindowY + 6;
@@ -15723,8 +15724,8 @@ async function renderPremiumOrderVideo({ orderId, req, publicBaseUrl = "" }) {
       ...premiumSegmentVideoArgs({ duration: openingDuration, outputPath: openingPath, fps: 10 })
     ], { timeout: PREMIUM_RENDER_STAGE_TIMEOUT_MS, maxBuffer: 8 * 1024 * 1024 });
 
-    // Introduction: place the customer's real introduction video inside the
-    // exact YOUR VIDEO INTRO window while keeping the full Printo poster visible.
+    // Introduction: place the customer's real introduction video across the full
+    // dedication width. The new window intentionally covers the left presenter.
     await execFilePromise("ffmpeg", [
       "-y", "-nostdin", "-loglevel", "error",
       "-loop", "1", "-i", premiumFramePath,
