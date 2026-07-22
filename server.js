@@ -13202,17 +13202,18 @@ app.get("/worker-dashboard", requireDashboardKey, async (req, res) => {
     }
 
     try {
+      // Always request a fresh render from the worker dashboard. A completed
+      // video may have been created with an older template or timing setup.
       const data = await api("/api/greeting/premium/render", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ orderId })
+        body: JSON.stringify({ orderId, force: true })
       });
 
-      if (data.status === "completed" && data.finalVideoUrl) {
-        alert("✅ Premium video is already completed.");
-        window.open(data.finalVideoUrl, "_blank", "noopener");
-        loadJobs();
-        return;
+      if (button) {
+        button.textContent = data.status === "queued"
+          ? "⏳ Render queued..."
+          : "🎬 Rendering in progress...";
       }
 
       await waitForPremiumRender(orderId, button, oldText);
@@ -13283,7 +13284,9 @@ app.get("/worker-dashboard", requireDashboardKey, async (req, res) => {
     }
 
     const button = event.target.closest && event.target.closest(".premiumRenderButton");
-    if (button) renderPremiumOrder(button.dataset.orderId || "", button);
+    if (button && !button.hasAttribute("onclick")) {
+      renderPremiumOrder(button.dataset.orderId || "", button);
+    }
   });
 
   function summarize(jobs) {
@@ -13439,7 +13442,7 @@ app.get("/worker-dashboard", requireDashboardKey, async (req, res) => {
         '</span>'
       );
       buttons.push('<span class="small premiumMusicStatus" data-order-id="' + h(orderId) + '">' + (musicUrl ? '✅ Tribute music stored' : 'Choose the Suno song, then click Upload Tribute Music') + '</span>');
-      buttons.push('<button type="button" class="btn premiumRenderButton" data-order-id="' + h(orderId) + '"' + (musicUrl ? '' : ' disabled title="Upload tribute music first"') + '>🎬 Render Complete Video</button>');
+      buttons.push('<button type="button" class="btn premiumRenderButton" data-order-id="' + h(orderId) + '" onclick="renderPremiumOrder(&quot;' + h(orderId) + '&quot;, this); return false;"' + (musicUrl ? '' : ' disabled title="Upload tribute music first"') + '>🎬 Re-render Complete Video</button>');
     }
 
     if (!buttons.length) {
@@ -15948,7 +15951,16 @@ app.post("/api/greeting/premium/render", requireDashboardKey, express.json(), as
       return res.status(404).json({ ok: false, error: "Premium order was not found." });
     }
 
-    if (String(order.render_status || "").toLowerCase() === "completed" && order.final_video_url) {
+    const forceRender =
+      req.body?.force === true ||
+      String(req.body?.force || "").toLowerCase() === "true" ||
+      String(req.body?.force || "") === "1";
+
+    if (
+      !forceRender &&
+      String(order.render_status || "").toLowerCase() === "completed" &&
+      order.final_video_url
+    ) {
       return res.json({
         ok: true,
         accepted: false,
@@ -15969,9 +15981,14 @@ app.post("/api/greeting/premium/render", requireDashboardKey, express.json(), as
     const publicBaseUrl = getPublicBaseUrl(req);
     await queryWithRetry(
       `UPDATE premium_greeting_orders
-       SET render_status = 'queued', render_error = '', updated_at = NOW()
+       SET render_status = 'queued',
+           render_error = '',
+           final_video_url = CASE WHEN $2::boolean THEN '' ELSE final_video_url END,
+           final_video_data = CASE WHEN $2::boolean THEN NULL ELSE final_video_data END,
+           final_video_mime = CASE WHEN $2::boolean THEN '' ELSE final_video_mime END,
+           updated_at = NOW()
        WHERE order_id = $1`,
-      [orderId]
+      [orderId, forceRender]
     );
 
     // Start FFmpeg only after the 202 response has fully left the server.
