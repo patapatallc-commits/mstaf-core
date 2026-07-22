@@ -15682,9 +15682,12 @@ async function renderPremiumOrderVideo({ orderId, req, publicBaseUrl = "" }) {
 
     // Fit the complete sender vertically without cutting off the cap, head,
     // face, or shoulders. Any unused space stays a clean warm cream color.
+    // Scale the sender video safely, then center it over a cream canvas.
+    // Do NOT use FFmpeg pad here: phone rotation/SAR metadata can make the
+    // scaled frame appear larger than the requested pad canvas and trigger
+    // "Padded dimensions cannot be smaller than input dimensions".
     const introVideoFilter =
       `scale=${introInnerW}:${introInnerH}:force_original_aspect_ratio=decrease,` +
-      `pad=${introInnerW}:${introInnerH}:(ow-iw)/2:(oh-ih)/2:color=#fff7e6,` +
       `setsar=1,format=yuv420p`;
 
     // The recipient photograph replaces the sender video immediately after
@@ -15721,6 +15724,7 @@ async function renderPremiumOrderVideo({ orderId, req, publicBaseUrl = "" }) {
     ].join(",");
 
     console.log("Premium render stage 4/7 - creating final vertical Printo segments:", orderId);
+    console.log("Premium Stage 4 media window:", { orderId, introInnerW, introInnerH, introDuration, tributeDuration });
 
     // Opening: keep the portrait window clean and display a short dedication.
     // The recipient photograph does NOT appear yet.
@@ -15745,7 +15749,9 @@ async function renderPremiumOrderVideo({ orderId, req, publicBaseUrl = "" }) {
       "-i", introPath,
       "-filter_complex",
       `[0:v]${baseFrame},${commonTextOverlay}[base];` +
-      `[1:v]${introVideoFilter}[intro];` +
+      `[1:v]${introVideoFilter}[intro_scaled];` +
+      `color=c=#fff7e6:s=${introInnerW}x${introInnerH}:d=${introDuration},format=yuv420p[intro_canvas];` +
+      `[intro_canvas][intro_scaled]overlay=(W-w)/2:(H-h)/2:shortest=1[intro];` +
       `[base][intro]overlay=${introInnerX}:${introInnerY}:shortest=1[v]`,
       "-map", "[v]",
       ...premiumSegmentVideoArgs({ duration: introDuration, outputPath: introSegmentPath, fps: 18 })
