@@ -193,6 +193,11 @@ const PREMIUM_VIDEO_MAX_SECONDS = 60;
 const PREMIUM_MUSIC_MAX_BYTES = 30 * 1024 * 1024;
 const PREMIUM_FINAL_VIDEO_MAX_BYTES = 70 * 1024 * 1024;
 
+// Printo Studio credit system: every new customer receives 100 free credits.
+// Each successful standard or Premium creation uses 20 credits (5 creations).
+const PRINTO_FREE_CREDITS = 100;
+const PRINTO_CREATION_CREDIT_COST = 20;
+
 // Render's smaller instances may need more than five minutes to encode a
 // full-length Premium tribute video. Allow each long FFmpeg stage up to 20 minutes.
 const PREMIUM_RENDER_STAGE_TIMEOUT_MS = 20 * 60 * 1000;
@@ -2202,7 +2207,8 @@ async function ensureGreetingAccessTables() {
       customer_key TEXT PRIMARY KEY,
       contact_phone TEXT NOT NULL DEFAULT '',
       free_used BOOLEAN NOT NULL DEFAULT FALSE,
-      paid_credits INTEGER NOT NULL DEFAULT 0 CHECK (paid_credits >= 0),
+      paid_credits INTEGER NOT NULL DEFAULT 100 CHECK (paid_credits >= 0),
+      free_credits_granted BOOLEAN NOT NULL DEFAULT TRUE,
       total_generated INTEGER NOT NULL DEFAULT 0 CHECK (total_generated >= 0),
       last_generation_source TEXT NOT NULL DEFAULT '',
       last_generated_at TIMESTAMPTZ,
@@ -2210,6 +2216,19 @@ async function ensureGreetingAccessTables() {
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
   `);
+
+  await pool.query(`ALTER TABLE greeting_customer_access ADD COLUMN IF NOT EXISTS free_credits_granted BOOLEAN NOT NULL DEFAULT FALSE`);
+  await pool.query(`ALTER TABLE greeting_customer_access ALTER COLUMN paid_credits SET DEFAULT 100`);
+  await pool.query(`
+    UPDATE greeting_customer_access
+    SET paid_credits = CASE
+          WHEN free_credits_granted = FALSE AND paid_credits < $1 THEN $1
+          ELSE paid_credits
+        END,
+        free_credits_granted = TRUE,
+        updated_at = NOW()
+    WHERE free_credits_granted = FALSE
+  `, [PRINTO_FREE_CREDITS]);
 
   await pool.query(`
     CREATE TABLE IF NOT EXISTS greeting_payment_events (
@@ -2358,10 +2377,12 @@ async function ensureGreetingCustomerRow(customerKey, contactPhone = "") {
     INSERT INTO greeting_customer_access (
       customer_key,
       contact_phone,
+      paid_credits,
+      free_credits_granted,
       created_at,
       updated_at
     )
-    VALUES ($1, $2, NOW(), NOW())
+    VALUES ($1, $2, $3, TRUE, NOW(), NOW())
     ON CONFLICT (customer_key)
     DO UPDATE SET
       contact_phone = CASE
@@ -2370,7 +2391,7 @@ async function ensureGreetingCustomerRow(customerKey, contactPhone = "") {
       END,
       updated_at = NOW()
     `,
-    [customerKey, String(contactPhone || "").replace(/\D+/g, "")]
+    [customerKey, String(contactPhone || "").replace(/\D+/g, ""), PRINTO_FREE_CREDITS]
   );
 }
 
@@ -2384,6 +2405,7 @@ async function getGreetingAccessStatus(customerKey, contactPhone = "") {
       contact_phone,
       free_used,
       paid_credits,
+      free_credits_granted,
       total_generated,
       last_generation_source,
       last_generated_at
@@ -2394,13 +2416,18 @@ async function getGreetingAccessStatus(customerKey, contactPhone = "") {
   );
 
   const row = result.rows[0] || {};
+  const creditBalance = Number(row.paid_credits || 0);
 
   return {
     customerKey,
     contactPhone: row.contact_phone || "",
-    freeAvailable: !row.free_used,
-    freeUsed: Boolean(row.free_used),
-    paidCredits: Number(row.paid_credits || 0),
+    freeAvailable: creditBalance >= PRINTO_CREATION_CREDIT_COST,
+    freeUsed: creditBalance < PRINTO_FREE_CREDITS,
+    freeCreditsGranted: Boolean(row.free_credits_granted),
+    paidCredits: creditBalance,
+    creditBalance,
+    creationCost: PRINTO_CREATION_CREDIT_COST,
+    remainingCreations: Math.floor(creditBalance / PRINTO_CREATION_CREDIT_COST),
     totalGenerated: Number(row.total_generated || 0),
     lastGenerationSource: row.last_generation_source || "",
     lastGeneratedAt: row.last_generated_at || null
@@ -2418,10 +2445,12 @@ async function reserveGreetingGenerationAccess(customerKey, contactPhone = "") {
       INSERT INTO greeting_customer_access (
         customer_key,
         contact_phone,
+        paid_credits,
+        free_credits_granted,
         created_at,
         updated_at
       )
-      VALUES ($1, $2, NOW(), NOW())
+      VALUES ($1, $2, $3, TRUE, NOW(), NOW())
       ON CONFLICT (customer_key)
       DO UPDATE SET
         contact_phone = CASE
@@ -2430,87 +2459,59 @@ async function reserveGreetingGenerationAccess(customerKey, contactPhone = "") {
         END,
         updated_at = NOW()
       `,
-      [customerKey, String(contactPhone || "").replace(/\D+/g, "")]
+      [customerKey, String(contactPhone || "").replace(/\D+/g, ""), PRINTO_FREE_CREDITS]
     );
-
-    const freeResult = await client.query(
-      `
-      UPDATE greeting_customer_access
-      SET
-        free_used = TRUE,
-        total_generated = total_generated + 1,
-        last_generation_source = 'free',
-        last_generated_at = NOW(),
-        updated_at = NOW()
-      WHERE customer_key = $1
-        AND free_used = FALSE
-      RETURNING *
-      `,
-      [customerKey]
-    );
-
-    if (freeResult.rows[0]) {
-      await client.query("COMMIT");
-      const row = freeResult.rows[0];
-
-      return {
-        allowed: true,
-        source: "free",
-        customerKey,
-        freeUsed: true,
-        paidCredits: Number(row.paid_credits || 0),
-        totalGenerated: Number(row.total_generated || 0)
-      };
-    }
 
     const paidResult = await client.query(
       `
       UPDATE greeting_customer_access
       SET
-        paid_credits = paid_credits - 1,
+        paid_credits = paid_credits - $2,
+        free_used = TRUE,
         total_generated = total_generated + 1,
-        last_generation_source = 'paid',
+        last_generation_source = 'credits',
         last_generated_at = NOW(),
         updated_at = NOW()
       WHERE customer_key = $1
-        AND paid_credits > 0
+        AND paid_credits >= $2
       RETURNING *
       `,
-      [customerKey]
+      [customerKey, PRINTO_CREATION_CREDIT_COST]
     );
 
     if (paidResult.rows[0]) {
       await client.query("COMMIT");
       const row = paidResult.rows[0];
+      const creditBalance = Number(row.paid_credits || 0);
 
       return {
         allowed: true,
-        source: "paid",
+        source: "credits",
         customerKey,
-        freeUsed: Boolean(row.free_used),
-        paidCredits: Number(row.paid_credits || 0),
+        creditsUsed: PRINTO_CREATION_CREDIT_COST,
+        paidCredits: creditBalance,
+        creditBalance,
+        remainingCreations: Math.floor(creditBalance / PRINTO_CREATION_CREDIT_COST),
         totalGenerated: Number(row.total_generated || 0)
       };
     }
 
     const statusResult = await client.query(
-      `
-      SELECT free_used, paid_credits, total_generated
-      FROM greeting_customer_access
-      WHERE customer_key = $1
-      `,
+      `SELECT paid_credits, total_generated FROM greeting_customer_access WHERE customer_key = $1`,
       [customerKey]
     );
-
     await client.query("COMMIT");
-
     const row = statusResult.rows[0] || {};
+    const creditBalance = Number(row.paid_credits || 0);
+
     return {
       allowed: false,
       source: "payment_required",
       customerKey,
-      freeUsed: Boolean(row.free_used),
-      paidCredits: Number(row.paid_credits || 0),
+      paidCredits: creditBalance,
+      creditBalance,
+      creditsNeeded: Math.max(PRINTO_CREATION_CREDIT_COST - creditBalance, 0),
+      remainingCreations: Math.floor(creditBalance / PRINTO_CREATION_CREDIT_COST),
       totalGenerated: Number(row.total_generated || 0)
     };
   } catch (error) {
@@ -2522,44 +2523,27 @@ async function reserveGreetingGenerationAccess(customerKey, contactPhone = "") {
 }
 
 async function refundGreetingGenerationAccess(customerKey, source = "") {
-  if (!customerKey || !["free", "paid"].includes(source)) return;
-
-  if (source === "free") {
-    await pool.query(
-      `
-      UPDATE greeting_customer_access
-      SET
-        free_used = FALSE,
-        total_generated = GREATEST(total_generated - 1, 0),
-        last_generation_source = '',
-        last_generated_at = NULL,
-        updated_at = NOW()
-      WHERE customer_key = $1
-      `,
-      [customerKey]
-    );
-    return;
-  }
+  if (!customerKey || source !== "credits") return;
 
   await pool.query(
     `
     UPDATE greeting_customer_access
     SET
-      paid_credits = paid_credits + 1,
+      paid_credits = paid_credits + $2,
       total_generated = GREATEST(total_generated - 1, 0),
       last_generation_source = '',
       last_generated_at = NULL,
       updated_at = NOW()
     WHERE customer_key = $1
     `,
-    [customerKey]
+    [customerKey, PRINTO_CREATION_CREDIT_COST]
   );
 }
 
 async function grantGreetingPaidCredits({
   customerKey,
   contactPhone = "",
-  credits = 1,
+  credits = PRINTO_CREATION_CREDIT_COST,
   provider = "manual",
   eventKey = "",
   payload = {}
@@ -2568,7 +2552,7 @@ async function grantGreetingPaidCredits({
     throw new Error("Greeting customer key is required.");
   }
 
-  const safeCredits = Math.max(1, Math.min(100, Number(credits) || 1));
+  const safeCredits = Math.max(1, Math.min(10000, Number(credits) || PRINTO_CREATION_CREDIT_COST));
   const safeEventKey =
     String(eventKey || "").trim() ||
     `${provider}:${customerKey}:${Date.now()}:${Math.random().toString(36).slice(2, 8)}`;
@@ -4572,9 +4556,13 @@ app.post("/api/greeting/access/status", async (req, res) => {
       customerKey: identity.customerKey,
       freeAvailable: status.freeAvailable,
       freeUsed: status.freeUsed,
+      freeCreditsGranted: status.freeCreditsGranted,
       paidCredits: status.paidCredits,
+      creditBalance: status.creditBalance,
+      creationCost: status.creationCost,
+      remainingCreations: status.remainingCreations,
       totalGenerated: status.totalGenerated,
-      paymentRequired: !status.freeAvailable && status.paidCredits <= 0,
+      paymentRequired: status.creditBalance < PRINTO_CREATION_CREDIT_COST,
       payment
     });
   } catch (error) {
@@ -4583,6 +4571,35 @@ app.post("/api/greeting/access/status", async (req, res) => {
       ok: false,
       error: "Could not check greeting access."
     });
+  }
+});
+
+app.get("/api/credits/:customerId", async (req, res) => {
+  try {
+    const identity = getGreetingCustomerIdentity(req, {
+      customerId: req.params.customerId,
+      customerPhone: req.query.phone || "",
+      email: req.query.email || ""
+    });
+    const status = await getGreetingAccessStatus(identity.customerKey, identity.contactPhone);
+    return res.json({ ok: true, ...status });
+  } catch (error) {
+    return res.status(500).json({ ok: false, error: error.message || "Could not load credits." });
+  }
+});
+
+app.post("/api/credits/use", async (req, res) => {
+  try {
+    const identity = getGreetingCustomerIdentity(req, req.body || {});
+    const reservation = await reserveGreetingGenerationAccess(identity.customerKey, identity.contactPhone);
+    return res.status(reservation.allowed ? 200 : 402).json({
+      ok: reservation.allowed,
+      paymentRequired: !reservation.allowed,
+      creationCost: PRINTO_CREATION_CREDIT_COST,
+      ...reservation
+    });
+  } catch (error) {
+    return res.status(500).json({ ok: false, error: error.message || "Could not use credits." });
   }
 });
 
@@ -4634,7 +4651,7 @@ app.post("/api/greeting/payment/approve", async (req, res) => {
     const result = await grantGreetingPaidCredits({
       customerKey: identity.customerKey,
       contactPhone: identity.contactPhone,
-      credits: body.credits || 1,
+      credits: body.credits || PRINTO_CREATION_CREDIT_COST,
       provider: body.provider || "manual",
       eventKey:
         body.reference ||
@@ -4649,7 +4666,9 @@ app.post("/api/greeting/payment/approve", async (req, res) => {
         identity.contactPhone,
         `✅ Your Printo Greeting Studio payment has been confirmed.
 
-You now have ${result.status?.paidCredits ?? 1} greeting credit(s).
+You now have ${result.status?.paidCredits ?? PRINTO_CREATION_CREDIT_COST} Printo credits.
+
+Each creation uses ${PRINTO_CREATION_CREDIT_COST} credits.
 
 Return to Printo Studio and tap Generate to create your next greeting:
 ${PRINTO_STUDIO_URL}`
@@ -5055,7 +5074,7 @@ Africa Payment: ${payment.africa}`
         ok: false,
         paymentRequired: true,
         error:
-          "Your first free greeting has already been used. Complete payment before creating another greeting.",
+          "You need 20 credits to create another greeting. Buy more credits, then try again.",
         customerKey: customerIdentity.customerKey,
         identitySource: customerIdentity.identitySource,
         job_id: paymentJob?.id || null,
@@ -14332,7 +14351,7 @@ Africa Payment: ${payment.africa}`
         ok: false,
         paymentRequired: true,
         error:
-          "Your first free greeting has already been used. Complete payment before creating another greeting.",
+          "You need 20 credits to create another greeting. Buy more credits, then try again.",
         customerKey: customerIdentity.customerKey,
         identitySource: customerIdentity.identitySource,
         job_id: paymentJob?.id || null,
@@ -15078,6 +15097,8 @@ app.post(
     });
   },
   async (req, res) => {
+    let premiumAccessReservation = null;
+    let premiumCustomerIdentity = null;
     const photo = req.files?.recipientPhoto?.[0];
     const introVideo = req.files?.introVideo?.[0];
     const compressedVideoPath = introVideo?.path
@@ -15119,6 +15140,32 @@ app.post(
         return res.status(400).json({ ok: false, error: "Introduction video must be 100 MB or smaller." });
       }
 
+      premiumCustomerIdentity = getGreetingCustomerIdentity(req, {
+        customerId: body.customerId,
+        customerPhone,
+        email: customerEmail
+      });
+      premiumAccessReservation = await reserveGreetingGenerationAccess(
+        premiumCustomerIdentity.customerKey,
+        premiumCustomerIdentity.contactPhone
+      );
+
+      if (!premiumAccessReservation.allowed) {
+        const payment = buildGreetingPaymentLinks({
+          customerKey: premiumCustomerIdentity.customerKey,
+          templateId: "premium-tribute",
+          contactPhone: customerPhone
+        });
+        return res.status(402).json({
+          ok: false,
+          paymentRequired: true,
+          error: `You need ${PRINTO_CREATION_CREDIT_COST} credits to create this Premium Tribute.`,
+          customerKey: premiumCustomerIdentity.customerKey,
+          access: premiumAccessReservation,
+          payment
+        });
+      }
+
       const compression = await compressPremiumIntroductionVideo(
         introVideo.path,
         compressedVideoPath
@@ -15126,11 +15173,7 @@ app.post(
       const photoBuffer = fs.readFileSync(photo.path);
       const compressedVideoBuffer = fs.readFileSync(compressedVideoPath);
 
-      const identity = getGreetingCustomerIdentity(req, {
-        customerId: body.customerId,
-        customerPhone,
-        email: customerEmail
-      });
+      const identity = premiumCustomerIdentity;
       const customerKey = identity.customerKey;
       const orderId = makePremiumOrderId();
       const mediaToken = crypto.randomBytes(24).toString("hex");
@@ -15194,6 +15237,17 @@ app.post(
         ]
       );
 
+      await queryWithRetry(
+        `UPDATE premium_greeting_orders
+         SET status = 'paid',
+             payment_provider = 'printo_credits',
+             payment_reference = $2,
+             paid_at = NOW(),
+             updated_at = NOW()
+         WHERE order_id = $1`,
+        [orderId, `credits:${PRINTO_CREATION_CREDIT_COST}`]
+      );
+
       const job = await createPremiumGreetingDashboardJob({
         orderId,
         customerKey,
@@ -15242,7 +15296,11 @@ app.post(
         jobId: job?.id || null,
         payment,
         whatsappUrl,
-        status: "payment_required",
+        status: "paid",
+        paymentRequired: false,
+        access: premiumAccessReservation,
+        creditBalance: premiumAccessReservation.creditBalance,
+        remainingCreations: premiumAccessReservation.remainingCreations,
         compression: {
           durationSeconds: Number(compression.duration.toFixed(2)),
           originalBytes: originalVideoBytes,
@@ -15255,6 +15313,15 @@ app.post(
         }
       });
     } catch (error) {
+      if (premiumAccessReservation?.allowed && premiumCustomerIdentity?.customerKey) {
+        await refundGreetingGenerationAccess(
+          premiumCustomerIdentity.customerKey,
+          premiumAccessReservation.source
+        ).catch((refundError) => {
+          console.error("Premium credit refund failed:", refundError);
+        });
+        premiumAccessReservation = null;
+      }
       console.error("Premium greeting request error:", error);
       const clientError = /must be|too large|duration|valid video|could not be read/i.test(String(error.message || ""));
       return res.status(clientError ? 400 : 500).json({
