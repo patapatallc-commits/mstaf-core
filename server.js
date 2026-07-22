@@ -15678,21 +15678,19 @@ async function renderPremiumOrderVideo({ orderId, req, publicBaseUrl = "" }) {
     const introInnerX = 166;
     const introInnerY = 160;
     const introInnerW = 244;
-    const introInnerH = 346;
+    const introInnerH = 347;
 
     // Fit the complete sender vertically without cutting off the cap, head,
     // face, or shoulders. Any unused space stays a clean warm cream color.
     const introVideoFilter =
-      `setsar=1,` +
-      `scale=${introInnerW}:${introInnerH}:force_original_aspect_ratio=decrease:force_divisible_by=2,` +
+      `scale=${introInnerW}:${introInnerH}:force_original_aspect_ratio=decrease,` +
       `pad=${introInnerW}:${introInnerH}:(ow-iw)/2:(oh-ih)/2:color=#fff7e6,` +
       `setsar=1,format=yuv420p`;
 
     // The recipient photograph replaces the sender video immediately after
     // the speech ends. A very gentle zoom keeps the music section alive.
     const recipientPhotoFilter =
-      `setsar=1,` +
-      `scale=${introInnerW + 36}:${introInnerH + 48}:force_original_aspect_ratio=increase:force_divisible_by=2,` +
+      `scale=${introInnerW + 34}:${introInnerH + 48}:force_original_aspect_ratio=increase,` +
       `crop=${introInnerW}:${introInnerH}:(iw-${introInnerW})/2:(ih-${introInnerH})/2,` +
       `setsar=1,format=yuv420p`;
 
@@ -15722,14 +15720,7 @@ async function renderPremiumOrderVideo({ orderId, req, publicBaseUrl = "" }) {
       `drawtext=${fontOption}text=${q(messageLines[7] || "")}:x=(w-text_w)/2:y=${699 + messageLineGap * 7}:fontsize=${messageFontSize}:fontcolor=#082b6a:borderw=1:bordercolor=#fff7e6`
     ].join(",");
 
-    console.log("Premium render stage 4/7 - creating final vertical Printo segments:", orderId, {
-      outputW,
-      outputH,
-      introInnerX,
-      introInnerY,
-      introInnerW,
-      introInnerH
-    });
+    console.log("Premium render stage 4/7 - creating final vertical Printo segments:", orderId);
 
     // Opening: keep the portrait window clean and display a short dedication.
     // The recipient photograph does NOT appear yet.
@@ -15770,7 +15761,6 @@ async function renderPremiumOrderVideo({ orderId, req, publicBaseUrl = "" }) {
       "-filter_complex",
       `[0:v]${baseFrame},${commonTextOverlay}[base];` +
       `[1:v]${recipientPhotoFilter},` +
-      `fade=t=in:st=0:d=0.8,` +
       `tpad=stop_mode=clone:stop_duration=${tributeDuration}[recipient];` +
       `[base][recipient]overlay=${introInnerX}:${introInnerY}:shortest=1[v]`,
       "-map", "[v]",
@@ -15806,30 +15796,46 @@ async function renderPremiumOrderVideo({ orderId, req, publicBaseUrl = "" }) {
       audioInputArgs.push("-i", introPath);
     }
 
-    // Keep the opening clean, play the customer's introduction audio during
-    // the introduction segment, then start the uploaded Suno tribute song at
-    // full volume immediately after the introduction finishes.
-    const musicDelayMs = Math.round(introEnd * 1000);
+    // Build one exact, non-overlapping audio timeline:
+    // 1) silence during the opening card,
+    // 2) sender speech only for the exact introduction duration,
+    // 3) custom tribute music only after the sender speech ends.
+    // Using concat instead of amix prevents the sender voice from continuing
+    // underneath the tribute song and keeps the recipient-photo switch exact.
     const audioFilters = [
-      `[1:a]atrim=0:${musicDuration},asetpts=PTS-STARTPTS,` +
-      `afade=t=in:st=0:d=1,afade=t=out:st=${Math.max(0, musicDuration - 4)}:d=4,` +
-      `volume=1.0,adelay=${musicDelayMs}|${musicDelayMs}[music]`
+      `anullsrc=r=48000:cl=stereo,atrim=0:${openingDuration},asetpts=PTS-STARTPTS[opening_silence]`,
+      `[1:a]atrim=0:${tributeDuration},asetpts=PTS-STARTPTS,` +
+      `afade=t=in:st=0:d=0.15,` +
+      `afade=t=out:st=${Math.max(0, tributeDuration - 4)}:d=4,` +
+      `volume=1.0,apad=pad_dur=${tributeDuration},atrim=0:${tributeDuration}[music_exact]`
     ];
-    const mixLabels = ["[music]"];
 
     if (introAudioIndex >= 0) {
       audioFilters.push(
         `[${introAudioIndex}:a]atrim=0:${introDuration},asetpts=PTS-STARTPTS,` +
         `loudnorm=I=-16:TP=-1.5:LRA=11,volume=1.22,` +
-        `adelay=${openingDuration * 1000}|${openingDuration * 1000}[introa]`
+        `afade=t=out:st=${Math.max(0, introDuration - 0.12)}:d=0.12,` +
+        `apad=pad_dur=${introDuration},atrim=0:${introDuration}[intro_exact]`
       );
-      mixLabels.push("[introa]");
+    } else {
+      audioFilters.push(
+        `anullsrc=r=48000:cl=stereo,atrim=0:${introDuration},asetpts=PTS-STARTPTS[intro_exact]`
+      );
     }
 
     audioFilters.push(
-      `${mixLabels.join("")}amix=inputs=${mixLabels.length}:duration=longest:` +
-      `dropout_transition=2,alimiter=limit=0.95,atrim=0:${totalDuration}[aout]`
+      `[opening_silence][intro_exact][music_exact]concat=n=3:v=0:a=1,` +
+      `alimiter=limit=0.95,atrim=0:${totalDuration}[aout]`
     );
+
+    console.log("Premium exact switch timing:", {
+      orderId,
+      openingDuration,
+      introDuration,
+      recipientPhotoStartsAt: introEnd,
+      tributeMusicStartsAt: introEnd,
+      totalDuration
+    });
 
     await execFilePromise("ffmpeg", [
       "-y", "-nostdin", "-loglevel", "error",
