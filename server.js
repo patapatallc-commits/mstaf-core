@@ -14564,7 +14564,13 @@ Africa Payment: ${payment.africa}`
               firstFreeGreeting:
                 accessReservation?.source === "free",
               paidCreditsRemaining:
-                accessReservation?.paidCredits ?? 0
+                accessReservation?.paidCredits ?? 0,
+              creditBalance:
+                accessReservation?.creditBalance ?? accessReservation?.paidCredits ?? 0,
+              remainingCreations:
+                accessReservation?.remainingCreations ?? 0,
+              creditsUsed:
+                accessReservation?.creditsUsed ?? 0
             },
             payment: buildGreetingPaymentLinks({
               customerKey: customerIdentity?.customerKey || "",
@@ -14904,7 +14910,7 @@ function buildGreetingStudioHomePage(language = "en") {
   document.querySelectorAll('.close-modal').forEach(btn=>btn.addEventListener('click',()=>{video.pause();video.removeAttribute('src');video.load();closeModal(sampleModal)}));sampleModal.addEventListener('click',e=>{if(e.target===sampleModal){video.pause();closeModal(sampleModal)}});
   const creditModal=document.getElementById('creditModal'),creditButton=document.getElementById('creditsButton'),creditStatus=document.getElementById('creditStatus'),creditGrid=document.getElementById('creditGrid');
   function getCustomerId(){let id=localStorage.getItem('printoGreetingCustomerId');if(!id){id='printo_'+Date.now()+'_'+Math.random().toString(36).slice(2,12);localStorage.setItem('printoGreetingCustomerId',id)}return id}
-  async function loadCredits(){creditStatus.hidden=false;creditGrid.hidden=true;creditStatus.textContent=${JSON.stringify(t.loading)};try{const response=await fetch('/api/credits/'+encodeURIComponent(getCustomerId()),{cache:'no-store'});const data=await response.json();if(!response.ok||!data.ok)throw new Error(data.error||'Credit request failed');document.getElementById('creditBalance').textContent=String(data.creditBalance??data.credits??0);document.getElementById('creditCreations').textContent=String(data.remainingCreations??0);document.getElementById('creditCost').textContent=String(data.creationCost??20);creditStatus.hidden=true;creditGrid.hidden=false}catch(error){creditStatus.textContent=${JSON.stringify(t.creditError)}}}
+  async function loadCredits(){creditStatus.hidden=false;creditGrid.hidden=true;creditStatus.textContent=${JSON.stringify(t.loading)};try{const response=await fetch('/api/credits/'+encodeURIComponent(getCustomerId()),{cache:'no-store'});const data=await response.json();if(!response.ok||!data.ok)throw new Error(data.error||'Credit request failed');if(data.customerKey)localStorage.setItem('printoGreetingCustomerKey',String(data.customerKey));document.getElementById('creditBalance').textContent=String(data.creditBalance??data.credits??0);document.getElementById('creditCreations').textContent=String(data.remainingCreations??0);document.getElementById('creditCost').textContent=String(data.creationCost??20);creditStatus.hidden=true;creditGrid.hidden=false}catch(error){creditStatus.textContent=${JSON.stringify(t.creditError)}}}
   creditButton.addEventListener('click',()=>{openModal(creditModal);loadCredits()});document.querySelectorAll('.close-credit').forEach(btn=>btn.addEventListener('click',()=>closeModal(creditModal)));creditModal.addEventListener('click',e=>{if(e.target===creditModal)closeModal(creditModal)});document.addEventListener('keydown',e=>{if(e.key==='Escape'){video.pause();closeModal(sampleModal);closeModal(creditModal)}});
   </script></body></html>`;
 }
@@ -14981,6 +14987,7 @@ function buildBirthdayGeneratorPage(language = "en", templateId = "birthday") {
   const shopifyPayment=document.getElementById('shopifyPayment');
   const africaPayment=document.getElementById('africaPayment');
   let customerId=localStorage.getItem('printoGreetingCustomerId');
+  let customerKey=localStorage.getItem('printoGreetingCustomerKey')||'';
   if(!customerId){
     customerId=(window.crypto&&crypto.randomUUID)?crypto.randomUUID():'pg-'+Date.now()+'-'+Math.random().toString(36).slice(2);
     localStorage.setItem('printoGreetingCustomerId',customerId);
@@ -15012,7 +15019,7 @@ function buildBirthdayGeneratorPage(language = "en", templateId = "birthday") {
         window.location.href='https://wa.me/'+supportPhone+'?text='+encodeURIComponent(requestLines.join('\n'));
         return;
       }
-      const response=await fetch('/api/greeting/birthday/generate',{method:'POST',headers:{'Content-Type':'application/json','x-printo-customer-id':customerId},body:JSON.stringify({to:to.value.trim(),from:from.value.trim(),message:message.value.trim(),language:currentLanguage,customerId})});
+      const response=await fetch('/api/greeting/birthday/generate',{method:'POST',headers:{'Content-Type':'application/json','x-printo-customer-id':customerId,...(customerKey?{'x-printo-customer-key':customerKey}:{})},body:JSON.stringify({to:to.value.trim(),from:from.value.trim(),message:message.value.trim(),language:currentLanguage,customerId,customerKey})});
       const data=await response.json();
       if(data.paymentRequired){
         if(data.payment?.shopify)shopifyPayment.href=data.payment.shopify;
@@ -15022,7 +15029,8 @@ function buildBirthdayGeneratorPage(language = "en", templateId = "birthday") {
         return;
       }
       if(!response.ok||!data.ok)throw new Error(data.error||ui.failed);
-      statusBox.textContent=data.hasPrintoVoice?'✅ '+ui.voiceReady:'✅ '+ui.musicReady;
+      if(data.customerKey){customerKey=String(data.customerKey);localStorage.setItem('printoGreetingCustomerKey',customerKey);}
+      statusBox.textContent=(data.hasPrintoVoice?'✅ '+ui.voiceReady:'✅ '+ui.musicReady)+' Credits remaining: '+String(data.access?.creditBalance??data.access?.paidCreditsRemaining??'');
       const target=data.resultUrl||data.downloadUrl;
       if(data.resultUrl){const separator=target.includes('?')?'&':'?';window.location.href=target+separator+'lang='+encodeURIComponent(currentLanguage)}else{window.location.href=target}
     }catch(error){statusBox.textContent='❌ '+(error.message||ui.failed);button.disabled=false;button.textContent='✨ '+ui.generate}
@@ -16561,6 +16569,7 @@ setupCounter("from", "fromCount", ${BIRTHDAY_NAME_MAX});
 setupCounter("message", "messageCount", ${BIRTHDAY_MESSAGE_MAX});
 
 let printoGreetingCustomerId = localStorage.getItem("printoGreetingCustomerId");
+let printoGreetingCustomerKey = localStorage.getItem("printoGreetingCustomerKey") || "";
 if (!printoGreetingCustomerId) {
   printoGreetingCustomerId =
     (window.crypto && crypto.randomUUID)
@@ -16577,13 +16586,15 @@ async function generate() {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      "x-printo-customer-id": printoGreetingCustomerId
+      "x-printo-customer-id": printoGreetingCustomerId,
+      ...(printoGreetingCustomerKey ? { "x-printo-customer-key": printoGreetingCustomerKey } : {})
     },
     body: JSON.stringify({
       to: document.getElementById("to").value || "Mary",
       from: document.getElementById("from").value || "John",
       message: document.getElementById("message").value,
-      customerId: printoGreetingCustomerId
+      customerId: printoGreetingCustomerId,
+      customerKey: printoGreetingCustomerKey
     })
   });
 
@@ -16602,8 +16613,12 @@ async function generate() {
     document.getElementById("status").innerText = "Failed: " + (data.error || "Unknown error");
     return;
   }
+  if (data.customerKey) {
+    printoGreetingCustomerKey = String(data.customerKey);
+    localStorage.setItem("printoGreetingCustomerKey", printoGreetingCustomerKey);
+  }
 
-  document.getElementById("status").innerText = "Video ready!";
+  document.getElementById("status").innerText = "Video ready! Credits remaining: " + String(data.access?.creditBalance ?? data.access?.paidCreditsRemaining ?? "");
   document.getElementById("result").innerHTML =
     '<a href="' + (data.resultUrl || data.downloadUrl) + '" target="_blank">▶ Open, Play, Share & Download Birthday Video</a>';
 }
