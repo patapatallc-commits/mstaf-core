@@ -193,11 +193,6 @@ const PREMIUM_VIDEO_MAX_SECONDS = 60;
 const PREMIUM_MUSIC_MAX_BYTES = 30 * 1024 * 1024;
 const PREMIUM_FINAL_VIDEO_MAX_BYTES = 70 * 1024 * 1024;
 
-// Printo Studio credit system: every new customer receives 100 free credits.
-// Each successful standard or Premium creation uses 20 credits (5 creations).
-const PRINTO_FREE_CREDITS = 100;
-const PRINTO_CREATION_CREDIT_COST = 20;
-
 // Render's smaller instances may need more than five minutes to encode a
 // full-length Premium tribute video. Allow each long FFmpeg stage up to 20 minutes.
 const PREMIUM_RENDER_STAGE_TIMEOUT_MS = 20 * 60 * 1000;
@@ -2207,8 +2202,7 @@ async function ensureGreetingAccessTables() {
       customer_key TEXT PRIMARY KEY,
       contact_phone TEXT NOT NULL DEFAULT '',
       free_used BOOLEAN NOT NULL DEFAULT FALSE,
-      paid_credits INTEGER NOT NULL DEFAULT 100 CHECK (paid_credits >= 0),
-      free_credits_granted BOOLEAN NOT NULL DEFAULT TRUE,
+      paid_credits INTEGER NOT NULL DEFAULT 0 CHECK (paid_credits >= 0),
       total_generated INTEGER NOT NULL DEFAULT 0 CHECK (total_generated >= 0),
       last_generation_source TEXT NOT NULL DEFAULT '',
       last_generated_at TIMESTAMPTZ,
@@ -2216,19 +2210,6 @@ async function ensureGreetingAccessTables() {
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
   `);
-
-  await pool.query(`ALTER TABLE greeting_customer_access ADD COLUMN IF NOT EXISTS free_credits_granted BOOLEAN NOT NULL DEFAULT FALSE`);
-  await pool.query(`ALTER TABLE greeting_customer_access ALTER COLUMN paid_credits SET DEFAULT 100`);
-  await pool.query(`
-    UPDATE greeting_customer_access
-    SET paid_credits = CASE
-          WHEN free_credits_granted = FALSE AND paid_credits < $1 THEN $1
-          ELSE paid_credits
-        END,
-        free_credits_granted = TRUE,
-        updated_at = NOW()
-    WHERE free_credits_granted = FALSE
-  `, [PRINTO_FREE_CREDITS]);
 
   await pool.query(`
     CREATE TABLE IF NOT EXISTS greeting_payment_events (
@@ -2377,12 +2358,10 @@ async function ensureGreetingCustomerRow(customerKey, contactPhone = "") {
     INSERT INTO greeting_customer_access (
       customer_key,
       contact_phone,
-      paid_credits,
-      free_credits_granted,
       created_at,
       updated_at
     )
-    VALUES ($1, $2, $3, TRUE, NOW(), NOW())
+    VALUES ($1, $2, NOW(), NOW())
     ON CONFLICT (customer_key)
     DO UPDATE SET
       contact_phone = CASE
@@ -2391,7 +2370,7 @@ async function ensureGreetingCustomerRow(customerKey, contactPhone = "") {
       END,
       updated_at = NOW()
     `,
-    [customerKey, String(contactPhone || "").replace(/\D+/g, ""), PRINTO_FREE_CREDITS]
+    [customerKey, String(contactPhone || "").replace(/\D+/g, "")]
   );
 }
 
@@ -2405,7 +2384,6 @@ async function getGreetingAccessStatus(customerKey, contactPhone = "") {
       contact_phone,
       free_used,
       paid_credits,
-      free_credits_granted,
       total_generated,
       last_generation_source,
       last_generated_at
@@ -2416,18 +2394,13 @@ async function getGreetingAccessStatus(customerKey, contactPhone = "") {
   );
 
   const row = result.rows[0] || {};
-  const creditBalance = Number(row.paid_credits || 0);
 
   return {
     customerKey,
     contactPhone: row.contact_phone || "",
-    freeAvailable: creditBalance >= PRINTO_CREATION_CREDIT_COST,
-    freeUsed: creditBalance < PRINTO_FREE_CREDITS,
-    freeCreditsGranted: Boolean(row.free_credits_granted),
-    paidCredits: creditBalance,
-    creditBalance,
-    creationCost: PRINTO_CREATION_CREDIT_COST,
-    remainingCreations: Math.floor(creditBalance / PRINTO_CREATION_CREDIT_COST),
+    freeAvailable: !row.free_used,
+    freeUsed: Boolean(row.free_used),
+    paidCredits: Number(row.paid_credits || 0),
     totalGenerated: Number(row.total_generated || 0),
     lastGenerationSource: row.last_generation_source || "",
     lastGeneratedAt: row.last_generated_at || null
@@ -2445,12 +2418,10 @@ async function reserveGreetingGenerationAccess(customerKey, contactPhone = "") {
       INSERT INTO greeting_customer_access (
         customer_key,
         contact_phone,
-        paid_credits,
-        free_credits_granted,
         created_at,
         updated_at
       )
-      VALUES ($1, $2, $3, TRUE, NOW(), NOW())
+      VALUES ($1, $2, NOW(), NOW())
       ON CONFLICT (customer_key)
       DO UPDATE SET
         contact_phone = CASE
@@ -2459,59 +2430,87 @@ async function reserveGreetingGenerationAccess(customerKey, contactPhone = "") {
         END,
         updated_at = NOW()
       `,
-      [customerKey, String(contactPhone || "").replace(/\D+/g, ""), PRINTO_FREE_CREDITS]
+      [customerKey, String(contactPhone || "").replace(/\D+/g, "")]
     );
+
+    const freeResult = await client.query(
+      `
+      UPDATE greeting_customer_access
+      SET
+        free_used = TRUE,
+        total_generated = total_generated + 1,
+        last_generation_source = 'free',
+        last_generated_at = NOW(),
+        updated_at = NOW()
+      WHERE customer_key = $1
+        AND free_used = FALSE
+      RETURNING *
+      `,
+      [customerKey]
+    );
+
+    if (freeResult.rows[0]) {
+      await client.query("COMMIT");
+      const row = freeResult.rows[0];
+
+      return {
+        allowed: true,
+        source: "free",
+        customerKey,
+        freeUsed: true,
+        paidCredits: Number(row.paid_credits || 0),
+        totalGenerated: Number(row.total_generated || 0)
+      };
+    }
 
     const paidResult = await client.query(
       `
       UPDATE greeting_customer_access
       SET
-        paid_credits = paid_credits - $2,
-        free_used = TRUE,
+        paid_credits = paid_credits - 1,
         total_generated = total_generated + 1,
-        last_generation_source = 'credits',
+        last_generation_source = 'paid',
         last_generated_at = NOW(),
         updated_at = NOW()
       WHERE customer_key = $1
-        AND paid_credits >= $2
+        AND paid_credits > 0
       RETURNING *
       `,
-      [customerKey, PRINTO_CREATION_CREDIT_COST]
+      [customerKey]
     );
 
     if (paidResult.rows[0]) {
       await client.query("COMMIT");
       const row = paidResult.rows[0];
-      const creditBalance = Number(row.paid_credits || 0);
 
       return {
         allowed: true,
-        source: "credits",
+        source: "paid",
         customerKey,
-        creditsUsed: PRINTO_CREATION_CREDIT_COST,
-        paidCredits: creditBalance,
-        creditBalance,
-        remainingCreations: Math.floor(creditBalance / PRINTO_CREATION_CREDIT_COST),
+        freeUsed: Boolean(row.free_used),
+        paidCredits: Number(row.paid_credits || 0),
         totalGenerated: Number(row.total_generated || 0)
       };
     }
 
     const statusResult = await client.query(
-      `SELECT paid_credits, total_generated FROM greeting_customer_access WHERE customer_key = $1`,
+      `
+      SELECT free_used, paid_credits, total_generated
+      FROM greeting_customer_access
+      WHERE customer_key = $1
+      `,
       [customerKey]
     );
-    await client.query("COMMIT");
-    const row = statusResult.rows[0] || {};
-    const creditBalance = Number(row.paid_credits || 0);
 
+    await client.query("COMMIT");
+
+    const row = statusResult.rows[0] || {};
     return {
       allowed: false,
       source: "payment_required",
       customerKey,
-      paidCredits: creditBalance,
-      creditBalance,
-      creditsNeeded: Math.max(PRINTO_CREATION_CREDIT_COST - creditBalance, 0),
-      remainingCreations: Math.floor(creditBalance / PRINTO_CREATION_CREDIT_COST),
+      freeUsed: Boolean(row.free_used),
+      paidCredits: Number(row.paid_credits || 0),
       totalGenerated: Number(row.total_generated || 0)
     };
   } catch (error) {
@@ -2523,27 +2522,44 @@ async function reserveGreetingGenerationAccess(customerKey, contactPhone = "") {
 }
 
 async function refundGreetingGenerationAccess(customerKey, source = "") {
-  if (!customerKey || source !== "credits") return;
+  if (!customerKey || !["free", "paid"].includes(source)) return;
+
+  if (source === "free") {
+    await pool.query(
+      `
+      UPDATE greeting_customer_access
+      SET
+        free_used = FALSE,
+        total_generated = GREATEST(total_generated - 1, 0),
+        last_generation_source = '',
+        last_generated_at = NULL,
+        updated_at = NOW()
+      WHERE customer_key = $1
+      `,
+      [customerKey]
+    );
+    return;
+  }
 
   await pool.query(
     `
     UPDATE greeting_customer_access
     SET
-      paid_credits = paid_credits + $2,
+      paid_credits = paid_credits + 1,
       total_generated = GREATEST(total_generated - 1, 0),
       last_generation_source = '',
       last_generated_at = NULL,
       updated_at = NOW()
     WHERE customer_key = $1
     `,
-    [customerKey, PRINTO_CREATION_CREDIT_COST]
+    [customerKey]
   );
 }
 
 async function grantGreetingPaidCredits({
   customerKey,
   contactPhone = "",
-  credits = PRINTO_CREATION_CREDIT_COST,
+  credits = 1,
   provider = "manual",
   eventKey = "",
   payload = {}
@@ -2552,7 +2568,7 @@ async function grantGreetingPaidCredits({
     throw new Error("Greeting customer key is required.");
   }
 
-  const safeCredits = Math.max(1, Math.min(10000, Number(credits) || PRINTO_CREATION_CREDIT_COST));
+  const safeCredits = Math.max(1, Math.min(100, Number(credits) || 1));
   const safeEventKey =
     String(eventKey || "").trim() ||
     `${provider}:${customerKey}:${Date.now()}:${Math.random().toString(36).slice(2, 8)}`;
@@ -4556,13 +4572,9 @@ app.post("/api/greeting/access/status", async (req, res) => {
       customerKey: identity.customerKey,
       freeAvailable: status.freeAvailable,
       freeUsed: status.freeUsed,
-      freeCreditsGranted: status.freeCreditsGranted,
       paidCredits: status.paidCredits,
-      creditBalance: status.creditBalance,
-      creationCost: status.creationCost,
-      remainingCreations: status.remainingCreations,
       totalGenerated: status.totalGenerated,
-      paymentRequired: status.creditBalance < PRINTO_CREATION_CREDIT_COST,
+      paymentRequired: !status.freeAvailable && status.paidCredits <= 0,
       payment
     });
   } catch (error) {
@@ -4571,35 +4583,6 @@ app.post("/api/greeting/access/status", async (req, res) => {
       ok: false,
       error: "Could not check greeting access."
     });
-  }
-});
-
-app.get("/api/credits/:customerId", async (req, res) => {
-  try {
-    const identity = getGreetingCustomerIdentity(req, {
-      customerId: req.params.customerId,
-      customerPhone: req.query.phone || "",
-      email: req.query.email || ""
-    });
-    const status = await getGreetingAccessStatus(identity.customerKey, identity.contactPhone);
-    return res.json({ ok: true, ...status });
-  } catch (error) {
-    return res.status(500).json({ ok: false, error: error.message || "Could not load credits." });
-  }
-});
-
-app.post("/api/credits/use", async (req, res) => {
-  try {
-    const identity = getGreetingCustomerIdentity(req, req.body || {});
-    const reservation = await reserveGreetingGenerationAccess(identity.customerKey, identity.contactPhone);
-    return res.status(reservation.allowed ? 200 : 402).json({
-      ok: reservation.allowed,
-      paymentRequired: !reservation.allowed,
-      creationCost: PRINTO_CREATION_CREDIT_COST,
-      ...reservation
-    });
-  } catch (error) {
-    return res.status(500).json({ ok: false, error: error.message || "Could not use credits." });
   }
 });
 
@@ -4651,7 +4634,7 @@ app.post("/api/greeting/payment/approve", async (req, res) => {
     const result = await grantGreetingPaidCredits({
       customerKey: identity.customerKey,
       contactPhone: identity.contactPhone,
-      credits: body.credits || PRINTO_CREATION_CREDIT_COST,
+      credits: body.credits || 1,
       provider: body.provider || "manual",
       eventKey:
         body.reference ||
@@ -4666,9 +4649,7 @@ app.post("/api/greeting/payment/approve", async (req, res) => {
         identity.contactPhone,
         `✅ Your Printo Greeting Studio payment has been confirmed.
 
-You now have ${result.status?.paidCredits ?? PRINTO_CREATION_CREDIT_COST} Printo credits.
-
-Each creation uses ${PRINTO_CREATION_CREDIT_COST} credits.
+You now have ${result.status?.paidCredits ?? 1} greeting credit(s).
 
 Return to Printo Studio and tap Generate to create your next greeting:
 ${PRINTO_STUDIO_URL}`
@@ -5074,7 +5055,7 @@ Africa Payment: ${payment.africa}`
         ok: false,
         paymentRequired: true,
         error:
-          "You need 20 credits to create another greeting. Buy more credits, then try again.",
+          "Your first free greeting has already been used. Complete payment before creating another greeting.",
         customerKey: customerIdentity.customerKey,
         identitySource: customerIdentity.identitySource,
         job_id: paymentJob?.id || null,
@@ -14351,7 +14332,7 @@ Africa Payment: ${payment.africa}`
         ok: false,
         paymentRequired: true,
         error:
-          "You need 20 credits to create another greeting. Buy more credits, then try again.",
+          "Your first free greeting has already been used. Complete payment before creating another greeting.",
         customerKey: customerIdentity.customerKey,
         identitySource: customerIdentity.identitySource,
         job_id: paymentJob?.id || null,
@@ -14729,125 +14710,137 @@ app.get("/printo-theme", (req, res) => {
 // =========================
 // PUBLIC PRINTO GREETING STUDIO PAGES
 // =========================
+function escapeGreetingAssetText(value = "") {
+  return String(value || "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+function getGreetingPreviewPalette(templateId = "birthday") {
+  const palettes = {
+    birthday: ["#ff5e7d", "#ffb703", "#7b2cbf"],
+    anniversary: ["#e63973", "#ff8fab", "#7b2cbf"],
+    wedding: ["#fff0c7", "#d4af37", "#8b5e3c"],
+    engagement: ["#8ec5fc", "#6a11cb", "#d4af37"],
+    "new-baby": ["#8ed8ff", "#ffc8dd", "#6c63ff"],
+    "baby-shower": ["#ffd6e7", "#9bf6ff", "#7b2cbf"],
+    "child-dedication": ["#fef3c7", "#93c5fd", "#2563eb"],
+    graduation: ["#0f172a", "#1d4ed8", "#facc15"],
+    housewarming: ["#86efac", "#22c55e", "#0f766e"],
+    "new-job-promotion": ["#93c5fd", "#1d4ed8", "#f59e0b"],
+    congratulations: ["#fb7185", "#8b5cf6", "#facc15"],
+    "get-well": ["#a7f3d0", "#34d399", "#0f766e"],
+    "sympathy-condolence": ["#cbd5e1", "#64748b", "#1e293b"],
+    retirement: ["#fdba74", "#f97316", "#7c2d12"],
+    christmas: ["#dc2626", "#15803d", "#facc15"],
+    "new-year": ["#111827", "#4338ca", "#facc15"],
+    easter: ["#f9a8d4", "#c4b5fd", "#fef08a"],
+    islamic: ["#065f46", "#0f766e", "#facc15"],
+    thanksgiving: ["#f59e0b", "#b45309", "#7c2d12"],
+    "mothers-day": ["#fb7185", "#ec4899", "#fbcfe8"],
+    "fathers-day": ["#2563eb", "#1e3a8a", "#93c5fd"],
+    "valentines-day": ["#e11d48", "#be185d", "#fecdd3"],
+    "business-greeting": ["#0f172a", "#1d4ed8", "#38bdf8"],
+    "grand-opening": ["#f97316", "#dc2626", "#facc15"],
+    "employee-appreciation": ["#7c3aed", "#4f46e5", "#facc15"],
+    "award-achievement": ["#1e3a8a", "#7c3aed", "#facc15"],
+    "cultural-festival": ["#ef4444", "#f59e0b", "#8b5cf6"]
+  };
+  return palettes[templateId] || ["#2563eb", "#7c3aed", "#facc15"];
+}
+
+app.get("/greeting-assets/card/:templateId.svg", (req, res) => {
+  const templateId = String(req.params.templateId || "birthday").toLowerCase();
+  const template = GREETING_TEMPLATES.find((item) => item.id === templateId) || GREETING_TEMPLATES[0];
+  const language = ["en", "es", "fr", "de", "pt", "ar", "zh"].includes(String(req.query.lang || "en"))
+    ? String(req.query.lang || "en")
+    : "en";
+  const title = escapeGreetingAssetText(getGreetingLocalizedOccasion(template, language));
+  const emoji = escapeGreetingAssetText(template.emoji || "🎁");
+  const palette = getGreetingPreviewPalette(template.id);
+  const svg = `<?xml version="1.0" encoding="UTF-8"?>
+  <svg xmlns="http://www.w3.org/2000/svg" width="960" height="540" viewBox="0 0 960 540">
+    <defs>
+      <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="${palette[0]}"/><stop offset="0.55" stop-color="${palette[1]}"/><stop offset="1" stop-color="${palette[2]}"/></linearGradient>
+      <radialGradient id="glow"><stop offset="0" stop-color="#ffffff" stop-opacity=".7"/><stop offset="1" stop-color="#ffffff" stop-opacity="0"/></radialGradient>
+      <filter id="shadow"><feDropShadow dx="0" dy="12" stdDeviation="12" flood-opacity=".32"/></filter>
+    </defs>
+    <rect width="960" height="540" rx="34" fill="url(#bg)"/>
+    <circle cx="145" cy="105" r="180" fill="url(#glow)" opacity=".45"/>
+    <circle cx="835" cy="465" r="220" fill="url(#glow)" opacity=".35"/>
+    <rect x="38" y="38" width="884" height="464" rx="30" fill="#06194f" fill-opacity=".26" stroke="#ffffff" stroke-opacity=".78" stroke-width="3"/>
+    <text x="480" y="170" text-anchor="middle" font-size="104">${emoji}</text>
+    <text x="480" y="265" text-anchor="middle" font-family="Arial, sans-serif" font-size="48" font-weight="900" fill="#ffffff" filter="url(#shadow)">${title}</text>
+    <text x="480" y="322" text-anchor="middle" font-family="Arial, sans-serif" font-size="25" font-weight="700" fill="#fff7cc">A beautiful Printo video greeting</text>
+    <rect x="352" y="362" width="256" height="72" rx="36" fill="#ffffff" fill-opacity=".94"/>
+    <polygon points="451,380 451,416 484,398" fill="#082a8f"/>
+    <text x="518" y="407" text-anchor="middle" font-family="Arial, sans-serif" font-size="24" font-weight="900" fill="#082a8f">WATCH SAMPLE</text>
+    <text x="480" y="476" text-anchor="middle" font-family="Arial, sans-serif" font-size="20" font-weight="800" fill="#ffffff">Printo Studio • Powered by PATAPATA</text>
+  </svg>`;
+  res.setHeader("Cache-Control", "public, max-age=3600");
+  res.type("image/svg+xml").send(svg);
+});
+
+app.get("/greeting-assets/premium-tribute-sample.svg", (_req, res) => {
+  const svg = `<?xml version="1.0" encoding="UTF-8"?>
+  <svg xmlns="http://www.w3.org/2000/svg" width="960" height="540" viewBox="0 0 960 540">
+    <defs><linearGradient id="p" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#061b62"/><stop offset=".5" stop-color="#4c1d95"/><stop offset="1" stop-color="#d63384"/></linearGradient><filter id="s"><feDropShadow dx="0" dy="14" stdDeviation="15" flood-opacity=".4"/></filter></defs>
+    <rect width="960" height="540" rx="34" fill="url(#p)"/>
+    <circle cx="120" cy="90" r="150" fill="#ffd21f" opacity=".18"/><circle cx="860" cy="470" r="220" fill="#38bdf8" opacity=".16"/>
+    <rect x="45" y="45" width="870" height="450" rx="30" fill="#06194f" fill-opacity=".38" stroke="#ffd21f" stroke-width="4"/>
+    <rect x="105" y="100" width="260" height="320" rx="28" fill="#ffffff" fill-opacity=".94" filter="url(#s)"/>
+    <circle cx="235" cy="216" r="78" fill="#dbeafe"/><text x="235" y="244" text-anchor="middle" font-size="86">📸</text>
+    <text x="235" y="326" text-anchor="middle" font-family="Arial" font-size="24" font-weight="900" fill="#082a8f">RECIPIENT PHOTO</text>
+    <text x="235" y="365" text-anchor="middle" font-family="Arial" font-size="18" font-weight="700" fill="#475569">Your special person</text>
+    <text x="620" y="143" text-anchor="middle" font-family="Arial" font-size="23" font-weight="900" fill="#ffd21f">PREMIUM EXPERIENCE</text>
+    <text x="620" y="205" text-anchor="middle" font-family="Arial" font-size="39" font-weight="900" fill="#ffffff">Personal Tribute</text>
+    <text x="620" y="250" text-anchor="middle" font-family="Arial" font-size="39" font-weight="900" fill="#ffffff">Music Video Card</text>
+    <text x="620" y="301" text-anchor="middle" font-family="Arial" font-size="22" font-weight="700" fill="#fce7f3">Personal introduction • Photo • Original song</text>
+    <rect x="490" y="340" width="260" height="72" rx="36" fill="#ffd21f" filter="url(#s)"/>
+    <polygon points="562,358 562,394 596,376" fill="#082a8f"/><text x="664" y="385" text-anchor="middle" font-family="Arial" font-size="23" font-weight="900" fill="#082a8f">WATCH SAMPLE</text>
+    <text x="620" y="460" text-anchor="middle" font-family="Arial" font-size="19" font-weight="800" fill="#ffffff">Printo Studio • Powered by PATAPATA</text>
+  </svg>`;
+  res.setHeader("Cache-Control", "public, max-age=3600");
+  res.type("image/svg+xml").send(svg);
+});
+
 function buildGreetingStudioHomePage(language = "en") {
   const lang = ["en", "es", "fr", "de", "pt", "ar", "zh"].includes(language) ? language : "en";
   const copy = {
-    en: { title: "Printo Greeting Studio", hero: "Create personalized video greetings with Printo music, voice, names and messages. Choose a greeting below and make a special moment in minutes.", choose: "Choose Your Greeting", play: "Play Printo Theme", pause: "Pause Printo Theme", app: "Get Print-O-Matic", create: "Create Now", soon: "Coming Soon", help: "Talk to Printo", home: "Print-O-Matic Home", sub: "Create a personalized Printo video greeting for this special occasion." },
-    es: { title: "Estudio de Saludos Printo", hero: "Crea saludos de video personalizados con música, voz, nombres y mensajes de Printo.", choose: "Elige tu saludo", play: "Reproducir tema de Printo", pause: "Pausar tema de Printo", app: "Obtener Print-O-Matic", create: "Crear ahora", soon: "Próximamente", help: "Hablar con Printo", home: "Inicio Print-O-Matic", sub: "Crea un saludo de video Printo personalizado para esta ocasión especial." },
-    fr: { title: "Studio de Vœux Printo", hero: "Créez des vœux vidéo personnalisés avec la musique, la voix, les noms et les messages Printo.", choose: "Choisissez votre vœu", play: "Lire le thème Printo", pause: "Mettre en pause", app: "Obtenir Print-O-Matic", create: "Créer maintenant", soon: "Bientôt disponible", help: "Parler à Printo", home: "Accueil Print-O-Matic", sub: "Créez un message vidéo Printo personnalisé pour cette occasion spéciale." },
-    de: { title: "Printo Grußstudio", hero: "Erstellen Sie personalisierte Videogrüße mit Printo-Musik, Stimme, Namen und Nachrichten.", choose: "Gruß auswählen", play: "Printo-Thema abspielen", pause: "Printo-Thema pausieren", app: "Print-O-Matic herunterladen", create: "Jetzt erstellen", soon: "Demnächst", help: "Mit Printo sprechen", home: "Print-O-Matic Startseite", sub: "Erstellen Sie einen persönlichen Printo-Videogruß für diesen besonderen Anlass." },
-    pt: { title: "Estúdio de Saudações Printo", hero: "Crie saudações em vídeo personalizadas com música, voz, nomes e mensagens Printo.", choose: "Escolha sua saudação", play: "Tocar tema Printo", pause: "Pausar tema Printo", app: "Baixar Print-O-Matic", create: "Criar agora", soon: "Em breve", help: "Falar com Printo", home: "Início Print-O-Matic", sub: "Crie uma saudação em vídeo Printo personalizada para esta ocasião especial." },
-    ar: { title: "استوديو تهاني Printo", hero: "أنشئ تهاني فيديو مخصصة مع موسيقى وصوت وأسماء ورسائل Printo.", choose: "اختر التهنئة", play: "تشغيل موسيقى Printo", pause: "إيقاف موسيقى Printo", app: "تنزيل Print-O-Matic", create: "أنشئ الآن", soon: "قريبًا", help: "تحدث مع Printo", home: "الصفحة الرئيسية", sub: "أنشئ تهنئة فيديو Printo مخصصة لهذه المناسبة الخاصة." },
-    zh: { title: "Printo 祝福工作室", hero: "使用 Printo 音乐、声音、姓名和留言制作个性化祝福视频。", choose: "选择祝福类型", play: "播放 Printo 主题音乐", pause: "暂停 Printo 主题音乐", app: "下载 Print-O-Matic", create: "立即制作", soon: "即将推出", help: "联系 Printo", home: "Print-O-Matic 首页", sub: "为这个特殊场合制作个性化 Printo 祝福视频。" }
+    en: { title:"Printo Greeting Studio", hero:"Create personalized video greetings with Printo music, voice, names and messages.", choose:"Choose Your Greeting", watch:"Watch Sample", buy:"Buy & Download", create:"Create Your Own", help:"Worker Help", credits:"My Credits", close:"Close Preview", sampleNote:"This is the card presentation preview. The finished order includes music, motion and personalized details." },
+    es: { title:"Estudio de Saludos Printo", hero:"Crea saludos de video personalizados con música, voz, nombres y mensajes.", choose:"Elige tu saludo", watch:"Ver muestra", buy:"Comprar y descargar", create:"Crea el tuyo", help:"Ayuda del trabajador", credits:"Mis créditos", close:"Cerrar vista previa", sampleNote:"Esta es la vista previa de la presentación. El pedido final incluye música, movimiento y detalles personalizados." },
+    fr: { title:"Studio de Vœux Printo", hero:"Créez des vœux vidéo personnalisés avec musique, voix, noms et messages.", choose:"Choisissez votre vœu", watch:"Voir l’exemple", buy:"Acheter et télécharger", create:"Créer le vôtre", help:"Aide d’un agent", credits:"Mes crédits", close:"Fermer l’aperçu", sampleNote:"Ceci est l’aperçu de la présentation. La commande finale comprend musique, mouvement et détails personnalisés." },
+    de: { title:"Printo Grußstudio", hero:"Erstellen Sie personalisierte Videogrüße mit Musik, Stimme, Namen und Nachrichten.", choose:"Gruß auswählen", watch:"Beispiel ansehen", buy:"Kaufen & herunterladen", create:"Eigenes erstellen", help:"Mitarbeiterhilfe", credits:"Meine Credits", close:"Vorschau schließen", sampleNote:"Dies ist die Kartenpräsentation. Die fertige Bestellung enthält Musik, Bewegung und persönliche Angaben." },
+    pt: { title:"Estúdio de Saudações Printo", hero:"Crie saudações em vídeo personalizadas com música, voz, nomes e mensagens.", choose:"Escolha sua saudação", watch:"Ver amostra", buy:"Comprar e baixar", create:"Crie o seu", help:"Ajuda do trabalhador", credits:"Meus créditos", close:"Fechar prévia", sampleNote:"Esta é a prévia da apresentação. O pedido final inclui música, movimento e detalhes personalizados." },
+    ar: { title:"استوديو تهاني Printo", hero:"أنشئ تهاني فيديو مخصصة مع الموسيقى والصوت والأسماء والرسائل.", choose:"اختر التهنئة", watch:"مشاهدة النموذج", buy:"شراء وتنزيل", create:"أنشئ نسختك", help:"مساعدة الموظف", credits:"رصيدي", close:"إغلاق المعاينة", sampleNote:"هذه معاينة لتصميم البطاقة. يتضمن الطلب النهائي الموسيقى والحركة والتفاصيل المخصصة." },
+    zh: { title:"Printo 祝福工作室", hero:"使用音乐、声音、姓名和留言制作个性化祝福视频。", choose:"选择祝福类型", watch:"观看示例", buy:"购买并下载", create:"制作专属视频", help:"工作人员帮助", credits:"我的积分", close:"关闭预览", sampleNote:"这是贺卡展示预览。最终订单包含音乐、动态效果和个性化内容。" }
   };
   const t = copy[lang] || copy.en;
-  const premiumCopy = {
-    en: {
-      badge: "PREMIUM EXPERIENCE",
-      title: "Personal Tribute Music Video Card",
-      description: "Create a powerful personal tribute for one special person using their photo, your personal introduction video, an original tribute song, names, a heartfelt message, and a premium Printo-branded presentation.",
-      features: ["Recipient photo on screen", "Personal introduction video", "Original tribute song", "Recipient and sender names", "Personal message", "Downloadable finished video"],
-      notice: "Premium orders are prepared with a Printo worker while full automation is being completed. The first free standard greeting does not apply.",
-      order: "Order Premium"
-    },
-    es: {
-      badge: "EXPERIENCIA PREMIUM",
-      title: "Tarjeta musical de homenaje personal",
-      description: "Crea un homenaje personal para alguien especial con su foto, tu video de introducción, una canción original, nombres, mensaje personal y presentación premium de Printo.",
-      features: ["Foto del destinatario", "Video personal de introducción", "Canción original de homenaje", "Nombres del destinatario y remitente", "Mensaje personal", "Video final descargable"],
-      notice: "Un trabajador de Printo prepara los pedidos premium mientras completamos la automatización. El primer saludo estándar gratuito no se aplica.",
-      order: "Pedir Premium"
-    },
-    fr: {
-      badge: "EXPÉRIENCE PREMIUM",
-      title: "Carte vidéo musicale d’hommage personnel",
-      description: "Créez un hommage pour une personne spéciale avec sa photo, votre vidéo d’introduction, une chanson originale, les noms, un message personnel et une présentation premium Printo.",
-      features: ["Photo du destinataire", "Vidéo d’introduction personnelle", "Chanson d’hommage originale", "Noms du destinataire et de l’expéditeur", "Message personnel", "Vidéo finale téléchargeable"],
-      notice: "Les commandes premium sont préparées avec un agent Printo pendant la finalisation de l’automatisation. Le premier message standard gratuit ne s’applique pas.",
-      order: "Commander Premium"
-    },
-    de: {
-      badge: "PREMIUM-ERLEBNIS",
-      title: "Persönliche Tribute-Musik-Videokarte",
-      description: "Erstellen Sie ein persönliches Tribut mit Foto, Einführungsvideo, eigenem Tribute-Song, Namen, persönlicher Nachricht und hochwertiger Printo-Präsentation.",
-      features: ["Foto des Empfängers", "Persönliches Einführungsvideo", "Originaler Tribute-Song", "Empfänger- und Absendername", "Persönliche Nachricht", "Herunterladbares fertiges Video"],
-      notice: "Premium-Bestellungen werden mit einem Printo-Mitarbeiter vorbereitet. Der erste kostenlose Standardgruß gilt nicht.",
-      order: "Premium bestellen"
-    },
-    pt: {
-      badge: "EXPERIÊNCIA PREMIUM",
-      title: "Cartão musical de homenagem pessoal",
-      description: "Crie uma homenagem especial com foto, vídeo de introdução, música original, nomes, mensagem pessoal e apresentação premium Printo.",
-      features: ["Foto do destinatário", "Vídeo pessoal de introdução", "Música original de homenagem", "Nomes do destinatário e remetente", "Mensagem pessoal", "Vídeo final para download"],
-      notice: "Os pedidos premium são preparados com um trabalhador Printo enquanto concluímos a automação. A primeira saudação padrão grátis não se aplica.",
-      order: "Pedir Premium"
-    },
-    ar: {
-      badge: "تجربة مميزة",
-      title: "بطاقة فيديو موسيقية للتكريم الشخصي",
-      description: "أنشئ تكريمًا شخصيًا مميزًا باستخدام صورة المستلم وفيديو تقديم شخصي وأغنية أصلية والأسماء والرسالة وعرض Printo المميز.",
-      features: ["صورة المستلم", "فيديو تقديم شخصي", "أغنية تكريم أصلية", "اسم المستلم والمرسل", "رسالة شخصية", "فيديو نهائي قابل للتنزيل"],
-      notice: "يتم تجهيز الطلبات المميزة مع أحد موظفي Printo أثناء استكمال الأتمتة. لا تنطبق التهنئة القياسية الأولى المجانية.",
-      order: "طلب Premium"
-    },
-    zh: {
-      badge: "尊享体验",
-      title: "个人致敬音乐视频贺卡",
-      description: "使用收件人照片、您的介绍视频、原创致敬歌曲、姓名、个人留言和高级 Printo 品牌展示制作特别致敬视频。",
-      features: ["收件人照片", "个人介绍视频", "原创致敬歌曲", "收件人和发件人姓名", "个人留言", "可下载成品视频"],
-      notice: "在完整自动化完成前，高级订单由 Printo 工作人员协助制作。首次免费标准祝福不适用。",
-      order: "订购 Premium"
-    }
-  };
-  const p = premiumCopy[lang] || premiumCopy.en;
-  const premiumOrderMessage = [
-    "Video editing request",
-    "Service code: CARD_PERSONALIZATION_AGENT",
-    "Package: GREETING_PREMIUM",
-    `Language: ${lang}`,
-    "Selected card: Personal Tribute Music Video Card",
-    "Please route this request directly to a worker agent for premium order details and payment assistance."
-  ].join("\n");
-  const premiumWhatsAppUrl = `https://wa.me/${SUPPORT_PHONE}?text=${encodeURIComponent(premiumOrderMessage)}`;
-  const premiumFeatures = p.features.map((feature) => `<li>✓ ${feature}</li>`).join("");
-  const premiumOrderUrl = `/greetings/premium?lang=${encodeURIComponent(lang)}`;
-  const premiumCard = `<section class="premium-card"><div class="premium-shine"></div><div class="premium-badge">🌟 ${p.badge}</div><div class="premium-layout"><div class="premium-visual"><div class="premium-icon">🎵</div><div class="premium-photo">📸</div><div class="premium-play">▶</div></div><div class="premium-content"><h2>${p.title}</h2><p>${p.description}</p><ul>${premiumFeatures}</ul><div class="premium-note">${p.notice}</div><a class="premium-order" href="${premiumOrderUrl}">✨ ${p.order}</a><a class="premium-order" style="margin-left:8px;background:#25D366" href="${premiumWhatsAppUrl}" target="_blank" rel="noopener">💬 Worker Help</a></div></div></section>`;
   const dir = lang === "ar" ? "rtl" : "ltr";
+  const premiumOrderUrl = `/greetings/premium?lang=${encodeURIComponent(lang)}`;
+  const premiumWhatsAppMessage = ["Video editing request","Service code: CARD_PERSONALIZATION_AGENT","Package: GREETING_PREMIUM",`Language: ${lang}`,"Selected card: Personal Tribute Music Video Card"].join("\n");
+  const premiumWhatsAppUrl = `https://wa.me/${SUPPORT_PHONE}?text=${encodeURIComponent(premiumWhatsAppMessage)}`;
+  const shopifyBase = GREETING_SHOPIFY_PAYMENT_URL || "https://www.patapata.us/";
   const cards = GREETING_TEMPLATES.map((item) => {
-    const ready = item.id === "birthday";
-    const previewClass = ready ? "preview birthday" : "preview";
-    const localizedOccasion = getGreetingLocalizedOccasion(item, lang);
-    const localizedDescription = getGreetingLocalizedDescription(item, lang);
-    const action = ready
-      ? `<a class="ready" href="/birthday?lang=${encodeURIComponent(lang)}" aria-label="${t.create}: ${localizedOccasion}">${t.create}</a>`
-      : `<span class="soon">${t.soon}</span>`;
-    const cardBody = `<div class="${previewClass}">${ready ? "" : item.emoji}</div><div class="content"><div class="title">${item.emoji} ${localizedOccasion}</div><div class="sub">${localizedDescription}</div>${action}</div>`;
-    return `<div class="card">${cardBody}</div>`;
+    const title = getGreetingLocalizedOccasion(item, lang);
+    const description = getGreetingLocalizedDescription(item, lang);
+    const previewUrl = `/greeting-assets/card/${encodeURIComponent(item.id)}.svg?lang=${encodeURIComponent(lang)}`;
+    const personalizeUrl = item.id === "birthday"
+      ? `/birthday?lang=${encodeURIComponent(lang)}`
+      : `https://wa.me/${SUPPORT_PHONE}?text=${encodeURIComponent(["Video editing request","Service code: CARD_PERSONALIZATION_AGENT",`Language: ${lang}`,`Selected card: ${title}`,"Please help me personalize this Printo video greeting card."].join("\n"))}`;
+    return `<article class="card"><button class="sample-open media" type="button" data-image="${previewUrl}" data-title="${escapeGreetingAssetText(title)}"><img src="${previewUrl}" alt="${escapeGreetingAssetText(title)} sample" loading="lazy"><span class="play">▶</span></button><div class="card-body"><h3>${item.emoji} ${title}</h3><p>${description}</p><div class="actions"><button class="sample-open secondary" type="button" data-image="${previewUrl}" data-title="${escapeGreetingAssetText(title)}">▶ ${t.watch}</button><a class="buy" href="${shopifyBase}" target="_blank" rel="noopener">🛒 ${t.buy}</a><a class="create" href="${personalizeUrl}" ${item.id === "birthday" ? "" : 'target="_blank" rel="noopener"'}>✨ ${t.create}</a></div></div></article>`;
   }).join("");
 
-  return `<!DOCTYPE html>
-<html lang="${lang}" dir="${dir}">
-<head><meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/><meta name="theme-color" content="#082a8f"/><title>${t.title}</title>
-<style>*{box-sizing:border-box}body{margin:0;font-family:Arial,sans-serif;background:radial-gradient(circle at top,#164ec1 0,#082a8f 38%,#041443 100%);color:#fff;min-height:100vh}.wrap{max-width:1120px;margin:auto;padding:22px 18px 56px}.hero{text-align:center;padding:25px 12px}.hero h1{font-size:42px;margin:0 0 10px}.hero p{font-size:18px;line-height:1.55;max-width:780px;margin:auto}.language{margin:16px auto 0;padding:10px 14px;border-radius:12px;border:0;font-weight:700}.actions{display:flex;gap:12px;justify-content:center;flex-wrap:wrap;margin-top:18px}.btn{border:0;border-radius:999px;padding:13px 20px;font-weight:900;text-decoration:none;cursor:pointer}.music{background:#fff;color:#0b2f89}.app{background:#111;color:#fff}.premium-card{position:relative;overflow:hidden;background:linear-gradient(135deg,#fff7cc 0,#ffd84d 28%,#fff 63%,#dbeafe 100%);color:#10204f;border:3px solid #ffd21f;border-radius:28px;padding:24px;margin:8px 0 30px;box-shadow:0 18px 44px rgba(0,0,0,.35)}.premium-shine{position:absolute;width:240px;height:240px;border-radius:50%;background:rgba(255,255,255,.46);filter:blur(12px);top:-130px;right:-70px}.premium-badge{position:relative;display:inline-block;background:#082a8f;color:#ffd21f;border-radius:999px;padding:9px 14px;font-size:13px;font-weight:900;letter-spacing:.8px}.premium-layout{position:relative;display:grid;grid-template-columns:260px 1fr;gap:26px;align-items:center;margin-top:16px}.premium-visual{height:250px;border-radius:24px;background:radial-gradient(circle at 50% 25%,#3c7cff,#071b61 68%);position:relative;display:grid;place-items:center;box-shadow:inset 0 0 0 2px rgba(255,255,255,.3)}.premium-icon{font-size:86px}.premium-photo{position:absolute;left:20px;bottom:18px;font-size:42px;background:#fff;border-radius:15px;padding:8px}.premium-play{position:absolute;right:20px;bottom:20px;width:58px;height:58px;border-radius:50%;display:grid;place-items:center;background:#ffd21f;color:#082a8f;font-size:25px;font-weight:900}.premium-content h2{font-size:30px;margin:0 0 10px}.premium-content p{font-size:16px;line-height:1.55;margin:0}.premium-content ul{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px 18px;list-style:none;padding:0;margin:16px 0}.premium-content li{font-weight:800}.premium-note{background:#fff7d6;border-radius:13px;padding:11px;font-size:13px;line-height:1.45}.premium-order{display:inline-block;margin-top:15px;background:linear-gradient(90deg,#7b2cbf,#d63384);color:#fff;text-decoration:none;font-weight:900;padding:13px 20px;border-radius:999px}.section-title{text-align:center;font-size:27px;margin:17px 0 20px}.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:20px}.card{background:#fff;color:#13234a;border-radius:22px;overflow:hidden;text-align:center;box-shadow:0 14px 34px rgba(0,0,0,.28);min-height:300px;text-decoration:none}.preview{height:155px;display:grid;place-items:center;font-size:62px;background:linear-gradient(135deg,#eef4ff,#dbeafe)}.preview.birthday{background-image:url('/templates/birthday/frame.png');background-size:cover;background-position:center}.content{padding:18px}.title{font-size:21px;font-weight:900}.sub{font-size:14px;line-height:20px;color:#53617f;min-height:44px;margin-top:8px}.ready,.soon{display:inline-block;padding:10px 18px;border-radius:999px;margin-top:14px;font-weight:900}.ready{display:inline-block;background:linear-gradient(90deg,#7b2cbf,#d63384);color:#fff;text-decoration:none;position:relative;z-index:5;pointer-events:auto}.soon{background:#e2e8f0;color:#475569}.support{display:flex;gap:12px;justify-content:center;flex-wrap:wrap;margin-top:28px}.support a{color:#fff;text-decoration:none;font-weight:900;padding:14px 20px;border-radius:14px;background:#25D366}.support a:last-child{background:#f59e0b}.footer{text-align:center;margin-top:28px;color:#dbeafe}@media(max-width:820px){.premium-layout{grid-template-columns:1fr}.premium-visual{height:220px}.grid{grid-template-columns:repeat(2,1fr)}}@media(max-width:540px){.premium-card{padding:17px}.premium-content h2{font-size:24px}.premium-content ul{grid-template-columns:1fr}.grid{grid-template-columns:1fr}.hero h1{font-size:30px}.preview{height:165px}}</style></head>
-<body><main class="wrap"><section class="hero"><h1>🎬 ${t.title}</h1><p>${t.hero}</p><select class="language" onchange="location.href='/greetings?lang='+this.value"><option value="en" ${lang==='en'?'selected':''}>English</option><option value="es" ${lang==='es'?'selected':''}>Español</option><option value="fr" ${lang==='fr'?'selected':''}>Français</option><option value="de" ${lang==='de'?'selected':''}>Deutsch</option><option value="pt" ${lang==='pt'?'selected':''}>Português</option><option value="ar" ${lang==='ar'?'selected':''}>العربية</option><option value="zh" ${lang==='zh'?'selected':''}>中文</option></select><div class="actions"><button id="musicBtn" class="btn music">▶ ${t.play}</button><a class="btn app" href="https://play.google.com/store/apps/details?id=com.patapata.printomatic" target="_blank" rel="noopener">📱 ${t.app}</a></div></section>${premiumCard}<h2 class="section-title">${t.choose}</h2><section class="grid">${cards}</section><div class="support"><a href="https://wa.me/18622306637?text=Hello%20Printo%2C%20I%20need%20help%20with%20a%20greeting%20video" target="_blank" rel="noopener">💬 ${t.help}</a><a href="/">🏠 ${t.home}</a></div><div class="footer">Printo Greeting Studio • Powered by PATAPATA LLC</div><audio id="theme" preload="none" loop playsinline><source src="/printo-theme" type="audio/mp4"><source src="/printo-theme" type="audio/mpeg"></audio></main><script>
-const audio=document.getElementById('theme'),btn=document.getElementById('musicBtn');
-let themeLoaded=false;
-btn.onclick=async()=>{
-  if(!audio.paused){audio.pause();btn.textContent='▶ ${t.play}';return}
-  try{
-    btn.disabled=true;btn.textContent='⏳ ${t.play}';
-    if(!themeLoaded){audio.load();themeLoaded=true}
-    await audio.play();
-    btn.textContent='⏸ ${t.pause}';
-  }catch(e){
-    console.error('Printo theme playback failed:',e);
-    themeLoaded=false;
-    btn.textContent='⚠ ${t.play}';
-    alert('Printo theme music could not be played. Please tap again or confirm that birthday_audio.m4a exists in templates/birthday.');
-  }finally{btn.disabled=false}
-};
-audio.addEventListener('ended',()=>{btn.textContent='▶ ${t.play}'});
-</script></body></html>`;
+  return `<!doctype html><html lang="${lang}" dir="${dir}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#082a8f"><title>${t.title}</title><style>
+  *{box-sizing:border-box}body{margin:0;font-family:Arial,sans-serif;background:radial-gradient(circle at top,#1b56c9 0,#082a8f 40%,#031442 100%);color:#fff;min-height:100vh}.wrap{max-width:1160px;margin:auto;padding:22px}.hero{text-align:center;padding:20px 10px 12px}.hero h1{font-size:42px;margin:6px}.hero p{font-size:18px;line-height:1.55;max-width:760px;margin:12px auto}.toplinks{display:flex;justify-content:center;gap:10px;flex-wrap:wrap;margin:16px 0}.toplinks a{padding:12px 18px;border-radius:999px;text-decoration:none;font-weight:900}.credits{background:#ffd21f;color:#082a8f}.home{background:#fff;color:#082a8f}.premium{position:relative;overflow:hidden;background:linear-gradient(110deg,#fff1a8,#fff,#e8f1ff);color:#071b61;border:3px solid #ffd21f;border-radius:28px;padding:24px;margin:22px 0 28px;box-shadow:0 18px 48px rgba(0,0,0,.3)}.premium-badge{display:inline-block;background:#123faa;color:#ffd21f;font-weight:900;padding:9px 16px;border-radius:999px}.premium-grid{display:grid;grid-template-columns:38% 1fr;gap:25px;align-items:center;margin-top:16px}.premium-media{position:relative;border-radius:24px;overflow:hidden;min-height:270px;background:#092b92;border:2px solid #3158b6;cursor:pointer;padding:0}.premium-media img{display:block;width:100%;height:100%;min-height:270px;object-fit:cover}.premium-media .play,.media .play{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:72px;height:72px;border-radius:50%;display:grid;place-items:center;background:#ffd21f;color:#082a8f;font-size:32px;box-shadow:0 10px 25px rgba(0,0,0,.3)}.premium h2{font-size:32px;margin:0 0 10px}.premium p{line-height:1.55}.premium ul{display:grid;grid-template-columns:1fr 1fr;gap:8px 20px;padding:0;list-style:none;font-weight:800}.premium-actions,.actions{display:flex;flex-wrap:wrap;gap:10px;margin-top:16px}.premium-actions a,.premium-actions button,.actions a,.actions button{border:0;border-radius:999px;padding:12px 16px;text-decoration:none;font-weight:900;cursor:pointer;font-size:14px}.watch,.secondary{background:#123faa;color:#fff}.buy{background:#0f9d58;color:#fff}.create{background:linear-gradient(90deg,#7b2cbf,#d63384);color:#fff}.worker{background:#25D366;color:#072b17}.choose{text-align:center;font-size:34px;margin:20px 0}.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:20px}.card{background:#fff;color:#0a286d;border-radius:24px;overflow:hidden;box-shadow:0 14px 30px rgba(0,0,0,.25);display:flex;flex-direction:column}.media{position:relative;border:0;padding:0;width:100%;aspect-ratio:16/9;background:#dbeafe;cursor:pointer;overflow:hidden}.media img{width:100%;height:100%;object-fit:cover;display:block;transition:transform .25s}.media:hover img{transform:scale(1.025)}.media .play{width:58px;height:58px;font-size:25px}.card-body{padding:18px;display:flex;flex-direction:column;flex:1}.card h3{font-size:23px;margin:0 0 8px}.card p{color:#475569;line-height:1.45;min-height:61px;margin:0}.actions{margin-top:auto}.actions a,.actions button{flex:1;text-align:center;min-width:125px}.modal{display:none;position:fixed;z-index:9999;inset:0;background:rgba(0,0,0,.82);padding:20px;align-items:center;justify-content:center}.modal.open{display:flex}.modal-box{width:min(920px,100%);background:#fff;color:#082a8f;border-radius:25px;padding:18px;box-shadow:0 25px 80px rgba(0,0,0,.55)}.modal-head{display:flex;justify-content:space-between;align-items:center;gap:10px}.modal-head h2{margin:5px}.modal-close{border:0;background:#e2e8f0;color:#0f172a;padding:10px 15px;border-radius:999px;font-weight:900;cursor:pointer}.modal-img{width:100%;border-radius:18px;margin-top:12px;display:block;max-height:68vh;object-fit:contain;background:#061b62}.modal-note{text-align:center;color:#475569;font-weight:700;line-height:1.45}.footer{text-align:center;padding:32px 10px;color:#dbeafe;font-weight:700}@media(max-width:850px){.grid{grid-template-columns:repeat(2,1fr)}.premium-grid{grid-template-columns:1fr}.premium-media img,.premium-media{min-height:230px}}@media(max-width:570px){.wrap{padding:12px}.hero h1{font-size:32px}.choose{font-size:28px}.grid{grid-template-columns:1fr}.premium{padding:16px}.premium h2{font-size:27px}.premium ul{grid-template-columns:1fr}.actions a,.actions button{min-width:100%;}.modal{padding:8px}.modal-box{padding:12px}}
+  </style></head><body><main class="wrap"><section class="hero"><h1>🎁 ${t.title}</h1><p>${t.hero}</p><div class="toplinks"><a class="credits" href="/api/credits/printo_test_001" target="_blank" rel="noopener">⭐ ${t.credits}</a><a class="home" href="${PRINTO_STUDIO_URL}">🏠 Printo Studio</a></div></section>
+  <section class="premium"><span class="premium-badge">🌟 PREMIUM EXPERIENCE</span><div class="premium-grid"><button class="premium-media sample-open" type="button" data-image="/greeting-assets/premium-tribute-sample.svg" data-title="Personal Tribute Music Video Card"><img src="/greeting-assets/premium-tribute-sample.svg" alt="Premium tribute sample"><span class="play">▶</span></button><div><h2>Personal Tribute Music Video Card</h2><p>Create a powerful personal tribute using the recipient photo, your personal introduction video, an original tribute song, names and a heartfelt message.</p><ul><li>✓ Recipient photo on screen</li><li>✓ Personal introduction video</li><li>✓ Original tribute song</li><li>✓ Recipient and sender names</li><li>✓ Personal message</li><li>✓ Downloadable finished video</li></ul><div class="premium-actions"><button class="watch sample-open" type="button" data-image="/greeting-assets/premium-tribute-sample.svg" data-title="Personal Tribute Music Video Card">▶ ${t.watch}</button><a class="buy" href="${shopifyBase}" target="_blank" rel="noopener">🛒 ${t.buy}</a><a class="create" href="${premiumOrderUrl}">✨ ${t.create}</a><a class="worker" href="${premiumWhatsAppUrl}" target="_blank" rel="noopener">💬 ${t.help}</a></div></div></div></section>
+  <h2 class="choose">${t.choose}</h2><section class="grid">${cards}</section><div class="footer">Printo Studio • Powered by PATAPATA LLC</div></main>
+  <div id="sampleModal" class="modal" role="dialog" aria-modal="true" aria-hidden="true"><div class="modal-box"><div class="modal-head"><h2 id="sampleTitle"></h2><button id="sampleClose" class="modal-close" type="button">✕ ${t.close}</button></div><img id="sampleImage" class="modal-img" alt="Printo sample preview"><p class="modal-note">${t.sampleNote}</p></div></div>
+  <script>const modal=document.getElementById('sampleModal'),image=document.getElementById('sampleImage'),title=document.getElementById('sampleTitle'),close=document.getElementById('sampleClose');document.querySelectorAll('.sample-open').forEach(btn=>btn.addEventListener('click',()=>{image.src=btn.dataset.image||'';title.textContent=btn.dataset.title||'Printo Sample';modal.classList.add('open');modal.setAttribute('aria-hidden','false');document.body.style.overflow='hidden'}));function shut(){modal.classList.remove('open');modal.setAttribute('aria-hidden','true');document.body.style.overflow=''}close.addEventListener('click',shut);modal.addEventListener('click',e=>{if(e.target===modal)shut()});document.addEventListener('keydown',e=>{if(e.key==='Escape')shut()});</script></body></html>`;
 }
 
 function buildBirthdayGeneratorPage(language = "en") {
@@ -15097,8 +15090,6 @@ app.post(
     });
   },
   async (req, res) => {
-    let premiumAccessReservation = null;
-    let premiumCustomerIdentity = null;
     const photo = req.files?.recipientPhoto?.[0];
     const introVideo = req.files?.introVideo?.[0];
     const compressedVideoPath = introVideo?.path
@@ -15140,32 +15131,6 @@ app.post(
         return res.status(400).json({ ok: false, error: "Introduction video must be 100 MB or smaller." });
       }
 
-      premiumCustomerIdentity = getGreetingCustomerIdentity(req, {
-        customerId: body.customerId,
-        customerPhone,
-        email: customerEmail
-      });
-      premiumAccessReservation = await reserveGreetingGenerationAccess(
-        premiumCustomerIdentity.customerKey,
-        premiumCustomerIdentity.contactPhone
-      );
-
-      if (!premiumAccessReservation.allowed) {
-        const payment = buildGreetingPaymentLinks({
-          customerKey: premiumCustomerIdentity.customerKey,
-          templateId: "premium-tribute",
-          contactPhone: customerPhone
-        });
-        return res.status(402).json({
-          ok: false,
-          paymentRequired: true,
-          error: `You need ${PRINTO_CREATION_CREDIT_COST} credits to create this Premium Tribute.`,
-          customerKey: premiumCustomerIdentity.customerKey,
-          access: premiumAccessReservation,
-          payment
-        });
-      }
-
       const compression = await compressPremiumIntroductionVideo(
         introVideo.path,
         compressedVideoPath
@@ -15173,7 +15138,11 @@ app.post(
       const photoBuffer = fs.readFileSync(photo.path);
       const compressedVideoBuffer = fs.readFileSync(compressedVideoPath);
 
-      const identity = premiumCustomerIdentity;
+      const identity = getGreetingCustomerIdentity(req, {
+        customerId: body.customerId,
+        customerPhone,
+        email: customerEmail
+      });
       const customerKey = identity.customerKey;
       const orderId = makePremiumOrderId();
       const mediaToken = crypto.randomBytes(24).toString("hex");
@@ -15237,17 +15206,6 @@ app.post(
         ]
       );
 
-      await queryWithRetry(
-        `UPDATE premium_greeting_orders
-         SET status = 'paid',
-             payment_provider = 'printo_credits',
-             payment_reference = $2,
-             paid_at = NOW(),
-             updated_at = NOW()
-         WHERE order_id = $1`,
-        [orderId, `credits:${PRINTO_CREATION_CREDIT_COST}`]
-      );
-
       const job = await createPremiumGreetingDashboardJob({
         orderId,
         customerKey,
@@ -15296,11 +15254,7 @@ app.post(
         jobId: job?.id || null,
         payment,
         whatsappUrl,
-        status: "paid",
-        paymentRequired: false,
-        access: premiumAccessReservation,
-        creditBalance: premiumAccessReservation.creditBalance,
-        remainingCreations: premiumAccessReservation.remainingCreations,
+        status: "payment_required",
         compression: {
           durationSeconds: Number(compression.duration.toFixed(2)),
           originalBytes: originalVideoBytes,
@@ -15313,15 +15267,6 @@ app.post(
         }
       });
     } catch (error) {
-      if (premiumAccessReservation?.allowed && premiumCustomerIdentity?.customerKey) {
-        await refundGreetingGenerationAccess(
-          premiumCustomerIdentity.customerKey,
-          premiumAccessReservation.source
-        ).catch((refundError) => {
-          console.error("Premium credit refund failed:", refundError);
-        });
-        premiumAccessReservation = null;
-      }
       console.error("Premium greeting request error:", error);
       const clientError = /must be|too large|duration|valid video|could not be read/i.test(String(error.message || ""));
       return res.status(clientError ? 400 : 500).json({
