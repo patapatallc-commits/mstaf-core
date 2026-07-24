@@ -5041,6 +5041,8 @@ app.post("/api/greeting-studio/create", async (req, res) => {
 app.post("/api/greeting-studio/render", async (req, res) => {
   let accessReservation = null;
   let customerIdentity = null;
+  let birthdayJobId = "";
+  let birthdayResponseSent = false;
 
   try {
     const {
@@ -14269,6 +14271,62 @@ function loadGreetingMetadata(greetingId) {
   }
 }
 
+
+// =========================
+// BIRTHDAY BACKGROUND RENDER JOBS
+// =========================
+const birthdayJobDir = path.join(generatedDir, "birthday-jobs");
+if (!fs.existsSync(birthdayJobDir)) {
+  fs.mkdirSync(birthdayJobDir, { recursive: true });
+}
+
+function createBirthdayJobId() {
+  return `bday_${Date.now().toString(36)}_${crypto.randomBytes(4).toString("hex")}`;
+}
+
+function getBirthdayJobPath(jobId = "") {
+  const safeId = String(jobId || "").replace(/[^a-zA-Z0-9_-]/g, "");
+  return path.join(birthdayJobDir, `${safeId}.json`);
+}
+
+function saveBirthdayJobStatus(jobId, patch = {}) {
+  const jobPath = getBirthdayJobPath(jobId);
+  let current = {};
+  try {
+    if (fs.existsSync(jobPath)) current = JSON.parse(fs.readFileSync(jobPath, "utf8"));
+  } catch (error) {
+    console.error("Birthday job status read failed:", error.message);
+  }
+  const next = {
+    ...current,
+    ...patch,
+    jobId,
+    updatedAt: new Date().toISOString()
+  };
+  fs.writeFileSync(jobPath, JSON.stringify(next, null, 2));
+  return next;
+}
+
+function loadBirthdayJobStatus(jobId) {
+  try {
+    const jobPath = getBirthdayJobPath(jobId);
+    if (!fs.existsSync(jobPath)) return null;
+    return JSON.parse(fs.readFileSync(jobPath, "utf8"));
+  } catch (error) {
+    console.error("Birthday job status load failed:", error.message);
+    return null;
+  }
+}
+
+function buildBirthdayProgressUrl(req, jobId, language = "en") {
+  const base = String(
+    process.env.PUBLIC_BASE_URL ||
+    process.env.RENDER_EXTERNAL_URL ||
+    `${req.protocol}://${req.get("host")}`
+  ).replace(/\/$/, "");
+  return `${base}/birthday-progress/${encodeURIComponent(jobId)}?lang=${encodeURIComponent(language)}`;
+}
+
 app.post("/api/greeting/birthday/generate", async (req, res) => {
   console.log("[Birthday Generate] Request received", {
     customerId: req.body?.customerId || req.get("x-printo-customer-id") || "",
@@ -14391,6 +14449,36 @@ Africa Payment: ${payment.africa}`
       });
     }
 
+    birthdayJobId = createBirthdayJobId();
+    const progressUrl = buildBirthdayProgressUrl(req, birthdayJobId, requestLanguage);
+    saveBirthdayJobStatus(birthdayJobId, {
+      status: "queued",
+      progress: 5,
+      message: "Your Printo birthday video is queued.",
+      customerKey: customerIdentity?.customerKey || "",
+      customerId: String(req.body.customerId || req.headers["x-printo-customer-id"] || ""),
+      recipientName: toNameRaw,
+      senderName: fromNameRaw,
+      language: requestLanguage,
+      createdAt: new Date().toISOString()
+    });
+
+    res.status(202).json({
+      ok: true,
+      queued: true,
+      jobId: birthdayJobId,
+      progressUrl,
+      statusUrl: `/api/greeting/birthday/jobs/${encodeURIComponent(birthdayJobId)}`,
+      customerKey: customerIdentity?.customerKey || ""
+    });
+    birthdayResponseSent = true;
+
+    saveBirthdayJobStatus(birthdayJobId, {
+      status: "preparing",
+      progress: 12,
+      message: "Preparing your personalized voice and video."
+    });
+
     const fileName = `birthday_${Date.now()}.mp4`;
     const outputPath = path.join(generatedDir, fileName);
     const voicePath = path.join(generatedDir, `birthday_voice_${Date.now()}.mp3`);
@@ -14440,6 +14528,9 @@ Africa Payment: ${payment.africa}`
       "-y",
       "-nostdin",
       "-loglevel", "error",
+      "-threads", "1",
+      "-filter_threads", "1",
+      "-filter_complex_threads", "1",
       "-loop", "1",
       "-i", framePath,
       "-i", masterPath,
@@ -14451,8 +14542,9 @@ Africa Payment: ${payment.africa}`
       "-map", "[aout]",
       "-shortest",
       "-c:v", "libx264",
-      "-preset", "veryfast",
-      "-crf", "24",
+      "-preset", "ultrafast",
+      "-tune", "fastdecode",
+      "-crf", "27",
       "-pix_fmt", "yuv420p",
       "-c:a", "aac",
       "-b:a", "192k",
@@ -14460,7 +14552,12 @@ Africa Payment: ${payment.africa}`
       outputPath
     ];
 
-    console.log("Starting stable FFmpeg birthday render...");
+    saveBirthdayJobStatus(birthdayJobId, {
+      status: "rendering",
+      progress: 35,
+      message: "Printo is rendering your birthday video."
+    });
+    console.log("Starting memory-safe background FFmpeg birthday render...");
     console.log("Birthday layout:", {
       framePath,
       toNameLines,
@@ -14502,10 +14599,13 @@ Africa Payment: ${payment.africa}`
             accessReservation = null;
           }
 
-          return res.status(500).json({
-            ok: false,
-            error: "Video render failed. Check Render logs for FFmpeg details."
+          saveBirthdayJobStatus(birthdayJobId, {
+            status: "failed",
+            progress: 100,
+            error: "Video render failed. Please try again.",
+            message: "The render could not be completed. Your credits were restored."
           });
+          return;
         }
 
         if (!fs.existsSync(outputPath)) {
@@ -14521,10 +14621,13 @@ Africa Payment: ${payment.africa}`
             accessReservation = null;
           }
 
-          return res.status(500).json({
-            ok: false,
-            error: "Video render finished but output file was not created."
+          saveBirthdayJobStatus(birthdayJobId, {
+            status: "failed",
+            progress: 100,
+            error: "Video output was not created.",
+            message: "The render could not be completed. Your credits were restored."
           });
+          return;
         }
 
         console.log("Birthday stable render completed:", fileName);
@@ -14577,8 +14680,10 @@ Africa Payment: ${payment.africa}`
             fs.unlink(voicePath, () => {});
           }
 
-          return res.json({
-            ok: true,
+          saveBirthdayJobStatus(birthdayJobId, {
+            status: "ready",
+            progress: 100,
+            message: "Your Printo birthday video is ready!",
             downloadUrl,
             posterUrl,
             sharePosterUrl,
@@ -14588,30 +14693,17 @@ Africa Payment: ${payment.africa}`
             greetingId,
             file: fileName,
             hasPrintoVoice,
-            limits: {
-              name: BIRTHDAY_NAME_MAX,
-              message: BIRTHDAY_MESSAGE_MAX
-            },
             customerKey: customerIdentity?.customerKey || "",
             access: {
               source: accessReservation?.source || "",
-              firstFreeGreeting:
-                accessReservation?.source === "free",
-              paidCreditsRemaining:
-                accessReservation?.paidCredits ?? 0,
-              creditBalance:
-                accessReservation?.creditBalance ?? accessReservation?.paidCredits ?? 0,
-              remainingCreations:
-                accessReservation?.remainingCreations ?? 0,
-              creditsUsed:
-                accessReservation?.creditsUsed ?? 0
-            },
-            payment: buildGreetingPaymentLinks({
-              customerKey: customerIdentity?.customerKey || "",
-              templateId: "birthday",
-              contactPhone: customerIdentity?.contactPhone || ""
-            })
+              firstFreeGreeting: accessReservation?.source === "free",
+              paidCreditsRemaining: accessReservation?.paidCredits ?? 0,
+              creditBalance: accessReservation?.creditBalance ?? accessReservation?.paidCredits ?? 0,
+              remainingCreations: accessReservation?.remainingCreations ?? 0,
+              creditsUsed: accessReservation?.creditsUsed ?? 0
+            }
           });
+          return;
         };
 
         // Create the clean personalized poster first. Poster extraction is fast
@@ -14679,6 +14771,15 @@ Africa Payment: ${payment.africa}`
     }
 
     console.error("Birthday generate route error:", err);
+    if (birthdayResponseSent && birthdayJobId) {
+      saveBirthdayJobStatus(birthdayJobId, {
+        status: "failed",
+        progress: 100,
+        error: String(err.message || err),
+        message: "The render failed. Your credits were restored."
+      });
+      return;
+    }
     return res.status(500).json({
       ok: false,
       error: err.message
@@ -15095,6 +15196,7 @@ function buildBirthdayGeneratorPage(language = "en", templateId = "birthday") {
       }
       if(!response.ok||!data.ok)throw new Error(data.error||ui.failed);
       if(data.customerKey){customerKey=String(data.customerKey);localStorage.setItem('printoGreetingCustomerKey',customerKey);}
+      if(data.queued&&data.progressUrl){statusBox.textContent='✅ Request accepted. Opening render progress...';window.location.href=data.progressUrl;return;}
       statusBox.textContent=(data.hasPrintoVoice?'✅ '+ui.voiceReady:'✅ '+ui.musicReady)+' Credits remaining: '+String(data.access?.creditBalance??data.access?.paidCreditsRemaining??'');
       const target=data.resultUrl||data.downloadUrl;
       if(data.resultUrl){const separator=target.includes('?')?'&':'?';window.location.href=target+separator+'lang='+encodeURIComponent(currentLanguage)}else{window.location.href=target}
@@ -16301,6 +16403,21 @@ app.get(["/greetings", "/greeting"], (req, res) => {
   res.type("html").send(buildGreetingStudioHomePage(language));
 });
 
+
+app.get("/api/greeting/birthday/jobs/:jobId", (req, res) => {
+  const job = loadBirthdayJobStatus(req.params.jobId);
+  if (!job) return res.status(404).json({ ok: false, error: "Birthday render job not found." });
+  return res.json({ ok: true, job });
+});
+
+app.get("/birthday-progress/:jobId", (req, res) => {
+  const jobId = String(req.params.jobId || "");
+  const language = String(req.query.lang || "en");
+  const initial = loadBirthdayJobStatus(jobId);
+  if (!initial) return res.status(404).send("Birthday render job not found.");
+  res.type("html").send(`<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Printo Render Progress</title><style>*{box-sizing:border-box}body{margin:0;min-height:100vh;display:grid;place-items:center;background:linear-gradient(180deg,#071b61,#0b63ce);font-family:Arial;color:#10245e;padding:20px}.card{width:min(620px,100%);background:#fff;border-radius:24px;padding:28px;text-align:center;box-shadow:0 18px 50px rgba(0,0,0,.35)}h1{color:#123b9d}.bar{height:24px;background:#e5e7eb;border-radius:99px;overflow:hidden;margin:22px 0}.fill{height:100%;width:5%;background:linear-gradient(90deg,#7b2cbf,#d63384);transition:width .5s}.status{font-weight:800;font-size:18px}.note{color:#64748b;line-height:1.5}.btn{display:inline-block;margin-top:18px;padding:13px 20px;border-radius:13px;background:#7b2cbf;color:#fff;text-decoration:none;font-weight:900}</style></head><body><div class="card"><h1>🎂 Printo is creating your video</h1><div class="bar"><div id="fill" class="fill"></div></div><div id="percent" class="status">5%</div><p id="message" class="note">Your request is queued.</p><p class="note">You may keep this page open. It will automatically take you to your finished video.</p><a class="btn" href="/greetings?lang=${encodeURIComponent(language)}">Back to Studio</a></div><script>const jobId=${JSON.stringify(jobId)};async function check(){try{const r=await fetch('/api/greeting/birthday/jobs/'+encodeURIComponent(jobId),{cache:'no-store'});const d=await r.json();if(!r.ok||!d.ok)throw new Error(d.error||'Unable to load render status');const j=d.job||{};const p=Math.max(0,Math.min(100,Number(j.progress||0)));document.getElementById('fill').style.width=p+'%';document.getElementById('percent').textContent=p+'%';document.getElementById('message').textContent=j.message||j.status||'Working...';if(j.status==='ready'&&j.resultUrl){window.location.href=j.resultUrl+(j.resultUrl.includes('?')?'&':'?')+'lang='+encodeURIComponent(${JSON.stringify(language)});return;}if(j.status==='failed'){document.getElementById('message').textContent='❌ '+(j.error||j.message||'Render failed.');return;}setTimeout(check,2500);}catch(e){document.getElementById('message').textContent='Still working... reconnecting.';setTimeout(check,4000);}}check();</script></body></html>`);
+});
+
 app.post("/birthday-submit", async (req, res) => {
   const language = ["en", "es", "fr", "de", "pt", "ar", "zh"].includes(String(req.body?.language || "en").toLowerCase())
     ? String(req.body.language).toLowerCase()
@@ -16343,7 +16460,7 @@ app.post("/birthday-submit", async (req, res) => {
 
     const data = apiResponse.data || {};
     if (apiResponse.status >= 200 && apiResponse.status < 300 && data.ok) {
-      const target = String(data.resultUrl || data.downloadUrl || "");
+      const target = String(data.progressUrl || data.resultUrl || data.downloadUrl || "");
       if (target) {
         const separator = target.includes("?") ? "&" : "?";
         return res.redirect(`${target}${separator}lang=${encodeURIComponent(language)}`);
