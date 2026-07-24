@@ -343,6 +343,12 @@ const GREETING_SHOPIFY_PAYMENT_URL =
   process.env.GREETING_SHOPIFY_URL ||
   "https://www.patapata.us/";
 
+const PRINTO_SINGLE_CREATION_URL = process.env.PRIINTO_SINGLE_CREATION_URL || process.env.PRINTO_SINGLE_CREATION_URL || GREETING_SHOPIFY_PAYMENT_URL;
+const PRINTO_MONTHLY_SUBSCRIPTION_URL = process.env.PRINTO_MONTHLY_SUBSCRIPTION_URL || "https://www.patapata.us/collections/printo-subscriptions";
+const PRINTO_SIX_MONTH_SUBSCRIPTION_URL = process.env.PRINTO_SIX_MONTH_SUBSCRIPTION_URL || "https://www.patapata.us/collections/printo-subscriptions";
+const PRINTO_YEARLY_SUBSCRIPTION_URL = process.env.PRINTO_YEARLY_SUBSCRIPTION_URL || "https://www.patapata.us/collections/printo-subscriptions";
+const PRINTO_SUBSCRIPTION_PRICES = { monthly: 14.99, six_months: 69.99, yearly: 119.99 };
+
 function getPrintoStudioMenuFooter(language = "en") {
   const labels = {
     en: "↩️ Back to Printo Studio",
@@ -2219,6 +2225,10 @@ async function ensureGreetingAccessTables() {
 
   await pool.query(`ALTER TABLE greeting_customer_access ADD COLUMN IF NOT EXISTS free_credits_granted BOOLEAN NOT NULL DEFAULT FALSE`);
   await pool.query(`ALTER TABLE greeting_customer_access ALTER COLUMN paid_credits SET DEFAULT 100`);
+  await pool.query(`ALTER TABLE greeting_customer_access ADD COLUMN IF NOT EXISTS subscription_plan TEXT NOT NULL DEFAULT 'free'`);
+  await pool.query(`ALTER TABLE greeting_customer_access ADD COLUMN IF NOT EXISTS subscription_status TEXT NOT NULL DEFAULT 'inactive'`);
+  await pool.query(`ALTER TABLE greeting_customer_access ADD COLUMN IF NOT EXISTS subscription_started_at TIMESTAMPTZ`);
+  await pool.query(`ALTER TABLE greeting_customer_access ADD COLUMN IF NOT EXISTS subscription_renews_at TIMESTAMPTZ`);
   await pool.query(`
     UPDATE greeting_customer_access
     SET paid_credits = CASE
@@ -2408,7 +2418,11 @@ async function getGreetingAccessStatus(customerKey, contactPhone = "") {
       free_credits_granted,
       total_generated,
       last_generation_source,
-      last_generated_at
+      last_generated_at,
+      subscription_plan,
+      subscription_status,
+      subscription_started_at,
+      subscription_renews_at
     FROM greeting_customer_access
     WHERE customer_key = $1
     `,
@@ -2430,7 +2444,11 @@ async function getGreetingAccessStatus(customerKey, contactPhone = "") {
     remainingCreations: Math.floor(creditBalance / PRINTO_CREATION_CREDIT_COST),
     totalGenerated: Number(row.total_generated || 0),
     lastGenerationSource: row.last_generation_source || "",
-    lastGeneratedAt: row.last_generated_at || null
+    lastGeneratedAt: row.last_generated_at || null,
+    subscriptionPlan: row.subscription_plan || "free",
+    subscriptionStatus: row.subscription_status || "inactive",
+    subscriptionStartedAt: row.subscription_started_at || null,
+    subscriptionRenewsAt: row.subscription_renews_at || null
   };
 }
 
@@ -14535,6 +14553,9 @@ Africa Payment: ${payment.africa}`
             toName: toNameRaw,
             fromName: fromNameRaw,
             language: requestLanguage,
+            customerKey: customerIdentity?.customerKey || "",
+            customerId: String(req.body.customerId || req.headers["x-printo-customer-id"] || ""),
+            fileName,
             fullResultUrl,
             createdAt: new Date().toISOString()
           });
@@ -14780,6 +14801,7 @@ function getGreetingPreviewPalette(templateId = "birthday") {
 app.get("/greeting-assets/card/:templateId.svg", (req, res) => {
   const templateId = String(req.params.templateId || "birthday").toLowerCase();
   const template = GREETING_TEMPLATES.find((item) => item.id === templateId) || GREETING_TEMPLATES[0];
+  const downloadUrl = String(req.query.download || videoUrl);
   const language = ["en", "es", "fr", "de", "pt", "ar", "zh"].includes(String(req.query.lang || "en"))
     ? String(req.query.lang || "en")
     : "en";
@@ -14901,7 +14923,7 @@ function buildGreetingStudioHomePage(language = "en") {
   <section class="premium"><span class="premium-badge">🌟 PREMIUM EXPERIENCE</span><div class="premium-grid"><button class="premium-media sample-open" type="button" data-video="/greeting-assets/premium-sample-video" data-poster="/greeting-assets/premium-tribute-sample.svg" data-title="Personal Tribute Music Video Card"><img src="/greeting-assets/premium-tribute-sample.svg" alt="Premium tribute sample"><span class="play">▶</span></button><div><h2>Personal Tribute Music Video Card</h2><p>Create a powerful personal tribute using the recipient photo, your personal introduction video, an original tribute song, names and a heartfelt message.</p><ul><li>✓ Recipient photo on screen</li><li>✓ Personal introduction video</li><li>✓ Original tribute song</li><li>✓ Recipient and sender names</li><li>✓ Personal message</li><li>✓ Downloadable finished video</li></ul><div class="premium-actions"><button class="watch sample-open" type="button" data-video="/greeting-assets/premium-sample-video" data-poster="/greeting-assets/premium-tribute-sample.svg" data-title="Personal Tribute Music Video Card">▶ ${t.watch}</button><a class="buy" href="${shopifyBase}" target="_blank" rel="noopener">🛒 ${t.buy}</a><a class="create" href="${premiumOrderUrl}">✨ ${t.create}</a><a class="worker" href="${premiumWhatsAppUrl}" target="_blank" rel="noopener">💬 ${t.help}</a></div></div></div></section>
   <h2 class="choose">${t.choose}</h2><section class="grid">${cards}</section><div class="footer">Printo Studio • Powered by PATAPATA LLC</div></main>
   <div id="sampleModal" class="modal" role="dialog" aria-modal="true" aria-hidden="true"><div class="modal-box"><div class="modal-head"><h2 id="sampleTitle"></h2><button class="modal-close close-modal" type="button">✕ ${t.close}</button></div><video id="sampleVideo" class="modal-video" controls playsinline preload="metadata"></video><p class="modal-note">${t.sampleNote}</p></div></div>
-  <div id="creditModal" class="modal" role="dialog" aria-modal="true" aria-hidden="true"><div class="modal-box"><div class="modal-head"><h2>⭐ ${t.credits}</h2><button class="modal-close close-credit" type="button">✕ ${t.close}</button></div><div id="creditStatus" class="credit-status">${t.loading}</div><div id="creditGrid" class="credit-grid" hidden><div class="credit-stat"><strong id="creditBalance">0</strong><span>${t.balance}</span></div><div class="credit-stat"><strong id="creditCreations">0</strong><span>${t.creations}</span></div><div class="credit-stat"><strong id="creditCost">20</strong><span>${t.cost}</span></div></div></div></div>
+  <div id="creditModal" class="modal" role="dialog" aria-modal="true" aria-hidden="true"><div class="modal-box"><div class="modal-head"><h2>⭐ ${t.credits}</h2><button class="modal-close close-credit" type="button">✕ ${t.close}</button></div><div id="creditStatus" class="credit-status">${t.loading}</div><div id="creditGrid" class="credit-grid" hidden><div class="credit-stat"><strong id="creditBalance">0</strong><span>${t.balance}</span></div><div class="credit-stat"><strong id="creditCreations">0</strong><span>${t.creations}</span></div><div class="credit-stat"><strong id="creditCost">20</strong><span>${t.cost}</span></div></div><div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:16px"><a href="/customer-dashboard" style="flex:1;text-align:center;padding:12px;border-radius:12px;background:#123faa;color:white;text-decoration:none;font-weight:900">🎬 My Videos</a><a href="/subscriptions" style="flex:1;text-align:center;padding:12px;border-radius:12px;background:#7b2cbf;color:white;text-decoration:none;font-weight:900">➕ Buy Credits / Subscribe</a></div></div></div>
   <script>
   const sampleModal=document.getElementById('sampleModal'),video=document.getElementById('sampleVideo'),sampleTitle=document.getElementById('sampleTitle');
   function openModal(el){el.classList.add('open');el.setAttribute('aria-hidden','false');document.body.style.overflow='hidden'}
@@ -16310,7 +16332,7 @@ function renderGreetingResult(req, res) {
     </div>
     <div id="toast" class="toast"></div>
     <div class="actions">
-      <a class="btn download full" href="${safeVideo}" download>📥 Download Video</a>
+      <a class="btn download full" href="${escapeHtml(downloadUrl)}">📥 Download Video</a>
       <button class="btn whatsapp" onclick="shareWhatsApp()">📱 WhatsApp</button>
       <button class="btn facebook" onclick="shareFacebook()">📘 Facebook</button>
       <button class="btn xshare" onclick="shareX()">𝕏 X / Twitter</button>
@@ -16319,7 +16341,9 @@ function renderGreetingResult(req, res) {
       <button class="btn tiktok" onclick="downloadThenOpen('tiktok')">🎵 Share Video to TikTok</button>
       <button class="btn email" onclick="shareEmail()">📧 Email</button>
       <button class="btn copy full" onclick="copyLink()">🔗 Copy Short Greeting Link</button>
-      <a class="btn social full" href="/greetings" target="_blank" rel="noopener">✨ Create Your Own Printo Greeting</a>
+      <a class="btn social" href="/greetings">✨ Create Another</a>
+      <a class="btn download" href="/customer-dashboard">⭐ My Videos & Credits</a>
+      <a class="btn shopify full" href="/subscriptions">➕ Buy More Credits / Subscribe</a>
       <a class="btn shopify" href="${shopifyUrl}" target="_blank" rel="noopener">🛒 Buy via Shopify</a>
       <a class="btn nigeria" href="${nigeriaUrl}" target="_blank" rel="noopener">🇳🇬 Nigeria Payment</a>
     </div>
@@ -16489,6 +16513,36 @@ function renderGreetingResult(req, res) {
 </html>`);
 }
 
+
+app.get("/download/g/:id", (req, res) => {
+  const metadata = loadGreetingMetadata(req.params.id);
+  if (!metadata || !metadata.videoUrl) return res.status(404).send("Greeting video is unavailable.");
+  const localName = String(metadata.fileName || path.basename(new URL(metadata.videoUrl).pathname || "Printo-Greeting.mp4"));
+  const localPath = path.join(generatedDir, path.basename(localName));
+  const downloadName = `Printo-${String(metadata.toName || "Greeting").replace(/[^a-zA-Z0-9_-]+/g,"_")}.mp4`;
+  res.setHeader("Content-Disposition", `attachment; filename=\"${downloadName}\"`);
+  res.setHeader("Content-Type", "video/mp4");
+  if (fs.existsSync(localPath)) return res.sendFile(localPath);
+  return res.redirect(metadata.videoUrl);
+});
+
+app.get("/api/customer/dashboard/:customerId", async (req,res)=>{
+  try {
+    const identity=resolveGreetingCustomerIdentity(req,{customerId:req.params.customerId});
+    const status=await getGreetingAccessStatus(identity.customerKey,identity.contactPhone);
+    const videos=[];
+    for (const name of fs.readdirSync(generatedDir).filter(n=>n.endsWith('.json'))) {
+      try { const m=JSON.parse(fs.readFileSync(path.join(generatedDir,name),'utf8')); if(m.customerKey===identity.customerKey) videos.push({id:name.replace(/\.json$/,''),toName:m.toName||'',fromName:m.fromName||'',createdAt:m.createdAt||'',resultUrl:`/g/${name.replace(/\.json$/,'')}`,downloadUrl:`/download/g/${name.replace(/\.json$/,'')}`}); } catch(e){}
+    }
+    videos.sort((a,b)=>String(b.createdAt).localeCompare(String(a.createdAt)));
+    res.json({ok:true,...status,videos});
+  } catch(error){res.status(500).json({ok:false,error:error.message});}
+});
+
+app.get("/subscriptions", (req,res)=>res.type('html').send(`<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><title>Printo Plans</title><style>*{box-sizing:border-box}body{margin:0;font-family:Arial;background:linear-gradient(150deg,#071b61,#0b63ce);color:#fff;padding:24px}.wrap{max-width:1050px;margin:auto;text-align:center}.plans{display:grid;grid-template-columns:repeat(4,1fr);gap:16px}.plan{background:#fff;color:#082a8f;border:3px solid #ffd21f;border-radius:22px;padding:22px}.price{font-size:34px;font-weight:900}.plan a{display:block;background:#7b2cbf;color:#fff;text-decoration:none;padding:14px;border-radius:12px;font-weight:900;margin-top:16px}.best{transform:scale(1.03)}@media(max-width:850px){.plans{grid-template-columns:1fr 1fr}}@media(max-width:520px){.plans{grid-template-columns:1fr}}</style></head><body><main class="wrap"><h1>⭐ Printo Credits & Subscriptions</h1><p>20 credits create one standard personalized greeting video.</p><section class="plans"><article class="plan"><h2>Single Creation</h2><div class="price">$4.99</div><p>20 credits • 1 creation</p><a href="${PRINTO_SINGLE_CREATION_URL}">Buy One</a></article><article class="plan"><h2>Monthly</h2><div class="price">$14.99</div><p>100 credits monthly • 5 creations</p><a href="${PRINTO_MONTHLY_SUBSCRIPTION_URL}">Choose Monthly</a></article><article class="plan"><h2>6 Months</h2><div class="price">$69.99</div><p>600 credits • 30 creations</p><a href="${PRINTO_SIX_MONTH_SUBSCRIPTION_URL}">Choose 6 Months</a></article><article class="plan best"><h2>1 Year</h2><div class="price">$119.99</div><p>1,200 credits • 60 creations</p><a href="${PRINTO_YEARLY_SUBSCRIPTION_URL}">Choose Annual</a></article></section><p><a style="color:#ffd21f" href="/greetings">← Back to Studio</a></p></main></body></html>`));
+
+app.get("/customer-dashboard", (req,res)=>res.type('html').send(`<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><title>My Printo Dashboard</title><style>body{font-family:Arial;margin:0;background:#082a8f;color:#fff;padding:20px}.wrap{max-width:900px;margin:auto}.card{background:#fff;color:#082a8f;border-radius:18px;padding:18px;margin:14px 0}.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}.stat{background:#edf4ff;padding:15px;border-radius:14px;text-align:center}.buttons a{display:inline-block;margin:6px;padding:12px 16px;border-radius:12px;background:#7b2cbf;color:#fff;text-decoration:none;font-weight:bold}.video{border-top:1px solid #ddd;padding:12px 0}@media(max-width:600px){.stats{grid-template-columns:1fr}}</style></head><body><main class="wrap"><h1>⭐ My Printo Dashboard</h1><div id="content" class="card">Loading…</div></main><script>let id=localStorage.getItem('printoGreetingCustomerId');if(!id){id='printo_'+Date.now()+'_'+Math.random().toString(36).slice(2);localStorage.setItem('printoGreetingCustomerId',id)}fetch('/api/customer/dashboard/'+encodeURIComponent(id),{cache:'no-store'}).then(r=>r.json()).then(d=>{if(!d.ok)throw Error(d.error);document.getElementById('content').innerHTML='<div class="stats"><div class="stat"><h2>'+d.creditBalance+'</h2>Credits</div><div class="stat"><h2>'+d.remainingCreations+'</h2>Creations</div><div class="stat"><h2>'+String(d.subscriptionPlan||'Free')+'</h2>Plan</div></div><div class="buttons"><a href="/greetings">Create Another</a><a href="/subscriptions">Buy Credits / Subscribe</a></div><h2>My Finished Videos</h2>'+(d.videos.length?d.videos.map(v=>'<div class="video"><strong>For '+(v.toName||'Recipient')+'</strong><br><a href="'+v.resultUrl+'">▶ Play</a> &nbsp; <a href="'+v.downloadUrl+'">⬇ Download</a></div>').join(''):'<p>No finished videos yet.</p>')}).catch(e=>document.getElementById('content').textContent='Could not load dashboard: '+e.message)</script></body></html>`));
+
 app.get("/g/:id", (req, res) => {
   res.setHeader("Cache-Control", "public, max-age=60, must-revalidate");
   const metadata = loadGreetingMetadata(req.params.id);
@@ -16502,7 +16556,10 @@ app.get("/g/:id", (req, res) => {
     sharePoster: metadata.sharePosterUrl || metadata.posterUrl || "",
     to: metadata.toName || "",
     from: metadata.fromName || "",
-    lang: metadata.language || "en"
+    lang: metadata.language || "en",
+    download: `/download/g/${encodeURIComponent(req.params.id)}`,
+    customerKey: metadata.customerKey || "",
+    greetingId: req.params.id
   };
 
   return renderGreetingResult(req, res);
