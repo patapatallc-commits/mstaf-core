@@ -14268,6 +14268,13 @@ function loadGreetingMetadata(greetingId) {
 }
 
 app.post("/api/greeting/birthday/generate", async (req, res) => {
+  console.log("[Birthday Generate] Request received", {
+    customerId: req.body?.customerId || req.get("x-printo-customer-id") || "",
+    language: req.body?.language || "en",
+    hasRecipient: Boolean(String(req.body?.to || "").trim()),
+    hasSender: Boolean(String(req.body?.from || "").trim()),
+    messageLength: String(req.body?.message || "").length
+  });
   let accessReservation = null;
   let customerIdentity = null;
 
@@ -15007,7 +15014,9 @@ function buildBirthdayGeneratorPage(language = "en", templateId = "birthday") {
   const isBirthdayTemplate=${JSON.stringify(isBirthdayTemplate)};
   const supportPhone=${JSON.stringify(SUPPORT_PHONE)};
   const limits={name:${BIRTHDAY_NAME_MAX},message:${BIRTHDAY_MESSAGE_MAX}};
-  const to=document.getElementById('toName'),from=document.getElementById('fromName'),message=document.getElementById('message');
+  const recipientInput=document.getElementById('toName');
+  const senderInput=document.getElementById('fromName');
+  const messageInput=document.getElementById('message');
   const toCount=document.getElementById('toCount'),fromCount=document.getElementById('fromCount'),messageCount=document.getElementById('messageCount');
   const statusBox=document.getElementById('status'),button=document.getElementById('generateBtn');
   const shopifyPayment=document.getElementById('shopifyPayment');
@@ -15019,14 +15028,34 @@ function buildBirthdayGeneratorPage(language = "en", templateId = "birthday") {
     localStorage.setItem('printoGreetingCustomerId',customerId);
   }
   function updateCounter(input,output,max){const n=input.value.length;output.textContent=n+' / '+max;output.classList.toggle('warn',n>=max)}
-  to.addEventListener('input',()=>updateCounter(to,toCount,limits.name));
-  from.addEventListener('input',()=>updateCounter(from,fromCount,limits.name));
-  message.addEventListener('input',()=>updateCounter(message,messageCount,limits.message));
-  updateCounter(to,toCount,limits.name);
-  updateCounter(from,fromCount,limits.name);
-  updateCounter(message,messageCount,limits.message);
-  document.getElementById('birthdayForm').addEventListener('submit',async function(e){
+  recipientInput.addEventListener('input',()=>updateCounter(recipientInput,toCount,limits.name));
+  senderInput.addEventListener('input',()=>updateCounter(senderInput,fromCount,limits.name));
+  messageInput.addEventListener('input',()=>updateCounter(messageInput,messageCount,limits.message));
+  updateCounter(recipientInput,toCount,limits.name);
+  updateCounter(senderInput,fromCount,limits.name);
+  updateCounter(messageInput,messageCount,limits.message);
+  window.addEventListener('error',function(event){
+    console.error('[Birthday Page Error]',event.error||event.message);
+    statusBox.textContent='❌ Page error: '+String(event.message||'Unknown JavaScript error');
+  });
+  window.addEventListener('unhandledrejection',function(event){
+    console.error('[Birthday Promise Error]',event.reason);
+    statusBox.textContent='❌ '+String(event.reason?.message||event.reason||'Request failed');
+  });
+  const birthdayForm=document.getElementById('birthdayForm');
+  if(!birthdayForm){
+    throw new Error('Birthday form could not be found.');
+  }
+  birthdayForm.addEventListener('submit',async function(e){
     e.preventDefault();
+    console.log('[Birthday Generate] Submit clicked');
+    const recipientName=recipientInput.value.trim();
+    const senderName=senderInput.value.trim();
+    const personalMessage=messageInput.value.trim();
+    if(!recipientName||!senderName||!personalMessage){
+      statusBox.textContent='❌ Please enter recipient name, sender name, and personal message.';
+      return;
+    }
     button.disabled=true;button.textContent='⏳ '+ui.generating;statusBox.textContent=ui.waiting;
     try{
       if(!isBirthdayTemplate){
@@ -15035,9 +15064,9 @@ function buildBirthdayGeneratorPage(language = "en", templateId = "birthday") {
           'Service code: CARD_PERSONALIZATION_AGENT',
           'Occasion: '+selectedOccasion,
           'Template: '+selectedTemplateId,
-          'Recipient: '+to.value.trim(),
-          'Sender: '+from.value.trim(),
-          'Personal message: '+message.value.trim(),
+          'Recipient: '+recipientInput.value.trim(),
+          'Sender: '+senderInput.value.trim(),
+          'Personal message: '+messageInput.value.trim(),
           'Language: '+currentLanguage,
           'Please prepare this selected occasion video card.'
         ];
@@ -15045,8 +15074,11 @@ function buildBirthdayGeneratorPage(language = "en", templateId = "birthday") {
         window.location.href='https://wa.me/'+supportPhone+'?text='+encodeURIComponent(requestLines.join('\n'));
         return;
       }
-      const response=await fetch('/api/greeting/birthday/generate',{method:'POST',headers:{'Content-Type':'application/json','x-printo-customer-id':customerId,...(customerKey?{'x-printo-customer-key':customerKey}:{})},body:JSON.stringify({to:to.value.trim(),from:from.value.trim(),message:message.value.trim(),language:currentLanguage,customerId,customerKey})});
-      const data=await response.json();
+      const response=await fetch('/api/greeting/birthday/generate',{method:'POST',headers:{'Content-Type':'application/json','x-printo-customer-id':customerId,...(customerKey?{'x-printo-customer-key':customerKey}:{})},body:JSON.stringify({to:recipientName,from:senderName,message:personalMessage,language:currentLanguage,customerId,customerKey})});
+      const responseText=await response.text();
+      let data={};
+      try{data=responseText?JSON.parse(responseText):{};}catch(parseError){throw new Error('Server returned an invalid response: '+responseText.slice(0,180));}
+      console.log('[Birthday Generate] Response',response.status,data);
       if(data.paymentRequired){
         if(data.payment?.shopify)shopifyPayment.href=data.payment.shopify;
         if(data.payment?.africa)africaPayment.href=data.payment.africa;
