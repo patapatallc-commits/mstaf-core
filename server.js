@@ -14915,7 +14915,6 @@ function getGreetingPreviewPalette(templateId = "birthday") {
 app.get("/greeting-assets/card/:templateId.svg", (req, res) => {
   const templateId = String(req.params.templateId || "birthday").toLowerCase();
   const template = GREETING_TEMPLATES.find((item) => item.id === templateId) || GREETING_TEMPLATES[0];
-  const downloadUrl = String(req.query.download || videoUrl);
   const language = ["en", "es", "fr", "de", "pt", "ar", "zh"].includes(String(req.query.lang || "en"))
     ? String(req.query.lang || "en")
     : "en";
@@ -16490,6 +16489,8 @@ function renderGreetingResult(req, res) {
   const fromName = String(req.query.from || "");
   const posterUrl = String(req.query.poster || "");
   const sharePosterUrl = String(req.query.sharePoster || req.query.poster || "");
+  const requestedDownloadUrl = String(req.query.download || "").trim();
+  const downloadUrl = requestedDownloadUrl || videoUrl;
   const language = ["en", "es", "fr", "de", "pt", "ar", "zh"].includes(String(req.query.lang || "en").toLowerCase())
     ? String(req.query.lang || "en").toLowerCase()
     : "en";
