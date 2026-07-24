@@ -302,6 +302,8 @@ app.use(express.json({
     req.rawBody = Buffer.from(buffer);
   }
 }));
+// Accept normal HTML form submissions as a reliable fallback when browser JavaScript is blocked or cached.
+app.use(express.urlencoded({ extended: true, limit: "2mb" }));
 const cors = require("cors");
 
 app.use(cors({
@@ -14988,14 +14990,17 @@ function buildBirthdayGeneratorPage(language = "en", templateId = "birthday") {
   <a class="back" href="/greetings?lang=${lang}">← ${t.back}</a>
   <div class="top"><h1>${selectedTemplate.emoji || "🎁"} ${t.title}</h1><p>${t.intro}</p></div>
   <div class="panel">
-    <form id="birthdayForm">
+    <form id="birthdayForm" method="POST" action="/birthday-submit">
       <div class="row">
-        <div class="field"><label for="toName">${t.recipient}</label><input id="toName" maxlength="${BIRTHDAY_NAME_MAX}" required placeholder="${t.recipientExample}" /><div id="toCount" class="counter">0 / ${BIRTHDAY_NAME_MAX}</div></div>
-        <div class="field"><label for="fromName">${t.sender}</label><input id="fromName" maxlength="${BIRTHDAY_NAME_MAX}" required placeholder="${t.senderExample}" /><div id="fromCount" class="counter">0 / ${BIRTHDAY_NAME_MAX}</div></div>
+        <div class="field"><label for="toName">${t.recipient}</label><input id="toName" name="to" maxlength="${BIRTHDAY_NAME_MAX}" required placeholder="${t.recipientExample}" /><div id="toCount" class="counter">0 / ${BIRTHDAY_NAME_MAX}</div></div>
+        <div class="field"><label for="fromName">${t.sender}</label><input id="fromName" name="from" maxlength="${BIRTHDAY_NAME_MAX}" required placeholder="${t.senderExample}" /><div id="fromCount" class="counter">0 / ${BIRTHDAY_NAME_MAX}</div></div>
       </div>
       <label for="message">${t.personal}</label>
-      <textarea id="message" maxlength="${BIRTHDAY_MESSAGE_MAX}" required placeholder="${t.messagePlaceholder}"></textarea>
+      <textarea id="message" name="message" maxlength="${BIRTHDAY_MESSAGE_MAX}" required placeholder="${t.messagePlaceholder}"></textarea>
       <div id="messageCount" class="counter">0 / ${BIRTHDAY_MESSAGE_MAX}</div>
+      <input type="hidden" id="formLanguage" name="language" value="${lang}" />
+      <input type="hidden" id="formCustomerId" name="customerId" value="" />
+      <input type="hidden" id="formCustomerKey" name="customerKey" value="" />
       <button id="generateBtn" class="generate" type="submit">✨ ${t.generate}</button>
       <div id="status" class="status"></div>
     </form>
@@ -15027,6 +15032,8 @@ function buildBirthdayGeneratorPage(language = "en", templateId = "birthday") {
     customerId=(window.crypto&&crypto.randomUUID)?crypto.randomUUID():'pg-'+Date.now()+'-'+Math.random().toString(36).slice(2);
     localStorage.setItem('printoGreetingCustomerId',customerId);
   }
+  document.getElementById('formCustomerId').value=customerId;
+  document.getElementById('formCustomerKey').value=customerKey;
   function updateCounter(input,output,max){const n=input.value.length;output.textContent=n+' / '+max;output.classList.toggle('warn',n>=max)}
   recipientInput.addEventListener('input',()=>updateCounter(recipientInput,toCount,limits.name));
   senderInput.addEventListener('input',()=>updateCounter(senderInput,fromCount,limits.name));
@@ -16292,6 +16299,66 @@ app.get("/api/greeting/premium/render-status", requireDashboardKey, async (req, 
 app.get(["/greetings", "/greeting"], (req, res) => {
   const language = String(req.query.lang || "en").toLowerCase();
   res.type("html").send(buildGreetingStudioHomePage(language));
+});
+
+app.post("/birthday-submit", async (req, res) => {
+  const language = ["en", "es", "fr", "de", "pt", "ar", "zh"].includes(String(req.body?.language || "en").toLowerCase())
+    ? String(req.body.language).toLowerCase()
+    : "en";
+  const publicBase = String(
+    process.env.PUBLIC_BASE_URL ||
+    process.env.RENDER_EXTERNAL_URL ||
+    `${req.protocol}://${req.get("host")}`
+  ).replace(/\/$/, "");
+
+  console.log("[Birthday Form Fallback] Native form received", {
+    hasRecipient: Boolean(String(req.body?.to || "").trim()),
+    hasSender: Boolean(String(req.body?.from || "").trim()),
+    messageLength: String(req.body?.message || "").length
+  });
+
+  try {
+    const customerId = String(req.body?.customerId || "").trim();
+    const customerKey = String(req.body?.customerKey || "").trim();
+    const apiResponse = await axios.post(
+      `${publicBase}/api/greeting/birthday/generate`,
+      {
+        to: req.body?.to || "",
+        from: req.body?.from || "",
+        message: req.body?.message || "",
+        language,
+        customerId,
+        customerKey
+      },
+      {
+        headers: {
+          "Content-Type": "application/json",
+          ...(customerId ? { "x-printo-customer-id": customerId } : {}),
+          ...(customerKey ? { "x-printo-customer-key": customerKey } : {})
+        },
+        timeout: PREMIUM_RENDER_STAGE_TIMEOUT_MS * 3,
+        validateStatus: () => true
+      }
+    );
+
+    const data = apiResponse.data || {};
+    if (apiResponse.status >= 200 && apiResponse.status < 300 && data.ok) {
+      const target = String(data.resultUrl || data.downloadUrl || "");
+      if (target) {
+        const separator = target.includes("?") ? "&" : "?";
+        return res.redirect(`${target}${separator}lang=${encodeURIComponent(language)}`);
+      }
+    }
+
+    const message = String(data.error || "Birthday generation failed. Please return and try again.");
+    const paymentLinks = data.paymentRequired && data.payment
+      ? `<p><a href="${String(data.payment.shopify || "#")}">Shopify Payment</a></p><p><a href="${String(data.payment.africa || "#")}">Nigeria Payment</a></p>`
+      : "";
+    return res.status(apiResponse.status || 500).send(`<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><title>Printo Generation</title></head><body style="font-family:Arial;background:#0b2d86;color:white;padding:30px"><div style="max-width:680px;margin:auto;background:white;color:#10245e;padding:24px;border-radius:18px"><h2>Generation could not continue</h2><p>${message.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;")}</p>${paymentLinks}<p><a href="/birthday?lang=${encodeURIComponent(language)}">Return to Birthday Studio</a></p></div></body></html>`);
+  } catch (error) {
+    console.error("[Birthday Form Fallback] Failed:", error);
+    return res.status(500).send(`Birthday generation request failed: ${String(error.message || error)}`);
+  }
 });
 
 app.get(["/birthday", "/birthday-generator", "/generate-birthday", "/greetings/create"], (req, res) => {
