@@ -193,10 +193,35 @@ const PREMIUM_VIDEO_MAX_SECONDS = 60;
 const PREMIUM_MUSIC_MAX_BYTES = 30 * 1024 * 1024;
 const PREMIUM_FINAL_VIDEO_MAX_BYTES = 70 * 1024 * 1024;
 
-// Printo Studio credit system: every new customer receives 100 free credits.
-// Each successful standard or Premium creation uses 20 credits (5 creations).
+// Printo Studio uses one universal credit wallet for every creation service.
+// Every new customer receives 100 welcome credits.
 const PRINTO_FREE_CREDITS = 100;
-const PRINTO_CREATION_CREDIT_COST = 20;
+const PRINTO_MONTHLY_CREDIT_ALLOCATION = 100;
+const PRINTO_CREATION_CREDIT_COSTS = Object.freeze({
+  standard: 20,
+  premium_video: 25,
+  premium_multi_image: 50
+});
+const PRINTO_CREATION_CREDIT_COST = PRINTO_CREATION_CREDIT_COSTS.standard;
+
+function normalizePrintoCreationType(value = "standard") {
+  const normalized = String(value || "standard")
+    .trim()
+    .toLowerCase()
+    .replace(/[\s-]+/g, "_");
+
+  if (["premium", "premium_video", "premium_tribute"].includes(normalized)) {
+    return "premium_video";
+  }
+  if (["multi_image", "premium_multi_image", "premium_multiimage"].includes(normalized)) {
+    return "premium_multi_image";
+  }
+  return "standard";
+}
+
+function getPrintoCreationCreditCost(value = "standard") {
+  return PRINTO_CREATION_CREDIT_COSTS[normalizePrintoCreationType(value)];
+}
 
 // Render's smaller instances may need more than five minutes to encode a
 // full-length Premium tribute video. Allow each long FFmpeg stage up to 20 minutes.
@@ -353,7 +378,7 @@ const PRINTO_MONTHLY_SUBSCRIPTION_URL = process.env.PRINTO_MONTHLY_SUBSCRIPTION_
 const PRINTO_SIX_MONTH_SUBSCRIPTION_URL = process.env.PRINTO_SIX_MONTH_SUBSCRIPTION_URL || "https://www.patapata.us/collections/printo-subscriptions";
 const PRINTO_YEARLY_SUBSCRIPTION_URL = process.env.PRINTO_YEARLY_SUBSCRIPTION_URL || "https://www.patapata.us/collections/printo-subscriptions";
 const PRINTO_STANDARD_SUBSCRIPTION_PRICES = { monthly: 9.99, six_months: 49.99, yearly: 89.99 };
-const PRINTO_SUBSCRIPTION_PRICES = { monthly: 14.99, six_months: 69.99, yearly: 119.99 };
+const PRINTO_SUBSCRIPTION_PRICES = { monthly: 9.99, six_months: 49.99, yearly: 89.99 };
 
 function getPrintoStudioMenuFooter(language = "en") {
   const labels = {
@@ -2235,6 +2260,11 @@ async function ensureGreetingAccessTables() {
   await pool.query(`ALTER TABLE greeting_customer_access ADD COLUMN IF NOT EXISTS subscription_status TEXT NOT NULL DEFAULT 'inactive'`);
   await pool.query(`ALTER TABLE greeting_customer_access ADD COLUMN IF NOT EXISTS subscription_started_at TIMESTAMPTZ`);
   await pool.query(`ALTER TABLE greeting_customer_access ADD COLUMN IF NOT EXISTS subscription_renews_at TIMESTAMPTZ`);
+  await pool.query(`ALTER TABLE greeting_customer_access ADD COLUMN IF NOT EXISTS subscription_term_months INTEGER NOT NULL DEFAULT 0`);
+  await pool.query(`ALTER TABLE greeting_customer_access ADD COLUMN IF NOT EXISTS subscription_ends_at TIMESTAMPTZ`);
+  await pool.query(`ALTER TABLE greeting_customer_access ADD COLUMN IF NOT EXISTS next_credit_release_at TIMESTAMPTZ`);
+  await pool.query(`ALTER TABLE greeting_customer_access ADD COLUMN IF NOT EXISTS monthly_credit_amount INTEGER NOT NULL DEFAULT 0`);
+  await pool.query(`ALTER TABLE greeting_customer_access ADD COLUMN IF NOT EXISTS membership_order_reference TEXT NOT NULL DEFAULT ''`);
   await pool.query(`
     UPDATE greeting_customer_access
     SET paid_credits = CASE
@@ -2428,7 +2458,11 @@ async function getGreetingAccessStatus(customerKey, contactPhone = "") {
       subscription_plan,
       subscription_status,
       subscription_started_at,
-      subscription_renews_at
+      subscription_renews_at,
+      subscription_term_months,
+      subscription_ends_at,
+      next_credit_release_at,
+      monthly_credit_amount
     FROM greeting_customer_access
     WHERE customer_key = $1
     `,
@@ -2454,11 +2488,23 @@ async function getGreetingAccessStatus(customerKey, contactPhone = "") {
     subscriptionPlan: row.subscription_plan || "free",
     subscriptionStatus: row.subscription_status || "inactive",
     subscriptionStartedAt: row.subscription_started_at || null,
-    subscriptionRenewsAt: row.subscription_renews_at || null
+    subscriptionRenewsAt: row.subscription_renews_at || null,
+    subscriptionTermMonths: Number(row.subscription_term_months || 0),
+    subscriptionEndsAt: row.subscription_ends_at || null,
+    nextCreditReleaseAt: row.next_credit_release_at || null,
+    monthlyCreditAmount: Number(row.monthly_credit_amount || 0),
+    creationCosts: PRINTO_CREATION_CREDIT_COSTS,
+    remainingByService: {
+      standard: Math.floor(creditBalance / PRINTO_CREATION_CREDIT_COSTS.standard),
+      premiumVideo: Math.floor(creditBalance / PRINTO_CREATION_CREDIT_COSTS.premium_video),
+      premiumMultiImage: Math.floor(creditBalance / PRINTO_CREATION_CREDIT_COSTS.premium_multi_image)
+    }
   };
 }
 
-async function reserveGreetingGenerationAccess(customerKey, contactPhone = "") {
+async function reserveGreetingGenerationAccess(customerKey, contactPhone = "", creationType = "standard") {
+  const normalizedCreationType = normalizePrintoCreationType(creationType);
+  const creditCost = getPrintoCreationCreditCost(normalizedCreationType);
   const client = await pool.connect();
 
   try {
@@ -2493,14 +2539,14 @@ async function reserveGreetingGenerationAccess(customerKey, contactPhone = "") {
         paid_credits = paid_credits - $2,
         free_used = TRUE,
         total_generated = total_generated + 1,
-        last_generation_source = 'credits',
+        last_generation_source = 'credits:' || $3,
         last_generated_at = NOW(),
         updated_at = NOW()
       WHERE customer_key = $1
         AND paid_credits >= $2
       RETURNING *
       `,
-      [customerKey, PRINTO_CREATION_CREDIT_COST]
+      [customerKey, creditCost, normalizedCreationType]
     );
 
     if (paidResult.rows[0]) {
@@ -2511,11 +2557,12 @@ async function reserveGreetingGenerationAccess(customerKey, contactPhone = "") {
       return {
         allowed: true,
         source: "credits",
+        creationType: normalizedCreationType,
         customerKey,
-        creditsUsed: PRINTO_CREATION_CREDIT_COST,
+        creditsUsed: creditCost,
         paidCredits: creditBalance,
         creditBalance,
-        remainingCreations: Math.floor(creditBalance / PRINTO_CREATION_CREDIT_COST),
+        remainingCreations: Math.floor(creditBalance / creditCost),
         totalGenerated: Number(row.total_generated || 0)
       };
     }
@@ -2531,11 +2578,12 @@ async function reserveGreetingGenerationAccess(customerKey, contactPhone = "") {
     return {
       allowed: false,
       source: "payment_required",
+      creationType: normalizedCreationType,
       customerKey,
       paidCredits: creditBalance,
       creditBalance,
-      creditsNeeded: Math.max(PRINTO_CREATION_CREDIT_COST - creditBalance, 0),
-      remainingCreations: Math.floor(creditBalance / PRINTO_CREATION_CREDIT_COST),
+      creditsNeeded: Math.max(creditCost - creditBalance, 0),
+      remainingCreations: Math.floor(creditBalance / creditCost),
       totalGenerated: Number(row.total_generated || 0)
     };
   } catch (error) {
@@ -2546,8 +2594,9 @@ async function reserveGreetingGenerationAccess(customerKey, contactPhone = "") {
   }
 }
 
-async function refundGreetingGenerationAccess(customerKey, source = "") {
+async function refundGreetingGenerationAccess(customerKey, source = "", creditsUsed = PRINTO_CREATION_CREDIT_COST) {
   if (!customerKey || source !== "credits") return;
+  const safeCreditsUsed = Math.max(1, Number(creditsUsed) || PRINTO_CREATION_CREDIT_COST);
 
   await pool.query(
     `
@@ -2560,7 +2609,7 @@ async function refundGreetingGenerationAccess(customerKey, source = "") {
       updated_at = NOW()
     WHERE customer_key = $1
     `,
-    [customerKey, PRINTO_CREATION_CREDIT_COST]
+    [customerKey, safeCreditsUsed]
   );
 }
 
@@ -2696,6 +2745,152 @@ async function grantGreetingPaidCredits({
   } finally {
     client.release();
   }
+}
+
+
+function addMonthsUtc(dateValue, months) {
+  const date = new Date(dateValue);
+  const originalDay = date.getUTCDate();
+  date.setUTCDate(1);
+  date.setUTCMonth(date.getUTCMonth() + Number(months || 0));
+  const lastDay = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth() + 1, 0)).getUTCDate();
+  date.setUTCDate(Math.min(originalDay, lastDay));
+  return date;
+}
+
+async function activatePrintoMembership({
+  customerKey,
+  contactPhone = "",
+  plan = "monthly",
+  termMonths = 1,
+  orderReference = "",
+  payload = {}
+}) {
+  const safeTermMonths = Math.max(1, Math.min(12, Number(termMonths) || 1));
+  const safePlan = String(plan || "monthly").toLowerCase();
+  const now = new Date();
+  const endsAt = addMonthsUtc(now, safeTermMonths);
+  const nextReleaseAt = addMonthsUtc(now, 1);
+
+  const creditResult = await grantGreetingPaidCredits({
+    customerKey,
+    contactPhone,
+    credits: PRINTO_MONTHLY_CREDIT_ALLOCATION,
+    provider: "shopify_membership",
+    eventKey: `membership:${orderReference || customerKey}:month:1`,
+    payload: { ...payload, membershipPlan: safePlan, termMonths: safeTermMonths }
+  });
+
+  await pool.query(
+    `
+    UPDATE greeting_customer_access
+    SET subscription_plan = $2,
+        subscription_status = 'active',
+        subscription_started_at = NOW(),
+        subscription_renews_at = $3,
+        subscription_term_months = $4,
+        subscription_ends_at = $3,
+        next_credit_release_at = $5,
+        monthly_credit_amount = $6,
+        membership_order_reference = $7,
+        updated_at = NOW()
+    WHERE customer_key = $1
+    `,
+    [
+      customerKey,
+      safePlan,
+      endsAt.toISOString(),
+      safeTermMonths,
+      nextReleaseAt.toISOString(),
+      PRINTO_MONTHLY_CREDIT_ALLOCATION,
+      String(orderReference || "")
+    ]
+  );
+
+  return { ...creditResult, plan: safePlan, termMonths: safeTermMonths, endsAt, nextReleaseAt };
+}
+
+async function releaseDuePrintoMembershipCredits() {
+  const client = await pool.connect();
+  let released = 0;
+  try {
+    await client.query("BEGIN");
+    const due = await client.query(
+      `
+      SELECT customer_key, contact_phone, subscription_plan, subscription_ends_at,
+             next_credit_release_at, monthly_credit_amount, membership_order_reference
+      FROM greeting_customer_access
+      WHERE subscription_status = 'active'
+        AND next_credit_release_at IS NOT NULL
+        AND next_credit_release_at <= NOW()
+      FOR UPDATE SKIP LOCKED
+      `
+    );
+
+    for (const row of due.rows) {
+      const endsAt = row.subscription_ends_at ? new Date(row.subscription_ends_at) : null;
+      let releaseAt = new Date(row.next_credit_release_at);
+      const amount = Math.max(1, Number(row.monthly_credit_amount || PRINTO_MONTHLY_CREDIT_ALLOCATION));
+
+      while (releaseAt <= new Date() && (!endsAt || releaseAt < endsAt)) {
+        const eventKey = `membership:${row.membership_order_reference || row.customer_key}:${releaseAt.toISOString().slice(0, 10)}`;
+        const event = await client.query(
+          `INSERT INTO greeting_payment_events(event_key, customer_key, provider, credits, payload, created_at)
+           VALUES($1,$2,'membership_monthly_release',$3,$4::jsonb,NOW())
+           ON CONFLICT(event_key) DO NOTHING RETURNING event_key`,
+          [eventKey, row.customer_key, amount, JSON.stringify({ plan: row.subscription_plan, releaseAt })]
+        );
+        if (event.rows[0]) {
+          await client.query(
+            `UPDATE greeting_customer_access SET paid_credits = paid_credits + $2, updated_at = NOW() WHERE customer_key = $1`,
+            [row.customer_key, amount]
+          );
+          released += 1;
+        }
+        releaseAt = addMonthsUtc(releaseAt, 1);
+      }
+
+      const expired = Boolean(endsAt && new Date() >= endsAt);
+      await client.query(
+        `UPDATE greeting_customer_access
+         SET next_credit_release_at = $2,
+             subscription_status = CASE WHEN $3 THEN 'expired' ELSE subscription_status END,
+             updated_at = NOW()
+         WHERE customer_key = $1`,
+        [row.customer_key, expired ? null : releaseAt.toISOString(), expired]
+      );
+    }
+
+    await client.query("COMMIT");
+    return released;
+  } catch (error) {
+    await client.query("ROLLBACK").catch(() => {});
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+function getShopifyLineItemText(order = {}) {
+  return (Array.isArray(order.line_items) ? order.line_items : [])
+    .map((item) => `${item.title || ""} ${item.name || ""} ${item.variant_title || ""}`)
+    .join(" ")
+    .toLowerCase();
+}
+
+function detectPrintoMembershipPurchase(order = {}) {
+  const text = getShopifyLineItemText(order);
+  if (!text.includes("printto premium") && !text.includes("printo premium")) return null;
+  if (text.includes("annual") || text.includes("1-year") || text.includes("1 year")) {
+    return { plan: "annual", termMonths: 12 };
+  }
+  if (text.includes("6-month") || text.includes("6 month")) {
+    return { plan: "six_month", termMonths: 6 };
+  }
+  if (text.includes("monthly")) {
+    return { plan: "monthly", termMonths: 1 };
+  }
+  return null;
 }
 
 function appendUrlParameters(baseUrl, params = {}) {
@@ -4586,7 +4781,9 @@ app.post("/api/greeting/access/status", async (req, res) => {
       creationCost: status.creationCost,
       remainingCreations: status.remainingCreations,
       totalGenerated: status.totalGenerated,
-      paymentRequired: status.creditBalance < PRINTO_CREATION_CREDIT_COST,
+      paymentRequired: status.creditBalance < PRINTO_CREATION_CREDIT_COSTS.standard,
+      creationCosts: PRINTO_CREATION_CREDIT_COSTS,
+      remainingByService: status.remainingByService,
       payment
     });
   } catch (error) {
@@ -4615,11 +4812,13 @@ app.get("/api/credits/:customerId", async (req, res) => {
 app.post("/api/credits/use", async (req, res) => {
   try {
     const identity = getGreetingCustomerIdentity(req, req.body || {});
-    const reservation = await reserveGreetingGenerationAccess(identity.customerKey, identity.contactPhone);
+    const creationType = normalizePrintoCreationType(req.body?.creationType || req.body?.serviceType || "standard");
+    const reservation = await reserveGreetingGenerationAccess(identity.customerKey, identity.contactPhone, creationType);
     return res.status(reservation.allowed ? 200 : 402).json({
       ok: reservation.allowed,
       paymentRequired: !reservation.allowed,
-      creationCost: PRINTO_CREATION_CREDIT_COST,
+      creationType,
+      creationCost: getPrintoCreationCreditCost(creationType),
       ...reservation
     });
   } catch (error) {
@@ -4875,6 +5074,51 @@ app.post("/webhooks/shopify/orders-paid", async (req, res) => {
       });
     }
 
+    const membershipPurchase = detectPrintoMembershipPurchase(order);
+    if (membershipPurchase) {
+      const membershipEmail = String(order.email || order.customer?.email || "").trim().toLowerCase();
+      const membershipCustomerKey =
+        getShopifyNoteAttribute(order, [
+          "Greeting Customer Key",
+          "greeting_customer_key",
+          "Printo Greeting Customer Key"
+        ]) ||
+        String(order.greeting_customer_key || "").trim() ||
+        (membershipEmail ? makeGreetingCustomerKey(`email:${membershipEmail}`) : "");
+
+      if (!membershipCustomerKey) {
+        return res.status(200).json({
+          ok: true,
+          ignored: true,
+          reason: "Membership customer identity is missing."
+        });
+      }
+
+      const membershipPhone = String(order.phone || order.customer?.phone || "").replace(/\D+/g, "");
+      const membershipResult = await activatePrintoMembership({
+        customerKey: membershipCustomerKey,
+        contactPhone: membershipPhone,
+        plan: membershipPurchase.plan,
+        termMonths: membershipPurchase.termMonths,
+        orderReference: String(orderReference),
+        payload: order
+      });
+
+      if (membershipPhone && !membershipResult.duplicate) {
+        await sendMessage(
+          membershipPhone,
+          `✅ Your Printo ${membershipPurchase.plan.replace("_", " ")} membership is active.\n\n100 universal Printo credits have been added now. Another 100 credits will be released each month while the membership term remains active.\n\n${PRINTO_STUDIO_URL}`
+        );
+      }
+
+      return res.status(200).json({
+        ok: true,
+        membership: true,
+        customerKey: membershipCustomerKey,
+        result: membershipResult
+      });
+    }
+
     const customerKey =
       getShopifyNoteAttribute(order, [
         "Greeting Customer Key",
@@ -4897,7 +5141,7 @@ app.post("/webhooks/shopify/orders-paid", async (req, res) => {
         "greeting_credits",
         "Printo Greeting Credits"
       ]) ||
-      "1";
+      String(PRINTO_CREATION_CREDIT_COSTS.standard);
 
     if (!customerKey) {
       console.log(
@@ -4917,7 +5161,7 @@ app.post("/webhooks/shopify/orders-paid", async (req, res) => {
       });
     }
 
-    const requestedCredits = Math.max(1, Number(creditsValue) || 1);
+    const requestedCredits = Math.max(1, Number(creditsValue) || PRINTO_CREATION_CREDIT_COSTS.standard);
 
     const result = await grantGreetingPaidCredits({
       customerKey,
@@ -15412,7 +15656,8 @@ app.post(
       });
       premiumAccessReservation = await reserveGreetingGenerationAccess(
         premiumCustomerIdentity.customerKey,
-        premiumCustomerIdentity.contactPhone
+        premiumCustomerIdentity.contactPhone,
+        "premium_video"
       );
 
       if (!premiumAccessReservation.allowed) {
@@ -15424,7 +15669,7 @@ app.post(
         return res.status(402).json({
           ok: false,
           paymentRequired: true,
-          error: `You need ${PRINTO_CREATION_CREDIT_COST} credits to create this Premium Tribute.`,
+          error: `You need ${PRINTO_CREATION_CREDIT_COSTS.premium_video} credits to create this Premium Tribute.`,
           customerKey: premiumCustomerIdentity.customerKey,
           access: premiumAccessReservation,
           payment
@@ -15510,7 +15755,7 @@ app.post(
              paid_at = NOW(),
              updated_at = NOW()
          WHERE order_id = $1`,
-        [orderId, `credits:${PRINTO_CREATION_CREDIT_COST}`]
+        [orderId, `credits:${PRINTO_CREATION_CREDIT_COSTS.premium_video}`]
       );
 
       const job = await createPremiumGreetingDashboardJob({
@@ -16760,7 +17005,7 @@ app.get("/api/customer/dashboard/:customerId", async (req,res)=>{
   } catch(error){res.status(500).json({ok:false,error:error.message});}
 });
 
-app.get("/subscriptions", (req,res)=>res.type('html').send(`<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><title>Printo Plans</title><style>*{box-sizing:border-box}body{margin:0;font-family:Arial;background:linear-gradient(150deg,#071b61,#0b63ce);color:#fff;padding:24px}.wrap{max-width:1180px;margin:auto;text-align:center}.topbar{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}.close-link{background:#fff;color:#082a8f;text-decoration:none;padding:11px 16px;border-radius:999px;font-weight:900}.section{margin:28px 0 38px}.section-title{font-size:30px;margin:0 0 8px}.section-sub{margin:0 0 18px}.plans{display:grid;grid-template-columns:repeat(4,1fr);gap:16px}.plan{background:#fff;color:#082a8f;border:3px solid #ffd21f;border-radius:22px;padding:22px;position:relative}.plan.premium{border-color:#c13cff;box-shadow:0 10px 28px rgba(0,0,0,.18)}.badge{display:inline-block;background:#123faa;color:#fff;border-radius:999px;padding:7px 12px;font-size:13px;font-weight:900;margin-bottom:8px}.premium .badge{background:#7b2cbf}.price{font-size:34px;font-weight:900}.plan a{display:block;background:#7b2cbf;color:#fff;text-decoration:none;padding:14px;border-radius:12px;font-weight:900;margin-top:16px}.standard a{background:#123faa}.best{transform:scale(1.03)}.note{background:#fff4b8;color:#082a8f;border:3px solid #ffd21f;border-radius:18px;padding:16px;margin:0 auto 20px;max-width:820px;font-weight:900}@media(max-width:950px){.plans{grid-template-columns:1fr 1fr}}@media(max-width:560px){body{padding:16px}.plans{grid-template-columns:1fr}.best{transform:none}.topbar{justify-content:center}.section-title{font-size:25px}}</style></head><body><main class="wrap"><div class="topbar"><h1>⭐ Printo Credits & Subscriptions</h1><a class="close-link" href="/greetings">✕ Close / Return to Studio</a></div><div class="note">🎁 Every new user receives 100 FREE credits — enough for 5 standard creations. Each standard creation uses 20 credits.</div><p>Choose a lower-cost Standard plan for regular greeting videos, or a Premium plan for richer personalized experiences.</p><section class="section"><h2 class="section-title">🎁 Standard Greeting Plans</h2><p class="section-sub">For personalized standard greeting video cards with names, messages, Printo music and voice.</p><div class="plans"><article class="plan standard"><span class="badge">STANDARD</span><h2>Single Creation</h2><div class="price">$4.99</div><p>20 credits • 1 standard creation</p><a href="${PRINTO_SINGLE_CREATION_URL}">Buy One</a></article><article class="plan standard"><span class="badge">STANDARD</span><h2>Monthly</h2><div class="price">$${PRINTO_STANDARD_SUBSCRIPTION_PRICES.monthly.toFixed(2)}</div><p>100 credits monthly • 5 standard creations</p><a href="${PRINTO_STANDARD_MONTHLY_SUBSCRIPTION_URL}">Choose Standard Monthly</a></article><article class="plan standard"><span class="badge">STANDARD</span><h2>6 Months</h2><div class="price">$${PRINTO_STANDARD_SUBSCRIPTION_PRICES.six_months.toFixed(2)}</div><p>600 credits • 30 standard creations</p><a href="${PRINTO_STANDARD_SIX_MONTH_SUBSCRIPTION_URL}">Choose Standard 6 Months</a></article><article class="plan standard best"><span class="badge">BEST STANDARD VALUE</span><h2>1 Year</h2><div class="price">$${PRINTO_STANDARD_SUBSCRIPTION_PRICES.yearly.toFixed(2)}</div><p>1,200 credits • 60 standard creations</p><a href="${PRINTO_STANDARD_YEARLY_SUBSCRIPTION_URL}">Choose Standard Annual</a></article></div></section><section class="section"><h2 class="section-title">🌟 Premium Subscription Plans</h2><p class="section-sub">For Premium Tribute and enhanced personalized video experiences. Premium jobs may use more credits depending on the service selected.</p><div class="plans"><article class="plan premium"><span class="badge">PREMIUM</span><h2>Monthly</h2><div class="price">$${PRINTO_SUBSCRIPTION_PRICES.monthly.toFixed(2)}</div><p>Premium monthly access and 100 credits</p><a href="${PRINTO_MONTHLY_SUBSCRIPTION_URL}">Choose Premium Monthly</a></article><article class="plan premium"><span class="badge">PREMIUM</span><h2>6 Months</h2><div class="price">$${PRINTO_SUBSCRIPTION_PRICES.six_months.toFixed(2)}</div><p>Premium 6-month access and 600 credits</p><a href="${PRINTO_SIX_MONTH_SUBSCRIPTION_URL}">Choose Premium 6 Months</a></article><article class="plan premium best"><span class="badge">BEST PREMIUM VALUE</span><h2>1 Year</h2><div class="price">$${PRINTO_SUBSCRIPTION_PRICES.yearly.toFixed(2)}</div><p>Premium annual access and 1,200 credits</p><a href="${PRINTO_YEARLY_SUBSCRIPTION_URL}">Choose Premium Annual</a></article></div></section><p><a class="close-link" href="/greetings">← Return to Printo Greeting Studio</a></p></main></body></html>`));
+app.get("/subscriptions", (req,res)=>res.type('html').send(`<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><title>Printo Plans</title><style>*{box-sizing:border-box}body{margin:0;font-family:Arial;background:linear-gradient(150deg,#071b61,#0b63ce);color:#fff;padding:24px}.wrap{max-width:1180px;margin:auto;text-align:center}.topbar{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}.close-link{background:#fff;color:#082a8f;text-decoration:none;padding:11px 16px;border-radius:999px;font-weight:900}.section{margin:28px 0 38px}.section-title{font-size:30px;margin:0 0 8px}.section-sub{margin:0 0 18px}.plans{display:grid;grid-template-columns:repeat(4,1fr);gap:16px}.plan{background:#fff;color:#082a8f;border:3px solid #ffd21f;border-radius:22px;padding:22px;position:relative}.plan.premium{border-color:#c13cff;box-shadow:0 10px 28px rgba(0,0,0,.18)}.badge{display:inline-block;background:#123faa;color:#fff;border-radius:999px;padding:7px 12px;font-size:13px;font-weight:900;margin-bottom:8px}.premium .badge{background:#7b2cbf}.price{font-size:34px;font-weight:900}.plan a{display:block;background:#7b2cbf;color:#fff;text-decoration:none;padding:14px;border-radius:12px;font-weight:900;margin-top:16px}.standard a{background:#123faa}.best{transform:scale(1.03)}.note{background:#fff4b8;color:#082a8f;border:3px solid #ffd21f;border-radius:18px;padding:16px;margin:0 auto 20px;max-width:820px;font-weight:900}@media(max-width:950px){.plans{grid-template-columns:1fr 1fr}}@media(max-width:560px){body{padding:16px}.plans{grid-template-columns:1fr}.best{transform:none}.topbar{justify-content:center}.section-title{font-size:25px}}</style></head><body><main class="wrap"><div class="topbar"><h1>⭐ Printo Credits & Subscriptions</h1><a class="close-link" href="/greetings">✕ Close / Return to Studio</a></div><div class="note">🎁 Every new user receives 100 FREE credits — enough for 5 standard creations. Each standard creation uses 20 credits.</div><p>Use one universal Printo credit wallet for Standard, Premium Video, and Premium Multi-Image creations.</p><section class="section"><h2 class="section-title">🎁 Standard Greeting Plans</h2><p class="section-sub">For personalized standard greeting video cards with names, messages, Printo music and voice.</p><div class="plans"><article class="plan standard"><span class="badge">STANDARD</span><h2>Single Creation</h2><div class="price">$4.99</div><p>20 credits • 1 standard creation</p><a href="${PRINTO_SINGLE_CREATION_URL}">Buy One</a></article><article class="plan standard"><span class="badge">STANDARD</span><h2>Monthly</h2><div class="price">$${PRINTO_STANDARD_SUBSCRIPTION_PRICES.monthly.toFixed(2)}</div><p>100 credits monthly • 5 standard creations</p><a href="${PRINTO_STANDARD_MONTHLY_SUBSCRIPTION_URL}">Choose Standard Monthly</a></article><article class="plan standard"><span class="badge">STANDARD</span><h2>6 Months</h2><div class="price">$${PRINTO_STANDARD_SUBSCRIPTION_PRICES.six_months.toFixed(2)}</div><p>600 credits • 30 standard creations</p><a href="${PRINTO_STANDARD_SIX_MONTH_SUBSCRIPTION_URL}">Choose Standard 6 Months</a></article><article class="plan standard best"><span class="badge">BEST STANDARD VALUE</span><h2>1 Year</h2><div class="price">$${PRINTO_STANDARD_SUBSCRIPTION_PRICES.yearly.toFixed(2)}</div><p>1,200 credits • 60 standard creations</p><a href="${PRINTO_STANDARD_YEARLY_SUBSCRIPTION_URL}">Choose Standard Annual</a></article></div></section><section class="section"><h2 class="section-title">🌟 Premium Subscription Plans</h2><p class="section-sub">For Premium Tribute and enhanced personalized video experiences. Credit costs: Standard 20, Premium Video 25, Premium Multi-Image 50.</p><div class="plans"><article class="plan premium"><span class="badge">PREMIUM</span><h2>Monthly</h2><div class="price">$${PRINTO_SUBSCRIPTION_PRICES.monthly.toFixed(2)}</div><p>100 credits now, then 100 credits each active month</p><a href="${PRINTO_MONTHLY_SUBSCRIPTION_URL}">Choose Premium Monthly</a></article><article class="plan premium"><span class="badge">PREMIUM</span><h2>6 Months</h2><div class="price">$${PRINTO_SUBSCRIPTION_PRICES.six_months.toFixed(2)}</div><p>100 credits monthly for 6 months</p><a href="${PRINTO_SIX_MONTH_SUBSCRIPTION_URL}">Choose Premium 6 Months</a></article><article class="plan premium best"><span class="badge">BEST PREMIUM VALUE</span><h2>1 Year</h2><div class="price">$${PRINTO_SUBSCRIPTION_PRICES.yearly.toFixed(2)}</div><p>100 credits monthly for 12 months</p><a href="${PRINTO_YEARLY_SUBSCRIPTION_URL}">Choose Premium Annual</a></article></div></section><p><a class="close-link" href="/greetings">← Return to Printo Greeting Studio</a></p></main></body></html>`));
 
 app.get("/customer-dashboard", (req,res)=>res.type('html').send(`<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><title>My Printo Dashboard</title><style>body{font-family:Arial;margin:0;background:#082a8f;color:#fff;padding:20px}.wrap{max-width:900px;margin:auto}.head{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}.close-link{background:#fff;color:#082a8f;text-decoration:none;padding:11px 16px;border-radius:999px;font-weight:900}.card{background:#fff;color:#082a8f;border-radius:18px;padding:18px;margin:14px 0}.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}.stat{background:#edf4ff;padding:15px;border-radius:14px;text-align:center}.buttons a{display:inline-block;margin:6px;padding:12px 16px;border-radius:12px;background:#7b2cbf;color:#fff;text-decoration:none;font-weight:bold}.video{border-top:1px solid #ddd;padding:12px 0}@media(max-width:600px){.stats{grid-template-columns:1fr}.head{justify-content:center}}</style></head><body><main class="wrap"><div class="head"><h1>⭐ My Printo Dashboard</h1><a class="close-link" href="/greetings">✕ Close / Return to Studio</a></div><div id="content" class="card">Loading…</div></main><script>let id=localStorage.getItem('printoGreetingCustomerId');if(!id){id='printo_'+Date.now()+'_'+Math.random().toString(36).slice(2);localStorage.setItem('printoGreetingCustomerId',id)}fetch('/api/customer/dashboard/'+encodeURIComponent(id),{cache:'no-store'}).then(r=>r.json()).then(d=>{if(!d.ok)throw Error(d.error);document.getElementById('content').innerHTML='<div style="background:#fff4b8;border:2px solid #ffd21f;border-radius:14px;padding:14px;margin-bottom:14px;font-weight:900">🎁 Welcome Bonus: Every new user receives 100 FREE credits for 5 standard creations.</div><div class="stats"><div class="stat"><h2>'+d.creditBalance+'</h2>Credits</div><div class="stat"><h2>'+d.remainingCreations+'</h2>Creations</div><div class="stat"><h2>'+String(d.subscriptionPlan||'Free Welcome')+'</h2>Plan</div></div><div class="buttons"><a href="/greetings">Create Another</a><a href="/subscriptions">Buy Credits / Subscribe</a><a href="/greetings">✕ Close / Return to Studio</a></div><h2>My Finished Videos</h2>'+(d.videos.length?d.videos.map(v=>'<div class="video"><strong>For '+(v.toName||'Recipient')+'</strong><br><a href="'+v.resultUrl+'">▶ Play</a> &nbsp; <a href="'+v.downloadUrl+'">⬇ Download</a></div>').join(''):'<p>No finished videos yet.</p>')}).catch(e=>document.getElementById('content').textContent='Could not load dashboard: '+e.message)</script></body></html>`));
 
@@ -16908,7 +17153,13 @@ async function startServer() {
   try {
     await ensureGreetingAccessTables();
     await syncPremiumDashboardProductionStatus();
-    console.log("Greeting access tables and Premium dashboard status are ready.");
+    await releaseDuePrintoMembershipCredits();
+    setInterval(() => {
+      releaseDuePrintoMembershipCredits().catch((error) =>
+        console.error("Monthly Printo credit release failed:", error.message || error)
+      );
+    }, 60 * 60 * 1000).unref();
+    console.log("Greeting access tables, memberships, and Premium dashboard status are ready.");
   } catch (error) {
     console.error(
       "Greeting access table setup failed. Greeting generation will stay protected until the database is available:",
