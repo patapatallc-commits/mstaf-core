@@ -14480,10 +14480,12 @@ async function generatePrintoBirthdayVoice({ recipientName, senderName, message,
   // “Happy Birthday” (with or without the recipient's name), that duplicate
   // opening is removed from speech only. The text printed on the card is not changed.
   const spokenMessage = removeDuplicateBirthdayOpening(message, recipientName);
+  // Speak only the one automatic birthday greeting and the customer's exact
+  // personal message. Do not add any extra sentence that was not entered in
+  // the Personal Message field. The sender name remains displayed on the card.
   const voiceText = [
     `Happy Birthday, ${recipientName}!`,
-    spokenMessage,
-    `This greeting is from ${senderName}.`
+    spokenMessage
   ].filter(Boolean).join(" ");
 
   try {
