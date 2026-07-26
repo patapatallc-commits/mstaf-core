@@ -347,10 +347,12 @@ app.get("/greeting-assets/birthday-v2.png", (req, res) => {
   return res.sendFile(assetPath);
 });
 
-app.use(express.static("public"));
-app.get("/", (req, res) => {
+// Keep the branded Studio root from being swallowed by public/index.html.
+// The explicit root routes must come before express.static.
+app.get(["/", "/index.html"], (req, res) => {
   return res.redirect(302, "/greetings");
 });
+app.use(express.static("public", { index: false }));
 app.use(express.json({
   limit: "20mb",
   verify: (req, _res, buffer) => {
@@ -2283,6 +2285,22 @@ async function ensureGreetingAccessTables() {
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
+  `);
+
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS printo_accounts (
+      normalized_contact TEXT PRIMARY KEY,
+      customer_key TEXT UNIQUE NOT NULL,
+      pin_salt TEXT NOT NULL,
+      pin_hash TEXT NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `);
+
+  await pool.query(`
+    CREATE UNIQUE INDEX IF NOT EXISTS printo_accounts_customer_key_idx
+    ON printo_accounts(customer_key)
   `);
 
   await pool.query(`ALTER TABLE greeting_customer_access ADD COLUMN IF NOT EXISTS free_credits_granted BOOLEAN NOT NULL DEFAULT FALSE`);
@@ -4791,53 +4809,213 @@ function normalizePrintoAccountContact(value = "") {
   return digits.length >= 8 && digits.length <= 15 ? `phone:${digits}` : "";
 }
 
-function makePrintoAccountCustomerKey(contact = "", pin = "") {
-  const normalizedContact = normalizePrintoAccountContact(contact);
-  const normalizedPin = String(pin || "").replace(/\D+/g, "");
-  if (!normalizedContact || !/^\d{6}$/.test(normalizedPin)) return "";
-  return makeGreetingCustomerKey(`printo-account:${normalizedContact}:${normalizedPin}`);
+function normalizePrintoAccountPin(value = "") {
+  const pin = String(value || "").replace(/\D+/g, "");
+  return /^\d{6}$/.test(pin) ? pin : "";
 }
 
-async function migratePrintoCustomerIdentity(sourceKey, targetKey, contact = "") {
+function makePrintoAccountCustomerKey(contact = "") {
+  const normalizedContact = normalizePrintoAccountContact(contact);
+  if (!normalizedContact) return "";
+  // The account identity is based on the contact only. A different PIN must
+  // never create another 100-credit account for the same email or phone.
+  return makeGreetingCustomerKey(`printo-account:${normalizedContact}`);
+}
+
+function hashPrintoAccountPin(pin, salt) {
+  return crypto.scryptSync(String(pin), String(salt), 32).toString("hex");
+}
+
+function printoPinHashesMatch(left = "", right = "") {
+  try {
+    const a = Buffer.from(String(left), "hex");
+    const b = Buffer.from(String(right), "hex");
+    return a.length > 0 && a.length === b.length && crypto.timingSafeEqual(a, b);
+  } catch (_error) {
+    return false;
+  }
+}
+
+async function isVerifiedPrintoAccountKey(customerKey = "") {
+  if (!/^g_[a-f0-9]{64}$/i.test(String(customerKey || ""))) return false;
+  const result = await queryWithRetry(
+    `SELECT 1 FROM printo_accounts WHERE customer_key = $1 LIMIT 1`,
+    [String(customerKey)]
+  );
+  return Boolean(result.rows[0]);
+}
+
+async function migratePrintoCustomerIdentity(sourceKey, targetKey, contact = "", options = {}) {
   if (!targetKey) throw new Error("A Printo account identity is required.");
+  const targetAlreadyExisted = Boolean(options.targetAlreadyExisted);
+
   if (!sourceKey || sourceKey === targetKey) {
-    await ensureGreetingCustomerRow(targetKey, normalizePrintoAccountContact(contact).startsWith("phone:") ? normalizePrintoAccountContact(contact).slice(6) : "");
+    await ensureGreetingCustomerRow(
+      targetKey,
+      normalizePrintoAccountContact(contact).startsWith("phone:")
+        ? normalizePrintoAccountContact(contact).slice(6)
+        : ""
+    );
     return;
   }
 
+  let sourceStandardVideoCount = 0;
+  if (sourceKey) {
+    for (const name of fs.readdirSync(generatedDir).filter((item) => item.endsWith(".json"))) {
+      try {
+        const metadata = JSON.parse(
+          fs.readFileSync(path.join(generatedDir, name), "utf8")
+        );
+        if (metadata.customerKey === sourceKey) {
+          sourceStandardVideoCount += 1;
+        }
+      } catch (_error) {}
+    }
+  }
+
   const client = await pool.connect();
+  let shouldMoveMetadata = false;
+
   try {
     await client.query("BEGIN");
-    const sourceResult = await client.query("SELECT * FROM greeting_customer_access WHERE customer_key = $1 FOR UPDATE", [sourceKey]);
-    const targetResult = await client.query("SELECT * FROM greeting_customer_access WHERE customer_key = $1 FOR UPDATE", [targetKey]);
+
+    const sourceResult = await client.query(
+      "SELECT * FROM greeting_customer_access WHERE customer_key = $1 FOR UPDATE",
+      [sourceKey]
+    );
+    const targetResult = await client.query(
+      "SELECT * FROM greeting_customer_access WHERE customer_key = $1 FOR UPDATE",
+      [targetKey]
+    );
+
     const source = sourceResult.rows[0] || null;
     const target = targetResult.rows[0] || null;
-    const phone = normalizePrintoAccountContact(contact).startsWith("phone:") ? normalizePrintoAccountContact(contact).slice(6) : "";
+    const normalizedContact = normalizePrintoAccountContact(contact);
+    const phone = normalizedContact.startsWith("phone:")
+      ? normalizedContact.slice(6)
+      : "";
 
-    if (source && !target) {
+    if (!targetAlreadyExisted && source && !target) {
+      // First connection of a legacy browser wallet. Preserve paid value,
+      // but reconcile old free-account records against the actual number of
+      // finished videos so a second browser's generation cannot appear
+      // without its 20-credit deduction.
+      const paidEventResult = await client.query(
+        `SELECT COUNT(*)::int AS event_count
+         FROM greeting_payment_events
+         WHERE customer_key = $1`,
+        [sourceKey]
+      );
+      const sourceHasPaidValue =
+        Number(paidEventResult.rows[0]?.event_count || 0) > 0 ||
+        String(source.subscription_plan || "free") !== "free" ||
+        String(source.subscription_status || "inactive") === "active";
+
+      const reconciledTotalGenerated = Math.max(
+        Number(source.total_generated || 0),
+        sourceStandardVideoCount
+      );
+      const reconciledCredits = sourceHasPaidValue
+        ? Math.max(0, Number(source.paid_credits || 0))
+        : Math.min(
+            Math.max(0, Number(source.paid_credits || 0)),
+            Math.max(
+              0,
+              PRINTO_FREE_CREDITS -
+                sourceStandardVideoCount * PRINTO_CREATION_CREDIT_COSTS.standard
+            )
+          );
+
       await client.query(
         `UPDATE greeting_customer_access
          SET customer_key = $2,
              contact_phone = CASE WHEN $3 <> '' THEN $3 ELSE contact_phone END,
+             paid_credits = $4,
+             total_generated = $5,
              updated_at = NOW()
          WHERE customer_key = $1`,
-        [sourceKey, targetKey, phone]
+        [
+          sourceKey,
+          targetKey,
+          phone,
+          reconciledCredits,
+          reconciledTotalGenerated
+        ]
       );
+      shouldMoveMetadata = true;
     } else {
       await client.query(
-        `INSERT INTO greeting_customer_access (customer_key, contact_phone, paid_credits, free_credits_granted, created_at, updated_at)
+        `INSERT INTO greeting_customer_access (
+           customer_key,
+           contact_phone,
+           paid_credits,
+           free_credits_granted,
+           created_at,
+           updated_at
+         )
          VALUES ($1, $2, $3, TRUE, NOW(), NOW())
          ON CONFLICT (customer_key) DO UPDATE SET
-           contact_phone = CASE WHEN EXCLUDED.contact_phone <> '' THEN EXCLUDED.contact_phone ELSE greeting_customer_access.contact_phone END,
+           contact_phone = CASE
+             WHEN EXCLUDED.contact_phone <> '' THEN EXCLUDED.contact_phone
+             ELSE greeting_customer_access.contact_phone
+           END,
            updated_at = NOW()`,
         [targetKey, phone, PRINTO_FREE_CREDITS]
       );
-      // Never add a second welcome balance when another browser/device is linked.
-      if (source) await client.query("DELETE FROM greeting_customer_access WHERE customer_key = $1", [sourceKey]);
+
+      if (source) {
+        const paidEventResult = await client.query(
+          `SELECT COUNT(*)::int AS event_count
+           FROM greeting_payment_events
+           WHERE customer_key = $1`,
+          [sourceKey]
+        );
+        const sourceHasPaidValue =
+          Number(paidEventResult.rows[0]?.event_count || 0) > 0 ||
+          String(source.subscription_plan || "free") !== "free" ||
+          String(source.subscription_status || "inactive") === "active";
+
+        if (sourceHasPaidValue) {
+          throw new Error(
+            "This browser has a separate paid Printo wallet. Please contact Printo support before combining it with another account."
+          );
+        }
+
+        // A second browser must never contribute another welcome balance.
+        // If that legacy browser already produced videos, carry over only
+        // its usage and videos—not its remaining free credits.
+        const sourceGenerated = Math.max(0, Number(source.total_generated || 0));
+        const sourceUsedCredits = Math.min(
+          PRINTO_FREE_CREDITS,
+          sourceGenerated * PRINTO_CREATION_CREDIT_COSTS.standard
+        );
+
+        await client.query(
+          `UPDATE greeting_customer_access
+           SET paid_credits = GREATEST(0, paid_credits - $2),
+               total_generated = total_generated + $3,
+               contact_phone = CASE WHEN $4 <> '' THEN $4 ELSE contact_phone END,
+               updated_at = NOW()
+           WHERE customer_key = $1`,
+          [targetKey, sourceUsedCredits, sourceGenerated, phone]
+        );
+
+        await client.query(
+          "UPDATE greeting_payment_events SET customer_key = $2 WHERE customer_key = $1",
+          [sourceKey, targetKey]
+        );
+        await client.query(
+          "UPDATE premium_greeting_orders SET customer_key = $2, updated_at = NOW() WHERE customer_key = $1",
+          [sourceKey, targetKey]
+        );
+        await client.query(
+          "DELETE FROM greeting_customer_access WHERE customer_key = $1",
+          [sourceKey]
+        );
+        shouldMoveMetadata = true;
+      }
     }
 
-    await client.query("UPDATE greeting_payment_events SET customer_key = $2 WHERE customer_key = $1", [sourceKey, targetKey]);
-    await client.query("UPDATE premium_greeting_orders SET customer_key = $2, updated_at = NOW() WHERE customer_key = $1", [sourceKey, targetKey]);
     await client.query("COMMIT");
   } catch (error) {
     await client.query("ROLLBACK");
@@ -4846,47 +5024,169 @@ async function migratePrintoCustomerIdentity(sourceKey, targetKey, contact = "")
     client.release();
   }
 
-  // Standard greeting metadata is stored beside the generated files.
-  for (const name of fs.readdirSync(generatedDir).filter((item) => item.endsWith(".json"))) {
-    const metadataPath = path.join(generatedDir, name);
-    try {
-      const metadata = JSON.parse(fs.readFileSync(metadataPath, "utf8"));
-      if (metadata.customerKey === sourceKey) {
-        metadata.customerKey = targetKey;
-        metadata.updatedAt = new Date().toISOString();
-        fs.writeFileSync(metadataPath, JSON.stringify(metadata, null, 2), "utf8");
-      }
-    } catch (_error) {}
+  if (shouldMoveMetadata) {
+    // Standard greeting metadata is stored beside the generated files.
+    for (const name of fs.readdirSync(generatedDir).filter((item) => item.endsWith(".json"))) {
+      const metadataPath = path.join(generatedDir, name);
+      try {
+        const metadata = JSON.parse(fs.readFileSync(metadataPath, "utf8"));
+        if (metadata.customerKey === sourceKey) {
+          metadata.customerKey = targetKey;
+          metadata.updatedAt = new Date().toISOString();
+          fs.writeFileSync(metadataPath, JSON.stringify(metadata, null, 2), "utf8");
+        }
+      } catch (_error) {}
+    }
   }
 }
+
+app.post("/api/printo-account/status", async (req, res) => {
+  try {
+    const customerKey = String(
+      req.body?.customerKey ||
+      req.body?.customer_key ||
+      req.headers["x-printo-customer-key"] ||
+      ""
+    ).trim();
+
+    const verified = await isVerifiedPrintoAccountKey(customerKey);
+    return res.json({
+      ok: true,
+      verified,
+      accountRequired: !verified,
+      customerKey: verified ? customerKey : ""
+    });
+  } catch (error) {
+    console.error("Printo account status failed:", error);
+    return res.status(500).json({
+      ok: false,
+      verified: false,
+      accountRequired: true,
+      error: "Could not verify your Printo account."
+    });
+  }
+});
 
 app.post("/api/printo-account/connect", async (req, res) => {
   try {
     const body = req.body || {};
     const contact = String(body.contact || body.email || body.phone || "").trim();
-    const pin = String(body.pin || "").replace(/\D+/g, "");
-    const accountKey = makePrintoAccountCustomerKey(contact, pin);
-    if (!accountKey) {
-      return res.status(400).json({ ok: false, error: "Enter a valid email or phone number and a 6-digit account PIN." });
+    const normalizedContact = normalizePrintoAccountContact(contact);
+    const pin = normalizePrintoAccountPin(body.pin || "");
+
+    if (!normalizedContact || !pin) {
+      return res.status(400).json({
+        ok: false,
+        error: "Enter a valid email or phone number and a 6-digit account PIN."
+      });
     }
 
-    let sourceKey = String(body.currentCustomerKey || body.customerKey || "").trim();
+    let sourceKey = String(
+      body.currentCustomerKey ||
+      body.customerKey ||
+      ""
+    ).trim();
+
     if (!/^g_[a-f0-9]{64}$/i.test(sourceKey)) {
-      const currentId = String(body.currentCustomerId || body.customerId || "").trim();
-      sourceKey = currentId ? makeGreetingCustomerKey(`device:${currentId}`) : "";
+      const currentId = String(
+        body.currentCustomerId ||
+        body.customerId ||
+        ""
+      ).trim();
+      sourceKey = currentId
+        ? makeGreetingCustomerKey(`device:${currentId}`)
+        : "";
     }
 
-    await migratePrintoCustomerIdentity(sourceKey, accountKey, contact);
-    const status = await getGreetingAccessStatus(accountKey, normalizePrintoAccountContact(contact).startsWith("phone:") ? normalizePrintoAccountContact(contact).slice(6) : "");
+    const client = await pool.connect();
+    let accountKey = "";
+    let targetAlreadyExisted = false;
+
+    try {
+      await client.query("BEGIN");
+
+      const accountResult = await client.query(
+        `SELECT normalized_contact, customer_key, pin_salt, pin_hash
+         FROM printo_accounts
+         WHERE normalized_contact = $1
+         FOR UPDATE`,
+        [normalizedContact]
+      );
+
+      const existingAccount = accountResult.rows[0] || null;
+
+      if (existingAccount) {
+        targetAlreadyExisted = true;
+        const suppliedHash = hashPrintoAccountPin(pin, existingAccount.pin_salt);
+        if (!printoPinHashesMatch(suppliedHash, existingAccount.pin_hash)) {
+          await client.query("ROLLBACK");
+          return res.status(401).json({
+            ok: false,
+            error: "The Printo PIN is incorrect for this email or phone number."
+          });
+        }
+        accountKey = existingAccount.customer_key;
+        await client.query(
+          `UPDATE printo_accounts
+           SET updated_at = NOW()
+           WHERE normalized_contact = $1`,
+          [normalizedContact]
+        );
+      } else {
+        accountKey = makePrintoAccountCustomerKey(contact);
+        const pinSalt = crypto.randomBytes(16).toString("hex");
+        const pinHash = hashPrintoAccountPin(pin, pinSalt);
+
+        await client.query(
+          `INSERT INTO printo_accounts (
+             normalized_contact,
+             customer_key,
+             pin_salt,
+             pin_hash,
+             created_at,
+             updated_at
+           )
+           VALUES ($1, $2, $3, $4, NOW(), NOW())`,
+          [normalizedContact, accountKey, pinSalt, pinHash]
+        );
+      }
+
+      await client.query("COMMIT");
+    } catch (error) {
+      await client.query("ROLLBACK");
+      throw error;
+    } finally {
+      client.release();
+    }
+
+    await migratePrintoCustomerIdentity(
+      sourceKey,
+      accountKey,
+      contact,
+      { targetAlreadyExisted }
+    );
+
+    const status = await getGreetingAccessStatus(
+      accountKey,
+      normalizedContact.startsWith("phone:")
+        ? normalizedContact.slice(6)
+        : ""
+    );
+
     return res.json({
       ok: true,
       customerKey: accountKey,
-      accountContact: normalizePrintoAccountContact(contact),
+      accountContact: normalizedContact,
+      accountCreated: !targetAlreadyExisted,
       ...status
     });
   } catch (error) {
     console.error("Printo account connection failed:", error);
-    return res.status(500).json({ ok: false, error: "Could not connect your Printo account." });
+    const message = String(error?.message || "");
+    return res.status(500).json({
+      ok: false,
+      error: message || "Could not connect your Printo account."
+    });
   }
 });
 
@@ -4936,10 +5236,29 @@ app.get("/api/credits/:customerId", async (req, res) => {
       customerPhone: req.query.phone || "",
       email: req.query.email || ""
     });
-    const status = await getGreetingAccessStatus(identity.customerKey, identity.contactPhone);
-    return res.json({ ok: true, ...status });
+
+    const verified = await isVerifiedPrintoAccountKey(identity.customerKey);
+    if (!verified) {
+      return res.status(401).json({
+        ok: false,
+        accountRequired: true,
+        creditBalance: 0,
+        remainingCreations: 0,
+        creationCost: PRINTO_CREATION_CREDIT_COSTS.standard,
+        error: "Sign in or create your Printo account to receive and use your welcome credits."
+      });
+    }
+
+    const status = await getGreetingAccessStatus(
+      identity.customerKey,
+      identity.contactPhone
+    );
+    return res.json({ ok: true, accountVerified: true, ...status });
   } catch (error) {
-    return res.status(500).json({ ok: false, error: error.message || "Could not load credits." });
+    return res.status(500).json({
+      ok: false,
+      error: error.message || "Could not load credits."
+    });
   }
 });
 
@@ -5442,6 +5761,22 @@ app.post("/api/greeting-studio/render", async (req, res) => {
     }
 
     customerIdentity = getGreetingCustomerIdentity(req, req.body || {});
+    const verifiedPrintoAccount = await isVerifiedPrintoAccountKey(
+      customerIdentity.customerKey
+    );
+
+    if (
+      customerIdentity.identitySource !== "customer_key" ||
+      !verifiedPrintoAccount
+    ) {
+      return res.status(401).json({
+        ok: false,
+        accountRequired: true,
+        error:
+          "Sign in or create your Printo account before generating. One 100-credit welcome bonus is allowed per email or phone account."
+      });
+    }
+
     accessReservation = await reserveGreetingGenerationAccess(
       customerIdentity.customerKey,
       customerPhone || customerIdentity.contactPhone
@@ -14813,6 +15148,22 @@ app.post("/api/greeting/birthday/generate", async (req, res) => {
     }
 
     customerIdentity = getGreetingCustomerIdentity(req, req.body || {});
+    const verifiedPrintoAccount = await isVerifiedPrintoAccountKey(
+      customerIdentity.customerKey
+    );
+
+    if (
+      customerIdentity.identitySource !== "customer_key" ||
+      !verifiedPrintoAccount
+    ) {
+      return res.status(401).json({
+        ok: false,
+        accountRequired: true,
+        error:
+          "Sign in or create your Printo account before generating. One 100-credit welcome bonus is allowed per email or phone account."
+      });
+    }
+
     accessReservation = await reserveGreetingGenerationAccess(
       customerIdentity.customerKey,
       customerIdentity.contactPhone
@@ -15553,7 +15904,7 @@ function buildGreetingStudioHomePage(language = "en") {
   function getCustomerId(){let id=localStorage.getItem('printoGreetingCustomerId');if(!id){id='printo_'+Date.now()+'_'+Math.random().toString(36).slice(2,12);localStorage.setItem('printoGreetingCustomerId',id)}return id}
   function getCustomerKey(){return localStorage.getItem('printoGreetingCustomerKey')||''}
   function customerHeaders(){const key=getCustomerKey();return key?{'x-printo-customer-key':key}:{}}
-  async function loadCredits(){creditStatus.hidden=false;creditGrid.hidden=true;creditStatus.textContent=${JSON.stringify(t.loading)};try{const response=await fetch('/api/credits/'+encodeURIComponent(getCustomerId()),{cache:'no-store',headers:customerHeaders()});const data=await response.json();if(!response.ok||!data.ok)throw new Error(data.error||'Credit request failed');if(data.customerKey)localStorage.setItem('printoGreetingCustomerKey',String(data.customerKey));document.getElementById('creditBalance').textContent=String(data.creditBalance??data.credits??0);document.getElementById('creditCreations').textContent=String(data.remainingCreations??0);document.getElementById('creditCost').textContent=String(data.creationCost??20);creditStatus.hidden=true;creditGrid.hidden=false}catch(error){creditStatus.textContent=${JSON.stringify(t.creditError)}}}
+  async function loadCredits(){creditStatus.hidden=false;creditGrid.hidden=true;const key=getCustomerKey();if(!key){creditStatus.textContent='👤 Sign in / Sync Devices to receive your one-time 100-credit welcome bonus and view your videos.';return;}creditStatus.textContent=${JSON.stringify(t.loading)};try{const response=await fetch('/api/credits/'+encodeURIComponent(getCustomerId()),{cache:'no-store',headers:customerHeaders()});const data=await response.json();if(data.accountRequired){localStorage.removeItem('printoGreetingCustomerKey');creditStatus.textContent='👤 Please sign in again. Welcome credits are issued once per email or phone account.';return;}if(!response.ok||!data.ok)throw new Error(data.error||'Credit request failed');document.getElementById('creditBalance').textContent=String(data.creditBalance??data.credits??0);document.getElementById('creditCreations').textContent=String(data.remainingCreations??0);document.getElementById('creditCost').textContent=String(data.creationCost??20);creditStatus.hidden=true;creditGrid.hidden=false}catch(error){creditStatus.textContent=String(error.message||${JSON.stringify(t.creditError)})}}
   const accountModal=document.getElementById('accountModal'),accountStatus=document.getElementById('accountStatus');
   document.getElementById('accountButton').addEventListener('click',()=>{document.getElementById('accountContact').value=localStorage.getItem('printoAccountContact')||'';openModal(accountModal)});
   document.querySelectorAll('.close-account').forEach(b=>b.addEventListener('click',()=>closeModal(accountModal)));accountModal.addEventListener('click',e=>{if(e.target===accountModal)closeModal(accountModal)});
@@ -15649,13 +16000,43 @@ function buildBirthdayGeneratorPage(language = "en", templateId = "birthday") {
   document.getElementById('formCustomerKey').value=customerKey;
   async function ensurePrintoAccount(){
     customerKey=localStorage.getItem('printoGreetingCustomerKey')||'';
-    if(customerKey){document.getElementById('formCustomerKey').value=customerKey;return true;}
-    const contact=prompt('Enter your email address or phone number to keep your credits and videos on every device:');
+
+    if(customerKey){
+      try{
+        const check=await fetch('/api/printo-account/status',{
+          method:'POST',
+          headers:{
+            'Content-Type':'application/json',
+            'x-printo-customer-key':customerKey
+          },
+          body:JSON.stringify({customerKey})
+        });
+        const status=await check.json();
+        if(check.ok&&status.ok&&status.verified){
+          document.getElementById('formCustomerKey').value=customerKey;
+          return true;
+        }
+      }catch(_error){}
+      localStorage.removeItem('printoGreetingCustomerKey');
+      customerKey='';
+    }
+
+    const contact=prompt('Enter your email address or phone number. One 100-credit welcome bonus is allowed per Printo account:');
     if(!contact)return false;
-    const pin=prompt('Create a 6-digit Printo account PIN. Use the same PIN on your other devices:');
+    const pin=prompt('Create or enter your 6-digit Printo account PIN. Use the same PIN on your other devices:');
     if(!pin)return false;
+
     try{
-      const r=await fetch('/api/printo-account/connect',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({contact,pin,currentCustomerId:customerId,currentCustomerKey:customerKey})});
+      const r=await fetch('/api/printo-account/connect',{
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({
+          contact,
+          pin,
+          currentCustomerId:customerId,
+          currentCustomerKey:customerKey
+        })
+      });
       const d=await r.json();
       if(!r.ok||!d.ok)throw new Error(d.error||'Account connection failed');
       customerKey=d.customerKey;
@@ -15743,6 +16124,7 @@ function buildBirthdayGeneratorPage(language = "en", templateId = "birthday") {
       let data={};
       try{data=responseText?JSON.parse(responseText):{};}catch(parseError){throw new Error('Server returned an invalid response: '+responseText.slice(0,180));}
       console.log('[Birthday Generate] Response',response.status,data);
+      if(data.accountRequired){localStorage.removeItem('printoGreetingCustomerKey');customerKey='';throw new Error(data.error||'Please sign in to your Printo account.');}
       if(data.paymentRequired){
         if(data.payment?.shopify)shopifyPayment.href=data.payment.shopify;
         if(data.payment?.africa)africaPayment.href=data.payment.africa;
@@ -17068,7 +17450,17 @@ function renderGreetingResult(req, res) {
   const publicBase = String(
     getConfiguredPublicOrigin(req)
   ).replace(/\/$/, "");
-  const pageUrl = `${publicBase}${req.originalUrl}`;
+  // Always share the permanent branded short greeting URL when a greeting ID exists.
+  // This prevents WhatsApp or an in-app browser from receiving only the Studio root.
+  const greetingId = String(req.query.greetingId || "")
+    .replace(/[^a-zA-Z0-9_-]/g, "");
+  const requestPath = String(req.originalUrl || "");
+  const currentPageUrl = requestPath.startsWith("/")
+    ? `${publicBase}${requestPath}`
+    : `${publicBase}/greetings`;
+  const pageUrl = greetingId
+    ? `${publicBase}/g/${encodeURIComponent(greetingId)}`
+    : currentPageUrl;
   const title = `A special Printo greeting${toName ? ` for ${toName}` : ""}`;
 
   res.send(`<!DOCTYPE html>
@@ -17306,19 +17698,113 @@ app.get("/download/g/:id", (req, res) => {
 app.get("/api/customer/dashboard/:customerId", async (req,res)=>{
   try {
     const identity=getGreetingCustomerIdentity(req,{customerId:req.params.customerId,customerPhone:req.query.phone||"",email:req.query.email||""});
+    const verified=await isVerifiedPrintoAccountKey(identity.customerKey);
+    if(!verified){
+      return res.status(401).json({
+        ok:false,
+        accountRequired:true,
+        creditBalance:0,
+        remainingCreations:0,
+        subscriptionPlan:"free",
+        videos:[],
+        error:"Sign in or create your Printo account to view credits and videos."
+      });
+    }
     const status=await getGreetingAccessStatus(identity.customerKey,identity.contactPhone);
     const videos=[];
     for (const name of fs.readdirSync(generatedDir).filter(n=>n.endsWith('.json'))) {
       try { const m=JSON.parse(fs.readFileSync(path.join(generatedDir,name),'utf8')); if(m.customerKey===identity.customerKey) videos.push({id:name.replace(/\.json$/,''),toName:m.toName||'',fromName:m.fromName||'',createdAt:m.createdAt||'',resultUrl:`/g/${name.replace(/\.json$/,'')}`,downloadUrl:`/download/g/${name.replace(/\.json$/,'')}`}); } catch(e){}
     }
     videos.sort((a,b)=>String(b.createdAt).localeCompare(String(a.createdAt)));
-    res.json({ok:true,...status,videos});
+    res.json({ok:true,accountVerified:true,...status,videos});
   } catch(error){res.status(500).json({ok:false,error:error.message});}
 });
 
 app.get("/subscriptions", (req,res)=>res.type('html').send(`<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><title>Printo Plans</title><style>*{box-sizing:border-box}body{margin:0;font-family:Arial;background:linear-gradient(150deg,#071b61,#0b63ce);color:#fff;padding:24px}.wrap{max-width:1180px;margin:auto;text-align:center}.topbar{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}.close-link{background:#fff;color:#082a8f;text-decoration:none;padding:11px 16px;border-radius:999px;font-weight:900}.section{margin:28px 0 38px}.section-title{font-size:30px;margin:0 0 8px}.section-sub{margin:0 0 18px}.plans{display:grid;grid-template-columns:repeat(4,1fr);gap:16px}.plan{background:#fff;color:#082a8f;border:3px solid #ffd21f;border-radius:22px;padding:22px;position:relative}.plan.premium{border-color:#c13cff;box-shadow:0 10px 28px rgba(0,0,0,.18)}.badge{display:inline-block;background:#123faa;color:#fff;border-radius:999px;padding:7px 12px;font-size:13px;font-weight:900;margin-bottom:8px}.premium .badge{background:#7b2cbf}.price{font-size:34px;font-weight:900}.plan a{display:block;background:#7b2cbf;color:#fff;text-decoration:none;padding:14px;border-radius:12px;font-weight:900;margin-top:16px}.standard a{background:#123faa}.best{transform:scale(1.03)}.note{background:#fff4b8;color:#082a8f;border:3px solid #ffd21f;border-radius:18px;padding:16px;margin:0 auto 20px;max-width:820px;font-weight:900}@media(max-width:950px){.plans{grid-template-columns:1fr 1fr}}@media(max-width:560px){body{padding:16px}.plans{grid-template-columns:1fr}.best{transform:none}.topbar{justify-content:center}.section-title{font-size:25px}}</style></head><body><main class="wrap"><div class="topbar"><h1>⭐ Printo Credits & Subscriptions</h1><a class="close-link" href="/greetings">✕ Close / Return to Studio</a></div><div class="note">🎁 Every new user receives 100 FREE credits — enough for 5 standard creations. Each standard creation uses 20 credits.</div><p>Use one universal Printo credit wallet for Standard, Premium Video, and Premium Multi-Image creations.</p><section class="section"><h2 class="section-title">🎁 Standard Greeting Plans</h2><p class="section-sub">For personalized standard greeting video cards with names, messages, Printo music and voice.</p><div class="plans"><article class="plan standard"><span class="badge">STANDARD</span><h2>Single Creation</h2><div class="price">$4.99</div><p>20 credits • 1 standard creation</p><a href="${PRINTO_SINGLE_CREATION_URL}">Buy One</a></article><article class="plan standard"><span class="badge">STANDARD</span><h2>Monthly</h2><div class="price">$${PRINTO_STANDARD_SUBSCRIPTION_PRICES.monthly.toFixed(2)}</div><p>100 credits monthly • 5 standard creations</p><a href="${PRINTO_STANDARD_MONTHLY_SUBSCRIPTION_URL}">Choose Standard Monthly</a></article><article class="plan standard"><span class="badge">STANDARD</span><h2>6 Months</h2><div class="price">$${PRINTO_STANDARD_SUBSCRIPTION_PRICES.six_months.toFixed(2)}</div><p>600 credits • 30 standard creations</p><a href="${PRINTO_STANDARD_SIX_MONTH_SUBSCRIPTION_URL}">Choose Standard 6 Months</a></article><article class="plan standard best"><span class="badge">BEST STANDARD VALUE</span><h2>1 Year</h2><div class="price">$${PRINTO_STANDARD_SUBSCRIPTION_PRICES.yearly.toFixed(2)}</div><p>1,200 credits • 60 standard creations</p><a href="${PRINTO_STANDARD_YEARLY_SUBSCRIPTION_URL}">Choose Standard Annual</a></article></div></section><section class="section"><h2 class="section-title">🌟 Premium Subscription Plans</h2><p class="section-sub">For Premium Tribute and enhanced personalized video experiences. Credit costs: Standard 20, Premium Video 25, Premium Multi-Image 50.</p><div class="plans"><article class="plan premium"><span class="badge">PREMIUM</span><h2>Monthly</h2><div class="price">$${PRINTO_SUBSCRIPTION_PRICES.monthly.toFixed(2)}</div><p>100 credits now, then 100 credits each active month</p><a href="${PRINTO_MONTHLY_SUBSCRIPTION_URL}">Choose Premium Monthly</a></article><article class="plan premium"><span class="badge">PREMIUM</span><h2>6 Months</h2><div class="price">$${PRINTO_SUBSCRIPTION_PRICES.six_months.toFixed(2)}</div><p>100 credits monthly for 6 months</p><a href="${PRINTO_SIX_MONTH_SUBSCRIPTION_URL}">Choose Premium 6 Months</a></article><article class="plan premium best"><span class="badge">BEST PREMIUM VALUE</span><h2>1 Year</h2><div class="price">$${PRINTO_SUBSCRIPTION_PRICES.yearly.toFixed(2)}</div><p>100 credits monthly for 12 months</p><a href="${PRINTO_YEARLY_SUBSCRIPTION_URL}">Choose Premium Annual</a></article></div></section><p><a class="close-link" href="/greetings">← Return to Printo Greeting Studio</a></p></main></body></html>`));
 
-app.get("/customer-dashboard", (req,res)=>res.type('html').send(`<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><title>My Printo Dashboard</title><style>*{box-sizing:border-box}body{font-family:Arial;margin:0;background:#082a8f;color:#fff;padding:20px}.wrap{max-width:900px;margin:auto}.head{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}.close-link{background:#fff;color:#082a8f;text-decoration:none;padding:11px 16px;border-radius:999px;font-weight:900}.card{background:#fff;color:#082a8f;border-radius:18px;padding:18px;margin:14px 0}.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}.stat{background:#edf4ff;padding:15px;border-radius:14px;text-align:center}.buttons a,.account button{display:inline-block;margin:6px;padding:12px 16px;border:0;border-radius:12px;background:#7b2cbf;color:#fff;text-decoration:none;font-weight:bold}.video{border-top:1px solid #ddd;padding:12px 0}.account{background:#fff4b8;border:2px solid #ffd21f;border-radius:14px;padding:14px;margin-bottom:14px}.account input{width:100%;padding:12px;margin:6px 0;border:2px solid #bdd7ff;border-radius:10px;font-size:16px}@media(max-width:600px){.stats{grid-template-columns:1fr}.head{justify-content:center}}</style></head><body><main class="wrap"><div class="head"><h1>⭐ My Printo Dashboard</h1><a class="close-link" href="/greetings">✕ Close / Return to Studio</a></div><div id="content" class="card"><div class="account"><strong>👤 Sign in to see the same credits and videos on every device</strong><input id="contact" placeholder="Email address or phone number"><input id="pin" type="password" inputmode="numeric" maxlength="6" placeholder="Your 6-digit PIN"><button id="connect">Connect Account</button><div id="accountStatus"></div></div><div id="dashboard">Loading…</div></div></main><script>function deviceId(){let id=localStorage.getItem('printoGreetingCustomerId');if(!id){id='printo_'+Date.now()+'_'+Math.random().toString(36).slice(2);localStorage.setItem('printoGreetingCustomerId',id)}return id}function key(){return localStorage.getItem('printoGreetingCustomerKey')||''}async function load(){const headers=key()?{'x-printo-customer-key':key()}:{};const r=await fetch('/api/customer/dashboard/'+encodeURIComponent(deviceId()),{cache:'no-store',headers});const d=await r.json();if(!d.ok)throw Error(d.error);document.getElementById('dashboard').innerHTML='<div style="background:#fff4b8;border:2px solid #ffd21f;border-radius:14px;padding:14px;margin-bottom:14px;font-weight:900">🎁 Welcome Bonus: One 100-credit bonus per Printo account.</div><div class="stats"><div class="stat"><h2>'+d.creditBalance+'</h2>Credits</div><div class="stat"><h2>'+d.remainingCreations+'</h2>Creations</div><div class="stat"><h2>'+String(d.subscriptionPlan||'Free Welcome')+'</h2>Plan</div></div><div class="buttons"><a href="/greetings">Create Another</a><a href="/subscriptions">Buy Credits / Subscribe</a></div><h2>My Finished Videos</h2>'+(d.videos.length?d.videos.map(v=>'<div class="video"><strong>For '+(v.toName||'Recipient')+'</strong><br><a href="'+v.resultUrl+'">▶ Play</a> &nbsp; <a href="'+v.downloadUrl+'">⬇ Download</a></div>').join(''):'<p>No finished videos yet for this account.</p>')}document.getElementById('contact').value=localStorage.getItem('printoAccountContact')||'';document.getElementById('connect').onclick=async()=>{const contact=document.getElementById('contact').value.trim(),pin=document.getElementById('pin').value.trim(),status=document.getElementById('accountStatus');status.textContent='Connecting...';try{const r=await fetch('/api/printo-account/connect',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({contact,pin,currentCustomerId:deviceId(),currentCustomerKey:key()})});const d=await r.json();if(!r.ok||!d.ok)throw Error(d.error||'Connection failed');localStorage.setItem('printoGreetingCustomerKey',d.customerKey);localStorage.setItem('printoAccountContact',contact);status.textContent='✅ Connected. Loading your account...';await load()}catch(e){status.textContent='❌ '+e.message}};load().catch(e=>document.getElementById('dashboard').textContent='Could not load dashboard: '+e.message)</script></body></html>`));
+app.get("/customer-dashboard", (req,res)=>res.type('html').send(`<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><title>My Printo Dashboard</title><style>*{box-sizing:border-box}body{font-family:Arial;margin:0;background:#082a8f;color:#fff;padding:20px}.wrap{max-width:900px;margin:auto}.head{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}.close-link{background:#fff;color:#082a8f;text-decoration:none;padding:11px 16px;border-radius:999px;font-weight:900}.card{background:#fff;color:#082a8f;border-radius:18px;padding:18px;margin:14px 0}.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}.stat{background:#edf4ff;padding:15px;border-radius:14px;text-align:center}.buttons a,.account button{display:inline-block;margin:6px;padding:12px 16px;border:0;border-radius:12px;background:#7b2cbf;color:#fff;text-decoration:none;font-weight:bold}.video{border-top:1px solid #ddd;padding:12px 0}.account{background:#fff4b8;border:2px solid #ffd21f;border-radius:14px;padding:14px;margin-bottom:14px}.account input{width:100%;padding:12px;margin:6px 0;border:2px solid #bdd7ff;border-radius:10px;font-size:16px}@media(max-width:600px){.stats{grid-template-columns:1fr}.head{justify-content:center}}</style></head><body><main class="wrap"><div class="head"><h1>⭐ My Printo Dashboard</h1><a class="close-link" href="/greetings">✕ Close / Return to Studio</a></div><div id="content" class="card"><div class="account"><strong>👤 Sign in to see the same credits and videos on every device</strong><input id="contact" placeholder="Email address or phone number"><input id="pin" type="password" inputmode="numeric" maxlength="6" placeholder="Your 6-digit PIN"><button id="connect">Connect Account</button><div id="accountStatus"></div></div><div id="dashboard">Loading…</div></div></main><script>
+function deviceId(){
+  let id=localStorage.getItem('printoGreetingCustomerId');
+  if(!id){
+    id='printo_'+Date.now()+'_'+Math.random().toString(36).slice(2);
+    localStorage.setItem('printoGreetingCustomerId',id);
+  }
+  return id;
+}
+function key(){
+  return localStorage.getItem('printoGreetingCustomerKey')||'';
+}
+function renderSignedOut(message){
+  document.getElementById('dashboard').innerHTML=
+    '<div style="background:#fff4b8;border:2px solid #ffd21f;border-radius:14px;padding:18px;font-weight:900;line-height:1.55">'+
+    '👤 '+(message||'Sign in or create your Printo account above. Your one-time 100-credit welcome bonus is issued to the account, not separately to every browser or phone.')+
+    '</div>'+
+    '<div class="stats" style="margin-top:14px"><div class="stat"><h2>0</h2>Credits</div><div class="stat"><h2>0</h2>Creations</div><div class="stat"><h2>Sign in</h2>Account</div></div>'+
+    '<h2>My Finished Videos</h2><p>Sign in to load your videos.</p>';
+}
+async function load(){
+  document.getElementById('contact').value=localStorage.getItem('printoAccountContact')||'';
+  const currentKey=key();
+  if(!currentKey){
+    renderSignedOut('');
+    return;
+  }
+  try{
+    const r=await fetch('/api/customer/dashboard/'+encodeURIComponent(deviceId()),{
+      cache:'no-store',
+      headers:{'x-printo-customer-key':currentKey}
+    });
+    const d=await r.json();
+    if(d.accountRequired){
+      localStorage.removeItem('printoGreetingCustomerKey');
+      renderSignedOut(d.error||'Please sign in again.');
+      return;
+    }
+    if(!r.ok||!d.ok)throw Error(d.error||'Dashboard could not be loaded.');
+    document.getElementById('dashboard').innerHTML=
+      '<div style="background:#fff4b8;border:2px solid #ffd21f;border-radius:14px;padding:14px;margin-bottom:14px;font-weight:900">🎁 Welcome Bonus: One 100-credit bonus per verified Printo account.</div>'+
+      '<div class="stats"><div class="stat"><h2>'+d.creditBalance+'</h2>Credits</div><div class="stat"><h2>'+d.remainingCreations+'</h2>Creations</div><div class="stat"><h2>'+String(d.subscriptionPlan||'free')+'</h2>Plan</div></div>'+
+      '<div class="buttons"><a href="/greetings">Create Another</a><a href="/subscriptions">Buy Credits / Subscribe</a></div>'+
+      '<h2>My Finished Videos</h2>'+
+      (d.videos.length
+        ? d.videos.map(function(v){
+            return '<div class="video"><strong>For '+(v.toName||'Recipient')+'</strong><br><a href="'+v.resultUrl+'">▶ Play</a> &nbsp; <a href="'+v.downloadUrl+'">⬇ Download</a></div>';
+          }).join('')
+        : '<p>No finished videos yet for this account.</p>');
+  }catch(e){
+    document.getElementById('dashboard').textContent='Could not load dashboard: '+e.message;
+  }
+}
+document.getElementById('connect').onclick=async function(){
+  const contact=document.getElementById('contact').value.trim();
+  const pin=document.getElementById('pin').value.trim();
+  const status=document.getElementById('accountStatus');
+  status.textContent='Connecting...';
+  try{
+    const r=await fetch('/api/printo-account/connect',{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({
+        contact:contact,
+        pin:pin,
+        currentCustomerId:deviceId(),
+        currentCustomerKey:key()
+      })
+    });
+    const d=await r.json();
+    if(!r.ok||!d.ok)throw Error(d.error||'Connection failed');
+    localStorage.setItem('printoGreetingCustomerKey',d.customerKey);
+    localStorage.setItem('printoAccountContact',contact);
+    status.textContent=d.accountCreated
+      ? '✅ Account created. Your one-time welcome credits and videos are ready.'
+      : '✅ Signed in. Loading the same credits and videos on this device...';
+    await load();
+  }catch(e){
+    status.textContent='❌ '+e.message;
+  }
+};
+load();
+</script></body></html>`));
 
 app.get("/g/:id", (req, res) => {
   res.setHeader("Cache-Control", "public, max-age=60, must-revalidate");
