@@ -14750,21 +14750,73 @@ Africa Payment: ${payment.africa}`
     });
     const hasPrintoVoice = Boolean(voiceResult.ok && fs.existsSync(voicePath));
 
-    // When Printo has a voice track, let that cleaned voice track control the
-    // exact ending of the video. This prevents Printo from continuing to dance
-    // after the final spoken word. Music is mixed underneath and the finished
-    // video receives only a very small natural closing pause.
+    // A standard Printo birthday creation promises a personalized spoken greeting.
+    // Never silently deliver a music-only video when ElevenLabs fails. Throwing here
+    // sends the request through the existing refund path, so the customer's credits
+    // are restored instead of being charged for an incomplete creation.
+    if (!hasPrintoVoice) {
+      throw new Error(
+        "Printo voice could not be generated. Please try again; your credits were restored."
+      );
+    }
+
     const birthdayVoiceDelaySeconds = 0.9;
     const birthdayOutroPaddingSeconds = 0.2;
-    const birthdayDurationSeconds = 10;
-    const birthdayDurationText = birthdayDurationSeconds.toFixed(1);
     const birthdayVoiceDelayMs = Math.round(birthdayVoiceDelaySeconds * 1000);
+    const cleanedVoicePath = path.join(
+      generatedDir,
+      `birthday_voice_clean_${Date.now()}.m4a`
+    );
+
+    // Clean only the silence before the first word and after the last word, then
+    // measure the resulting file. This gives FFmpeg a real, finite duration rather
+    // than relying on -shortest with three looped media inputs.
+    await execFilePromise("ffmpeg", [
+      "-y", "-nostdin", "-loglevel", "error",
+      "-i", voicePath,
+      "-af",
+      "silenceremove=start_periods=1:start_duration=0.05:start_threshold=-48dB," +
+        "areverse," +
+        "silenceremove=start_periods=1:start_duration=0.18:start_threshold=-48dB," +
+        "areverse",
+      "-c:a", "aac",
+      "-b:a", "128k",
+      "-ar", "44100",
+      "-ac", "2",
+      cleanedVoicePath
+    ], {
+      timeout: 60000,
+      maxBuffer: 2 * 1024 * 1024
+    });
+
+    const cleanedVoiceProbe = await probePremiumMedia(cleanedVoicePath);
+    const cleanedVoiceDurationSeconds = Number(cleanedVoiceProbe.duration || 0);
+
+    if (
+      !cleanedVoiceProbe.hasAudio ||
+      !Number.isFinite(cleanedVoiceDurationSeconds) ||
+      cleanedVoiceDurationSeconds <= 0
+    ) {
+      throw new Error(
+        "Printo voice duration could not be measured. Please try again; your credits were restored."
+      );
+    }
+
+    // The final duration is exact: opening delay + every spoken word + a tiny
+    // natural closing pause. This works for every accepted 24-character name and
+    // 220-character message without cutting speech or rendering forever.
+    const birthdayDurationSeconds =
+      birthdayVoiceDelaySeconds +
+      cleanedVoiceDurationSeconds +
+      birthdayOutroPaddingSeconds;
+    const birthdayDurationText = birthdayDurationSeconds.toFixed(3);
 
     console.log("Birthday audio timing:", {
       hasPrintoVoice,
-      endingMode: hasPrintoVoice ? "voice-controlled" : "10-second-music-only",
+      cleanedVoiceDurationSeconds: Number(cleanedVoiceDurationSeconds.toFixed(3)),
       voiceDelayMs: birthdayVoiceDelayMs,
-      outroPaddingSeconds: hasPrintoVoice ? birthdayOutroPaddingSeconds : 0
+      outroPaddingSeconds: birthdayOutroPaddingSeconds,
+      finalDurationSeconds: Number(birthdayDurationText)
     });
 
     // Stable Printo Birthday production layout.
@@ -14793,18 +14845,16 @@ Africa Payment: ${payment.africa}`
       `drawtext=text=${quoteDrawtextText(messageLines[8])}:x=218+(590-text_w)/2:y=${messageStartY + (8 * messageLineGap)}:fontsize=${messageFontSize}:fontcolor=#2f267f:borderw=1:bordercolor=white@0.35,` +
       `drawtext=text=${quoteDrawtextText(messageLines[9])}:x=218+(590-text_w)/2:y=${messageStartY + (9 * messageLineGap)}:fontsize=${messageFontSize}:fontcolor=#2f267f:borderw=1:bordercolor=white@0.35[outv]`;
 
-    const audioFilter = hasPrintoVoice
-      ? `[2:a]volume=0.30[music];` +
-        // Remove only leading and trailing ElevenLabs silence. Reversing the
-        // audio for the second pass avoids deleting natural pauses inside the speech.
-        `[3:a]silenceremove=start_periods=1:start_duration=0.05:start_threshold=-48dB,` +
-        `areverse,silenceremove=start_periods=1:start_duration=0.18:start_threshold=-48dB,areverse,` +
-        `adelay=${birthdayVoiceDelayMs}|${birthdayVoiceDelayMs},volume=1.25[voice];` +
-        // The music input loops forever, so duration=shortest makes the mix end
-        // with the cleaned voice track. Add only 0.2 second for a natural finish.
-        `[music][voice]amix=inputs=2:duration=shortest:dropout_transition=0,` +
-        `loudnorm=I=-16:TP=-1.5:LRA=11,apad=pad_dur=${birthdayOutroPaddingSeconds}[aout]`
-      : `[2:a]apad=pad_dur=${birthdayDurationText},atrim=0:${birthdayDurationText}[aout]`;
+    // Both audio branches are explicitly trimmed to the calculated duration.
+    // Therefore the output is finite even though the source music loops forever.
+    const audioFilter =
+      `[2:a]volume=0.30,atrim=0:${birthdayDurationText},asetpts=PTS-STARTPTS[music];` +
+      `[3:a]adelay=${birthdayVoiceDelayMs}|${birthdayVoiceDelayMs},volume=1.25,` +
+      `apad=pad_dur=${birthdayOutroPaddingSeconds},` +
+      `atrim=0:${birthdayDurationText},asetpts=PTS-STARTPTS[voice];` +
+      `[music][voice]amix=inputs=2:duration=longest:dropout_transition=0,` +
+      `loudnorm=I=-16:TP=-1.5:LRA=11,` +
+      `atrim=0:${birthdayDurationText},asetpts=PTS-STARTPTS[aout]`;
 
     const ffmpegArgs = [
       "-y",
@@ -14815,22 +14865,17 @@ Africa Payment: ${payment.africa}`
       "-filter_complex_threads", "1",
       "-loop", "1",
       "-i", framePath,
-      // Repeat the 10-second center animation and music when the spoken
-      // greeting is longer than the original master-video duration.
       "-stream_loop", "-1",
       "-i", masterPath,
       "-stream_loop", "-1",
       "-i", audioPath,
-      ...(hasPrintoVoice ? ["-i", voicePath] : []),
-      ...(hasPrintoVoice ? [] : ["-t", birthdayDurationText]),
+      "-i", cleanedVoicePath,
       "-filter_complex", `${videoFilter};${audioFilter}`,
       "-map", "[outv]",
       "-map", "[aout]",
-      // The frame, center animation, and music are looped. When Printo voice is
-      // present, the mixed audio is finite and includes the full cleaned voice
-      // plus the small closing pause. -shortest stops the otherwise-infinite
-      // video exactly when that audio finishes.
-      ...(hasPrintoVoice ? ["-shortest"] : []),
+      // An explicit output duration is more reliable than -shortest when the
+      // visual sources and background music are intentionally looped.
+      "-t", birthdayDurationText,
       "-c:v", "libx264",
       "-preset", "ultrafast",
       "-tune", "fastdecode",
@@ -14881,6 +14926,8 @@ Africa Payment: ${payment.africa}`
 
         if (err) {
           console.error("Birthday stable render error:", err);
+          safeUnlink(voicePath);
+          safeUnlink(cleanedVoicePath);
 
           if (accessReservation?.allowed && customerIdentity?.customerKey) {
             await refundGreetingGenerationAccess(
@@ -14903,6 +14950,8 @@ Africa Payment: ${payment.africa}`
 
         if (!fs.existsSync(outputPath)) {
           console.error("Birthday render finished but output file is missing:", outputPath);
+          safeUnlink(voicePath);
+          safeUnlink(cleanedVoicePath);
 
           if (accessReservation?.allowed && customerIdentity?.customerKey) {
             await refundGreetingGenerationAccess(
@@ -14967,9 +15016,8 @@ Africa Payment: ${payment.africa}`
             createdAt: new Date().toISOString()
           });
 
-          if (hasPrintoVoice && fs.existsSync(voicePath)) {
-            fs.unlink(voicePath, () => {});
-          }
+          safeUnlink(voicePath);
+          safeUnlink(cleanedVoicePath);
 
           saveBirthdayJobStatus(birthdayJobId, {
             status: "ready",
