@@ -14968,11 +14968,15 @@ app.post("/api/greeting/birthday/generate", async (req, res) => {
       ? birthdayV2FramePath
       : legacyFramePath;
     const masterPath = path.join(birthdayDir, "master.mp4");
-    const audioPath = path.join(birthdayDir, "birthday_audio.m4a");
+    // Use the same Printo theme finder as the studio music player so the
+    // generator supports birthday_audio.m4a, birthday_audio.mp3, music.mp3,
+    // theme.mp3, printo-theme.mp3, or PRINTO_THEME_FILE.
+    const audioPath = findPrintoThemeFile();
+    const hasBirthdayMusic = Boolean(audioPath && fs.existsSync(audioPath));
 
     console.log("Birthday frame path:", framePath, fs.existsSync(framePath));
     console.log("Birthday master path:", masterPath, fs.existsSync(masterPath));
-    console.log("Birthday audio path:", audioPath, fs.existsSync(audioPath));
+    console.log("Birthday music path:", audioPath || "NOT FOUND", hasBirthdayMusic);
 
     if (
       !fs.existsSync(framePath) ||
@@ -14981,6 +14985,15 @@ app.post("/api/greeting/birthday/generate", async (req, res) => {
       return res.status(400).json({
         ok: false,
         error: "Birthday template assets missing. Birthday_Image_V2.png (or frame.png) and master.mp4 are required."
+      });
+    }
+
+    // Never charge credits or create an incomplete voice-only card when the
+    // promised Printo background music asset is unavailable.
+    if (!hasBirthdayMusic) {
+      return res.status(503).json({
+        ok: false,
+        error: "Printo birthday music is temporarily unavailable. No credits were used."
       });
     }
 
@@ -15145,9 +15158,19 @@ Africa Payment: ${payment.africa}`
       `[1:v]scale=${s(462)}:${s(610)}:force_original_aspect_ratio=increase,crop=${s(462)}:${s(610)},setsar=1[vid];` +
       `[bg][vid]overlay=${s(281)}:${s(342)}:shortest=1[outv]`;
 
+    // Mix the personalized Printo voice with the theme music. The earlier
+    // command created audio only from voicePath, so audioPath was detected but
+    // never passed to FFmpeg. Keep music below the voice and normalize the mix.
     const audioFilter =
-      `[2:a]adelay=500|500,volume=1.15,apad=pad_dur=10,atrim=0:10,` +
-      `loudnorm=I=-16:TP=-1.5:LRA=11[aout]`;
+      `[2:a]aresample=48000,` +
+      `aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=stereo,` +
+      `adelay=500|500,volume=1.15,apad=pad_dur=10,atrim=0:10[voice];` +
+      `[3:a]aresample=48000,` +
+      `aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=stereo,` +
+      `volume=0.28,afade=t=in:st=0:d=0.35,afade=t=out:st=9.2:d=0.8,` +
+      `apad=pad_dur=10,atrim=0:10[music];` +
+      `[music][voice]amix=inputs=2:duration=longest:dropout_transition=2:normalize=0,` +
+      `loudnorm=I=-16:TP=-1.5:LRA=11,aresample=48000[aout]`;
 
     birthdayPersonalizedFramePath = path.join(
       generatedDir,
@@ -15181,6 +15204,10 @@ Africa Payment: ${payment.africa}`
       "-i", masterPath,
       "-threads", "1",
       "-i", voicePath,
+      // Loop the short theme file if necessary; output still stops at 10 seconds.
+      "-stream_loop", "-1",
+      "-threads", "1",
+      "-i", audioPath,
       "-t", "10",
       "-filter_complex", `${videoFilter};${audioFilter}`,
       "-map", "[outv]",
@@ -15206,7 +15233,8 @@ Africa Payment: ${payment.africa}`
       queueDepth: birthdayRenderQueueDepth + 1,
       toNameLines,
       fromNameLines,
-      messageUsedLines: messageLayout.usedLines
+      messageUsedLines: messageLayout.usedLines,
+      musicFile: path.basename(audioPath)
     });
 
     await runBirthdayRenderQueued(birthdayJobId, async () => {
@@ -15229,7 +15257,7 @@ Africa Payment: ${payment.africa}`
         saveBirthdayJobStatus(birthdayJobId, {
           status: "rendering",
           progress: 48,
-          message: "Combining Printo, your message and personalized voice."
+          message: "Combining Printo, your message, personalized voice and theme music."
         });
 
         await execFilePromise("ffmpeg", ffmpegArgs, {
