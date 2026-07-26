@@ -3564,6 +3564,21 @@ function execFilePromise(command, args, options = {}) {
   });
 }
 
+async function probeMediaDurationSeconds(filePath) {
+  const { stdout } = await execFilePromise("ffprobe", [
+    "-v", "error",
+    "-show_entries", "format=duration",
+    "-of", "default=noprint_wrappers=1:nokey=1",
+    filePath
+  ], { timeout: 30000, maxBuffer: 1024 * 1024 });
+
+  const duration = Number(String(stdout || "").trim());
+  if (!Number.isFinite(duration) || duration <= 0) {
+    throw new Error("The personalized voice duration could not be read.");
+  }
+  return duration;
+}
+
 async function probePremiumMedia(filePath) {
   const { stdout } = await execFilePromise("ffprobe", [
     "-v", "error",
@@ -15155,6 +15170,61 @@ function limitGreetingInput(value = "", maxLength = 80) {
 }
 
 
+function normalizeSpeechComparisonText(value = "") {
+  return String(value || "")
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9\u0600-\u06ff\u4e00-\u9fff]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function ensureSpeechSentence(value = "") {
+  const cleaned = String(value || "").replace(/\s+/g, " ").trim();
+  if (!cleaned) return "";
+  return /[.!?。！？]$/.test(cleaned) ? cleaned : `${cleaned}.`;
+}
+
+function buildPrintoBirthdayVoiceText({ recipientName, senderName, message }) {
+  const cleanRecipient = String(recipientName || "").replace(/\s+/g, " ").trim();
+  const cleanSender = String(senderName || "").replace(/\s+/g, " ").trim();
+  const cleanMessage = String(message || "").replace(/\s+/g, " ").trim();
+  const comparisonMessage = normalizeSpeechComparisonText(cleanMessage);
+  const comparisonRecipient = normalizeSpeechComparisonText(cleanRecipient);
+
+  const birthdayOpeners = [
+    "happy birthday",
+    "feliz cumpleanos",
+    "joyeux anniversaire",
+    "alles gute zum geburtstag",
+    "herzlichen gluckwunsch zum geburtstag",
+    "feliz aniversario",
+    "عيد ميلاد سعيد",
+    "生日快乐"
+  ];
+
+  const messageAlreadyStartsWithBirthday = birthdayOpeners.some((opener) =>
+    comparisonMessage.startsWith(normalizeSpeechComparisonText(opener))
+  );
+  const messageAlreadyMentionsRecipient = Boolean(
+    comparisonRecipient && comparisonMessage.includes(comparisonRecipient)
+  );
+
+  let spokenGreeting;
+  if (messageAlreadyStartsWithBirthday) {
+    // The customer's message already says Happy Birthday. Speak the recipient
+    // once, but do not insert a second automatic Happy Birthday.
+    spokenGreeting = messageAlreadyMentionsRecipient
+      ? ensureSpeechSentence(cleanMessage)
+      : ensureSpeechSentence(`${cleanRecipient}, ${cleanMessage}`);
+  } else {
+    spokenGreeting = ensureSpeechSentence(`Happy Birthday, ${cleanRecipient}. ${cleanMessage}`);
+  }
+
+  return `${spokenGreeting} ${ensureSpeechSentence(`This greeting is from ${cleanSender}`)}`.trim();
+}
+
 async function generatePrintoBirthdayVoice({ recipientName, senderName, message, outputPath }) {
   const apiKey = process.env.ELEVENLABS_API_KEY;
   const voiceId = process.env.ELEVENLABS_VOICE_ID;
@@ -15164,7 +15234,7 @@ async function generatePrintoBirthdayVoice({ recipientName, senderName, message,
     return { ok: false, reason: "missing_elevenlabs_config" };
   }
 
-  const voiceText = `Happy Birthday, ${recipientName}. ${message} This greeting is from ${senderName}.`;
+  const voiceText = buildPrintoBirthdayVoiceText({ recipientName, senderName, message });
 
   try {
     const response = await axios.post(
@@ -15583,6 +15653,32 @@ Africa Payment: ${payment.africa}`
       return;
     }
 
+    // The finished video must be long enough for the entire ElevenLabs speech.
+    // The previous fixed 10-second output cut off longer names and messages.
+    let birthdayVoiceDurationSeconds = 0;
+    try {
+      birthdayVoiceDurationSeconds = await probeMediaDurationSeconds(voicePath);
+    } catch (durationError) {
+      console.warn("Birthday voice duration probe failed; using a safe text estimate:", durationError.message);
+      birthdayVoiceDurationSeconds = Math.max(
+        8,
+        String(voiceResult.text || "").length / 12
+      );
+    }
+
+    const birthdayVoiceDelaySeconds = 0.4;
+    const birthdayVoiceTailSeconds = 1.0;
+    const birthdayOutputDuration = Math.min(
+      60,
+      Math.max(
+        10,
+        Math.ceil((birthdayVoiceDurationSeconds + birthdayVoiceDelaySeconds + birthdayVoiceTailSeconds) * 10) / 10
+      )
+    );
+    const birthdayVoiceDelayMs = Math.round(birthdayVoiceDelaySeconds * 1000);
+    const birthdayMusicFadeOutStart = Math.max(0, birthdayOutputDuration - 0.8).toFixed(2);
+    const birthdayDurationText = birthdayOutputDuration.toFixed(2);
+
     // Memory-safe Printo Birthday production layout.
     // First, burn all text into one still image. Then the video stage only has
     // to scale and overlay two video sources instead of running many drawtext
@@ -15619,15 +15715,17 @@ Africa Payment: ${payment.africa}`
       `[1:v]scale=${s(462)}:${s(610)}:force_original_aspect_ratio=increase,crop=${s(462)}:${s(610)},setsar=1[vid];` +
       `[bg][vid]overlay=${s(281)}:${s(342)}:shortest=1[outv]`;
 
-    // Mix the personalized Printo voice with the theme music. The earlier
-    // command created audio only from voicePath, so audioPath was detected but
-    // never passed to FFmpeg. Keep music below the voice and normalize the mix.
+    // Mix the complete personalized Printo voice with the theme music.
+    // All timing values follow the measured speech duration, so no words are
+    // cut off and the music fades only after Printo finishes speaking.
     const audioFilter =
       `[2:a]aresample=48000:osf=fltp:ochl=stereo,` +
-      `adelay=500|500,volume=1.15,apad=pad_dur=10,atrim=0:10[voice];` +
+      `adelay=${birthdayVoiceDelayMs}|${birthdayVoiceDelayMs},volume=1.15,` +
+      `apad=pad_dur=${birthdayDurationText},atrim=0:${birthdayDurationText}[voice];` +
       `[3:a]aresample=48000:osf=fltp:ochl=stereo,` +
-      `volume=0.28,afade=t=in:st=0:d=0.35,afade=t=out:st=9.2:d=0.8,` +
-      `apad=pad_dur=10,atrim=0:10[music];` +
+      `volume=0.28,afade=t=in:st=0:d=0.35,` +
+      `afade=t=out:st=${birthdayMusicFadeOutStart}:d=0.8,` +
+      `apad=pad_dur=${birthdayDurationText},atrim=0:${birthdayDurationText}[music];` +
       `[music][voice]amix=inputs=2:duration=longest:dropout_transition=2:normalize=0,` +
       `loudnorm=I=-16:TP=-1.5:LRA=11,aresample=48000:osf=fltp:ochl=stereo[aout]`;
 
@@ -15659,15 +15757,17 @@ Africa Payment: ${payment.africa}`
       "-framerate", "24",
       "-threads", "1",
       "-i", birthdayPersonalizedFramePath,
+      // Loop the 10-second master animation when the complete speech is longer.
+      "-stream_loop", "-1",
       "-threads", "1",
       "-i", masterPath,
       "-threads", "1",
       "-i", voicePath,
-      // Loop the short theme file if necessary; output still stops at 10 seconds.
+      // Loop the short theme file until the complete personalized speech ends.
       "-stream_loop", "-1",
       "-threads", "1",
       "-i", audioPath,
-      "-t", "10",
+      "-t", birthdayDurationText,
       "-filter_complex", `${videoFilter};${audioFilter}`,
       "-map", "[outv]",
       "-map", "[aout]",
@@ -15692,6 +15792,9 @@ Africa Payment: ${payment.africa}`
       jobId: birthdayJobId,
       renderSize: `${BIRTHDAY_RENDER_WIDTH}x${BIRTHDAY_RENDER_HEIGHT}`,
       queueDepth: birthdayRenderQueueDepth + 1,
+      voiceDurationSeconds: birthdayVoiceDurationSeconds,
+      outputDurationSeconds: birthdayOutputDuration,
+      voiceText: voiceResult.text,
       toNameLines,
       fromNameLines,
       messageUsedLines: messageLayout.usedLines,
