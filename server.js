@@ -2191,11 +2191,37 @@ function makeGreetingCustomerKey(value = "") {
     .digest("hex")}`;
 }
 
+
+function readPrintoCookie(req, name) {
+  const cookieHeader = String(req?.headers?.cookie || "");
+  for (const part of cookieHeader.split(";")) {
+    const index = part.indexOf("=");
+    if (index < 0) continue;
+    const key = part.slice(0, index).trim();
+    if (key !== name) continue;
+    try {
+      return decodeURIComponent(part.slice(index + 1).trim());
+    } catch (_) {
+      return part.slice(index + 1).trim();
+    }
+  }
+  return "";
+}
+
+function setPrintoAccountCookie(res, customerKey) {
+  const secure = process.env.NODE_ENV === "production" ? "; Secure" : "";
+  res.setHeader(
+    "Set-Cookie",
+    `printo_customer_key=${encodeURIComponent(customerKey)}; Path=/; Max-Age=31536000; HttpOnly; SameSite=Lax${secure}`
+  );
+}
+
 function getGreetingCustomerIdentity(req, body = {}, whatsappPhone = "") {
   const directCustomerKey = String(
     body.customerKey ||
     body.customer_key ||
     req.headers["x-printo-customer-key"] ||
+    readPrintoCookie(req, "printo_customer_key") ||
     ""
   ).trim();
 
@@ -4887,6 +4913,7 @@ app.post("/api/customer/account/register", async (req, res) => {
     );
 
     const status = await getGreetingAccessStatus(customerKey, "");
+    setPrintoAccountCookie(res, customerKey);
     return res.json({
       ok: true,
       email,
@@ -4925,6 +4952,7 @@ app.post("/api/customer/account/login", async (req, res) => {
     );
 
     const status = await getGreetingAccessStatus(account.customer_key, "");
+    setPrintoAccountCookie(res, account.customer_key);
     return res.json({
       ok: true,
       email: account.email,
@@ -15615,11 +15643,28 @@ function buildBirthdayGeneratorPage(language = "en", templateId = "birthday") {
   const africaPayment=document.getElementById('africaPayment');
   let customerId=localStorage.getItem('printoGreetingCustomerId')||'';
   let customerKey=localStorage.getItem('printoGreetingCustomerKey')||'';
-  if(!customerKey){
+  async function restorePrintoLogin(){
+    if(customerKey)return true;
+    try{
+      const response=await fetch('/api/customer/account/status',{cache:'no-store',credentials:'same-origin'});
+      const data=await response.json();
+      if(response.ok&&data.ok&&data.customerKey){
+        customerKey=String(data.customerKey);
+        customerId=String(data.email||data.customerId||customerId||'');
+        localStorage.setItem('printoGreetingCustomerKey',customerKey);
+        localStorage.setItem('printoGreetingCustomerId',customerId);
+        if(data.email)localStorage.setItem('printoGreetingCustomerEmail',String(data.email));
+        document.getElementById('formCustomerId').value=customerId;
+        document.getElementById('formCustomerKey').value=customerKey;
+        return true;
+      }
+    }catch(_){}
     window.location.replace('/customer-login?next='+encodeURIComponent(location.pathname+location.search));
+    return false;
   }
   document.getElementById('formCustomerId').value=customerId;
   document.getElementById('formCustomerKey').value=customerKey;
+  restorePrintoLogin();
   function updateCounter(input,output,max){const n=input.value.length;output.textContent=n+' / '+max;output.classList.toggle('warn',n>=max)}
   function syncGenerateButton(){
     updateCounter(recipientInput,toCount,limits.name);
@@ -15657,6 +15702,10 @@ function buildBirthdayGeneratorPage(language = "en", templateId = "birthday") {
   }
   birthdayForm.addEventListener('submit',async function(e){
     e.preventDefault();
+    customerId=localStorage.getItem('printoGreetingCustomerId')||customerId||'';
+    customerKey=localStorage.getItem('printoGreetingCustomerKey')||customerKey||'';
+    document.getElementById('formCustomerId').value=customerId;
+    document.getElementById('formCustomerKey').value=customerKey;
     console.log('[Birthday Generate] Submit clicked');
     const recipientName=recipientInput.value.trim();
     const senderName=senderInput.value.trim();
@@ -15670,8 +15719,8 @@ function buildBirthdayGeneratorPage(language = "en", templateId = "birthday") {
       return;
     }
     if(!customerKey){
-      window.location.href='/customer-login?next='+encodeURIComponent(location.pathname+location.search);
-      return;
+      const restored=await restorePrintoLogin();
+      if(!restored)return;
     }
     button.disabled=true;button.textContent='⏳ '+ui.generating;statusBox.textContent=ui.waiting;
     try{
@@ -16968,7 +17017,8 @@ app.post("/birthday-submit", async (req, res) => {
         headers: {
           "Content-Type": "application/json",
           ...(customerId ? { "x-printo-customer-id": customerId } : {}),
-          ...(customerKey ? { "x-printo-customer-key": customerKey } : {})
+          ...(customerKey ? { "x-printo-customer-key": customerKey } : {}),
+          ...(req.headers.cookie ? { "Cookie": req.headers.cookie } : {})
         },
         timeout: PREMIUM_RENDER_STAGE_TIMEOUT_MS * 3,
         validateStatus: () => true
