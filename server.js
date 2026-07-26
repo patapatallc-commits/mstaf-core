@@ -2432,6 +2432,14 @@ async function ensureGreetingAccessTables() {
   await pool.query(`ALTER TABLE standard_greeting_videos ADD COLUMN IF NOT EXISTS poster_mime TEXT NOT NULL DEFAULT 'image/jpeg'`);
   await pool.query(`ALTER TABLE standard_greeting_videos ADD COLUMN IF NOT EXISTS share_poster_data BYTEA`);
   await pool.query(`ALTER TABLE standard_greeting_videos ADD COLUMN IF NOT EXISTS share_poster_mime TEXT NOT NULL DEFAULT 'image/jpeg'`);
+
+  // Older deployments created the media columns as NOT NULL because rows were
+  // inserted only after a video finished. The current crash-safe workflow must
+  // first insert a pending job, then attach the video/posters after FFmpeg
+  // succeeds. Relax those legacy constraints before any pending row is inserted.
+  await pool.query(`ALTER TABLE standard_greeting_videos ALTER COLUMN video_data DROP NOT NULL`);
+  await pool.query(`ALTER TABLE standard_greeting_videos ALTER COLUMN poster_data DROP NOT NULL`);
+  await pool.query(`ALTER TABLE standard_greeting_videos ALTER COLUMN share_poster_data DROP NOT NULL`);
   await pool.query(`ALTER TABLE standard_greeting_videos ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'pending'`);
   await pool.query(`ALTER TABLE standard_greeting_videos ADD COLUMN IF NOT EXISTS render_error TEXT NOT NULL DEFAULT ''`);
   await pool.query(`ALTER TABLE standard_greeting_videos ADD COLUMN IF NOT EXISTS credit_source TEXT NOT NULL DEFAULT ''`);
