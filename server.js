@@ -2357,6 +2357,53 @@ async function ensureGreetingAccessTables() {
     ON greeting_payment_events(customer_key)
   `);
 
+  // Persist Standard greeting jobs and finished media in PostgreSQL so Render
+  // deploys/restarts cannot erase customer videos or leave credits stranded.
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS standard_greeting_videos (
+      greeting_id TEXT PRIMARY KEY,
+      job_id TEXT UNIQUE NOT NULL,
+      customer_key TEXT NOT NULL,
+      recipient_name TEXT NOT NULL DEFAULT '',
+      sender_name TEXT NOT NULL DEFAULT '',
+      personal_message TEXT NOT NULL DEFAULT '',
+      spoken_text TEXT NOT NULL DEFAULT '',
+      language TEXT NOT NULL DEFAULT 'en',
+      file_name TEXT NOT NULL DEFAULT '',
+      video_data BYTEA,
+      video_mime TEXT NOT NULL DEFAULT 'video/mp4',
+      poster_data BYTEA,
+      poster_mime TEXT NOT NULL DEFAULT 'image/jpeg',
+      share_poster_data BYTEA,
+      share_poster_mime TEXT NOT NULL DEFAULT 'image/jpeg',
+      status TEXT NOT NULL DEFAULT 'pending',
+      render_error TEXT NOT NULL DEFAULT '',
+      credit_source TEXT NOT NULL DEFAULT '',
+      credits_used INTEGER NOT NULL DEFAULT 20,
+      refunded BOOLEAN NOT NULL DEFAULT FALSE,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      completed_at TIMESTAMPTZ,
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `);
+
+  await pool.query(`ALTER TABLE standard_greeting_videos ADD COLUMN IF NOT EXISTS video_data BYTEA`);
+  await pool.query(`ALTER TABLE standard_greeting_videos ADD COLUMN IF NOT EXISTS poster_data BYTEA`);
+  await pool.query(`ALTER TABLE standard_greeting_videos ADD COLUMN IF NOT EXISTS share_poster_data BYTEA`);
+  await pool.query(`ALTER TABLE standard_greeting_videos ADD COLUMN IF NOT EXISTS render_error TEXT NOT NULL DEFAULT ''`);
+  await pool.query(`ALTER TABLE standard_greeting_videos ADD COLUMN IF NOT EXISTS credit_source TEXT NOT NULL DEFAULT ''`);
+  await pool.query(`ALTER TABLE standard_greeting_videos ADD COLUMN IF NOT EXISTS credits_used INTEGER NOT NULL DEFAULT 20`);
+  await pool.query(`ALTER TABLE standard_greeting_videos ADD COLUMN IF NOT EXISTS refunded BOOLEAN NOT NULL DEFAULT FALSE`);
+  await pool.query(`ALTER TABLE standard_greeting_videos ADD COLUMN IF NOT EXISTS completed_at TIMESTAMPTZ`);
+  await pool.query(`
+    CREATE INDEX IF NOT EXISTS standard_greeting_videos_customer_idx
+    ON standard_greeting_videos(customer_key, created_at DESC)
+  `);
+  await pool.query(`
+    CREATE INDEX IF NOT EXISTS standard_greeting_videos_status_idx
+    ON standard_greeting_videos(status)
+  `);
+
   await pool.query(`
     CREATE TABLE IF NOT EXISTS premium_greeting_orders (
       order_id TEXT PRIMARY KEY,
@@ -2677,6 +2724,311 @@ async function refundGreetingGenerationAccess(customerKey, source = "", creditsU
     [customerKey, safeCreditsUsed]
   );
 }
+
+
+
+const STANDARD_GREETING_VIDEO_MAX_BYTES = 25 * 1024 * 1024;
+
+async function createStandardGreetingGeneration({
+  greetingId,
+  jobId,
+  customerKey,
+  recipientName = "",
+  senderName = "",
+  personalMessage = "",
+  language = "en",
+  creditSource = "credits",
+  creditsUsed = PRINTO_CREATION_CREDIT_COST
+}) {
+  await queryWithRetry(
+    `
+    INSERT INTO standard_greeting_videos (
+      greeting_id, job_id, customer_key, recipient_name, sender_name,
+      personal_message, language, status, credit_source, credits_used,
+      refunded, created_at, updated_at
+    )
+    VALUES ($1,$2,$3,$4,$5,$6,$7,'pending',$8,$9,FALSE,NOW(),NOW())
+    ON CONFLICT (greeting_id)
+    DO UPDATE SET
+      job_id = EXCLUDED.job_id,
+      customer_key = EXCLUDED.customer_key,
+      recipient_name = EXCLUDED.recipient_name,
+      sender_name = EXCLUDED.sender_name,
+      personal_message = EXCLUDED.personal_message,
+      language = EXCLUDED.language,
+      status = 'pending',
+      render_error = '',
+      credit_source = EXCLUDED.credit_source,
+      credits_used = EXCLUDED.credits_used,
+      refunded = FALSE,
+      updated_at = NOW()
+    `,
+    [
+      greetingId,
+      jobId,
+      customerKey,
+      String(recipientName || ""),
+      String(senderName || ""),
+      String(personalMessage || ""),
+      String(language || "en"),
+      String(creditSource || ""),
+      Math.max(1, Number(creditsUsed) || PRINTO_CREATION_CREDIT_COST)
+    ]
+  );
+}
+
+async function updateStandardGreetingStatus(greetingId, status, renderError = "") {
+  if (!greetingId) return;
+  await queryWithRetry(
+    `UPDATE standard_greeting_videos
+     SET status = $2, render_error = $3, updated_at = NOW()
+     WHERE greeting_id = $1`,
+    [greetingId, String(status || "pending"), String(renderError || "")]
+  );
+}
+
+async function failStandardGreetingGeneration({ greetingId, error = "Generation failed." }) {
+  if (!greetingId) return;
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    const result = await client.query(
+      `SELECT customer_key, credit_source, credits_used, refunded, status
+       FROM standard_greeting_videos
+       WHERE greeting_id = $1
+       FOR UPDATE`,
+      [greetingId]
+    );
+    const row = result.rows[0];
+    if (!row) {
+      await client.query("COMMIT");
+      return;
+    }
+
+    if (row.status !== "ready" && !row.refunded && row.credit_source === "credits") {
+      const credits = Math.max(1, Number(row.credits_used) || PRINTO_CREATION_CREDIT_COST);
+      await client.query(
+        `UPDATE greeting_customer_access
+         SET paid_credits = paid_credits + $2,
+             total_generated = GREATEST(total_generated - 1, 0),
+             last_generation_source = '',
+             last_generated_at = NULL,
+             updated_at = NOW()
+         WHERE customer_key = $1`,
+        [row.customer_key, credits]
+      );
+    }
+
+    if (row.status !== "ready") {
+      await client.query(
+        `UPDATE standard_greeting_videos
+         SET status = 'failed', render_error = $2, refunded = TRUE, updated_at = NOW()
+         WHERE greeting_id = $1`,
+        [greetingId, String(error || "Generation failed.")]
+      );
+    }
+    await client.query("COMMIT");
+  } catch (errorObject) {
+    await client.query("ROLLBACK").catch(() => {});
+    throw errorObject;
+  } finally {
+    client.release();
+  }
+}
+
+async function completeStandardGreetingGeneration({
+  greetingId,
+  fileName,
+  outputPath,
+  posterPath = "",
+  sharePosterPath = "",
+  spokenText = ""
+}) {
+  const stat = await fs.promises.stat(outputPath);
+  if (!stat.isFile() || stat.size <= 0) {
+    throw new Error("The finished Standard video is empty.");
+  }
+  if (stat.size > STANDARD_GREETING_VIDEO_MAX_BYTES) {
+    throw new Error("The finished Standard video is too large for permanent storage.");
+  }
+
+  const videoData = await fs.promises.readFile(outputPath);
+  const posterData = posterPath && fs.existsSync(posterPath)
+    ? await fs.promises.readFile(posterPath)
+    : null;
+  const sharePosterData = sharePosterPath && fs.existsSync(sharePosterPath)
+    ? await fs.promises.readFile(sharePosterPath)
+    : null;
+
+  const result = await queryWithRetry(
+    `UPDATE standard_greeting_videos
+     SET file_name = $2,
+         spoken_text = $3,
+         video_data = $4,
+         video_mime = 'video/mp4',
+         poster_data = $5,
+         poster_mime = 'image/jpeg',
+         share_poster_data = $6,
+         share_poster_mime = 'image/jpeg',
+         status = 'ready',
+         render_error = '',
+         refunded = FALSE,
+         completed_at = NOW(),
+         updated_at = NOW()
+     WHERE greeting_id = $1
+     RETURNING greeting_id`,
+    [greetingId, String(fileName || "Printo-Greeting.mp4"), String(spokenText || ""), videoData, posterData, sharePosterData]
+  );
+
+  if (!result.rows[0]) {
+    throw new Error("The Standard greeting database record was not found.");
+  }
+}
+
+async function updateStandardGreetingSharePoster(greetingId, sharePosterPath) {
+  if (!greetingId || !sharePosterPath || !fs.existsSync(sharePosterPath)) return;
+  const sharePosterData = await fs.promises.readFile(sharePosterPath);
+  await queryWithRetry(
+    `UPDATE standard_greeting_videos
+     SET share_poster_data = $2, share_poster_mime = 'image/jpeg', updated_at = NOW()
+     WHERE greeting_id = $1 AND status = 'ready'`,
+    [greetingId, sharePosterData]
+  );
+}
+
+async function getStandardGreetingMetadata(greetingId) {
+  const result = await queryWithRetry(
+    `SELECT greeting_id, job_id, customer_key, recipient_name, sender_name,
+            personal_message, spoken_text, language, file_name, status,
+            render_error, created_at, completed_at,
+            (video_data IS NOT NULL) AS has_video,
+            (poster_data IS NOT NULL) AS has_poster,
+            (share_poster_data IS NOT NULL) AS has_share_poster
+     FROM standard_greeting_videos
+     WHERE greeting_id = $1
+     LIMIT 1`,
+    [String(greetingId || "")]
+  );
+  return result.rows[0] || null;
+}
+
+async function getStandardGreetingJobById(jobId) {
+  const result = await queryWithRetry(
+    `SELECT greeting_id, job_id, status, render_error, recipient_name,
+            sender_name, language, created_at, completed_at
+     FROM standard_greeting_videos
+     WHERE job_id = $1
+     LIMIT 1`,
+    [String(jobId || "")]
+  );
+  return result.rows[0] || null;
+}
+
+async function listStandardGreetingVideos(customerKey) {
+  const result = await queryWithRetry(
+    `SELECT greeting_id, recipient_name, sender_name, personal_message,
+            language, created_at, completed_at
+     FROM standard_greeting_videos
+     WHERE customer_key = $1 AND status = 'ready' AND video_data IS NOT NULL
+     ORDER BY COALESCE(completed_at, created_at) DESC
+     LIMIT 100`,
+    [customerKey]
+  );
+  return result.rows.map((row) => ({
+    id: row.greeting_id,
+    toName: row.recipient_name || "",
+    fromName: row.sender_name || "",
+    message: row.personal_message || "",
+    language: row.language || "en",
+    createdAt: row.completed_at || row.created_at || null,
+    resultUrl: `/g/${encodeURIComponent(row.greeting_id)}`,
+    downloadUrl: `/download/g/${encodeURIComponent(row.greeting_id)}`
+  }));
+}
+
+async function refundInterruptedStandardGreetingGenerations() {
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    const pending = await client.query(
+      `SELECT greeting_id, customer_key, credit_source, credits_used, refunded
+       FROM standard_greeting_videos
+       WHERE status IN ('pending','preparing','queued','rendering','finalizing')
+       FOR UPDATE`
+    );
+
+    for (const row of pending.rows) {
+      if (!row.refunded && row.credit_source === "credits") {
+        const credits = Math.max(1, Number(row.credits_used) || PRINTO_CREATION_CREDIT_COST);
+        await client.query(
+          `UPDATE greeting_customer_access
+           SET paid_credits = paid_credits + $2,
+               total_generated = GREATEST(total_generated - 1, 0),
+               last_generation_source = '',
+               last_generated_at = NULL,
+               updated_at = NOW()
+           WHERE customer_key = $1`,
+          [row.customer_key, credits]
+        );
+      }
+      await client.query(
+        `UPDATE standard_greeting_videos
+         SET status = 'failed',
+             render_error = 'Render was interrupted by a server restart. Credits were restored.',
+             refunded = TRUE,
+             updated_at = NOW()
+         WHERE greeting_id = $1`,
+        [row.greeting_id]
+      );
+    }
+    await client.query("COMMIT");
+    if (pending.rowCount) {
+      console.log(`Restored credits for ${pending.rowCount} interrupted Standard greeting job(s).`);
+    }
+  } catch (error) {
+    await client.query("ROLLBACK").catch(() => {});
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+function sendDatabaseBufferWithRange(req, res, buffer, contentType, downloadName = "") {
+  if (!Buffer.isBuffer(buffer) || buffer.length === 0) {
+    return res.status(404).send("Media is unavailable.");
+  }
+  const fileSize = buffer.length;
+  res.setHeader("Accept-Ranges", "bytes");
+  res.setHeader("Cache-Control", "private, max-age=3600");
+  res.setHeader("Content-Type", contentType || "application/octet-stream");
+  if (downloadName) {
+    res.setHeader("Content-Disposition", `attachment; filename="${String(downloadName).replace(/[\r\n\"]/g, "_")}"`);
+  }
+
+  const range = String(req.headers.range || "");
+  if (!range) {
+    res.setHeader("Content-Length", fileSize);
+    return res.end(buffer);
+  }
+
+  const match = range.match(/bytes=(\d*)-(\d*)/i);
+  if (!match) {
+    res.status(416).setHeader("Content-Range", `bytes */${fileSize}`);
+    return res.end();
+  }
+  const start = match[1] ? Number(match[1]) : 0;
+  const requestedEnd = match[2] ? Number(match[2]) : fileSize - 1;
+  const end = Math.min(requestedEnd, fileSize - 1);
+  if (!Number.isFinite(start) || start < 0 || start >= fileSize || end < start) {
+    res.status(416).setHeader("Content-Range", `bytes */${fileSize}`);
+    return res.end();
+  }
+  res.status(206);
+  res.setHeader("Content-Range", `bytes ${start}-${end}/${fileSize}`);
+  res.setHeader("Content-Length", end - start + 1);
+  return res.end(buffer.subarray(start, end + 1));
+}
+
 
 async function grantGreetingPaidCredits({
   customerKey,
@@ -14917,6 +15269,7 @@ app.post("/api/greeting/birthday/generate", async (req, res) => {
   let customerIdentity = null;
   let birthdayJobId = "";
   let birthdayResponseSent = false;
+  let birthdayGreetingId = "";
   let birthdayVoicePath = "";
   let birthdayPersonalizedFramePath = "";
 
@@ -15063,6 +15416,18 @@ Africa Payment: ${payment.africa}`
     }
 
     birthdayJobId = createBirthdayJobId();
+    birthdayGreetingId = createShortGreetingId();
+    await createStandardGreetingGeneration({
+      greetingId: birthdayGreetingId,
+      jobId: birthdayJobId,
+      customerKey: customerIdentity.customerKey,
+      recipientName: toNameRaw,
+      senderName: fromNameRaw,
+      personalMessage: messageRaw,
+      language: requestLanguage,
+      creditSource: accessReservation.source,
+      creditsUsed: accessReservation.creditsUsed
+    });
     const progressUrl = buildBirthdayProgressUrl(req, birthdayJobId, requestLanguage);
     saveBirthdayJobStatus(birthdayJobId, {
       status: "queued",
@@ -15073,6 +15438,7 @@ Africa Payment: ${payment.africa}`
       recipientName: toNameRaw,
       senderName: fromNameRaw,
       language: requestLanguage,
+      greetingId: birthdayGreetingId,
       createdAt: new Date().toISOString()
     });
 
@@ -15080,6 +15446,7 @@ Africa Payment: ${payment.africa}`
       ok: true,
       queued: true,
       jobId: birthdayJobId,
+      greetingId: birthdayGreetingId,
       progressUrl,
       statusUrl: `/api/greeting/birthday/jobs/${encodeURIComponent(birthdayJobId)}`,
       customerKey: customerIdentity?.customerKey || ""
@@ -15105,14 +15472,11 @@ Africa Payment: ${payment.africa}`
     });
     const hasPrintoVoice = Boolean(voiceResult.ok && fs.existsSync(voicePath));
     if (!hasPrintoVoice) {
-      if (accessReservation?.allowed && customerIdentity?.customerKey) {
-        await refundGreetingGenerationAccess(
-          customerIdentity.customerKey,
-          accessReservation.source,
-          accessReservation.creditsUsed
-        );
-        accessReservation = null;
-      }
+      await failStandardGreetingGeneration({
+        greetingId: birthdayGreetingId,
+        error: "Personalized voice could not be created."
+      });
+      accessReservation = null;
       saveBirthdayJobStatus(birthdayJobId, {
         status: "failed",
         progress: 100,
@@ -15162,15 +15526,13 @@ Africa Payment: ${payment.africa}`
     // command created audio only from voicePath, so audioPath was detected but
     // never passed to FFmpeg. Keep music below the voice and normalize the mix.
     const audioFilter =
-      `[2:a]aresample=48000,` +
-      `aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=stereo,` +
+      `[2:a]aresample=48000:osf=fltp:ochl=stereo,` +
       `adelay=500|500,volume=1.15,apad=pad_dur=10,atrim=0:10[voice];` +
-      `[3:a]aresample=48000,` +
-      `aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=stereo,` +
+      `[3:a]aresample=48000:osf=fltp:ochl=stereo,` +
       `volume=0.28,afade=t=in:st=0:d=0.35,afade=t=out:st=9.2:d=0.8,` +
       `apad=pad_dur=10,atrim=0:10[music];` +
       `[music][voice]amix=inputs=2:duration=longest:dropout_transition=2:normalize=0,` +
-      `loudnorm=I=-16:TP=-1.5:LRA=11,aresample=48000[aout]`;
+      `loudnorm=I=-16:TP=-1.5:LRA=11,aresample=48000:osf=fltp:ochl=stereo[aout]`;
 
     birthdayPersonalizedFramePath = path.join(
       generatedDir,
@@ -15222,6 +15584,8 @@ Africa Payment: ${payment.africa}`
       "-crf", "29",
       "-pix_fmt", "yuv420p",
       "-c:a", "aac",
+      "-ac", "2",
+      "-ar", "48000",
       "-b:a", "128k",
       "-movflags", "+faststart",
       outputPath
@@ -15237,6 +15601,7 @@ Africa Payment: ${payment.africa}`
       musicFile: path.basename(audioPath)
     });
 
+    await updateStandardGreetingStatus(birthdayGreetingId, "rendering");
     await runBirthdayRenderQueued(birthdayJobId, async () => {
       try {
         saveBirthdayJobStatus(birthdayJobId, {
@@ -15269,15 +15634,14 @@ Africa Payment: ${payment.africa}`
           throw new Error("Birthday video output was not created.");
         }
 
-        const downloadUrl = buildGeneratedUrl(req, fileName);
+        const publicBase = String(getConfiguredPublicOrigin(req)).replace(/\/$/, "");
+        const greetingId = birthdayGreetingId;
+        const downloadUrl = `${publicBase}/standard-media/${encodeURIComponent(greetingId)}/video`;
         const posterName = fileName.replace(/\.mp4$/i, ".jpg");
         const posterPath = path.join(generatedDir, posterName);
         const sharePosterName = fileName.replace(/\.mp4$/i, "_share.jpg");
         const sharePosterPath = path.join(generatedDir, sharePosterName);
-        const greetingId = createShortGreetingId();
-        const fallbackPosterUrl = `${String(
-          getConfiguredPublicOrigin(req)
-        ).replace(/\/$/, "")}/greeting-assets/birthday-v2.png`;
+        const fallbackPosterUrl = `${publicBase}/greeting-assets/birthday-v2.png`;
 
         saveBirthdayJobStatus(birthdayJobId, {
           status: "finalizing",
@@ -15299,7 +15663,7 @@ Africa Payment: ${payment.africa}`
         }
 
         const posterUrl = fs.existsSync(posterPath)
-          ? buildGeneratedUrl(req, posterName)
+          ? `${publicBase}/standard-media/${encodeURIComponent(greetingId)}/poster`
           : fallbackPosterUrl;
         const fullResultUrl = buildGreetingResultUrl(
           req,
@@ -15310,6 +15674,14 @@ Africa Payment: ${payment.africa}`
           requestLanguage
         );
         const resultUrl = buildShortGreetingUrl(req, greetingId);
+
+        await completeStandardGreetingGeneration({
+          greetingId,
+          fileName,
+          outputPath,
+          posterPath,
+          spokenText: voiceResult.text || ""
+        });
 
         saveGreetingMetadata(greetingId, {
           videoUrl: downloadUrl,
@@ -15370,11 +15742,12 @@ Africa Payment: ${payment.africa}`
             ], { timeout: 30000, maxBuffer: 2 * 1024 * 1024 });
 
             if (fs.existsSync(sharePosterPath)) {
-              const sharePosterUrl = buildGeneratedUrl(req, sharePosterName);
+              await updateStandardGreetingSharePoster(greetingId, sharePosterPath);
+              const sharePosterUrl = `${publicBase}/standard-media/${encodeURIComponent(greetingId)}/share-poster`;
               const metadata = loadGreetingMetadata(greetingId) || {};
               saveGreetingMetadata(greetingId, {
                 ...metadata,
-                posterUrl: buildGeneratedUrl(req, posterName),
+                posterUrl: `${publicBase}/standard-media/${encodeURIComponent(greetingId)}/poster`,
                 sharePosterUrl,
                 updatedAt: new Date().toISOString()
               });
@@ -15390,16 +15763,34 @@ Africa Payment: ${payment.africa}`
       } finally {
         safeUnlink(birthdayPersonalizedFramePath);
         safeUnlink(voicePath);
+        // Finished media is now stored in PostgreSQL. Local files are temporary.
+        if (birthdayGreetingId) {
+          const record = await getStandardGreetingMetadata(birthdayGreetingId).catch(() => null);
+          if (record?.status === "ready") {
+            safeUnlink(outputPath);
+            safeUnlink(outputPath.replace(/\.mp4$/i, ".jpg"));
+            safeUnlink(outputPath.replace(/\.mp4$/i, "_share.jpg"));
+          }
+        }
       }
     });
     return;
   } catch (err) {
     safeUnlink(birthdayPersonalizedFramePath);
     safeUnlink(birthdayVoicePath);
-    if (accessReservation?.allowed && customerIdentity?.customerKey) {
+    if (birthdayGreetingId) {
+      await failStandardGreetingGeneration({
+        greetingId: birthdayGreetingId,
+        error: String(err.message || err)
+      }).catch((refundError) => {
+        console.error("Birthday access refund failed:", refundError);
+      });
+      accessReservation = null;
+    } else if (accessReservation?.allowed && customerIdentity?.customerKey) {
       await refundGreetingGenerationAccess(
         customerIdentity.customerKey,
-        accessReservation.source
+        accessReservation.source,
+        accessReservation.creditsUsed
       ).catch((refundError) => {
         console.error("Birthday access refund failed:", refundError);
       });
@@ -17165,17 +17556,35 @@ app.get(["/greetings", "/greeting"], (req, res) => {
 });
 
 
-app.get("/api/greeting/birthday/jobs/:jobId", (req, res) => {
-  const job = loadBirthdayJobStatus(req.params.jobId);
-  if (!job) return res.status(404).json({ ok: false, error: "Birthday render job not found." });
-  return res.json({ ok: true, job });
+app.get("/api/greeting/birthday/jobs/:jobId", async (req, res) => {
+  const localJob = loadBirthdayJobStatus(req.params.jobId);
+  if (localJob) return res.json({ ok: true, job: localJob });
+  try {
+    const row = await getStandardGreetingJobById(req.params.jobId);
+    if (!row) return res.status(404).json({ ok: false, error: "Birthday render job not found." });
+    const publicBase = String(getConfiguredPublicOrigin(req)).replace(/\/$/, "");
+    const job = {
+      jobId: row.job_id,
+      greetingId: row.greeting_id,
+      status: row.status,
+      progress: row.status === "ready" || row.status === "failed" ? 100 : 50,
+      message: row.status === "ready"
+        ? "Your Printo birthday video is ready!"
+        : row.status === "failed"
+          ? (row.render_error || "The render failed. Credits were restored.")
+          : "Printo is creating your video.",
+      error: row.status === "failed" ? (row.render_error || "Render failed.") : "",
+      resultUrl: row.status === "ready" ? `${publicBase}/g/${encodeURIComponent(row.greeting_id)}` : ""
+    };
+    return res.json({ ok: true, job });
+  } catch (error) {
+    return res.status(500).json({ ok: false, error: "Could not load render status." });
+  }
 });
 
 app.get("/birthday-progress/:jobId", (req, res) => {
   const jobId = String(req.params.jobId || "");
   const language = String(req.query.lang || "en");
-  const initial = loadBirthdayJobStatus(jobId);
-  if (!initial) return res.status(404).send("Birthday render job not found.");
   res.type("html").send(`<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Printo Render Progress</title><style>*{box-sizing:border-box}body{margin:0;min-height:100vh;display:grid;place-items:center;background:linear-gradient(180deg,#071b61,#0b63ce);font-family:Arial;color:#10245e;padding:20px}.card{width:min(620px,100%);background:#fff;border-radius:24px;padding:28px;text-align:center;box-shadow:0 18px 50px rgba(0,0,0,.35)}h1{color:#123b9d}.bar{height:24px;background:#e5e7eb;border-radius:99px;overflow:hidden;margin:22px 0}.fill{height:100%;width:5%;background:linear-gradient(90deg,#7b2cbf,#d63384);transition:width .5s}.status{font-weight:800;font-size:18px}.note{color:#64748b;line-height:1.5}.btn{display:inline-block;margin-top:18px;padding:13px 20px;border-radius:13px;background:#7b2cbf;color:#fff;text-decoration:none;font-weight:900}</style></head><body><div class="card"><h1>🎂 Printo is creating your video</h1><div class="bar"><div id="fill" class="fill"></div></div><div id="percent" class="status">5%</div><p id="message" class="note">Your request is queued.</p><p class="note">You may keep this page open. It will automatically take you to your finished video.</p><a class="btn" href="/greetings?lang=${encodeURIComponent(language)}">Back to Studio</a></div><script>const jobId=${JSON.stringify(jobId)};async function check(){try{const r=await fetch('/api/greeting/birthday/jobs/'+encodeURIComponent(jobId),{cache:'no-store'});const d=await r.json();if(!r.ok||!d.ok)throw new Error(d.error||'Unable to load render status');const j=d.job||{};const p=Math.max(0,Math.min(100,Number(j.progress||0)));document.getElementById('fill').style.width=p+'%';document.getElementById('percent').textContent=p+'%';document.getElementById('message').textContent=j.message||j.status||'Working...';if(j.status==='ready'&&j.resultUrl){window.location.href=j.resultUrl+(j.resultUrl.includes('?')?'&':'?')+'lang='+encodeURIComponent(${JSON.stringify(language)});return;}if(j.status==='failed'){document.getElementById('message').textContent='❌ '+(j.error||j.message||'Render failed.');return;}setTimeout(check,2500);}catch(e){document.getElementById('message').textContent='Still working... reconnecting.';setTimeout(check,4000);}}check();</script></body></html>`);
 });
 
@@ -17524,16 +17933,78 @@ function renderGreetingResult(req, res) {
 }
 
 
-app.get("/download/g/:id", (req, res) => {
-  const metadata = loadGreetingMetadata(req.params.id);
-  if (!metadata || !metadata.videoUrl) return res.status(404).send("Greeting video is unavailable.");
-  const localName = String(metadata.fileName || path.basename(new URL(metadata.videoUrl).pathname || "Printo-Greeting.mp4"));
-  const localPath = path.join(generatedDir, path.basename(localName));
-  const downloadName = `Printo-${String(metadata.toName || "Greeting").replace(/[^a-zA-Z0-9_-]+/g,"_")}.mp4`;
-  res.setHeader("Content-Disposition", `attachment; filename=\"${downloadName}\"`);
-  res.setHeader("Content-Type", "video/mp4");
-  if (fs.existsSync(localPath)) return res.sendFile(localPath);
-  return res.redirect(metadata.videoUrl);
+app.get("/standard-media/:id/:kind", async (req, res) => {
+  try {
+    const greetingId = String(req.params.id || "");
+    const kind = String(req.params.kind || "video");
+    const column = kind === "poster"
+      ? "poster_data"
+      : kind === "share-poster"
+        ? "share_poster_data"
+        : "video_data";
+    const mimeColumn = kind === "poster"
+      ? "poster_mime"
+      : kind === "share-poster"
+        ? "share_poster_mime"
+        : "video_mime";
+    const result = await queryWithRetry(
+      `SELECT ${column} AS media_data, ${mimeColumn} AS media_mime, file_name,
+              recipient_name, status
+       FROM standard_greeting_videos
+       WHERE greeting_id = $1
+       LIMIT 1`,
+      [greetingId]
+    );
+    const row = result.rows[0];
+    if (!row || row.status !== "ready" || !row.media_data) {
+      return res.status(404).send("Greeting media is unavailable.");
+    }
+    const downloadName = kind === "video" && String(req.query.download || "") === "1"
+      ? `Printo-${String(row.recipient_name || "Greeting").replace(/[^a-zA-Z0-9_-]+/g, "_")}.mp4`
+      : "";
+    return sendDatabaseBufferWithRange(
+      req,
+      res,
+      row.media_data,
+      row.media_mime || (kind === "video" ? "video/mp4" : "image/jpeg"),
+      downloadName
+    );
+  } catch (error) {
+    console.error("Standard greeting media route failed:", error);
+    return res.status(500).send("Greeting media could not be loaded.");
+  }
+});
+
+app.get("/download/g/:id", async (req, res) => {
+  try {
+    const greetingId = String(req.params.id || "");
+    const result = await queryWithRetry(
+      `SELECT video_data, video_mime, recipient_name, status
+       FROM standard_greeting_videos
+       WHERE greeting_id = $1
+       LIMIT 1`,
+      [greetingId]
+    );
+    const row = result.rows[0];
+    if (row && row.status === "ready" && row.video_data) {
+      const downloadName = `Printo-${String(row.recipient_name || "Greeting").replace(/[^a-zA-Z0-9_-]+/g,"_")}.mp4`;
+      return sendDatabaseBufferWithRange(req, res, row.video_data, row.video_mime || "video/mp4", downloadName);
+    }
+
+    // Backward-compatible fallback for a still-existing pre-database local file.
+    const metadata = loadGreetingMetadata(greetingId);
+    if (!metadata || !metadata.videoUrl) return res.status(404).send("Greeting video is unavailable.");
+    const localName = String(metadata.fileName || path.basename(new URL(metadata.videoUrl).pathname || "Printo-Greeting.mp4"));
+    const localPath = path.join(generatedDir, path.basename(localName));
+    const downloadName = `Printo-${String(metadata.toName || "Greeting").replace(/[^a-zA-Z0-9_-]+/g,"_")}.mp4`;
+    res.setHeader("Content-Disposition", `attachment; filename=\"${downloadName}\"`);
+    res.setHeader("Content-Type", "video/mp4");
+    if (fs.existsSync(localPath)) return res.sendFile(localPath);
+    return res.redirect(metadata.videoUrl);
+  } catch (error) {
+    console.error("Standard greeting download failed:", error);
+    return res.status(500).send("Greeting video could not be downloaded.");
+  }
 });
 
 app.get("/api/customer/account/dashboard", async (req,res)=>{
@@ -17545,14 +18016,7 @@ app.get("/api/customer/account/dashboard", async (req,res)=>{
     const account=await queryWithRetry(`SELECT email FROM greeting_customer_accounts WHERE customer_key=$1 LIMIT 1`,[identity.customerKey]);
     if(!account.rows[0]) return res.status(401).json({ok:false,loginRequired:true,error:"Please log in."});
     const status=await getGreetingAccessStatus(identity.customerKey,"");
-    const videos=[];
-    for(const name of fs.readdirSync(generatedDir).filter(n=>n.endsWith(".json"))){
-      try{
-        const m=JSON.parse(fs.readFileSync(path.join(generatedDir,name),"utf8"));
-        if(m.customerKey===identity.customerKey) videos.push({id:name.replace(/\.json$/,""),toName:m.toName||"",fromName:m.fromName||"",message:m.message||"",createdAt:m.createdAt||"",resultUrl:`/g/${name.replace(/\.json$/,"")}`,downloadUrl:`/download/g/${name.replace(/\.json$/,"")}`});
-      }catch(_){}
-    }
-    videos.sort((a,b)=>String(b.createdAt).localeCompare(String(a.createdAt)));
+    const videos=await listStandardGreetingVideos(identity.customerKey);
     return res.json({ok:true,email:account.rows[0].email,...status,videos});
   }catch(error){return res.status(500).json({ok:false,error:error.message});}
 });
@@ -17561,39 +18025,64 @@ app.get("/api/customer/dashboard/:customerId", async (req,res)=>{
   try {
     const identity=getGreetingCustomerIdentity(req,{customerId:req.params.customerId,customerPhone:req.query.phone||"",email:req.query.email||""});
     const status=await getGreetingAccessStatus(identity.customerKey,identity.contactPhone);
-    const videos=[];
-    for (const name of fs.readdirSync(generatedDir).filter(n=>n.endsWith('.json'))) {
-      try { const m=JSON.parse(fs.readFileSync(path.join(generatedDir,name),'utf8')); if(m.customerKey===identity.customerKey) videos.push({id:name.replace(/\.json$/,''),toName:m.toName||'',fromName:m.fromName||'',createdAt:m.createdAt||'',resultUrl:`/g/${name.replace(/\.json$/,'')}`,downloadUrl:`/download/g/${name.replace(/\.json$/,'')}`}); } catch(e){}
-    }
-    videos.sort((a,b)=>String(b.createdAt).localeCompare(String(a.createdAt)));
+    const videos=await listStandardGreetingVideos(identity.customerKey);
     res.json({ok:true,...status,videos});
   } catch(error){res.status(500).json({ok:false,error:error.message});}
 });
 
 app.get("/subscriptions", (req,res)=>res.type('html').send(`<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><title>Printo Plans</title><style>*{box-sizing:border-box}body{margin:0;font-family:Arial;background:linear-gradient(150deg,#071b61,#0b63ce);color:#fff;padding:24px}.wrap{max-width:1180px;margin:auto;text-align:center}.topbar{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}.close-link{background:#fff;color:#082a8f;text-decoration:none;padding:11px 16px;border-radius:999px;font-weight:900}.section{margin:28px 0 38px}.section-title{font-size:30px;margin:0 0 8px}.section-sub{margin:0 0 18px}.plans{display:grid;grid-template-columns:repeat(4,1fr);gap:16px}.plan{background:#fff;color:#082a8f;border:3px solid #ffd21f;border-radius:22px;padding:22px;position:relative}.plan.premium{border-color:#c13cff;box-shadow:0 10px 28px rgba(0,0,0,.18)}.badge{display:inline-block;background:#123faa;color:#fff;border-radius:999px;padding:7px 12px;font-size:13px;font-weight:900;margin-bottom:8px}.premium .badge{background:#7b2cbf}.price{font-size:34px;font-weight:900}.plan a{display:block;background:#7b2cbf;color:#fff;text-decoration:none;padding:14px;border-radius:12px;font-weight:900;margin-top:16px}.standard a{background:#123faa}.best{transform:scale(1.03)}.note{background:#fff4b8;color:#082a8f;border:3px solid #ffd21f;border-radius:18px;padding:16px;margin:0 auto 20px;max-width:820px;font-weight:900}@media(max-width:950px){.plans{grid-template-columns:1fr 1fr}}@media(max-width:560px){body{padding:16px}.plans{grid-template-columns:1fr}.best{transform:none}.topbar{justify-content:center}.section-title{font-size:25px}}</style></head><body><main class="wrap"><div class="topbar"><h1>⭐ Printo Credits & Subscriptions</h1><a class="close-link" href="/greetings">✕ Close / Return to Studio</a></div><div class="note">🎁 Every new user receives 100 FREE credits — enough for 5 standard creations. Each standard creation uses 20 credits.</div><p>Use one universal Printo credit wallet for Standard, Premium Video, and Premium Multi-Image creations.</p><section class="section"><h2 class="section-title">🎁 Standard Greeting Plans</h2><p class="section-sub">For personalized standard greeting video cards with names, messages, Printo music and voice.</p><div class="plans"><article class="plan standard"><span class="badge">STANDARD</span><h2>Single Creation</h2><div class="price">$4.99</div><p>20 credits • 1 standard creation</p><a href="${PRINTO_SINGLE_CREATION_URL}">Buy One</a></article><article class="plan standard"><span class="badge">STANDARD</span><h2>Monthly</h2><div class="price">$${PRINTO_STANDARD_SUBSCRIPTION_PRICES.monthly.toFixed(2)}</div><p>100 credits monthly • 5 standard creations</p><a href="${PRINTO_STANDARD_MONTHLY_SUBSCRIPTION_URL}">Choose Standard Monthly</a></article><article class="plan standard"><span class="badge">STANDARD</span><h2>6 Months</h2><div class="price">$${PRINTO_STANDARD_SUBSCRIPTION_PRICES.six_months.toFixed(2)}</div><p>600 credits • 30 standard creations</p><a href="${PRINTO_STANDARD_SIX_MONTH_SUBSCRIPTION_URL}">Choose Standard 6 Months</a></article><article class="plan standard best"><span class="badge">BEST STANDARD VALUE</span><h2>1 Year</h2><div class="price">$${PRINTO_STANDARD_SUBSCRIPTION_PRICES.yearly.toFixed(2)}</div><p>1,200 credits • 60 standard creations</p><a href="${PRINTO_STANDARD_YEARLY_SUBSCRIPTION_URL}">Choose Standard Annual</a></article></div></section><section class="section"><h2 class="section-title">🌟 Premium Subscription Plans</h2><p class="section-sub">For Premium Tribute and enhanced personalized video experiences. Credit costs: Standard 20, Premium Video 25, Premium Multi-Image 50.</p><div class="plans"><article class="plan premium"><span class="badge">PREMIUM</span><h2>Monthly</h2><div class="price">$${PRINTO_SUBSCRIPTION_PRICES.monthly.toFixed(2)}</div><p>100 credits now, then 100 credits each active month</p><a href="${PRINTO_MONTHLY_SUBSCRIPTION_URL}">Choose Premium Monthly</a></article><article class="plan premium"><span class="badge">PREMIUM</span><h2>6 Months</h2><div class="price">$${PRINTO_SUBSCRIPTION_PRICES.six_months.toFixed(2)}</div><p>100 credits monthly for 6 months</p><a href="${PRINTO_SIX_MONTH_SUBSCRIPTION_URL}">Choose Premium 6 Months</a></article><article class="plan premium best"><span class="badge">BEST PREMIUM VALUE</span><h2>1 Year</h2><div class="price">$${PRINTO_SUBSCRIPTION_PRICES.yearly.toFixed(2)}</div><p>100 credits monthly for 12 months</p><a href="${PRINTO_YEARLY_SUBSCRIPTION_URL}">Choose Premium Annual</a></article></div></section><p><a class="close-link" href="/greetings">← Return to Printo Greeting Studio</a></p></main></body></html>`));
 
-app.get("/customer-dashboard", (req,res)=>res.type('html').send(`<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><title>My Printo Dashboard</title><style>body{font-family:Arial;margin:0;background:#082a8f;color:#fff;padding:20px}.wrap{max-width:900px;margin:auto}.head{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}.close-link{background:#fff;color:#082a8f;text-decoration:none;padding:11px 16px;border-radius:999px;font-weight:900}.card{background:#fff;color:#082a8f;border-radius:18px;padding:18px;margin:14px 0}.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}.stat{background:#edf4ff;padding:15px;border-radius:14px;text-align:center}.buttons a{display:inline-block;margin:6px;padding:12px 16px;border-radius:12px;background:#7b2cbf;color:#fff;text-decoration:none;font-weight:bold}.video{border-top:1px solid #ddd;padding:12px 0}@media(max-width:600px){.stats{grid-template-columns:1fr}.head{justify-content:center}}</style></head><body><main class="wrap"><div class="head"><h1>⭐ My Printo Dashboard</h1><a class="close-link" href="/greetings">✕ Close / Return to Studio</a></div><div id="content" class="card">Loading…</div></main><script>let key=localStorage.getItem('printoGreetingCustomerKey')||'';if(!key){window.location.replace('/customer-login?next=%2Fcustomer-dashboard')}else fetch('/api/customer/account/dashboard',{cache:'no-store',headers:{'x-printo-customer-key':key}}).then(r=>r.json()).then(d=>{if(!d.ok)throw Error(d.error);document.getElementById('content').innerHTML='<div style="background:#fff4b8;border:2px solid #ffd21f;border-radius:14px;padding:14px;margin-bottom:14px;font-weight:900">🎁 Welcome Bonus: Every new user receives 100 FREE credits for 5 standard creations.</div><div class="stats"><div class="stat"><h2>'+d.creditBalance+'</h2>Credits</div><div class="stat"><h2>'+d.remainingCreations+'</h2>Creations</div><div class="stat"><h2>'+String(d.subscriptionPlan||'Free Welcome')+'</h2>Plan</div></div><div class="buttons"><a href="/birthday?lang=en&template=birthday">'+(d.videos.length?'Create Another Greeting':'Create Your First Greeting')+'</a><a href="/subscriptions">Buy Credits / Subscribe</a><a href="/greetings">✕ Close / Return to Studio</a></div><h2>My Finished Videos</h2>'+(d.videos.length?d.videos.map(v=>'<div class="video"><strong>For '+(v.toName||'Recipient')+'</strong><br><a href="'+v.resultUrl+'">▶ Play</a> &nbsp; <a href="'+v.downloadUrl+'">⬇ Download</a></div>').join(''):'<p>🎉 You have not created your first greeting yet. Click <strong>Create Your First Greeting</strong> to surprise someone special.</p>')}).catch(e=>{localStorage.removeItem('printoGreetingCustomerKey');window.location.replace('/customer-login?next=%2Fcustomer-dashboard')})</script></body></html>`));
+app.get("/customer-dashboard", (req,res)=>res.type('html').send(`<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><title>My Printo Dashboard</title><style>body{font-family:Arial;margin:0;background:#082a8f;color:#fff;padding:20px}.wrap{max-width:900px;margin:auto}.head{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}.close-link{background:#fff;color:#082a8f;text-decoration:none;padding:11px 16px;border-radius:999px;font-weight:900}.card{background:#fff;color:#082a8f;border-radius:18px;padding:18px;margin:14px 0}.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}.stat{background:#edf4ff;padding:15px;border-radius:14px;text-align:center}.buttons a{display:inline-block;margin:6px;padding:12px 16px;border-radius:12px;background:#7b2cbf;color:#fff;text-decoration:none;font-weight:bold}.video{border-top:1px solid #ddd;padding:12px 0}@media(max-width:600px){.stats{grid-template-columns:1fr}.head{justify-content:center}}</style></head><body><main class="wrap"><div class="head"><h1>⭐ My Printo Dashboard</h1><a class="close-link" href="/greetings">✕ Close / Return to Studio</a></div><div id="content" class="card">Loading…</div></main><script>let key=localStorage.getItem('printoGreetingCustomerKey')||'';if(!key){window.location.replace('/customer-login?next=%2Fcustomer-dashboard')}else fetch('/api/customer/account/dashboard',{cache:'no-store',headers:{'x-printo-customer-key':key}}).then(r=>r.json()).then(d=>{if(!d.ok)throw Error(d.error);document.getElementById('content').innerHTML='<div style="background:#fff4b8;border:2px solid #ffd21f;border-radius:14px;padding:14px;margin-bottom:14px;font-weight:900">🎁 Welcome Bonus: Every new user receives 100 FREE credits for 5 standard creations.</div><div class="stats"><div class="stat"><h2>'+d.creditBalance+'</h2>Credits</div><div class="stat"><h2>'+d.remainingCreations+'</h2>Standard Creations Remaining</div><div class="stat"><h2>'+String(d.subscriptionPlan||'Free Welcome')+'</h2>Plan</div></div><div class="buttons"><a href="/birthday?lang=en&template=birthday">'+((Number(d.totalGenerated||0)>0||d.videos.length)?'Create Another Greeting':'Create Your First Greeting')+'</a><a href="/subscriptions">Buy Credits / Subscribe</a><a href="/greetings">✕ Close / Return to Studio</a></div><h2>My Finished Videos</h2>'+(d.videos.length?d.videos.map(v=>'<div class="video"><strong>For '+(v.toName||'Recipient')+'</strong><br><a href="'+v.resultUrl+'">▶ Play</a> &nbsp; <a href="'+v.downloadUrl+'">⬇ Download</a></div>').join(''):((Number(d.totalGenerated||0)>0)?'<p>Your earlier creation record is saved, but its old temporary video file is no longer available. New finished videos will remain here after deployments and restarts.</p>':'<p>🎉 You have not created your first greeting yet. Click <strong>Create Your First Greeting</strong> to surprise someone special.</p>'))}).catch(e=>{localStorage.removeItem('printoGreetingCustomerKey');window.location.replace('/customer-login?next=%2Fcustomer-dashboard')})</script></body></html>`));
 
-app.get("/g/:id", (req, res) => {
+app.get("/g/:id", async (req, res) => {
   res.setHeader("Cache-Control", "public, max-age=60, must-revalidate");
-  const metadata = loadGreetingMetadata(req.params.id);
-  if (!metadata || !metadata.videoUrl) {
-    return res.status(404).send("This Printo greeting link is unavailable or has expired.");
+  try {
+    const greetingId = String(req.params.id || "");
+    const row = await getStandardGreetingMetadata(greetingId);
+    if (row && row.status === "ready" && row.has_video) {
+      const publicBase = String(getConfiguredPublicOrigin(req)).replace(/\/$/, "");
+      const videoUrl = `${publicBase}/standard-media/${encodeURIComponent(greetingId)}/video`;
+      const posterUrl = row.has_poster
+        ? `${publicBase}/standard-media/${encodeURIComponent(greetingId)}/poster`
+        : `${publicBase}/greeting-assets/birthday-v2.png`;
+      const sharePosterUrl = row.has_share_poster
+        ? `${publicBase}/standard-media/${encodeURIComponent(greetingId)}/share-poster`
+        : posterUrl;
+      req.query = {
+        video: videoUrl,
+        poster: posterUrl,
+        sharePoster: sharePosterUrl,
+        to: row.recipient_name || "",
+        from: row.sender_name || "",
+        lang: row.language || "en",
+        download: `/download/g/${encodeURIComponent(greetingId)}`,
+        customerKey: row.customer_key || "",
+        greetingId
+      };
+      return renderGreetingResult(req, res);
+    }
+
+    // Backward compatibility while any pre-database local metadata still exists.
+    const metadata = loadGreetingMetadata(greetingId);
+    if (!metadata || !metadata.videoUrl) {
+      return res.status(404).send("This Printo greeting link is unavailable or has expired.");
+    }
+    req.query = {
+      video: metadata.videoUrl,
+      poster: metadata.posterUrl || "",
+      sharePoster: metadata.sharePosterUrl || metadata.posterUrl || "",
+      to: metadata.toName || "",
+      from: metadata.fromName || "",
+      lang: metadata.language || "en",
+      download: `/download/g/${encodeURIComponent(greetingId)}`,
+      customerKey: metadata.customerKey || "",
+      greetingId
+    };
+    return renderGreetingResult(req, res);
+  } catch (error) {
+    console.error("Greeting result lookup failed:", error);
+    return res.status(500).send("This Printo greeting could not be loaded.");
   }
-
-  req.query = {
-    video: metadata.videoUrl,
-    poster: metadata.posterUrl || "",
-    sharePoster: metadata.sharePosterUrl || metadata.posterUrl || "",
-    to: metadata.toName || "",
-    from: metadata.fromName || "",
-    lang: metadata.language || "en",
-    download: `/download/g/${encodeURIComponent(req.params.id)}`,
-    customerKey: metadata.customerKey || "",
-    greetingId: req.params.id
-  };
-
-  return renderGreetingResult(req, res);
 });
 
 app.get("/greeting-result", renderGreetingResult);
@@ -17717,6 +18206,7 @@ async function generate() {
 async function startServer() {
   try {
     await ensureGreetingAccessTables();
+    await refundInterruptedStandardGreetingGenerations();
     await syncPremiumDashboardProductionStatus();
     await releaseDuePrintoMembershipCredits();
     setInterval(() => {
