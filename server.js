@@ -5499,6 +5499,26 @@ app.post("/api/greeting-studio/create", async (req, res) => {
       });
     }
 
+    const customerIdentity = getGreetingCustomerIdentity(req, req.body || {});
+    if (customerIdentity.identitySource !== "customer_key") {
+      return res.status(401).json({
+        ok: false,
+        loginRequired: true,
+        error: "Please log in to your Printo account before opening a greeting order."
+      });
+    }
+    const registeredAccount = await queryWithRetry(
+      `SELECT email FROM greeting_customer_accounts WHERE customer_key = $1 LIMIT 1`,
+      [customerIdentity.customerKey]
+    );
+    if (!registeredAccount.rows[0]) {
+      return res.status(401).json({
+        ok: false,
+        loginRequired: true,
+        error: "Your Printo login has expired. Please log in again."
+      });
+    }
+
     const template = getGreetingTemplate(templateId || occasion);
     const greetingId = `PG-${Date.now()}`;
     const checkoutUrl = buildGreetingCheckoutUrl(packageType, 1);
@@ -5569,6 +5589,24 @@ app.post("/api/greeting-studio/render", async (req, res) => {
     }
 
     customerIdentity = getGreetingCustomerIdentity(req, req.body || {});
+    if (customerIdentity.identitySource !== "customer_key") {
+      return res.status(401).json({
+        ok: false,
+        loginRequired: true,
+        error: "Please log in to your Printo account before generating."
+      });
+    }
+    const registeredAccount = await queryWithRetry(
+      `SELECT email FROM greeting_customer_accounts WHERE customer_key = $1 LIMIT 1`,
+      [customerIdentity.customerKey]
+    );
+    if (!registeredAccount.rows[0]) {
+      return res.status(401).json({
+        ok: false,
+        loginRequired: true,
+        error: "Your Printo login has expired. Please log in again."
+      });
+    }
     accessReservation = await reserveGreetingGenerationAccess(
       customerIdentity.customerKey,
       customerPhone || customerIdentity.contactPhone
@@ -14777,6 +14815,51 @@ if (!fs.existsSync(birthdayJobDir)) {
   fs.mkdirSync(birthdayJobDir, { recursive: true });
 }
 
+// Keep Standard greeting rendering inside the memory available on smaller Render
+// instances. Only one birthday FFmpeg pipeline is allowed to run at a time, and
+// the finished card is rendered at a phone-friendly 768x1152 resolution.
+const BIRTHDAY_RENDER_WIDTH = 768;
+const BIRTHDAY_RENDER_HEIGHT = 1152;
+const BIRTHDAY_RENDER_SCALE = BIRTHDAY_RENDER_WIDTH / 1024;
+let birthdayRenderQueueTail = Promise.resolve();
+let birthdayRenderQueueDepth = 0;
+
+function scaleBirthdayRenderValue(value) {
+  return Math.max(1, Math.round(Number(value || 0) * BIRTHDAY_RENDER_SCALE));
+}
+
+async function runBirthdayRenderQueued(jobId, task) {
+  birthdayRenderQueueDepth += 1;
+  const queuePosition = birthdayRenderQueueDepth;
+
+  if (queuePosition > 1) {
+    saveBirthdayJobStatus(jobId, {
+      status: "queued",
+      progress: 24,
+      message: `Your video is number ${queuePosition} in the safe render queue.`
+    });
+  }
+
+  const run = birthdayRenderQueueTail
+    .catch(() => {})
+    .then(async () => {
+      saveBirthdayJobStatus(jobId, {
+        status: "rendering",
+        progress: 30,
+        message: "Printo is rendering your video with memory-safe settings."
+      });
+      return task();
+    });
+
+  birthdayRenderQueueTail = run.catch(() => {});
+
+  try {
+    return await run;
+  } finally {
+    birthdayRenderQueueDepth = Math.max(0, birthdayRenderQueueDepth - 1);
+  }
+}
+
 function createBirthdayJobId() {
   return `bday_${Date.now().toString(36)}_${crypto.randomBytes(4).toString("hex")}`;
 }
@@ -14832,6 +14915,10 @@ app.post("/api/greeting/birthday/generate", async (req, res) => {
   });
   let accessReservation = null;
   let customerIdentity = null;
+  let birthdayJobId = "";
+  let birthdayResponseSent = false;
+  let birthdayVoicePath = "";
+  let birthdayPersonalizedFramePath = "";
 
   try {
     console.log("Birthday generator request received:", req.body);
@@ -14995,6 +15082,7 @@ Africa Payment: ${payment.africa}`
     const fileName = `birthday_${Date.now()}.mp4`;
     const outputPath = path.join(generatedDir, fileName);
     const voicePath = path.join(generatedDir, `birthday_voice_${Date.now()}.mp3`);
+    birthdayVoicePath = voicePath;
 
     const voiceResult = await generatePrintoBirthdayVoice({
       recipientName: toNameRaw,
@@ -15021,283 +15109,265 @@ Africa Payment: ${payment.africa}`
       return;
     }
 
-    // Stable Printo Birthday production layout.
-    // No animation filters. The master video is scaled/cropped safely
-    // into the center window so FFmpeg does not fail on pad dimensions.
+    // Memory-safe Printo Birthday production layout.
+    // First, burn all text into one still image. Then the video stage only has
+    // to scale and overlay two video sources instead of running many drawtext
+    // filters on every frame. All FFmpeg stages are serialized by the queue.
+    const s = scaleBirthdayRenderValue;
+    const renderToFontSize = Math.max(18, s(toFontSize));
+    const renderFromFontSize = Math.max(18, s(fromFontSize));
+    const renderMessageFontSize = Math.max(14, s(messageFontSize));
+    const renderNameLineGap = s(nameLineGap);
+    const renderMessageLineGap = s(messageLineGap);
+    const personalizedFrameFilter =
+      `scale=${BIRTHDAY_RENDER_WIDTH}:${BIRTHDAY_RENDER_HEIGHT},` +
+      `drawbox=x=${s(42)}:y=${s(404)}:w=${s(180)}:h=${s(250)}:color=#f9e7c9@0.96:t=fill,` +
+      `drawbox=x=${s(802)}:y=${s(404)}:w=${s(180)}:h=${s(250)}:color=#f9e7c9@0.96:t=fill,` +
+      `drawtext=text=${quoteDrawtextText(toNameLines[0])}:x=${s(42)}+(${s(180)}-text_w)/2:y=${s(toNameStartY)}:fontsize=${renderToFontSize}:fontcolor=#d6333f:borderw=2:bordercolor=white@0.45,` +
+      `drawtext=text=${quoteDrawtextText(toNameLines[1])}:x=${s(42)}+(${s(180)}-text_w)/2:y=${s(toNameStartY) + renderNameLineGap}:fontsize=${renderToFontSize}:fontcolor=#d6333f:borderw=2:bordercolor=white@0.45,` +
+      `drawtext=text='♥':x=${s(42)}+(${s(180)}-text_w)/2:y=${s(590)}:fontsize=${Math.max(18, s(28))}:fontcolor=#d6333f:borderw=1:bordercolor=white@0.35,` +
+      `drawtext=text=${quoteDrawtextText(fromNameLines[0])}:x=${s(802)}+(${s(180)}-text_w)/2:y=${s(fromNameStartY)}:fontsize=${renderFromFontSize}:fontcolor=#7b2cbf:borderw=2:bordercolor=white@0.45,` +
+      `drawtext=text=${quoteDrawtextText(fromNameLines[1])}:x=${s(802)}+(${s(180)}-text_w)/2:y=${s(fromNameStartY) + renderNameLineGap}:fontsize=${renderFromFontSize}:fontcolor=#7b2cbf:borderw=2:bordercolor=white@0.45,` +
+      `drawtext=text='♥':x=${s(802)}+(${s(180)}-text_w)/2:y=${s(590)}:fontsize=${Math.max(18, s(28))}:fontcolor=#7b2cbf:borderw=1:bordercolor=white@0.35,` +
+      `drawtext=text=${quoteDrawtextText(messageLines[0])}:x=${s(218)}+(${s(590)}-text_w)/2:y=${s(messageStartY) + (0 * renderMessageLineGap)}:fontsize=${renderMessageFontSize}:fontcolor=#2f267f:borderw=1:bordercolor=white@0.35,` +
+      `drawtext=text=${quoteDrawtextText(messageLines[1])}:x=${s(218)}+(${s(590)}-text_w)/2:y=${s(messageStartY) + (1 * renderMessageLineGap)}:fontsize=${renderMessageFontSize}:fontcolor=#2f267f:borderw=1:bordercolor=white@0.35,` +
+      `drawtext=text=${quoteDrawtextText(messageLines[2])}:x=${s(218)}+(${s(590)}-text_w)/2:y=${s(messageStartY) + (2 * renderMessageLineGap)}:fontsize=${renderMessageFontSize}:fontcolor=#2f267f:borderw=1:bordercolor=white@0.35,` +
+      `drawtext=text=${quoteDrawtextText(messageLines[3])}:x=${s(218)}+(${s(590)}-text_w)/2:y=${s(messageStartY) + (3 * renderMessageLineGap)}:fontsize=${renderMessageFontSize}:fontcolor=#2f267f:borderw=1:bordercolor=white@0.35,` +
+      `drawtext=text=${quoteDrawtextText(messageLines[4])}:x=${s(218)}+(${s(590)}-text_w)/2:y=${s(messageStartY) + (4 * renderMessageLineGap)}:fontsize=${renderMessageFontSize}:fontcolor=#2f267f:borderw=1:bordercolor=white@0.35,` +
+      `drawtext=text=${quoteDrawtextText(messageLines[5])}:x=${s(218)}+(${s(590)}-text_w)/2:y=${s(messageStartY) + (5 * renderMessageLineGap)}:fontsize=${renderMessageFontSize}:fontcolor=#2f267f:borderw=1:bordercolor=white@0.35,` +
+      `drawtext=text=${quoteDrawtextText(messageLines[6])}:x=${s(218)}+(${s(590)}-text_w)/2:y=${s(messageStartY) + (6 * renderMessageLineGap)}:fontsize=${renderMessageFontSize}:fontcolor=#2f267f:borderw=1:bordercolor=white@0.35,` +
+      `drawtext=text=${quoteDrawtextText(messageLines[7])}:x=${s(218)}+(${s(590)}-text_w)/2:y=${s(messageStartY) + (7 * renderMessageLineGap)}:fontsize=${renderMessageFontSize}:fontcolor=#2f267f:borderw=1:bordercolor=white@0.35,` +
+      `drawtext=text=${quoteDrawtextText(messageLines[8])}:x=${s(218)}+(${s(590)}-text_w)/2:y=${s(messageStartY) + (8 * renderMessageLineGap)}:fontsize=${renderMessageFontSize}:fontcolor=#2f267f:borderw=1:bordercolor=white@0.35,` +
+      `drawtext=text=${quoteDrawtextText(messageLines[9])}:x=${s(218)}+(${s(590)}-text_w)/2:y=${s(messageStartY) + (9 * renderMessageLineGap)}:fontsize=${renderMessageFontSize}:fontcolor=#2f267f:borderw=1:bordercolor=white@0.35`;
+
     const videoFilter =
-      `[0:v]scale=1024:1536[bg];` +
-      `[1:v]scale=462:610:force_original_aspect_ratio=increase,crop=462:610[vid];` +
-      `[bg][vid]overlay=281:342,` +
-      `drawbox=x=42:y=404:w=180:h=250:color=#f9e7c9@0.96:t=fill,` +
-      `drawbox=x=802:y=404:w=180:h=250:color=#f9e7c9@0.96:t=fill,` +
-      `drawtext=text=${quoteDrawtextText(toNameLines[0])}:x=42+(180-text_w)/2:y=${toNameStartY}:fontsize=${toFontSize}:fontcolor=#d6333f:borderw=2:bordercolor=white@0.45,` +
-      `drawtext=text=${quoteDrawtextText(toNameLines[1])}:x=42+(180-text_w)/2:y=${toNameStartY + nameLineGap}:fontsize=${toFontSize}:fontcolor=#d6333f:borderw=2:bordercolor=white@0.45,` +
-      `drawtext=text='♥':x=42+(180-text_w)/2:y=590:fontsize=28:fontcolor=#d6333f:borderw=1:bordercolor=white@0.35,` +
-      `drawtext=text=${quoteDrawtextText(fromNameLines[0])}:x=802+(180-text_w)/2:y=${fromNameStartY}:fontsize=${fromFontSize}:fontcolor=#7b2cbf:borderw=2:bordercolor=white@0.45,` +
-      `drawtext=text=${quoteDrawtextText(fromNameLines[1])}:x=802+(180-text_w)/2:y=${fromNameStartY + nameLineGap}:fontsize=${fromFontSize}:fontcolor=#7b2cbf:borderw=2:bordercolor=white@0.45,` +
-      `drawtext=text='♥':x=802+(180-text_w)/2:y=590:fontsize=28:fontcolor=#7b2cbf:borderw=1:bordercolor=white@0.35,` +
-      `drawtext=text=${quoteDrawtextText(messageLines[0])}:x=218+(590-text_w)/2:y=${messageStartY + (0 * messageLineGap)}:fontsize=${messageFontSize}:fontcolor=#2f267f:borderw=1:bordercolor=white@0.35,` +
-      `drawtext=text=${quoteDrawtextText(messageLines[1])}:x=218+(590-text_w)/2:y=${messageStartY + (1 * messageLineGap)}:fontsize=${messageFontSize}:fontcolor=#2f267f:borderw=1:bordercolor=white@0.35,` +
-      `drawtext=text=${quoteDrawtextText(messageLines[2])}:x=218+(590-text_w)/2:y=${messageStartY + (2 * messageLineGap)}:fontsize=${messageFontSize}:fontcolor=#2f267f:borderw=1:bordercolor=white@0.35,` +
-      `drawtext=text=${quoteDrawtextText(messageLines[3])}:x=218+(590-text_w)/2:y=${messageStartY + (3 * messageLineGap)}:fontsize=${messageFontSize}:fontcolor=#2f267f:borderw=1:bordercolor=white@0.35,` +
-      `drawtext=text=${quoteDrawtextText(messageLines[4])}:x=218+(590-text_w)/2:y=${messageStartY + (4 * messageLineGap)}:fontsize=${messageFontSize}:fontcolor=#2f267f:borderw=1:bordercolor=white@0.35,` +
-      `drawtext=text=${quoteDrawtextText(messageLines[5])}:x=218+(590-text_w)/2:y=${messageStartY + (5 * messageLineGap)}:fontsize=${messageFontSize}:fontcolor=#2f267f:borderw=1:bordercolor=white@0.35,` +
-      `drawtext=text=${quoteDrawtextText(messageLines[6])}:x=218+(590-text_w)/2:y=${messageStartY + (6 * messageLineGap)}:fontsize=${messageFontSize}:fontcolor=#2f267f:borderw=1:bordercolor=white@0.35,` +
-      `drawtext=text=${quoteDrawtextText(messageLines[7])}:x=218+(590-text_w)/2:y=${messageStartY + (7 * messageLineGap)}:fontsize=${messageFontSize}:fontcolor=#2f267f:borderw=1:bordercolor=white@0.35,` +
-      `drawtext=text=${quoteDrawtextText(messageLines[8])}:x=218+(590-text_w)/2:y=${messageStartY + (8 * messageLineGap)}:fontsize=${messageFontSize}:fontcolor=#2f267f:borderw=1:bordercolor=white@0.35,` +
-      `drawtext=text=${quoteDrawtextText(messageLines[9])}:x=218+(590-text_w)/2:y=${messageStartY + (9 * messageLineGap)}:fontsize=${messageFontSize}:fontcolor=#2f267f:borderw=1:bordercolor=white@0.35[outv]`;
+      `[0:v]format=yuv420p[bg];` +
+      `[1:v]scale=${s(462)}:${s(610)}:force_original_aspect_ratio=increase,crop=${s(462)}:${s(610)},setsar=1[vid];` +
+      `[bg][vid]overlay=${s(281)}:${s(342)}:shortest=1[outv]`;
 
     const audioFilter =
       `[2:a]adelay=500|500,volume=1.15,apad=pad_dur=10,atrim=0:10,` +
       `loudnorm=I=-16:TP=-1.5:LRA=11[aout]`;
 
+    birthdayPersonalizedFramePath = path.join(
+      generatedDir,
+      `birthday_card_${birthdayJobId}_${Date.now()}.jpg`
+    );
+
+    const personalizedFrameArgs = [
+      "-y",
+      "-nostdin",
+      "-loglevel", "error",
+      "-filter_threads", "1",
+      "-threads", "1",
+      "-i", framePath,
+      "-frames:v", "1",
+      "-vf", personalizedFrameFilter,
+      "-q:v", "3",
+      birthdayPersonalizedFramePath
+    ];
+
     const ffmpegArgs = [
       "-y",
       "-nostdin",
       "-loglevel", "error",
-      "-threads", "1",
       "-filter_threads", "1",
       "-filter_complex_threads", "1",
       "-loop", "1",
-      "-i", framePath,
+      "-framerate", "24",
+      "-threads", "1",
+      "-i", birthdayPersonalizedFramePath,
+      "-threads", "1",
       "-i", masterPath,
+      "-threads", "1",
       "-i", voicePath,
       "-t", "10",
       "-filter_complex", `${videoFilter};${audioFilter}`,
       "-map", "[outv]",
       "-map", "[aout]",
       "-shortest",
+      "-r", "24",
       "-c:v", "libx264",
       "-preset", "ultrafast",
-      "-tune", "fastdecode",
-      "-crf", "27",
+      "-tune", "zerolatency",
+      "-threads", "1",
+      "-x264-params", "threads=1:lookahead_threads=1:sync-lookahead=0",
+      "-crf", "29",
       "-pix_fmt", "yuv420p",
       "-c:a", "aac",
-      "-b:a", "192k",
+      "-b:a", "128k",
       "-movflags", "+faststart",
       outputPath
     ];
 
-    saveBirthdayJobStatus(birthdayJobId, {
-      status: "rendering",
-      progress: 35,
-      message: "Printo is rendering your birthday video."
-    });
-    console.log("Starting memory-safe background FFmpeg birthday render...");
-    console.log("Birthday layout:", {
-      framePath,
+    console.log("Birthday low-memory render prepared:", {
+      jobId: birthdayJobId,
+      renderSize: `${BIRTHDAY_RENDER_WIDTH}x${BIRTHDAY_RENDER_HEIGHT}`,
+      queueDepth: birthdayRenderQueueDepth + 1,
       toNameLines,
       fromNameLines,
-      nameLayout: 'natural-two-line',
-      toFontSize,
-      fromFontSize,
-      messageLines,
-      messageFontSize,
-      messageLineGap,
-      messageStartY,
       messageUsedLines: messageLayout.usedLines
     });
-    console.log("Birthday output path:", outputPath);
-    console.log("FFmpeg command:", "ffmpeg " + ffmpegArgs.join(" "));
 
-    execFile(
-      "ffmpeg",
-      ffmpegArgs,
-      {
-        timeout: 120000,
-        maxBuffer: 1024 * 1024 * 5
-      },
-      async (err, stdout, stderr) => {
-        console.log("FFmpeg stdout:", stdout || "");
-        console.log("FFmpeg stderr:", stderr || "");
-        console.log("Birthday output exists:", fs.existsSync(outputPath));
+    await runBirthdayRenderQueued(birthdayJobId, async () => {
+      try {
+        saveBirthdayJobStatus(birthdayJobId, {
+          status: "rendering",
+          progress: 34,
+          message: "Preparing your personalized card background."
+        });
 
-        if (err) {
-          console.error("Birthday stable render error:", err);
+        await execFilePromise("ffmpeg", personalizedFrameArgs, {
+          timeout: 60000,
+          maxBuffer: 2 * 1024 * 1024
+        });
 
-          if (accessReservation?.allowed && customerIdentity?.customerKey) {
-            await refundGreetingGenerationAccess(
-              customerIdentity.customerKey,
-              accessReservation.source
-            ).catch((refundError) => {
-              console.error("Birthday access refund failed:", refundError);
-            });
-            accessReservation = null;
-          }
-
-          saveBirthdayJobStatus(birthdayJobId, {
-            status: "failed",
-            progress: 100,
-            error: "Video render failed. Please try again.",
-            message: "The render could not be completed. Your credits were restored."
-          });
-          return;
+        if (!fs.existsSync(birthdayPersonalizedFramePath)) {
+          throw new Error("The personalized birthday card background was not created.");
         }
+
+        saveBirthdayJobStatus(birthdayJobId, {
+          status: "rendering",
+          progress: 48,
+          message: "Combining Printo, your message and personalized voice."
+        });
+
+        await execFilePromise("ffmpeg", ffmpegArgs, {
+          timeout: 180000,
+          maxBuffer: 3 * 1024 * 1024
+        });
 
         if (!fs.existsSync(outputPath)) {
-          console.error("Birthday render finished but output file is missing:", outputPath);
-
-          if (accessReservation?.allowed && customerIdentity?.customerKey) {
-            await refundGreetingGenerationAccess(
-              customerIdentity.customerKey,
-              accessReservation.source
-            ).catch((refundError) => {
-              console.error("Birthday access refund failed:", refundError);
-            });
-            accessReservation = null;
-          }
-
-          saveBirthdayJobStatus(birthdayJobId, {
-            status: "failed",
-            progress: 100,
-            error: "Video output was not created.",
-            message: "The render could not be completed. Your credits were restored."
-          });
-          return;
+          throw new Error("Birthday video output was not created.");
         }
-
-        console.log("Birthday stable render completed:", fileName);
 
         const downloadUrl = buildGeneratedUrl(req, fileName);
         const posterName = fileName.replace(/\.mp4$/i, ".jpg");
         const posterPath = path.join(generatedDir, posterName);
         const sharePosterName = fileName.replace(/\.mp4$/i, "_share.jpg");
         const sharePosterPath = path.join(generatedDir, sharePosterName);
-
         const greetingId = createShortGreetingId();
         const fallbackPosterUrl = `${String(
           getConfiguredPublicOrigin(req)
         ).replace(/\/$/, "")}/greeting-assets/birthday-v2.png`;
 
-        const finishResponse = async () => {
-          const posterUrl = fs.existsSync(posterPath)
-            ? buildGeneratedUrl(req, posterName)
-            : fallbackPosterUrl;
-          const sharePosterUrl = fs.existsSync(sharePosterPath)
-            ? buildGeneratedUrl(req, sharePosterName)
-            : posterUrl;
-          const fullResultUrl = buildGreetingResultUrl(
-            req,
-            downloadUrl,
-            toNameRaw,
-            fromNameRaw,
-            posterUrl,
-            requestLanguage
-          );
-          const resultUrl = buildShortGreetingUrl(req, greetingId);
+        saveBirthdayJobStatus(birthdayJobId, {
+          status: "finalizing",
+          progress: 88,
+          message: "Finalizing your video and preview image."
+        });
 
-          saveGreetingMetadata(greetingId, {
-            videoUrl: downloadUrl,
-            posterUrl,
-            sharePosterUrl,
-            toName: toNameRaw,
-            fromName: fromNameRaw,
-            message: messageRaw,
-            spokenText: voiceResult.text || "",
-            language: requestLanguage,
-            customerKey: customerIdentity?.customerKey || "",
-            customerId: String(req.body.customerId || req.headers["x-printo-customer-id"] || ""),
-            fileName,
-            fullResultUrl,
-            createdAt: new Date().toISOString()
-          });
-
-          if (hasPrintoVoice && fs.existsSync(voicePath)) {
-            fs.unlink(voicePath, () => {});
-          }
-
-          const latestAccess = await getGreetingAccessStatus(
-            customerIdentity?.customerKey || "",
-            customerIdentity?.contactPhone || ""
-          );
-          saveBirthdayJobStatus(birthdayJobId, {
-            status: "ready",
-            progress: 100,
-            message: "Your Printo birthday video is ready!",
-            downloadUrl,
-            posterUrl,
-            sharePosterUrl,
-            resultUrl,
-            shareUrl: resultUrl,
-            fullResultUrl,
-            greetingId,
-            file: fileName,
-            hasPrintoVoice,
-            customerKey: customerIdentity?.customerKey || "",
-            access: {
-              source: accessReservation?.source || "",
-              paidCreditsRemaining: latestAccess.creditBalance,
-              creditBalance: latestAccess.creditBalance,
-              remainingCreations: latestAccess.remainingCreations,
-              creditsUsed: accessReservation?.creditsUsed ?? 20
-            }
-          });
-          return;
-        };
-
-        // Create the clean personalized poster first. Poster extraction is fast
-        // and ensures the result page immediately shows the actual names,
-        // message and Printo video frame instead of empty template spaces.
-        execFile("ffmpeg", [
-          "-y", "-nostdin", "-loglevel", "error",
-          "-ss", "1.2", "-i", outputPath,
-          "-frames:v", "1",
-          "-vf", "scale=720:-2",
-          "-q:v", "2", posterPath
-        ], { timeout: 20000, maxBuffer: 1024 * 1024 * 2 }, (cleanPosterErr) => {
-          if (cleanPosterErr) {
-            console.error("Clean greeting poster generation failed:", cleanPosterErr.message);
-          }
-
-          // Return the greeting whether poster extraction succeeded or not.
-          finishResponse().catch((finishError) => {
-            console.error("Birthday final status update failed:", finishError);
-            saveBirthdayJobStatus(birthdayJobId, {
-              status: "failed",
-              progress: 100,
-              error: "Could not finalize the generated greeting.",
-              message: "The video rendered, but account finalization failed. Please contact support."
-            });
-          });
-
-          if (cleanPosterErr || !fs.existsSync(posterPath)) {
-            return;
-          }
-
-          // Create the social-sharing poster in the background.
-          execFile("ffmpeg", [
+        try {
+          await execFilePromise("ffmpeg", [
             "-y", "-nostdin", "-loglevel", "error",
-            "-i", posterPath,
+            "-threads", "1",
+            "-ss", "1.2", "-i", outputPath,
             "-frames:v", "1",
-            "-vf",
-            "drawtext=text='▶':x=(w-text_w)/2:y=330:fontsize=205:fontcolor=white:box=1:boxcolor=#0754b8@0.82:boxborderw=58:borderw=6:bordercolor=white@0.98",
-            "-q:v", "2", sharePosterPath
-          ], { timeout: 30000, maxBuffer: 1024 * 1024 * 2 }, (sharePosterErr) => {
-            if (sharePosterErr) {
-              console.error("Social greeting poster generation failed:", sharePosterErr.message);
-              return;
-            }
+            "-vf", "scale=720:-2",
+            "-q:v", "3", posterPath
+          ], { timeout: 30000, maxBuffer: 2 * 1024 * 1024 });
+        } catch (posterError) {
+          console.error("Clean greeting poster generation failed:", posterError.message);
+        }
 
-            try {
+        const posterUrl = fs.existsSync(posterPath)
+          ? buildGeneratedUrl(req, posterName)
+          : fallbackPosterUrl;
+        const fullResultUrl = buildGreetingResultUrl(
+          req,
+          downloadUrl,
+          toNameRaw,
+          fromNameRaw,
+          posterUrl,
+          requestLanguage
+        );
+        const resultUrl = buildShortGreetingUrl(req, greetingId);
+
+        saveGreetingMetadata(greetingId, {
+          videoUrl: downloadUrl,
+          posterUrl,
+          sharePosterUrl: posterUrl,
+          toName: toNameRaw,
+          fromName: fromNameRaw,
+          message: messageRaw,
+          spokenText: voiceResult.text || "",
+          language: requestLanguage,
+          customerKey: customerIdentity?.customerKey || "",
+          customerId: String(req.body.customerId || req.headers["x-printo-customer-id"] || ""),
+          fileName,
+          fullResultUrl,
+          createdAt: new Date().toISOString()
+        });
+
+        const latestAccess = await getGreetingAccessStatus(
+          customerIdentity?.customerKey || "",
+          customerIdentity?.contactPhone || ""
+        );
+
+        saveBirthdayJobStatus(birthdayJobId, {
+          status: "ready",
+          progress: 100,
+          message: "Your Printo birthday video is ready!",
+          downloadUrl,
+          posterUrl,
+          sharePosterUrl: posterUrl,
+          resultUrl,
+          shareUrl: resultUrl,
+          fullResultUrl,
+          greetingId,
+          file: fileName,
+          hasPrintoVoice,
+          customerKey: customerIdentity?.customerKey || "",
+          access: {
+            source: accessReservation?.source || "",
+            paidCreditsRemaining: latestAccess.creditBalance,
+            creditBalance: latestAccess.creditBalance,
+            remainingCreations: latestAccess.remainingCreations,
+            creditsUsed: accessReservation?.creditsUsed ?? 20
+          }
+        });
+
+        // The sharing poster is optional. Make it while the FFmpeg queue is still
+        // locked so it cannot overlap another customer's main video render.
+        if (fs.existsSync(posterPath)) {
+          try {
+            await execFilePromise("ffmpeg", [
+              "-y", "-nostdin", "-loglevel", "error",
+              "-threads", "1",
+              "-i", posterPath,
+              "-frames:v", "1",
+              "-vf",
+              "drawtext=text='▶':x=(w-text_w)/2:y=330:fontsize=205:fontcolor=white:box=1:boxcolor=#0754b8@0.82:boxborderw=58:borderw=6:bordercolor=white@0.98",
+              "-q:v", "3", sharePosterPath
+            ], { timeout: 30000, maxBuffer: 2 * 1024 * 1024 });
+
+            if (fs.existsSync(sharePosterPath)) {
+              const sharePosterUrl = buildGeneratedUrl(req, sharePosterName);
               const metadata = loadGreetingMetadata(greetingId) || {};
               saveGreetingMetadata(greetingId, {
                 ...metadata,
                 posterUrl: buildGeneratedUrl(req, posterName),
-                sharePosterUrl: buildGeneratedUrl(req, sharePosterName),
+                sharePosterUrl,
                 updatedAt: new Date().toISOString()
               });
-              console.log("Greeting social preview metadata updated:", greetingId);
-            } catch (metadataError) {
-              console.error(
-                "Greeting social preview metadata update failed:",
-                metadataError.message
-              );
+              saveBirthdayJobStatus(birthdayJobId, {
+                sharePosterUrl,
+                updatedAt: new Date().toISOString()
+              });
             }
-          });
-        });
+          } catch (sharePosterError) {
+            console.error("Social greeting poster generation failed:", sharePosterError.message);
+          }
+        }
+      } finally {
+        safeUnlink(birthdayPersonalizedFramePath);
+        safeUnlink(voicePath);
       }
-    );
+    });
+    return;
   } catch (err) {
+    safeUnlink(birthdayPersonalizedFramePath);
+    safeUnlink(birthdayVoicePath);
     if (accessReservation?.allowed && customerIdentity?.customerKey) {
       await refundGreetingGenerationAccess(
         customerIdentity.customerKey,
