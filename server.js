@@ -60,13 +60,22 @@ async function downloadWhatsAppMediaToUploads(mediaId, fallbackName, mimeType, r
 }
 
   
-   function buildUploadUrl(req, finalName) {
-  const base =
+function getConfiguredPublicOrigin(req) {
+  const configured =
     process.env.PUBLIC_BASE_URL ||
-    process.env.RENDER_EXTERNAL_URL ||
-    `${req.protocol}://${req.get("host")}`;
+    process.env.PRINTO_PUBLIC_URL ||
+    process.env.PRINTO_STUDIO_ORIGIN ||
+    "https://studio.patapata.us";
 
-  return `${base}/uploads/${encodeURIComponent(finalName)}`;
+  const fallback = req
+    ? `${req.protocol}://${req.get("host")}`
+    : "https://studio.patapata.us";
+
+  return String(configured || fallback).replace(/\/+$/, "");
+}
+
+   function buildUploadUrl(req, finalName) {
+  return `${getConfiguredPublicOrigin(req)}/uploads/${encodeURIComponent(finalName)}`;
 }
 
 const multer = require("multer");
@@ -297,6 +306,24 @@ require("dotenv").config();
 
 const app = express();
 
+// After studio.patapata.us is connected and verified in Render, set
+// HIDE_RENDER_HOST=true. Browser page visits to the Render hostname will then
+// move to the branded domain, while APIs, webhooks and media routes keep working.
+app.use((req, res, next) => {
+  const hideRenderHost = String(process.env.HIDE_RENDER_HOST || "").toLowerCase() === "true";
+  const host = String(req.get("host") || "").toLowerCase();
+  const isRenderHost = host.endsWith(".onrender.com");
+  const isBrowserPage = req.method === "GET" && ![
+    "/api/", "/webhook", "/webhooks/", "/uploads/", "/generated/",
+    "/premium-media/", "/health", "/api/health"
+  ].some((prefix) => req.path === prefix || req.path.startsWith(prefix));
+
+  if (hideRenderHost && isRenderHost && isBrowserPage) {
+    return res.redirect(302, `${getConfiguredPublicOrigin(req)}${req.originalUrl}`);
+  }
+  return next();
+});
+
 
 // /uploads is served by the safe route below; do not use express.static here.
 app.use("/generated", express.static(generatedDir));
@@ -335,6 +362,7 @@ app.use(cors({
   origin: [
     "https://patapata.us",
     "https://www.patapata.us",
+    "https://studio.patapata.us",
     "https://patapata.myshopify.com"
   ],
   methods: ["GET", "POST", "OPTIONS"],
@@ -362,13 +390,13 @@ const SUPPORT_PHONE = process.env.SUPPORT_PHONE || process.env.PATAPATA_PHONE ||
 const PRINTO_STUDIO_URL =
   process.env.PRINTO_STUDIO_URL ||
   process.env.PRINTO_STUDIO_WEB_URL ||
-  "https://www.patapata.us/";
+  `${getConfiguredPublicOrigin()}/greetings`;
 const GREETING_AFRICA_PAYMENT_URL =
   process.env.GREETING_AFRICA_PAYMENT_URL ||
   "https://www.patapata.us/pages/africa-payment";
 const GREETING_SHOPIFY_PAYMENT_URL =
   process.env.GREETING_SHOPIFY_URL ||
-  "https://www.patapata.us/";
+  "https://www.patapata.us/products/printo-standard-personalized-video-greeting";
 
 const PRINTO_SINGLE_CREATION_URL = process.env.PRIINTO_SINGLE_CREATION_URL || process.env.PRINTO_SINGLE_CREATION_URL || GREETING_SHOPIFY_PAYMENT_URL;
 const PRINTO_STANDARD_MONTHLY_SUBSCRIPTION_URL = process.env.PRINTO_STANDARD_MONTHLY_SUBSCRIPTION_URL || "https://www.patapata.us/collections/printo-subscriptions";
@@ -2987,11 +3015,7 @@ function buildPremiumPaymentLinks({
 
 
 function getPublicBaseUrl(req) {
-  return String(
-    process.env.PUBLIC_BASE_URL ||
-    process.env.RENDER_EXTERNAL_URL ||
-    `${req.protocol}://${req.get("host")}`
-  ).replace(/\/$/, "");
+  return getConfiguredPublicOrigin(req);
 }
 
 function buildPremiumMediaUrl(req, orderId, mediaToken, kind) {
@@ -3747,10 +3771,7 @@ function buildGreetingCheckoutUrl(packageType = "STANDARD", quantity = 1) {
 }
 
 function buildGreetingDownloadUrl(req, fileName) {
-  const base =
-    process.env.PUBLIC_BASE_URL ||
-    process.env.RENDER_EXTERNAL_URL ||
-    `${req.protocol}://${req.get("host")}`;
+  const base = getConfiguredPublicOrigin(req);
 
   return `${base}/generated/${encodeURIComponent(fileName)}`;
 }
@@ -14174,10 +14195,7 @@ app.get("/api/greeting/birthday/assets", (req, res) => {
 });
 
  function buildGeneratedUrl(req, fileName) {
-  const base =
-    process.env.PUBLIC_BASE_URL ||
-    process.env.RENDER_EXTERNAL_URL ||
-    `${req.protocol}://${req.get("host")}`;
+  const base = getConfiguredPublicOrigin(req);
 
   return `${base}/generated/${encodeURIComponent(fileName)}`;
 }
@@ -14461,10 +14479,7 @@ async function generatePrintoBirthdayVoice({ recipientName, senderName, message,
 }
 
 function buildGreetingResultUrl(req, videoUrl, toName = "", fromName = "", posterUrl = "", language = "en") {
-  const base =
-    process.env.PUBLIC_BASE_URL ||
-    process.env.RENDER_EXTERNAL_URL ||
-    `${req.protocol}://${req.get("host")}`;
+  const base = getConfiguredPublicOrigin(req);
 
   const params = new URLSearchParams({
     video: videoUrl,
@@ -14485,9 +14500,7 @@ function createShortGreetingId() {
 
 function buildShortGreetingUrl(req, greetingId = "") {
   const base = String(
-    process.env.PUBLIC_BASE_URL ||
-    process.env.RENDER_EXTERNAL_URL ||
-    `${req.protocol}://${req.get("host")}`
+    getConfiguredPublicOrigin(req)
   ).replace(/\/$/, "");
 
   return `${base}/g/${encodeURIComponent(greetingId)}`;
@@ -14564,9 +14577,7 @@ function loadBirthdayJobStatus(jobId) {
 
 function buildBirthdayProgressUrl(req, jobId, language = "en") {
   const base = String(
-    process.env.PUBLIC_BASE_URL ||
-    process.env.RENDER_EXTERNAL_URL ||
-    `${req.protocol}://${req.get("host")}`
+    getConfiguredPublicOrigin(req)
   ).replace(/\/$/, "");
   return `${base}/birthday-progress/${encodeURIComponent(jobId)}?lang=${encodeURIComponent(language)}`;
 }
@@ -14884,9 +14895,7 @@ Africa Payment: ${payment.africa}`
 
         const greetingId = createShortGreetingId();
         const fallbackPosterUrl = `${String(
-          process.env.PUBLIC_BASE_URL ||
-          process.env.RENDER_EXTERNAL_URL ||
-          `${req.protocol}://${req.get("host")}`
+          getConfiguredPublicOrigin(req)
         ).replace(/\/$/, "")}/greeting-assets/birthday-v2.png`;
 
         const finishResponse = () => {
@@ -15367,7 +15376,7 @@ function buildBirthdayGeneratorPage(language = "en", templateId = "birthday") {
       <div id="status" class="status"></div>
     </form>
     <div class="payments">
-      <a id="shopifyPayment" class="pay shopify" href="https://www.patapata.us/" target="_blank" rel="noopener">🛒 ${t.shopify}</a>
+      <a id="shopifyPayment" class="pay shopify" href="${GREETING_SHOPIFY_PAYMENT_URL}" target="_blank" rel="noopener">🛒 ${t.shopify}</a>
       <a id="africaPayment" class="pay nigeria" href="https://www.patapata.us/pages/africa-payment" target="_blank" rel="noopener">🇳🇬 ${t.nigeria}</a>
     </div>
     <div class="note">${t.note}</div>
@@ -16692,9 +16701,7 @@ app.post("/birthday-submit", async (req, res) => {
     ? String(req.body.language).toLowerCase()
     : "en";
   const publicBase = String(
-    process.env.PUBLIC_BASE_URL ||
-    process.env.RENDER_EXTERNAL_URL ||
-    `${req.protocol}://${req.get("host")}`
+    getConfiguredPublicOrigin(req)
   ).replace(/\/$/, "");
 
   console.log("[Birthday Form Fallback] Native form received", {
@@ -16764,7 +16771,7 @@ function renderGreetingResult(req, res) {
   const language = ["en", "es", "fr", "de", "pt", "ar", "zh"].includes(String(req.query.lang || "en").toLowerCase())
     ? String(req.query.lang || "en").toLowerCase()
     : "en";
-  const shopifyUrl = process.env.GREETING_SHOPIFY_URL || "https://www.patapata.us/";
+  const shopifyUrl = GREETING_SHOPIFY_PAYMENT_URL;
   const nigeriaUrl = "https://www.patapata.us/pages/africa-payment";
 
   if (!videoUrl.startsWith("http")) {
@@ -16778,9 +16785,7 @@ function renderGreetingResult(req, res) {
     ? escapeHtml(sharePosterUrl)
     : safePoster;
   const publicBase = String(
-    process.env.PUBLIC_BASE_URL ||
-    process.env.RENDER_EXTERNAL_URL ||
-    `${req.protocol}://${req.get("host")}`
+    getConfiguredPublicOrigin(req)
   ).replace(/\/$/, "");
   const pageUrl = `${publicBase}${req.originalUrl}`;
   const title = `A special Printo greeting${toName ? ` for ${toName}` : ""}`;
