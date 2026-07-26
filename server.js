@@ -1,3 +1,4 @@
+
 function getExtFromMime(mimeType = "") {
   const map = {
     "image/jpeg": ".jpg",
@@ -4239,6 +4240,7 @@ async function renderGreetingVideo(req, spec = {}) {
       "-c:a", "aac",
       "-b:a", "192k",
       "-movflags", "+faststart",
+      ...(hasPrintoVoice ? ["-shortest"] : []),
       outputPath
     ];
 
@@ -14749,42 +14751,21 @@ Africa Payment: ${payment.africa}`
     });
     const hasPrintoVoice = Boolean(voiceResult.ok && fs.existsSync(voicePath));
 
-    // The old renderer always stopped at 10 seconds, which cut off longer
-    // ElevenLabs speech. Measure the generated voice and extend the video,
-    // music, and visual loop long enough for Printo to finish speaking.
+    // When Printo has a voice track, let that cleaned voice track control the
+    // exact ending of the video. This prevents Printo from continuing to dance
+    // after the final spoken word. Music is mixed underneath and the finished
+    // video receives only a very small natural closing pause.
     const birthdayVoiceDelaySeconds = 0.9;
-    const birthdayOutroPaddingSeconds = 1.5;
-    let birthdayDurationSeconds = 10;
-
-    if (hasPrintoVoice) {
-      try {
-        const voiceMedia = await probePremiumMedia(voicePath);
-        const measuredVoiceDuration = Number(voiceMedia.duration || 0);
-
-        if (Number.isFinite(measuredVoiceDuration) && measuredVoiceDuration > 0) {
-          birthdayDurationSeconds = Math.min(
-            45,
-            Math.max(
-              10,
-              Math.ceil(
-                (measuredVoiceDuration + birthdayVoiceDelaySeconds + birthdayOutroPaddingSeconds) * 10
-              ) / 10
-            )
-          );
-        }
-      } catch (voiceProbeError) {
-        console.error("Printo voice duration probe failed; using 15-second fallback:", voiceProbeError.message);
-        birthdayDurationSeconds = 15;
-      }
-    }
-
+    const birthdayOutroPaddingSeconds = 0.2;
+    const birthdayDurationSeconds = 10;
     const birthdayDurationText = birthdayDurationSeconds.toFixed(1);
     const birthdayVoiceDelayMs = Math.round(birthdayVoiceDelaySeconds * 1000);
 
     console.log("Birthday audio timing:", {
       hasPrintoVoice,
-      durationSeconds: birthdayDurationSeconds,
-      voiceDelayMs: birthdayVoiceDelayMs
+      endingMode: hasPrintoVoice ? "voice-controlled" : "10-second-music-only",
+      voiceDelayMs: birthdayVoiceDelayMs,
+      outroPaddingSeconds: hasPrintoVoice ? birthdayOutroPaddingSeconds : 0
     });
 
     // Stable Printo Birthday production layout.
@@ -14814,11 +14795,16 @@ Africa Payment: ${payment.africa}`
       `drawtext=text=${quoteDrawtextText(messageLines[9])}:x=218+(590-text_w)/2:y=${messageStartY + (9 * messageLineGap)}:fontsize=${messageFontSize}:fontcolor=#2f267f:borderw=1:bordercolor=white@0.35[outv]`;
 
     const audioFilter = hasPrintoVoice
-      ? `[2:a]volume=0.30,apad=pad_dur=${birthdayDurationText},atrim=0:${birthdayDurationText}[music];` +
-        `[3:a]adelay=${birthdayVoiceDelayMs}|${birthdayVoiceDelayMs},volume=1.25,` +
-        `apad=pad_dur=${birthdayDurationText},atrim=0:${birthdayDurationText}[voice];` +
-        `[music][voice]amix=inputs=2:duration=longest:dropout_transition=2,` +
-        `loudnorm=I=-16:TP=-1.5:LRA=11,atrim=0:${birthdayDurationText}[aout]`
+      ? `[2:a]volume=0.30[music];` +
+        // Remove only leading and trailing ElevenLabs silence. Reversing the
+        // audio for the second pass avoids deleting natural pauses inside the speech.
+        `[3:a]silenceremove=start_periods=1:start_duration=0.05:start_threshold=-48dB,` +
+        `areverse,silenceremove=start_periods=1:start_duration=0.18:start_threshold=-48dB,areverse,` +
+        `adelay=${birthdayVoiceDelayMs}|${birthdayVoiceDelayMs},volume=1.25[voice];` +
+        // The music input loops forever, so duration=shortest makes the mix end
+        // with the cleaned voice track. Add only 0.2 second for a natural finish.
+        `[music][voice]amix=inputs=2:duration=shortest:dropout_transition=0,` +
+        `loudnorm=I=-16:TP=-1.5:LRA=11,apad=pad_dur=${birthdayOutroPaddingSeconds}[aout]`
       : `[2:a]apad=pad_dur=${birthdayDurationText},atrim=0:${birthdayDurationText}[aout]`;
 
     const ffmpegArgs = [
@@ -14837,7 +14823,7 @@ Africa Payment: ${payment.africa}`
       "-stream_loop", "-1",
       "-i", audioPath,
       ...(hasPrintoVoice ? ["-i", voicePath] : []),
-      "-t", birthdayDurationText,
+      ...(hasPrintoVoice ? [] : ["-t", birthdayDurationText]),
       "-filter_complex", `${videoFilter};${audioFilter}`,
       "-map", "[outv]",
       "-map", "[aout]",
