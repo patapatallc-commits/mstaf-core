@@ -2361,7 +2361,11 @@ async function ensurePrintoAccountTables() {
   return printoAccountSchemaReadyPromise;
 }
 
+let greetingAccessTablesReady = false;
+
 async function ensureGreetingAccessTables() {
+  if (greetingAccessTablesReady) return;
+
   await ensurePrintoAccountTables();
 
   await pool.query(`
@@ -2410,14 +2414,52 @@ async function ensureGreetingAccessTables() {
     )
   `);
 
+  // CREATE TABLE IF NOT EXISTS does not add columns to an older table.
+  // Upgrade every Standard greeting column before any insert, index, dashboard
+  // lookup, render-status lookup, or media request can use it.
+  await pool.query(`ALTER TABLE standard_greeting_videos ADD COLUMN IF NOT EXISTS greeting_id TEXT`);
+  await pool.query(`ALTER TABLE standard_greeting_videos ADD COLUMN IF NOT EXISTS job_id TEXT`);
+  await pool.query(`ALTER TABLE standard_greeting_videos ADD COLUMN IF NOT EXISTS customer_key TEXT NOT NULL DEFAULT ''`);
+  await pool.query(`ALTER TABLE standard_greeting_videos ADD COLUMN IF NOT EXISTS recipient_name TEXT NOT NULL DEFAULT ''`);
+  await pool.query(`ALTER TABLE standard_greeting_videos ADD COLUMN IF NOT EXISTS sender_name TEXT NOT NULL DEFAULT ''`);
+  await pool.query(`ALTER TABLE standard_greeting_videos ADD COLUMN IF NOT EXISTS personal_message TEXT NOT NULL DEFAULT ''`);
+  await pool.query(`ALTER TABLE standard_greeting_videos ADD COLUMN IF NOT EXISTS spoken_text TEXT NOT NULL DEFAULT ''`);
+  await pool.query(`ALTER TABLE standard_greeting_videos ADD COLUMN IF NOT EXISTS language TEXT NOT NULL DEFAULT 'en'`);
+  await pool.query(`ALTER TABLE standard_greeting_videos ADD COLUMN IF NOT EXISTS file_name TEXT NOT NULL DEFAULT ''`);
   await pool.query(`ALTER TABLE standard_greeting_videos ADD COLUMN IF NOT EXISTS video_data BYTEA`);
+  await pool.query(`ALTER TABLE standard_greeting_videos ADD COLUMN IF NOT EXISTS video_mime TEXT NOT NULL DEFAULT 'video/mp4'`);
   await pool.query(`ALTER TABLE standard_greeting_videos ADD COLUMN IF NOT EXISTS poster_data BYTEA`);
+  await pool.query(`ALTER TABLE standard_greeting_videos ADD COLUMN IF NOT EXISTS poster_mime TEXT NOT NULL DEFAULT 'image/jpeg'`);
   await pool.query(`ALTER TABLE standard_greeting_videos ADD COLUMN IF NOT EXISTS share_poster_data BYTEA`);
+  await pool.query(`ALTER TABLE standard_greeting_videos ADD COLUMN IF NOT EXISTS share_poster_mime TEXT NOT NULL DEFAULT 'image/jpeg'`);
+  await pool.query(`ALTER TABLE standard_greeting_videos ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'pending'`);
   await pool.query(`ALTER TABLE standard_greeting_videos ADD COLUMN IF NOT EXISTS render_error TEXT NOT NULL DEFAULT ''`);
   await pool.query(`ALTER TABLE standard_greeting_videos ADD COLUMN IF NOT EXISTS credit_source TEXT NOT NULL DEFAULT ''`);
   await pool.query(`ALTER TABLE standard_greeting_videos ADD COLUMN IF NOT EXISTS credits_used INTEGER NOT NULL DEFAULT 20`);
   await pool.query(`ALTER TABLE standard_greeting_videos ADD COLUMN IF NOT EXISTS refunded BOOLEAN NOT NULL DEFAULT FALSE`);
+  await pool.query(`ALTER TABLE standard_greeting_videos ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()`);
   await pool.query(`ALTER TABLE standard_greeting_videos ADD COLUMN IF NOT EXISTS completed_at TIMESTAMPTZ`);
+  await pool.query(`ALTER TABLE standard_greeting_videos ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()`);
+
+  // Backfill identifiers on any rows created by an earlier schema version.
+  await pool.query(`
+    UPDATE standard_greeting_videos
+    SET greeting_id = 'legacy-' || md5(random()::text || clock_timestamp()::text || ctid::text)
+    WHERE greeting_id IS NULL OR BTRIM(greeting_id) = ''
+  `);
+  await pool.query(`
+    UPDATE standard_greeting_videos
+    SET job_id = greeting_id
+    WHERE job_id IS NULL OR BTRIM(job_id) = ''
+  `);
+  await pool.query(`
+    CREATE UNIQUE INDEX IF NOT EXISTS standard_greeting_videos_greeting_id_uidx
+    ON standard_greeting_videos(greeting_id)
+  `);
+  await pool.query(`
+    CREATE UNIQUE INDEX IF NOT EXISTS standard_greeting_videos_job_id_uidx
+    ON standard_greeting_videos(job_id)
+  `);
   await pool.query(`
     CREATE INDEX IF NOT EXISTS standard_greeting_videos_customer_idx
     ON standard_greeting_videos(customer_key, created_at DESC)
@@ -2510,6 +2552,8 @@ async function ensureGreetingAccessTables() {
     ON premium_greeting_orders(media_token)
     WHERE media_token <> ''
   `);
+
+  greetingAccessTablesReady = true;
 }
 
 async function syncPremiumDashboardProductionStatus() {
@@ -5995,6 +6039,8 @@ app.post("/api/greeting-studio/render", async (req, res) => {
         error: "Your Printo login has expired. Please log in again."
       });
     }
+    await ensureGreetingAccessTables();
+
     accessReservation = await reserveGreetingGenerationAccess(
       customerIdentity.customerKey,
       customerPhone || customerIdentity.contactPhone
@@ -15306,6 +15352,7 @@ app.post("/api/greeting/birthday/generate", async (req, res) => {
   let birthdayJobId = "";
   let birthdayResponseSent = false;
   let birthdayGreetingId = "";
+  let birthdayGenerationRecordCreated = false;
   let birthdayVoicePath = "";
   let birthdayPersonalizedFramePath = "";
 
@@ -15405,6 +15452,11 @@ app.post("/api/greeting/birthday/generate", async (req, res) => {
         error: "Your Printo login has expired. Please log in again."
       });
     }
+
+    // Confirm that the persistent Standard-video schema is fully upgraded
+    // before credits are reserved for this generation.
+    await ensureGreetingAccessTables();
+
     accessReservation = await reserveGreetingGenerationAccess(
       customerIdentity.customerKey,
       customerIdentity.contactPhone,
@@ -15464,6 +15516,7 @@ Africa Payment: ${payment.africa}`
       creditSource: accessReservation.source,
       creditsUsed: accessReservation.creditsUsed
     });
+    birthdayGenerationRecordCreated = true;
     const progressUrl = buildBirthdayProgressUrl(req, birthdayJobId, requestLanguage);
     saveBirthdayJobStatus(birthdayJobId, {
       status: "queued",
@@ -15814,7 +15867,7 @@ Africa Payment: ${payment.africa}`
   } catch (err) {
     safeUnlink(birthdayPersonalizedFramePath);
     safeUnlink(birthdayVoicePath);
-    if (birthdayGreetingId) {
+    if (birthdayGreetingId && birthdayGenerationRecordCreated) {
       await failStandardGreetingGeneration({
         greetingId: birthdayGreetingId,
         error: String(err.message || err)
