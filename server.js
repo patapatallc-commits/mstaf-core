@@ -14444,7 +14444,10 @@ async function generatePrintoBirthdayVoice({ recipientName, senderName, message,
     return { ok: false, reason: "missing_elevenlabs_config" };
   }
 
-  const voiceText = `Happy Birthday, ${recipientName}! This special greeting comes with love from ${senderName}. ${message}`;
+  // Keep the spoken introduction concise, then read the customer's full message.
+  // The finished video duration is calculated from this generated audio below,
+  // so longer messages are no longer cut off at ten seconds.
+  const voiceText = `Happy Birthday, ${recipientName}! ${message} This greeting is from ${senderName}.`;
 
   try {
     const response = await axios.post(
@@ -14746,6 +14749,44 @@ Africa Payment: ${payment.africa}`
     });
     const hasPrintoVoice = Boolean(voiceResult.ok && fs.existsSync(voicePath));
 
+    // The old renderer always stopped at 10 seconds, which cut off longer
+    // ElevenLabs speech. Measure the generated voice and extend the video,
+    // music, and visual loop long enough for Printo to finish speaking.
+    const birthdayVoiceDelaySeconds = 0.9;
+    const birthdayOutroPaddingSeconds = 1.5;
+    let birthdayDurationSeconds = 10;
+
+    if (hasPrintoVoice) {
+      try {
+        const voiceMedia = await probePremiumMedia(voicePath);
+        const measuredVoiceDuration = Number(voiceMedia.duration || 0);
+
+        if (Number.isFinite(measuredVoiceDuration) && measuredVoiceDuration > 0) {
+          birthdayDurationSeconds = Math.min(
+            45,
+            Math.max(
+              10,
+              Math.ceil(
+                (measuredVoiceDuration + birthdayVoiceDelaySeconds + birthdayOutroPaddingSeconds) * 10
+              ) / 10
+            )
+          );
+        }
+      } catch (voiceProbeError) {
+        console.error("Printo voice duration probe failed; using 15-second fallback:", voiceProbeError.message);
+        birthdayDurationSeconds = 15;
+      }
+    }
+
+    const birthdayDurationText = birthdayDurationSeconds.toFixed(1);
+    const birthdayVoiceDelayMs = Math.round(birthdayVoiceDelaySeconds * 1000);
+
+    console.log("Birthday audio timing:", {
+      hasPrintoVoice,
+      durationSeconds: birthdayDurationSeconds,
+      voiceDelayMs: birthdayVoiceDelayMs
+    });
+
     // Stable Printo Birthday production layout.
     // No animation filters. The master video is scaled/cropped safely
     // into the center window so FFmpeg does not fail on pad dimensions.
@@ -14773,11 +14814,12 @@ Africa Payment: ${payment.africa}`
       `drawtext=text=${quoteDrawtextText(messageLines[9])}:x=218+(590-text_w)/2:y=${messageStartY + (9 * messageLineGap)}:fontsize=${messageFontSize}:fontcolor=#2f267f:borderw=1:bordercolor=white@0.35[outv]`;
 
     const audioFilter = hasPrintoVoice
-      ? `[2:a]volume=0.30,apad=pad_dur=10,atrim=0:10[music];` +
-        `[3:a]adelay=900|900,volume=1.25,apad=pad_dur=10,atrim=0:10[voice];` +
+      ? `[2:a]volume=0.30,apad=pad_dur=${birthdayDurationText},atrim=0:${birthdayDurationText}[music];` +
+        `[3:a]adelay=${birthdayVoiceDelayMs}|${birthdayVoiceDelayMs},volume=1.25,` +
+        `apad=pad_dur=${birthdayDurationText},atrim=0:${birthdayDurationText}[voice];` +
         `[music][voice]amix=inputs=2:duration=longest:dropout_transition=2,` +
-        `loudnorm=I=-16:TP=-1.5:LRA=11,atrim=0:10[aout]`
-      : `[2:a]apad=pad_dur=10,atrim=0:10[aout]`;
+        `loudnorm=I=-16:TP=-1.5:LRA=11,atrim=0:${birthdayDurationText}[aout]`
+      : `[2:a]apad=pad_dur=${birthdayDurationText},atrim=0:${birthdayDurationText}[aout]`;
 
     const ffmpegArgs = [
       "-y",
@@ -14788,14 +14830,17 @@ Africa Payment: ${payment.africa}`
       "-filter_complex_threads", "1",
       "-loop", "1",
       "-i", framePath,
+      // Repeat the 10-second center animation and music when the spoken
+      // greeting is longer than the original master-video duration.
+      "-stream_loop", "-1",
       "-i", masterPath,
+      "-stream_loop", "-1",
       "-i", audioPath,
       ...(hasPrintoVoice ? ["-i", voicePath] : []),
-      "-t", "10",
+      "-t", birthdayDurationText,
       "-filter_complex", `${videoFilter};${audioFilter}`,
       "-map", "[outv]",
       "-map", "[aout]",
-      "-shortest",
       "-c:v", "libx264",
       "-preset", "ultrafast",
       "-tune", "fastdecode",
