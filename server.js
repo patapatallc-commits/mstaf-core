@@ -1,4 +1,3 @@
-
 function getExtFromMime(mimeType = "") {
   const map = {
     "image/jpeg": ".jpg",
@@ -14827,6 +14826,11 @@ Africa Payment: ${payment.africa}`
       "-filter_complex", `${videoFilter};${audioFilter}`,
       "-map", "[outv]",
       "-map", "[aout]",
+      // The frame, center animation, and music are looped. When Printo voice is
+      // present, the mixed audio is finite and includes the full cleaned voice
+      // plus the small closing pause. -shortest stops the otherwise-infinite
+      // video exactly when that audio finishes.
+      ...(hasPrintoVoice ? ["-shortest"] : []),
       "-c:v", "libx264",
       "-preset", "ultrafast",
       "-tune", "fastdecode",
@@ -14864,7 +14868,10 @@ Africa Payment: ${payment.africa}`
       "ffmpeg",
       ffmpegArgs,
       {
-        timeout: 120000,
+        // A full 220-character greeting can create a substantially longer
+        // voice track. Give Render enough time to encode it without falsely
+        // marking a healthy render as failed.
+        timeout: 300000,
         maxBuffer: 1024 * 1024 * 5
       },
       async (err, stdout, stderr) => {
