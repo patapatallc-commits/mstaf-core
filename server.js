@@ -71,7 +71,10 @@ function getConfiguredPublicOrigin(req) {
     ? `${req.protocol}://${req.get("host")}`
     : "https://studio.patapata.us";
 
-  return String(configured || fallback).replace(/\/+$/, "");
+  const resolved = String(configured || fallback).replace(/\/+$/, "");
+  return resolved.includes(".onrender.com")
+    ? "https://studio.patapata.us"
+    : resolved;
 }
 
    function buildUploadUrl(req, finalName) {
@@ -310,7 +313,7 @@ const app = express();
 // HIDE_RENDER_HOST=true. Browser page visits to the Render hostname will then
 // move to the branded domain, while APIs, webhooks and media routes keep working.
 app.use((req, res, next) => {
-  const hideRenderHost = String(process.env.HIDE_RENDER_HOST || "").toLowerCase() === "true";
+  const hideRenderHost = true;
   const host = String(req.get("host") || "").toLowerCase();
   const isRenderHost = host.endsWith(".onrender.com");
   const isBrowserPage = req.method === "GET" && ![
@@ -346,7 +349,7 @@ app.get("/greeting-assets/birthday-v2.png", (req, res) => {
 
 app.use(express.static("public"));
 app.get("/", (req, res) => {
-  res.sendFile(path.join(__dirname, "public", "index.html"));
+  return res.redirect(302, "/greetings");
 });
 app.use(express.json({
   limit: "20mb",
@@ -4777,6 +4780,115 @@ function isGreetingAdminAuthorized(req) {
 
   return Boolean(expected && provided === expected);
 }
+
+
+function normalizePrintoAccountContact(value = "") {
+  const raw = String(value || "").trim().toLowerCase();
+  if (raw.includes("@")) {
+    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(raw) ? `email:${raw}` : "";
+  }
+  const digits = raw.replace(/\D+/g, "");
+  return digits.length >= 8 && digits.length <= 15 ? `phone:${digits}` : "";
+}
+
+function makePrintoAccountCustomerKey(contact = "", pin = "") {
+  const normalizedContact = normalizePrintoAccountContact(contact);
+  const normalizedPin = String(pin || "").replace(/\D+/g, "");
+  if (!normalizedContact || !/^\d{6}$/.test(normalizedPin)) return "";
+  return makeGreetingCustomerKey(`printo-account:${normalizedContact}:${normalizedPin}`);
+}
+
+async function migratePrintoCustomerIdentity(sourceKey, targetKey, contact = "") {
+  if (!targetKey) throw new Error("A Printo account identity is required.");
+  if (!sourceKey || sourceKey === targetKey) {
+    await ensureGreetingCustomerRow(targetKey, normalizePrintoAccountContact(contact).startsWith("phone:") ? normalizePrintoAccountContact(contact).slice(6) : "");
+    return;
+  }
+
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    const sourceResult = await client.query("SELECT * FROM greeting_customer_access WHERE customer_key = $1 FOR UPDATE", [sourceKey]);
+    const targetResult = await client.query("SELECT * FROM greeting_customer_access WHERE customer_key = $1 FOR UPDATE", [targetKey]);
+    const source = sourceResult.rows[0] || null;
+    const target = targetResult.rows[0] || null;
+    const phone = normalizePrintoAccountContact(contact).startsWith("phone:") ? normalizePrintoAccountContact(contact).slice(6) : "";
+
+    if (source && !target) {
+      await client.query(
+        `UPDATE greeting_customer_access
+         SET customer_key = $2,
+             contact_phone = CASE WHEN $3 <> '' THEN $3 ELSE contact_phone END,
+             updated_at = NOW()
+         WHERE customer_key = $1`,
+        [sourceKey, targetKey, phone]
+      );
+    } else {
+      await client.query(
+        `INSERT INTO greeting_customer_access (customer_key, contact_phone, paid_credits, free_credits_granted, created_at, updated_at)
+         VALUES ($1, $2, $3, TRUE, NOW(), NOW())
+         ON CONFLICT (customer_key) DO UPDATE SET
+           contact_phone = CASE WHEN EXCLUDED.contact_phone <> '' THEN EXCLUDED.contact_phone ELSE greeting_customer_access.contact_phone END,
+           updated_at = NOW()`,
+        [targetKey, phone, PRINTO_FREE_CREDITS]
+      );
+      // Never add a second welcome balance when another browser/device is linked.
+      if (source) await client.query("DELETE FROM greeting_customer_access WHERE customer_key = $1", [sourceKey]);
+    }
+
+    await client.query("UPDATE greeting_payment_events SET customer_key = $2 WHERE customer_key = $1", [sourceKey, targetKey]);
+    await client.query("UPDATE premium_greeting_orders SET customer_key = $2, updated_at = NOW() WHERE customer_key = $1", [sourceKey, targetKey]);
+    await client.query("COMMIT");
+  } catch (error) {
+    await client.query("ROLLBACK");
+    throw error;
+  } finally {
+    client.release();
+  }
+
+  // Standard greeting metadata is stored beside the generated files.
+  for (const name of fs.readdirSync(generatedDir).filter((item) => item.endsWith(".json"))) {
+    const metadataPath = path.join(generatedDir, name);
+    try {
+      const metadata = JSON.parse(fs.readFileSync(metadataPath, "utf8"));
+      if (metadata.customerKey === sourceKey) {
+        metadata.customerKey = targetKey;
+        metadata.updatedAt = new Date().toISOString();
+        fs.writeFileSync(metadataPath, JSON.stringify(metadata, null, 2), "utf8");
+      }
+    } catch (_error) {}
+  }
+}
+
+app.post("/api/printo-account/connect", async (req, res) => {
+  try {
+    const body = req.body || {};
+    const contact = String(body.contact || body.email || body.phone || "").trim();
+    const pin = String(body.pin || "").replace(/\D+/g, "");
+    const accountKey = makePrintoAccountCustomerKey(contact, pin);
+    if (!accountKey) {
+      return res.status(400).json({ ok: false, error: "Enter a valid email or phone number and a 6-digit account PIN." });
+    }
+
+    let sourceKey = String(body.currentCustomerKey || body.customerKey || "").trim();
+    if (!/^g_[a-f0-9]{64}$/i.test(sourceKey)) {
+      const currentId = String(body.currentCustomerId || body.customerId || "").trim();
+      sourceKey = currentId ? makeGreetingCustomerKey(`device:${currentId}`) : "";
+    }
+
+    await migratePrintoCustomerIdentity(sourceKey, accountKey, contact);
+    const status = await getGreetingAccessStatus(accountKey, normalizePrintoAccountContact(contact).startsWith("phone:") ? normalizePrintoAccountContact(contact).slice(6) : "");
+    return res.json({
+      ok: true,
+      customerKey: accountKey,
+      accountContact: normalizePrintoAccountContact(contact),
+      ...status
+    });
+  } catch (error) {
+    console.error("Printo account connection failed:", error);
+    return res.status(500).json({ ok: false, error: "Could not connect your Printo account." });
+  }
+});
 
 app.post("/api/greeting/access/status", async (req, res) => {
   try {
@@ -15408,7 +15520,7 @@ function buildGreetingStudioHomePage(language = "en") {
 
   return `<!doctype html><html lang="${lang}" dir="${dir}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#082a8f"><title>${t.title}</title><style>
   *{box-sizing:border-box}body{margin:0;font-family:Arial,sans-serif;background:radial-gradient(circle at top,#1b56c9 0,#082a8f 40%,#031442 100%);color:#fff;min-height:100vh}.wrap{max-width:1160px;margin:auto;padding:22px}.hero{text-align:center;padding:20px 10px 12px}.hero h1{font-size:42px;margin:6px}.hero p{font-size:18px;line-height:1.55;max-width:760px;margin:12px auto}.toplinks{display:flex;justify-content:center;gap:10px;flex-wrap:wrap;margin:16px 0}.toplinks button,.toplinks a{border:0;padding:12px 18px;border-radius:999px;text-decoration:none;font-weight:900;cursor:pointer;font-size:16px}.credits{background:#ffd21f;color:#082a8f}.home{background:#fff;color:#082a8f}.premium{position:relative;overflow:hidden;background:linear-gradient(110deg,#fff1a8,#fff,#e8f1ff);color:#071b61;border:3px solid #ffd21f;border-radius:28px;padding:24px;margin:22px 0 28px;box-shadow:0 18px 48px rgba(0,0,0,.3)}.premium-badge{display:inline-block;background:#123faa;color:#ffd21f;font-weight:900;padding:9px 16px;border-radius:999px}.premium-grid{display:grid;grid-template-columns:38% 1fr;gap:25px;align-items:center;margin-top:16px}.premium-media{position:relative;border-radius:24px;overflow:hidden;min-height:270px;background:#092b92;border:2px solid #3158b6;cursor:pointer;padding:0}.premium-media img{display:block;width:100%;height:100%;min-height:270px;object-fit:cover}.premium-media .play,.media .play{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:72px;height:72px;border-radius:50%;display:grid;place-items:center;background:#ffd21f;color:#082a8f;font-size:32px;box-shadow:0 10px 25px rgba(0,0,0,.3)}.premium h2{font-size:32px;margin:0 0 10px}.premium p{line-height:1.55}.premium ul{display:grid;grid-template-columns:1fr 1fr;gap:8px 20px;padding:0;list-style:none;font-weight:800}.premium-actions,.actions{display:flex;flex-wrap:wrap;gap:10px;margin-top:16px}.premium-actions a,.premium-actions button,.actions a,.actions button{border:0;border-radius:999px;padding:12px 16px;text-decoration:none;font-weight:900;cursor:pointer;font-size:14px}.watch,.secondary{background:#123faa;color:#fff}.buy{background:#0f9d58;color:#fff}.create{background:linear-gradient(90deg,#7b2cbf,#d63384);color:#fff}.worker{background:#25D366;color:#072b17}.choose{text-align:center;font-size:34px;margin:20px 0}.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:20px}.card{background:#fff;color:#0a286d;border-radius:24px;overflow:hidden;box-shadow:0 14px 30px rgba(0,0,0,.25);display:flex;flex-direction:column}.media{position:relative;border:0;padding:0;width:100%;aspect-ratio:16/9;background:#dbeafe;cursor:pointer;overflow:hidden}.media img{width:100%;height:100%;object-fit:cover;display:block;transition:transform .25s}.media:hover img{transform:scale(1.025)}.media .play{width:58px;height:58px;font-size:25px}.card-body{padding:18px;display:flex;flex-direction:column;flex:1}.card h3{font-size:23px;margin:0 0 8px}.card p{color:#475569;line-height:1.45;min-height:61px;margin:0}.actions{margin-top:auto}.actions a,.actions button{flex:1;text-align:center;min-width:125px}.modal{display:none;position:fixed;z-index:9999;inset:0;background:rgba(0,0,0,.84);padding:20px;align-items:center;justify-content:center}.modal.open{display:flex}.modal-box{width:min(920px,100%);background:#fff;color:#082a8f;border-radius:25px;padding:18px;box-shadow:0 25px 80px rgba(0,0,0,.55)}.modal-head{display:flex;justify-content:space-between;align-items:center;gap:10px}.modal-head h2{margin:5px}.modal-close{border:0;background:#e2e8f0;color:#0f172a;padding:10px 15px;border-radius:999px;font-weight:900;cursor:pointer}.modal-video{width:100%;border-radius:18px;margin-top:12px;display:block;max-height:68vh;background:#061b62}.modal-note{text-align:center;color:#475569;font-weight:700;line-height:1.45}.credit-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-top:15px}.credit-stat{background:#eff6ff;border:2px solid #bfdbfe;border-radius:16px;padding:17px;text-align:center}.credit-stat strong{display:block;font-size:30px;color:#7b2cbf}.credit-stat span{display:block;margin-top:5px;font-weight:800;color:#475569}.credit-status{text-align:center;padding:18px;font-weight:900;color:#475569}.legal{margin:38px 0 10px;background:#fff;color:#172554;border:3px solid #ffd21f;border-radius:26px;padding:26px;box-shadow:0 18px 48px rgba(0,0,0,.3)}.legal h2{text-align:center;color:#082a8f;font-size:30px;margin:0 0 8px}.legal-intro{text-align:center;color:#475569;max-width:850px;margin:0 auto 22px;line-height:1.6}.legal-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}.legal-card{background:#f8fafc;border:2px solid #dbeafe;border-radius:18px;padding:18px}.legal-card h3{color:#123faa;margin:0 0 9px;font-size:20px}.legal-card p,.legal-card li{color:#334155;line-height:1.6}.legal-card ul{padding-left:21px;margin:8px 0}.legal-alert{background:#fff7d6;border-color:#ffd21f}.legal-danger{background:#fff1f2;border-color:#fb7185}.legal-contact{text-align:center;background:#eff6ff;border:2px solid #93c5fd;border-radius:18px;padding:18px;margin-top:16px;color:#172554;line-height:1.65}.legal-contact a{color:#123faa;font-weight:900}.footer{text-align:center;padding:32px 10px;color:#dbeafe;font-weight:700}@media(max-width:850px){.grid{grid-template-columns:repeat(2,1fr)}.premium-grid{grid-template-columns:1fr}.premium-media img,.premium-media{min-height:230px}}@media(max-width:570px){.wrap{padding:12px}.hero h1{font-size:32px}.choose{font-size:28px}.grid{grid-template-columns:1fr}.premium{padding:16px}.premium h2{font-size:27px}.premium ul{grid-template-columns:1fr}.actions a,.actions button{min-width:100%}.modal{padding:8px}.modal-box{padding:12px}.credit-grid{grid-template-columns:1fr}.legal{padding:18px}.legal-grid{grid-template-columns:1fr}.legal h2{font-size:25px}}
-  </style></head><body><main class="wrap"><section class="hero"><h1>🎁 ${t.title}</h1><p>${t.hero}</p><div class="toplinks"><button id="creditsButton" class="credits" type="button">⭐ ${t.credits}</button><a class="home" href="${studioUrl}" target="_blank" rel="noopener">🏠 ${t.studio}</a></div></section>
+  </style></head><body><main class="wrap"><section class="hero"><h1>🎁 ${t.title}</h1><p>${t.hero}</p><div class="toplinks"><button id="creditsButton" class="credits" type="button">⭐ ${t.credits}</button><button id="accountButton" class="home" type="button">👤 Sign in / Sync Devices</button><a class="home" href="/greetings">🏠 ${t.studio}</a></div></section>
   <section class="premium"><span class="premium-badge">🌟 PREMIUM EXPERIENCE</span><div class="premium-grid"><button class="premium-media sample-open" type="button" data-video="/greeting-assets/premium-sample-video" data-poster="/greeting-assets/premium-tribute-sample.svg" data-title="Personal Tribute Music Video Card"><img src="/greeting-assets/premium-tribute-sample.svg" alt="Premium tribute sample"><span class="play">▶</span></button><div><h2>Personal Tribute Music Video Card</h2><p>Create a powerful personal tribute using the recipient photo, your personal introduction video, an original tribute song, names and a heartfelt message.</p><ul><li>✓ Recipient photo on screen</li><li>✓ Personal introduction video</li><li>✓ Original tribute song</li><li>✓ Recipient and sender names</li><li>✓ Personal message</li><li>✓ Downloadable finished video</li></ul><div class="premium-actions"><button class="watch sample-open" type="button" data-video="/greeting-assets/premium-sample-video" data-poster="/greeting-assets/premium-tribute-sample.svg" data-title="Personal Tribute Music Video Card">▶ ${t.watch}</button><a class="buy" href="${shopifyBase}" target="_blank" rel="noopener">🛒 ${t.buy}</a><a class="create" href="${premiumOrderUrl}">✨ ${t.create}</a><a class="worker" href="${premiumWhatsAppUrl}" target="_blank" rel="noopener">💬 ${t.help}</a></div></div></div></section>
   <h2 class="choose">${t.choose}</h2><section class="grid">${cards}</section>
   <section id="terms" class="legal">
@@ -15430,7 +15542,7 @@ function buildGreetingStudioHomePage(language = "en") {
   </section>
   <div class="footer">© 2026 PATAPATA LLC • Printto Greeting Studio™<br>81 W. Allen Street, Irvington, NJ 07111 • All Rights Reserved.</div></main>
   <div id="sampleModal" class="modal" role="dialog" aria-modal="true" aria-hidden="true"><div class="modal-box"><div class="modal-head"><h2 id="sampleTitle"></h2><button class="modal-close close-modal" type="button">✕ ${t.close}</button></div><video id="sampleVideo" class="modal-video" controls playsinline preload="metadata"></video><p class="modal-note">${t.sampleNote}</p></div></div>
-  <div id="creditModal" class="modal" role="dialog" aria-modal="true" aria-hidden="true"><div class="modal-box"><div class="modal-head"><h2>⭐ ${t.credits}</h2><button class="modal-close close-credit" type="button">✕ ${t.close}</button></div><div id="creditStatus" class="credit-status">${t.loading}</div><div id="creditGrid" class="credit-grid" hidden><div class="credit-stat"><strong id="creditBalance">0</strong><span>${t.balance}</span></div><div class="credit-stat"><strong id="creditCreations">0</strong><span>${t.creations}</span></div><div class="credit-stat"><strong id="creditCost">20</strong><span>${t.cost}</span></div></div><div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:16px"><a href="/customer-dashboard" style="flex:1;text-align:center;padding:12px;border-radius:12px;background:#123faa;color:white;text-decoration:none;font-weight:900">🎬 My Videos</a><a href="/subscriptions" style="flex:1;text-align:center;padding:12px;border-radius:12px;background:#7b2cbf;color:white;text-decoration:none;font-weight:900">➕ Buy Credits / Subscribe</a></div></div></div>
+  <div id="creditModal" class="modal" role="dialog" aria-modal="true" aria-hidden="true"><div class="modal-box"><div class="modal-head"><h2>⭐ ${t.credits}</h2><button class="modal-close close-credit" type="button">✕ ${t.close}</button></div><div id="creditStatus" class="credit-status">${t.loading}</div><div id="creditGrid" class="credit-grid" hidden><div class="credit-stat"><strong id="creditBalance">0</strong><span>${t.balance}</span></div><div class="credit-stat"><strong id="creditCreations">0</strong><span>${t.creations}</span></div><div class="credit-stat"><strong id="creditCost">20</strong><span>${t.cost}</span></div></div><div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:16px"><a href="/customer-dashboard" style="flex:1;text-align:center;padding:12px;border-radius:12px;background:#123faa;color:white;text-decoration:none;font-weight:900">🎬 My Videos</a><a href="/subscriptions" style="flex:1;text-align:center;padding:12px;border-radius:12px;background:#7b2cbf;color:white;text-decoration:none;font-weight:900">➕ Buy Credits / Subscribe</a></div></div></div><div id="accountModal" class="modal" role="dialog" aria-modal="true" aria-hidden="true"><div class="modal-box"><div class="modal-head"><h2>👤 Printo Account</h2><button class="modal-close close-account" type="button">✕ Close</button></div><p style="color:#475569;line-height:1.5">Use the same email or phone number and the same 6-digit PIN on every device. Your credits and finished videos will follow you.</p><input id="accountContact" type="text" placeholder="Email address or phone number" style="width:100%;padding:13px;border:2px solid #bdd7ff;border-radius:12px;font-size:16px;margin:7px 0"><input id="accountPin" type="password" inputmode="numeric" maxlength="6" placeholder="Create or enter your 6-digit PIN" style="width:100%;padding:13px;border:2px solid #bdd7ff;border-radius:12px;font-size:16px;margin:7px 0"><button id="connectAccount" type="button" style="width:100%;padding:13px;border:0;border-radius:12px;background:#123faa;color:#fff;font-weight:900;font-size:16px;margin-top:8px">Connect My Credits & Videos</button><div id="accountStatus" style="margin-top:10px;font-weight:800;color:#475569"></div></div></div>
   <script>
   const sampleModal=document.getElementById('sampleModal'),video=document.getElementById('sampleVideo'),sampleTitle=document.getElementById('sampleTitle');
   function openModal(el){el.classList.add('open');el.setAttribute('aria-hidden','false');document.body.style.overflow='hidden'}
@@ -15439,7 +15551,13 @@ function buildGreetingStudioHomePage(language = "en") {
   document.querySelectorAll('.close-modal').forEach(btn=>btn.addEventListener('click',()=>{video.pause();video.removeAttribute('src');video.load();closeModal(sampleModal)}));sampleModal.addEventListener('click',e=>{if(e.target===sampleModal){video.pause();closeModal(sampleModal)}});
   const creditModal=document.getElementById('creditModal'),creditButton=document.getElementById('creditsButton'),creditStatus=document.getElementById('creditStatus'),creditGrid=document.getElementById('creditGrid');
   function getCustomerId(){let id=localStorage.getItem('printoGreetingCustomerId');if(!id){id='printo_'+Date.now()+'_'+Math.random().toString(36).slice(2,12);localStorage.setItem('printoGreetingCustomerId',id)}return id}
-  async function loadCredits(){creditStatus.hidden=false;creditGrid.hidden=true;creditStatus.textContent=${JSON.stringify(t.loading)};try{const response=await fetch('/api/credits/'+encodeURIComponent(getCustomerId()),{cache:'no-store'});const data=await response.json();if(!response.ok||!data.ok)throw new Error(data.error||'Credit request failed');if(data.customerKey)localStorage.setItem('printoGreetingCustomerKey',String(data.customerKey));document.getElementById('creditBalance').textContent=String(data.creditBalance??data.credits??0);document.getElementById('creditCreations').textContent=String(data.remainingCreations??0);document.getElementById('creditCost').textContent=String(data.creationCost??20);creditStatus.hidden=true;creditGrid.hidden=false}catch(error){creditStatus.textContent=${JSON.stringify(t.creditError)}}}
+  function getCustomerKey(){return localStorage.getItem('printoGreetingCustomerKey')||''}
+  function customerHeaders(){const key=getCustomerKey();return key?{'x-printo-customer-key':key}:{}}
+  async function loadCredits(){creditStatus.hidden=false;creditGrid.hidden=true;creditStatus.textContent=${JSON.stringify(t.loading)};try{const response=await fetch('/api/credits/'+encodeURIComponent(getCustomerId()),{cache:'no-store',headers:customerHeaders()});const data=await response.json();if(!response.ok||!data.ok)throw new Error(data.error||'Credit request failed');if(data.customerKey)localStorage.setItem('printoGreetingCustomerKey',String(data.customerKey));document.getElementById('creditBalance').textContent=String(data.creditBalance??data.credits??0);document.getElementById('creditCreations').textContent=String(data.remainingCreations??0);document.getElementById('creditCost').textContent=String(data.creationCost??20);creditStatus.hidden=true;creditGrid.hidden=false}catch(error){creditStatus.textContent=${JSON.stringify(t.creditError)}}
+  const accountModal=document.getElementById('accountModal'),accountStatus=document.getElementById('accountStatus');
+  document.getElementById('accountButton').addEventListener('click',()=>{document.getElementById('accountContact').value=localStorage.getItem('printoAccountContact')||'';openModal(accountModal)});
+  document.querySelectorAll('.close-account').forEach(b=>b.addEventListener('click',()=>closeModal(accountModal)));accountModal.addEventListener('click',e=>{if(e.target===accountModal)closeModal(accountModal)});
+  document.getElementById('connectAccount').addEventListener('click',async()=>{const contact=document.getElementById('accountContact').value.trim(),pin=document.getElementById('accountPin').value.trim();accountStatus.textContent='Connecting your account...';try{const r=await fetch('/api/printo-account/connect',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({contact,pin,currentCustomerId:getCustomerId(),currentCustomerKey:getCustomerKey()})});const d=await r.json();if(!r.ok||!d.ok)throw new Error(d.error||'Connection failed');localStorage.setItem('printoGreetingCustomerKey',d.customerKey);localStorage.setItem('printoAccountContact',contact);accountStatus.textContent='✅ Account connected. Your credits and videos are now synced.';setTimeout(()=>{closeModal(accountModal);loadCredits()},900)}catch(e){accountStatus.textContent='❌ '+e.message}});
   creditButton.addEventListener('click',()=>{openModal(creditModal);loadCredits()});document.querySelectorAll('.close-credit').forEach(btn=>btn.addEventListener('click',()=>closeModal(creditModal)));creditModal.addEventListener('click',e=>{if(e.target===creditModal)closeModal(creditModal)});document.addEventListener('keydown',e=>{if(e.key==='Escape'){video.pause();closeModal(sampleModal);closeModal(creditModal)}});
   </script></body></html>`;
 }
@@ -15529,6 +15647,24 @@ function buildBirthdayGeneratorPage(language = "en", templateId = "birthday") {
   }
   document.getElementById('formCustomerId').value=customerId;
   document.getElementById('formCustomerKey').value=customerKey;
+  async function ensurePrintoAccount(){
+    customerKey=localStorage.getItem('printoGreetingCustomerKey')||'';
+    if(customerKey){document.getElementById('formCustomerKey').value=customerKey;return true;}
+    const contact=prompt('Enter your email address or phone number to keep your credits and videos on every device:');
+    if(!contact)return false;
+    const pin=prompt('Create a 6-digit Printo account PIN. Use the same PIN on your other devices:');
+    if(!pin)return false;
+    try{
+      const r=await fetch('/api/printo-account/connect',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({contact,pin,currentCustomerId:customerId,currentCustomerKey:customerKey})});
+      const d=await r.json();
+      if(!r.ok||!d.ok)throw new Error(d.error||'Account connection failed');
+      customerKey=d.customerKey;
+      localStorage.setItem('printoGreetingCustomerKey',customerKey);
+      localStorage.setItem('printoAccountContact',contact);
+      document.getElementById('formCustomerKey').value=customerKey;
+      return true;
+    }catch(e){alert(e.message);return false;}
+  }
   function updateCounter(input,output,max){
     const n=String(input.value||'').length;
     output.textContent=n+' / '+max;
@@ -15571,6 +15707,7 @@ function buildBirthdayGeneratorPage(language = "en", templateId = "birthday") {
   }
   birthdayForm.addEventListener('submit',async function(e){
     e.preventDefault();
+    if(!(await ensurePrintoAccount())){statusBox.textContent='Please connect your Printo account before generating.';return;}
     console.log('[Birthday Generate] Submit clicked');
     const recipientName=recipientInput.value.trim();
     const senderName=senderInput.value.trim();
@@ -17181,7 +17318,7 @@ app.get("/api/customer/dashboard/:customerId", async (req,res)=>{
 
 app.get("/subscriptions", (req,res)=>res.type('html').send(`<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><title>Printo Plans</title><style>*{box-sizing:border-box}body{margin:0;font-family:Arial;background:linear-gradient(150deg,#071b61,#0b63ce);color:#fff;padding:24px}.wrap{max-width:1180px;margin:auto;text-align:center}.topbar{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}.close-link{background:#fff;color:#082a8f;text-decoration:none;padding:11px 16px;border-radius:999px;font-weight:900}.section{margin:28px 0 38px}.section-title{font-size:30px;margin:0 0 8px}.section-sub{margin:0 0 18px}.plans{display:grid;grid-template-columns:repeat(4,1fr);gap:16px}.plan{background:#fff;color:#082a8f;border:3px solid #ffd21f;border-radius:22px;padding:22px;position:relative}.plan.premium{border-color:#c13cff;box-shadow:0 10px 28px rgba(0,0,0,.18)}.badge{display:inline-block;background:#123faa;color:#fff;border-radius:999px;padding:7px 12px;font-size:13px;font-weight:900;margin-bottom:8px}.premium .badge{background:#7b2cbf}.price{font-size:34px;font-weight:900}.plan a{display:block;background:#7b2cbf;color:#fff;text-decoration:none;padding:14px;border-radius:12px;font-weight:900;margin-top:16px}.standard a{background:#123faa}.best{transform:scale(1.03)}.note{background:#fff4b8;color:#082a8f;border:3px solid #ffd21f;border-radius:18px;padding:16px;margin:0 auto 20px;max-width:820px;font-weight:900}@media(max-width:950px){.plans{grid-template-columns:1fr 1fr}}@media(max-width:560px){body{padding:16px}.plans{grid-template-columns:1fr}.best{transform:none}.topbar{justify-content:center}.section-title{font-size:25px}}</style></head><body><main class="wrap"><div class="topbar"><h1>⭐ Printo Credits & Subscriptions</h1><a class="close-link" href="/greetings">✕ Close / Return to Studio</a></div><div class="note">🎁 Every new user receives 100 FREE credits — enough for 5 standard creations. Each standard creation uses 20 credits.</div><p>Use one universal Printo credit wallet for Standard, Premium Video, and Premium Multi-Image creations.</p><section class="section"><h2 class="section-title">🎁 Standard Greeting Plans</h2><p class="section-sub">For personalized standard greeting video cards with names, messages, Printo music and voice.</p><div class="plans"><article class="plan standard"><span class="badge">STANDARD</span><h2>Single Creation</h2><div class="price">$4.99</div><p>20 credits • 1 standard creation</p><a href="${PRINTO_SINGLE_CREATION_URL}">Buy One</a></article><article class="plan standard"><span class="badge">STANDARD</span><h2>Monthly</h2><div class="price">$${PRINTO_STANDARD_SUBSCRIPTION_PRICES.monthly.toFixed(2)}</div><p>100 credits monthly • 5 standard creations</p><a href="${PRINTO_STANDARD_MONTHLY_SUBSCRIPTION_URL}">Choose Standard Monthly</a></article><article class="plan standard"><span class="badge">STANDARD</span><h2>6 Months</h2><div class="price">$${PRINTO_STANDARD_SUBSCRIPTION_PRICES.six_months.toFixed(2)}</div><p>600 credits • 30 standard creations</p><a href="${PRINTO_STANDARD_SIX_MONTH_SUBSCRIPTION_URL}">Choose Standard 6 Months</a></article><article class="plan standard best"><span class="badge">BEST STANDARD VALUE</span><h2>1 Year</h2><div class="price">$${PRINTO_STANDARD_SUBSCRIPTION_PRICES.yearly.toFixed(2)}</div><p>1,200 credits • 60 standard creations</p><a href="${PRINTO_STANDARD_YEARLY_SUBSCRIPTION_URL}">Choose Standard Annual</a></article></div></section><section class="section"><h2 class="section-title">🌟 Premium Subscription Plans</h2><p class="section-sub">For Premium Tribute and enhanced personalized video experiences. Credit costs: Standard 20, Premium Video 25, Premium Multi-Image 50.</p><div class="plans"><article class="plan premium"><span class="badge">PREMIUM</span><h2>Monthly</h2><div class="price">$${PRINTO_SUBSCRIPTION_PRICES.monthly.toFixed(2)}</div><p>100 credits now, then 100 credits each active month</p><a href="${PRINTO_MONTHLY_SUBSCRIPTION_URL}">Choose Premium Monthly</a></article><article class="plan premium"><span class="badge">PREMIUM</span><h2>6 Months</h2><div class="price">$${PRINTO_SUBSCRIPTION_PRICES.six_months.toFixed(2)}</div><p>100 credits monthly for 6 months</p><a href="${PRINTO_SIX_MONTH_SUBSCRIPTION_URL}">Choose Premium 6 Months</a></article><article class="plan premium best"><span class="badge">BEST PREMIUM VALUE</span><h2>1 Year</h2><div class="price">$${PRINTO_SUBSCRIPTION_PRICES.yearly.toFixed(2)}</div><p>100 credits monthly for 12 months</p><a href="${PRINTO_YEARLY_SUBSCRIPTION_URL}">Choose Premium Annual</a></article></div></section><p><a class="close-link" href="/greetings">← Return to Printo Greeting Studio</a></p></main></body></html>`));
 
-app.get("/customer-dashboard", (req,res)=>res.type('html').send(`<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><title>My Printo Dashboard</title><style>body{font-family:Arial;margin:0;background:#082a8f;color:#fff;padding:20px}.wrap{max-width:900px;margin:auto}.head{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}.close-link{background:#fff;color:#082a8f;text-decoration:none;padding:11px 16px;border-radius:999px;font-weight:900}.card{background:#fff;color:#082a8f;border-radius:18px;padding:18px;margin:14px 0}.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}.stat{background:#edf4ff;padding:15px;border-radius:14px;text-align:center}.buttons a{display:inline-block;margin:6px;padding:12px 16px;border-radius:12px;background:#7b2cbf;color:#fff;text-decoration:none;font-weight:bold}.video{border-top:1px solid #ddd;padding:12px 0}@media(max-width:600px){.stats{grid-template-columns:1fr}.head{justify-content:center}}</style></head><body><main class="wrap"><div class="head"><h1>⭐ My Printo Dashboard</h1><a class="close-link" href="/greetings">✕ Close / Return to Studio</a></div><div id="content" class="card">Loading…</div></main><script>let id=localStorage.getItem('printoGreetingCustomerId');if(!id){id='printo_'+Date.now()+'_'+Math.random().toString(36).slice(2);localStorage.setItem('printoGreetingCustomerId',id)}fetch('/api/customer/dashboard/'+encodeURIComponent(id),{cache:'no-store'}).then(r=>r.json()).then(d=>{if(!d.ok)throw Error(d.error);document.getElementById('content').innerHTML='<div style="background:#fff4b8;border:2px solid #ffd21f;border-radius:14px;padding:14px;margin-bottom:14px;font-weight:900">🎁 Welcome Bonus: Every new user receives 100 FREE credits for 5 standard creations.</div><div class="stats"><div class="stat"><h2>'+d.creditBalance+'</h2>Credits</div><div class="stat"><h2>'+d.remainingCreations+'</h2>Creations</div><div class="stat"><h2>'+String(d.subscriptionPlan||'Free Welcome')+'</h2>Plan</div></div><div class="buttons"><a href="/greetings">Create Another</a><a href="/subscriptions">Buy Credits / Subscribe</a><a href="/greetings">✕ Close / Return to Studio</a></div><h2>My Finished Videos</h2>'+(d.videos.length?d.videos.map(v=>'<div class="video"><strong>For '+(v.toName||'Recipient')+'</strong><br><a href="'+v.resultUrl+'">▶ Play</a> &nbsp; <a href="'+v.downloadUrl+'">⬇ Download</a></div>').join(''):'<p>No finished videos yet.</p>')}).catch(e=>document.getElementById('content').textContent='Could not load dashboard: '+e.message)</script></body></html>`));
+app.get("/customer-dashboard", (req,res)=>res.type('html').send(`<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><title>My Printo Dashboard</title><style>*{box-sizing:border-box}body{font-family:Arial;margin:0;background:#082a8f;color:#fff;padding:20px}.wrap{max-width:900px;margin:auto}.head{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}.close-link{background:#fff;color:#082a8f;text-decoration:none;padding:11px 16px;border-radius:999px;font-weight:900}.card{background:#fff;color:#082a8f;border-radius:18px;padding:18px;margin:14px 0}.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}.stat{background:#edf4ff;padding:15px;border-radius:14px;text-align:center}.buttons a,.account button{display:inline-block;margin:6px;padding:12px 16px;border:0;border-radius:12px;background:#7b2cbf;color:#fff;text-decoration:none;font-weight:bold}.video{border-top:1px solid #ddd;padding:12px 0}.account{background:#fff4b8;border:2px solid #ffd21f;border-radius:14px;padding:14px;margin-bottom:14px}.account input{width:100%;padding:12px;margin:6px 0;border:2px solid #bdd7ff;border-radius:10px;font-size:16px}@media(max-width:600px){.stats{grid-template-columns:1fr}.head{justify-content:center}}</style></head><body><main class="wrap"><div class="head"><h1>⭐ My Printo Dashboard</h1><a class="close-link" href="/greetings">✕ Close / Return to Studio</a></div><div id="content" class="card"><div class="account"><strong>👤 Sign in to see the same credits and videos on every device</strong><input id="contact" placeholder="Email address or phone number"><input id="pin" type="password" inputmode="numeric" maxlength="6" placeholder="Your 6-digit PIN"><button id="connect">Connect Account</button><div id="accountStatus"></div></div><div id="dashboard">Loading…</div></div></main><script>function deviceId(){let id=localStorage.getItem('printoGreetingCustomerId');if(!id){id='printo_'+Date.now()+'_'+Math.random().toString(36).slice(2);localStorage.setItem('printoGreetingCustomerId',id)}return id}function key(){return localStorage.getItem('printoGreetingCustomerKey')||''}async function load(){const headers=key()?{'x-printo-customer-key':key()}:{};const r=await fetch('/api/customer/dashboard/'+encodeURIComponent(deviceId()),{cache:'no-store',headers});const d=await r.json();if(!d.ok)throw Error(d.error);document.getElementById('dashboard').innerHTML='<div style="background:#fff4b8;border:2px solid #ffd21f;border-radius:14px;padding:14px;margin-bottom:14px;font-weight:900">🎁 Welcome Bonus: One 100-credit bonus per Printo account.</div><div class="stats"><div class="stat"><h2>'+d.creditBalance+'</h2>Credits</div><div class="stat"><h2>'+d.remainingCreations+'</h2>Creations</div><div class="stat"><h2>'+String(d.subscriptionPlan||'Free Welcome')+'</h2>Plan</div></div><div class="buttons"><a href="/greetings">Create Another</a><a href="/subscriptions">Buy Credits / Subscribe</a></div><h2>My Finished Videos</h2>'+(d.videos.length?d.videos.map(v=>'<div class="video"><strong>For '+(v.toName||'Recipient')+'</strong><br><a href="'+v.resultUrl+'">▶ Play</a> &nbsp; <a href="'+v.downloadUrl+'">⬇ Download</a></div>').join(''):'<p>No finished videos yet for this account.</p>')}document.getElementById('contact').value=localStorage.getItem('printoAccountContact')||'';document.getElementById('connect').onclick=async()=>{const contact=document.getElementById('contact').value.trim(),pin=document.getElementById('pin').value.trim(),status=document.getElementById('accountStatus');status.textContent='Connecting...';try{const r=await fetch('/api/printo-account/connect',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({contact,pin,currentCustomerId:deviceId(),currentCustomerKey:key()})});const d=await r.json();if(!r.ok||!d.ok)throw Error(d.error||'Connection failed');localStorage.setItem('printoGreetingCustomerKey',d.customerKey);localStorage.setItem('printoAccountContact',contact);status.textContent='✅ Connected. Loading your account...';await load()}catch(e){status.textContent='❌ '+e.message}};load().catch(e=>document.getElementById('dashboard').textContent='Could not load dashboard: '+e.message)</script></body></html>`));
 
 app.get("/g/:id", (req, res) => {
   res.setHeader("Cache-Control", "public, max-age=60, must-revalidate");
