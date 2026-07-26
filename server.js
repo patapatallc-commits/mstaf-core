@@ -15405,14 +15405,34 @@ function buildBirthdayGeneratorPage(language = "en", templateId = "birthday") {
   }
   document.getElementById('formCustomerId').value=customerId;
   document.getElementById('formCustomerKey').value=customerKey;
-  function updateCounter(input,output,max){const n=input.value.length;output.textContent=n+' / '+max;output.classList.toggle('warn',n>=max)}
-  recipientInput.addEventListener('input',()=>updateCounter(recipientInput,toCount,limits.name));
-  senderInput.addEventListener('input',()=>updateCounter(senderInput,fromCount,limits.name));
-  messageInput.addEventListener('input',()=>updateCounter(messageInput,messageCount,limits.message));
-  updateCounter(recipientInput,toCount,limits.name);
-  updateCounter(senderInput,fromCount,limits.name);
-  updateCounter(messageInput,messageCount,limits.message);
-  termsAccepted.addEventListener('change',()=>{button.disabled=!termsAccepted.checked;});
+  function updateCounter(input,output,max){
+    const n=String(input.value||'').length;
+    output.textContent=n+' / '+max;
+    output.classList.toggle('warn',n>=max);
+  }
+  function syncBirthdayFormState(){
+    updateCounter(recipientInput,toCount,limits.name);
+    updateCounter(senderInput,fromCount,limits.name);
+    updateCounter(messageInput,messageCount,limits.message);
+    const fieldsReady=Boolean(
+      recipientInput.value.trim()&&
+      senderInput.value.trim()&&
+      messageInput.value.trim()
+    );
+    button.disabled=!(fieldsReady&&termsAccepted.checked);
+  }
+  [recipientInput,senderInput,messageInput].forEach((input)=>{
+    ['input','change','keyup','blur'].forEach((eventName)=>{
+      input.addEventListener(eventName,syncBirthdayFormState);
+    });
+    input.addEventListener('paste',()=>setTimeout(syncBirthdayFormState,0));
+    input.addEventListener('cut',()=>setTimeout(syncBirthdayFormState,0));
+  });
+  termsAccepted.addEventListener('change',syncBirthdayFormState);
+  window.addEventListener('pageshow',syncBirthdayFormState);
+  window.addEventListener('focus',syncBirthdayFormState);
+  syncBirthdayFormState();
+  [0,100,300,750,1500].forEach((delay)=>setTimeout(syncBirthdayFormState,delay));
   window.addEventListener('error',function(event){
     console.error('[Birthday Page Error]',event.error||event.message);
     statusBox.textContent='❌ Page error: '+String(event.message||'Unknown JavaScript error');
@@ -15454,7 +15474,7 @@ function buildBirthdayGeneratorPage(language = "en", templateId = "birthday") {
           'Please prepare this selected occasion video card.'
         ];
         statusBox.textContent='✅ Request ready. Opening Printo worker help...';
-        window.location.href='https://wa.me/'+supportPhone+'?text='+encodeURIComponent(requestLines.join('\n'));
+        window.location.href='https://wa.me/'+supportPhone+'?text='+encodeURIComponent(requestLines.join('\\n'));
         return;
       }
       const response=await fetch('/api/greeting/birthday/generate',{method:'POST',headers:{'Content-Type':'application/json','x-printo-customer-id':customerId,...(customerKey?{'x-printo-customer-key':customerKey}:{})},body:JSON.stringify({to:recipientName,from:senderName,message:personalMessage,language:currentLanguage,customerId,customerKey,termsAccepted:true})});
@@ -15466,7 +15486,7 @@ function buildBirthdayGeneratorPage(language = "en", templateId = "birthday") {
         if(data.payment?.shopify)shopifyPayment.href=data.payment.shopify;
         if(data.payment?.africa)africaPayment.href=data.payment.africa;
         statusBox.textContent='💳 '+(data.error||'Payment is required before another greeting can be generated.');
-        button.disabled=false;button.textContent='✨ '+ui.generate;
+        button.textContent='✨ '+ui.generate;syncBirthdayFormState();
         return;
       }
       if(!response.ok||!data.ok)throw new Error(data.error||ui.failed);
@@ -15475,7 +15495,7 @@ function buildBirthdayGeneratorPage(language = "en", templateId = "birthday") {
       statusBox.textContent=(data.hasPrintoVoice?'✅ '+ui.voiceReady:'✅ '+ui.musicReady)+' Credits remaining: '+String(data.access?.creditBalance??data.access?.paidCreditsRemaining??'');
       const target=data.resultUrl||data.downloadUrl;
       if(data.resultUrl){const separator=target.includes('?')?'&':'?';window.location.href=target+separator+'lang='+encodeURIComponent(currentLanguage)}else{window.location.href=target}
-    }catch(error){statusBox.textContent='❌ '+(error.message||ui.failed);button.disabled=false;button.textContent='✨ '+ui.generate}
+    }catch(error){statusBox.textContent='❌ '+(error.message||ui.failed);button.textContent='✨ '+ui.generate;syncBirthdayFormState()}
   });
 </script>
 </body>
