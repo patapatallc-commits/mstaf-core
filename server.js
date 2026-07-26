@@ -2292,54 +2292,77 @@ function getGreetingCustomerIdentity(req, body = {}, whatsappPhone = "") {
   };
 }
 
+let printoAccountSchemaReadyPromise = null;
+
+// Keep account login independent from the much larger video/media migrations.
+// Login and registration only need the customer account and credit-wallet tables.
+// Running every Standard/Premium media ALTER TABLE before each login can block or
+// fail authentication when a media migration has a problem.
+async function ensurePrintoAccountTables() {
+  if (printoAccountSchemaReadyPromise) {
+    return printoAccountSchemaReadyPromise;
+  }
+
+  printoAccountSchemaReadyPromise = (async () => {
+    await queryWithRetry(`
+      CREATE TABLE IF NOT EXISTS greeting_customer_access (
+        customer_key TEXT PRIMARY KEY,
+        contact_phone TEXT NOT NULL DEFAULT '',
+        free_used BOOLEAN NOT NULL DEFAULT FALSE,
+        paid_credits INTEGER NOT NULL DEFAULT 100 CHECK (paid_credits >= 0),
+        free_credits_granted BOOLEAN NOT NULL DEFAULT TRUE,
+        total_generated INTEGER NOT NULL DEFAULT 0 CHECK (total_generated >= 0),
+        last_generation_source TEXT NOT NULL DEFAULT '',
+        last_generated_at TIMESTAMPTZ,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+
+    await queryWithRetry(`
+      CREATE TABLE IF NOT EXISTS greeting_customer_accounts (
+        email TEXT PRIMARY KEY,
+        customer_key TEXT UNIQUE NOT NULL,
+        pin_salt TEXT NOT NULL,
+        pin_hash TEXT NOT NULL,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        last_login_at TIMESTAMPTZ
+      )
+    `);
+
+    await queryWithRetry(`ALTER TABLE greeting_customer_access ADD COLUMN IF NOT EXISTS free_credits_granted BOOLEAN NOT NULL DEFAULT FALSE`);
+    await queryWithRetry(`ALTER TABLE greeting_customer_access ALTER COLUMN paid_credits SET DEFAULT 100`);
+    await queryWithRetry(`ALTER TABLE greeting_customer_access ADD COLUMN IF NOT EXISTS subscription_plan TEXT NOT NULL DEFAULT 'free'`);
+    await queryWithRetry(`ALTER TABLE greeting_customer_access ADD COLUMN IF NOT EXISTS subscription_status TEXT NOT NULL DEFAULT 'inactive'`);
+    await queryWithRetry(`ALTER TABLE greeting_customer_access ADD COLUMN IF NOT EXISTS subscription_started_at TIMESTAMPTZ`);
+    await queryWithRetry(`ALTER TABLE greeting_customer_access ADD COLUMN IF NOT EXISTS subscription_renews_at TIMESTAMPTZ`);
+    await queryWithRetry(`ALTER TABLE greeting_customer_access ADD COLUMN IF NOT EXISTS subscription_term_months INTEGER NOT NULL DEFAULT 0`);
+    await queryWithRetry(`ALTER TABLE greeting_customer_access ADD COLUMN IF NOT EXISTS subscription_ends_at TIMESTAMPTZ`);
+    await queryWithRetry(`ALTER TABLE greeting_customer_access ADD COLUMN IF NOT EXISTS next_credit_release_at TIMESTAMPTZ`);
+    await queryWithRetry(`ALTER TABLE greeting_customer_access ADD COLUMN IF NOT EXISTS monthly_credit_amount INTEGER NOT NULL DEFAULT 0`);
+    await queryWithRetry(`ALTER TABLE greeting_customer_access ADD COLUMN IF NOT EXISTS membership_order_reference TEXT NOT NULL DEFAULT ''`);
+
+    await queryWithRetry(`
+      UPDATE greeting_customer_access
+      SET paid_credits = CASE
+            WHEN free_credits_granted = FALSE AND paid_credits < $1 THEN $1
+            ELSE paid_credits
+          END,
+          free_credits_granted = TRUE,
+          updated_at = NOW()
+      WHERE free_credits_granted = FALSE
+    `, [PRINTO_FREE_CREDITS]);
+  })().catch((error) => {
+    // Permit a later request to retry after a temporary database failure.
+    printoAccountSchemaReadyPromise = null;
+    throw error;
+  });
+
+  return printoAccountSchemaReadyPromise;
+}
+
 async function ensureGreetingAccessTables() {
-  await pool.query(`
-    CREATE TABLE IF NOT EXISTS greeting_customer_access (
-      customer_key TEXT PRIMARY KEY,
-      contact_phone TEXT NOT NULL DEFAULT '',
-      free_used BOOLEAN NOT NULL DEFAULT FALSE,
-      paid_credits INTEGER NOT NULL DEFAULT 100 CHECK (paid_credits >= 0),
-      free_credits_granted BOOLEAN NOT NULL DEFAULT TRUE,
-      total_generated INTEGER NOT NULL DEFAULT 0 CHECK (total_generated >= 0),
-      last_generation_source TEXT NOT NULL DEFAULT '',
-      last_generated_at TIMESTAMPTZ,
-      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    )
-  `);
-
-  await pool.query(`
-    CREATE TABLE IF NOT EXISTS greeting_customer_accounts (
-      email TEXT PRIMARY KEY,
-      customer_key TEXT UNIQUE NOT NULL,
-      pin_salt TEXT NOT NULL,
-      pin_hash TEXT NOT NULL,
-      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-      last_login_at TIMESTAMPTZ
-    )
-  `);
-
-  await pool.query(`ALTER TABLE greeting_customer_access ADD COLUMN IF NOT EXISTS free_credits_granted BOOLEAN NOT NULL DEFAULT FALSE`);
-  await pool.query(`ALTER TABLE greeting_customer_access ALTER COLUMN paid_credits SET DEFAULT 100`);
-  await pool.query(`ALTER TABLE greeting_customer_access ADD COLUMN IF NOT EXISTS subscription_plan TEXT NOT NULL DEFAULT 'free'`);
-  await pool.query(`ALTER TABLE greeting_customer_access ADD COLUMN IF NOT EXISTS subscription_status TEXT NOT NULL DEFAULT 'inactive'`);
-  await pool.query(`ALTER TABLE greeting_customer_access ADD COLUMN IF NOT EXISTS subscription_started_at TIMESTAMPTZ`);
-  await pool.query(`ALTER TABLE greeting_customer_access ADD COLUMN IF NOT EXISTS subscription_renews_at TIMESTAMPTZ`);
-  await pool.query(`ALTER TABLE greeting_customer_access ADD COLUMN IF NOT EXISTS subscription_term_months INTEGER NOT NULL DEFAULT 0`);
-  await pool.query(`ALTER TABLE greeting_customer_access ADD COLUMN IF NOT EXISTS subscription_ends_at TIMESTAMPTZ`);
-  await pool.query(`ALTER TABLE greeting_customer_access ADD COLUMN IF NOT EXISTS next_credit_release_at TIMESTAMPTZ`);
-  await pool.query(`ALTER TABLE greeting_customer_access ADD COLUMN IF NOT EXISTS monthly_credit_amount INTEGER NOT NULL DEFAULT 0`);
-  await pool.query(`ALTER TABLE greeting_customer_access ADD COLUMN IF NOT EXISTS membership_order_reference TEXT NOT NULL DEFAULT ''`);
-  await pool.query(`
-    UPDATE greeting_customer_access
-    SET paid_credits = CASE
-          WHEN free_credits_granted = FALSE AND paid_credits < $1 THEN $1
-          ELSE paid_credits
-        END,
-        free_credits_granted = TRUE,
-        updated_at = NOW()
-    WHERE free_credits_granted = FALSE
-  `, [PRINTO_FREE_CREDITS]);
+  await ensurePrintoAccountTables();
 
   await pool.query(`
     CREATE TABLE IF NOT EXISTS greeting_payment_events (
@@ -5230,7 +5253,7 @@ function safePinMatch(pin, salt, storedHash) {
 
 app.post("/api/customer/account/register", async (req, res) => {
   try {
-    await ensureGreetingAccessTables();
+    await ensurePrintoAccountTables();
     const email = normalizePrintoAccountEmail(req.body?.email);
     const pin = String(req.body?.pin || "").trim();
 
@@ -5281,9 +5304,13 @@ app.post("/api/customer/account/register", async (req, res) => {
 
 app.post("/api/customer/account/login", async (req, res) => {
   try {
-    await ensureGreetingAccessTables();
+    await ensurePrintoAccountTables();
     const email = normalizePrintoAccountEmail(req.body?.email);
     const pin = String(req.body?.pin || "").trim();
+
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || !validatePrintoPin(pin)) {
+      return res.status(400).json({ ok: false, error: "Enter your email and 4–8 number PIN." });
+    }
 
     const found = await queryWithRetry(
       `SELECT email, customer_key, pin_salt, pin_hash
@@ -5313,13 +5340,22 @@ app.post("/api/customer/account/login", async (req, res) => {
       ...status
     });
   } catch (error) {
-    console.error("Printo account login error:", error);
-    return res.status(500).json({ ok: false, error: "Could not log in." });
+    console.error("Printo account login error:", {
+      message: error?.message || String(error),
+      code: error?.code || "",
+      detail: error?.detail || "",
+      constraint: error?.constraint || ""
+    });
+    return res.status(500).json({
+      ok: false,
+      error: "Login service is temporarily unavailable. Please try again in a moment."
+    });
   }
 });
 
 app.get("/api/customer/account/status", async (req, res) => {
   try {
+    await ensurePrintoAccountTables();
     const identity = getGreetingCustomerIdentity(req, {});
     if (identity.identitySource !== "customer_key") {
       return res.status(401).json({ ok: false, loginRequired: true, error: "Please log in." });
@@ -5347,7 +5383,7 @@ async function requirePrintoAccountPage(req, res, next) {
   const loginUrl = `/customer-login?next=${encodeURIComponent(returnTo)}`;
 
   try {
-    await ensureGreetingAccessTables();
+    await ensurePrintoAccountTables();
     const customerKey = String(
       readPrintoCookie(req, "printo_customer_key") || ""
     ).trim();
