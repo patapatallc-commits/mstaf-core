@@ -18529,28 +18529,41 @@ async function generate() {
 </body>
 </html>`);
 });
-async function startServer() {
-  try {
-    await ensureGreetingAccessTables();
-    await refundInterruptedStandardGreetingGenerations();
-    await syncPremiumDashboardProductionStatus();
-    await releaseDuePrintoMembershipCredits();
-    setInterval(() => {
-      releaseDuePrintoMembershipCredits().catch((error) =>
-        console.error("Monthly Printo credit release failed:", error.message || error)
-      );
-    }, 60 * 60 * 1000).unref();
-    console.log("Greeting access tables, memberships, and Premium dashboard status are ready.");
-  } catch (error) {
-    console.error(
-      "Greeting access table setup failed. Greeting generation will stay protected until the database is available:",
-      error.message
-    );
-  }
-
-  app.listen(PORT, "0.0.0.0", () => {
+function startServer() {
+  const server = app.listen(PORT, "0.0.0.0", () => {
     console.log(`Server running on port ${PORT}`);
   });
+
+  // Start database upgrades only after the web port is open.
+  // A slow database migration must never prevent Render from detecting the service.
+  setImmediate(async () => {
+    try {
+      await ensureGreetingAccessTables();
+      await refundInterruptedStandardGreetingGenerations();
+      await syncPremiumDashboardProductionStatus();
+      await releaseDuePrintoMembershipCredits();
+
+      console.log(
+        "Greeting access tables, memberships, and Premium dashboard status are ready."
+      );
+    } catch (error) {
+      console.error(
+        "Background database setup failed. The website remains online, but greeting generation stays protected until the database is available:",
+        error?.message || error
+      );
+    }
+  });
+
+  setInterval(() => {
+    releaseDuePrintoMembershipCredits().catch((error) =>
+      console.error(
+        "Monthly Printo credit release failed:",
+        error?.message || error
+      )
+    );
+  }, 60 * 60 * 1000).unref();
+
+  return server;
 }
 
 startServer();
