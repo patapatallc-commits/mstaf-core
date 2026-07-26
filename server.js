@@ -14436,6 +14436,36 @@ function limitGreetingInput(value = "", maxLength = 80) {
 }
 
 
+function escapeBirthdayVoiceRegExp(value = "") {
+  return String(value || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function removeDuplicateBirthdayOpening(message = "", recipientName = "") {
+  const normalizedMessage = String(message || "")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  if (!normalizedMessage) return "";
+
+  const escapedRecipient = escapeBirthdayVoiceRegExp(
+    String(recipientName || "").trim()
+  );
+
+  // Printo already says “Happy Birthday, [recipient]!” automatically.
+  // Remove the same greeting only when it appears at the beginning of the
+  // customer's message, while leaving the displayed card message unchanged.
+  const recipientPart = escapedRecipient
+    ? `(?:\\s*[,!?:;\\-–—]?\\s*(?:to\\s+)?${escapedRecipient})?`
+    : "";
+
+  const duplicateOpening = new RegExp(
+    `^happy\\s+birthday(?:\\s+to\\s+you)?${recipientPart}\\s*[!,.?:;\\-–—]*\\s*`,
+    "i"
+  );
+
+  return normalizedMessage.replace(duplicateOpening, "").trim();
+}
+
 async function generatePrintoBirthdayVoice({ recipientName, senderName, message, outputPath }) {
   const apiKey = process.env.ELEVENLABS_API_KEY;
   const voiceId = process.env.ELEVENLABS_VOICE_ID;
@@ -14445,10 +14475,16 @@ async function generatePrintoBirthdayVoice({ recipientName, senderName, message,
     return { ok: false, reason: "missing_elevenlabs_config" };
   }
 
-  // Keep the spoken introduction concise, then read the customer's full message.
-  // The finished video duration is calculated from this generated audio below,
-  // so longer messages are no longer cut off at ten seconds.
-  const voiceText = `Happy Birthday, ${recipientName}! ${message} This greeting is from ${senderName}.`;
+  // Printo says the personalized birthday greeting once, then reads the rest
+  // of the customer's full message. If the message itself begins with
+  // “Happy Birthday” (with or without the recipient's name), that duplicate
+  // opening is removed from speech only. The text printed on the card is not changed.
+  const spokenMessage = removeDuplicateBirthdayOpening(message, recipientName);
+  const voiceText = [
+    `Happy Birthday, ${recipientName}!`,
+    spokenMessage,
+    `This greeting is from ${senderName}.`
+  ].filter(Boolean).join(" ");
 
   try {
     const response = await axios.post(
