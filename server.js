@@ -213,6 +213,11 @@ const PRINTO_CREATION_CREDIT_COSTS = Object.freeze({
 });
 const PRINTO_CREATION_CREDIT_COST = PRINTO_CREATION_CREDIT_COSTS.standard;
 
+// The $4.99 Shopify Standard product always purchases exactly one Standard
+// creation. Never trust a customer-editable URL value for the credit amount.
+const PRINTO_STANDARD_SINGLE_PURCHASE_CREDITS =
+  PRINTO_CREATION_CREDIT_COSTS.standard;
+
 function normalizePrintoCreationType(value = "standard") {
   const normalized = String(value || "standard")
     .trim()
@@ -3412,28 +3417,55 @@ function appendUrlParameters(baseUrl, params = {}) {
   }
 }
 
+function encodeShopifyCartProperties(properties = {}) {
+  return Buffer.from(JSON.stringify(properties), "utf8")
+    .toString("base64")
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+    .replace(/=+$/g, "");
+}
+
 function buildGreetingPaymentLinks({
   customerKey,
   templateId = "birthday",
   contactPhone = ""
 } = {}) {
-  const common = {
-    greeting_customer_key: customerKey || "",
-    greeting_template: templateId || "birthday",
-    greeting_credits: "1"
-  };
+  const phone = String(contactPhone || "").replace(/\D+/g, "");
+  const credits = String(PRINTO_STANDARD_SINGLE_PURCHASE_CREDITS);
+  const packageName = "GREETING_STANDARD";
 
-  const shopify = appendUrlParameters(GREETING_SHOPIFY_PAYMENT_URL, {
-    ...common,
+  // A cart permalink preserves both order attributes and line-item properties.
+  // The line-item properties are Base64 URL-encoded JSON per Shopify's current
+  // cart-permalink format. This keeps the paid order tied to the logged-in
+  // Printo account even after the customer moves through Shopify checkout.
+  const cartBase =
+    buildGreetingCheckoutUrl("STANDARD", 1) ||
+    GREETING_SHOPIFY_PAYMENT_URL;
+
+  const lineItemProperties = encodeShopifyCartProperties({
+    "Greeting Customer Key": customerKey || "",
+    "Greeting Template": templateId || "birthday",
+    "Greeting Package": packageName,
+    "Greeting Credits": credits,
+    "Greeting Phone": phone
+  });
+
+  const shopify = appendUrlParameters(cartBase, {
+    properties: lineItemProperties,
     "attributes[Greeting Customer Key]": customerKey || "",
     "attributes[Greeting Template]": templateId || "birthday",
-    "attributes[Greeting Credits]": "1",
-    "attributes[Greeting Phone]": String(contactPhone || "").replace(/\D+/g, "")
+    "attributes[Greeting Package]": packageName,
+    "attributes[Greeting Credits]": credits,
+    "attributes[Greeting Phone]": phone,
+    ref: "printo-standard-credit"
   });
 
   const africa = appendUrlParameters(GREETING_AFRICA_PAYMENT_URL, {
-    ...common,
-    greeting_phone: String(contactPhone || "").replace(/\D+/g, "")
+    greeting_customer_key: customerKey || "",
+    greeting_template: templateId || "birthday",
+    greeting_package: packageName,
+    greeting_credits: credits,
+    greeting_phone: phone
   });
 
   return { shopify, africa };
@@ -3916,15 +3948,61 @@ function verifyShopifyWebhookSignature(req) {
 
 function getShopifyNoteAttribute(order = {}, names = []) {
   const wanted = new Set(names.map((name) => String(name).toLowerCase()));
-  const attributes = Array.isArray(order.note_attributes)
-    ? order.note_attributes
-    : [];
+  const candidates = [];
 
-  const match = attributes.find((item) =>
-    wanted.has(String(item?.name || "").toLowerCase())
+  if (Array.isArray(order.note_attributes)) {
+    candidates.push(...order.note_attributes);
+  }
+
+  for (const item of Array.isArray(order.line_items) ? order.line_items : []) {
+    if (Array.isArray(item?.properties)) candidates.push(...item.properties);
+    if (Array.isArray(item?.custom_attributes)) candidates.push(...item.custom_attributes);
+  }
+
+  const match = candidates.find((item) =>
+    wanted.has(String(item?.name || item?.key || "").toLowerCase())
   );
 
   return String(match?.value || "").trim();
+}
+
+function getStandardGreetingShopifyQuantity(order = {}) {
+  const lineItems = Array.isArray(order.line_items) ? order.line_items : [];
+  const configuredVariantId = String(SHOPIFY_VARIANTS.GREETING_STANDARD || "").trim();
+  let quantity = 0;
+
+  for (const item of lineItems) {
+    const itemVariantId = String(item?.variant_id || item?.variant?.id || "").trim();
+    const title = `${item?.title || ""} ${item?.name || ""} ${item?.variant_title || ""}`
+      .toLowerCase();
+
+    const isConfiguredVariant =
+      Boolean(configuredVariantId) && itemVariantId === configuredVariantId;
+    const isNamedStandardGreeting =
+      title.includes("printo") &&
+      (title.includes("greeting card") ||
+        title.includes("personalized video greeting") ||
+        title.includes("standard greeting")) &&
+      !title.includes("premium") &&
+      !title.includes("subscription");
+
+    if (isConfiguredVariant || isNamedStandardGreeting) {
+      quantity += Math.max(1, Number(item?.quantity || 1));
+    }
+  }
+
+  // The Printo checkout link also marks the order explicitly. This fallback is
+  // useful when Shopify omits a configured variant ID from a test payload.
+  if (quantity === 0) {
+    const packageName = getShopifyNoteAttribute(order, [
+      "Greeting Package",
+      "greeting_package",
+      "Printo Greeting Package"
+    ]).toUpperCase();
+    if (packageName === "GREETING_STANDARD") quantity = 1;
+  }
+
+  return Math.min(100, Math.max(0, quantity));
 }
 
 // =========================
@@ -5851,13 +5929,7 @@ app.post("/webhooks/shopify/orders-paid", async (req, res) => {
       ]) ||
       String(order.phone || order.customer?.phone || "").replace(/\D+/g, "");
 
-    const creditsValue =
-      getShopifyNoteAttribute(order, [
-        "Greeting Credits",
-        "greeting_credits",
-        "Printo Greeting Credits"
-      ]) ||
-      String(PRINTO_CREATION_CREDIT_COSTS.standard);
+    const standardGreetingQuantity = getStandardGreetingShopifyQuantity(order);
 
     if (!customerKey) {
       console.log(
@@ -5877,7 +5949,23 @@ app.post("/webhooks/shopify/orders-paid", async (req, res) => {
       });
     }
 
-    const requestedCredits = Math.max(1, Number(creditsValue) || PRINTO_CREATION_CREDIT_COSTS.standard);
+    if (standardGreetingQuantity < 1) {
+      console.log("Shopify paid order ignored: no Standard Printo greeting product was found", {
+        ...webhookMeta,
+        orderReference,
+        orderName: String(order.name || "")
+      });
+      return res.status(200).json({
+        ok: true,
+        ignored: true,
+        reason: "No Standard Printo greeting product was found."
+      });
+    }
+
+    // The paid credit amount is derived only from the verified Shopify product
+    // quantity. A buyer cannot increase credits by editing URL parameters.
+    const requestedCredits =
+      PRINTO_STANDARD_SINGLE_PURCHASE_CREDITS * standardGreetingQuantity;
 
     const result = await grantGreetingPaidCredits({
       customerKey,
@@ -5906,7 +5994,7 @@ app.post("/webhooks/shopify/orders-paid", async (req, res) => {
         contactPhone,
         `✅ Shopify payment confirmed.
 
-Your Printo Greeting Studio credit is now available.
+${requestedCredits} Printo credits have been added to your account.
 
 Return to Printo Studio and tap Generate:
 ${PRINTO_STUDIO_URL}`
@@ -18230,7 +18318,45 @@ app.get("/api/customer/dashboard/:customerId", async (req,res)=>{
   } catch(error){res.status(500).json({ok:false,error:error.message});}
 });
 
-app.get("/subscriptions", (req,res)=>res.type('html').send(`<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><title>Printo Plans</title><style>*{box-sizing:border-box}body{margin:0;font-family:Arial;background:linear-gradient(150deg,#071b61,#0b63ce);color:#fff;padding:24px}.wrap{max-width:1180px;margin:auto;text-align:center}.topbar{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}.close-link{background:#fff;color:#082a8f;text-decoration:none;padding:11px 16px;border-radius:999px;font-weight:900}.section{margin:28px 0 38px}.section-title{font-size:30px;margin:0 0 8px}.section-sub{margin:0 0 18px}.plans{display:grid;grid-template-columns:repeat(4,1fr);gap:16px}.plan{background:#fff;color:#082a8f;border:3px solid #ffd21f;border-radius:22px;padding:22px;position:relative}.plan.premium{border-color:#c13cff;box-shadow:0 10px 28px rgba(0,0,0,.18)}.badge{display:inline-block;background:#123faa;color:#fff;border-radius:999px;padding:7px 12px;font-size:13px;font-weight:900;margin-bottom:8px}.premium .badge{background:#7b2cbf}.price{font-size:34px;font-weight:900}.plan a{display:block;background:#7b2cbf;color:#fff;text-decoration:none;padding:14px;border-radius:12px;font-weight:900;margin-top:16px}.standard a{background:#123faa}.best{transform:scale(1.03)}.note{background:#fff4b8;color:#082a8f;border:3px solid #ffd21f;border-radius:18px;padding:16px;margin:0 auto 20px;max-width:820px;font-weight:900}@media(max-width:950px){.plans{grid-template-columns:1fr 1fr}}@media(max-width:560px){body{padding:16px}.plans{grid-template-columns:1fr}.best{transform:none}.topbar{justify-content:center}.section-title{font-size:25px}}</style></head><body><main class="wrap"><div class="topbar"><h1>⭐ Printo Credits & Subscriptions</h1><a class="close-link" href="/greetings">✕ Close / Return to Studio</a></div><div class="note">🎁 Every new user receives 100 FREE credits — enough for 5 standard creations. Each standard creation uses 20 credits.</div><p>Use one universal Printo credit wallet for Standard, Premium Video, and Premium Multi-Image creations.</p><section class="section"><h2 class="section-title">🎁 Standard Greeting Plans</h2><p class="section-sub">For personalized standard greeting video cards with names, messages, Printo music and voice.</p><div class="plans"><article class="plan standard"><span class="badge">STANDARD</span><h2>Single Creation</h2><div class="price">$4.99</div><p>20 credits • 1 standard creation</p><a href="${PRINTO_SINGLE_CREATION_URL}">Buy One</a></article><article class="plan standard"><span class="badge">STANDARD</span><h2>Monthly</h2><div class="price">$${PRINTO_STANDARD_SUBSCRIPTION_PRICES.monthly.toFixed(2)}</div><p>100 credits monthly • 5 standard creations</p><a href="${PRINTO_STANDARD_MONTHLY_SUBSCRIPTION_URL}">Choose Standard Monthly</a></article><article class="plan standard"><span class="badge">STANDARD</span><h2>6 Months</h2><div class="price">$${PRINTO_STANDARD_SUBSCRIPTION_PRICES.six_months.toFixed(2)}</div><p>600 credits • 30 standard creations</p><a href="${PRINTO_STANDARD_SIX_MONTH_SUBSCRIPTION_URL}">Choose Standard 6 Months</a></article><article class="plan standard best"><span class="badge">BEST STANDARD VALUE</span><h2>1 Year</h2><div class="price">$${PRINTO_STANDARD_SUBSCRIPTION_PRICES.yearly.toFixed(2)}</div><p>1,200 credits • 60 standard creations</p><a href="${PRINTO_STANDARD_YEARLY_SUBSCRIPTION_URL}">Choose Standard Annual</a></article></div></section><section class="section"><h2 class="section-title">🌟 Premium Subscription Plans</h2><p class="section-sub">For Premium Tribute and enhanced personalized video experiences. Credit costs: Standard 20, Premium Video 25, Premium Multi-Image 50.</p><div class="plans"><article class="plan premium"><span class="badge">PREMIUM</span><h2>Monthly</h2><div class="price">$${PRINTO_SUBSCRIPTION_PRICES.monthly.toFixed(2)}</div><p>100 credits now, then 100 credits each active month</p><a href="${PRINTO_MONTHLY_SUBSCRIPTION_URL}">Choose Premium Monthly</a></article><article class="plan premium"><span class="badge">PREMIUM</span><h2>6 Months</h2><div class="price">$${PRINTO_SUBSCRIPTION_PRICES.six_months.toFixed(2)}</div><p>100 credits monthly for 6 months</p><a href="${PRINTO_SIX_MONTH_SUBSCRIPTION_URL}">Choose Premium 6 Months</a></article><article class="plan premium best"><span class="badge">BEST PREMIUM VALUE</span><h2>1 Year</h2><div class="price">$${PRINTO_SUBSCRIPTION_PRICES.yearly.toFixed(2)}</div><p>100 credits monthly for 12 months</p><a href="${PRINTO_YEARLY_SUBSCRIPTION_URL}">Choose Premium Annual</a></article></div></section><p><a class="close-link" href="/greetings">← Return to Printo Greeting Studio</a></p></main></body></html>`));
+app.get("/api/customer/standard-checkout", async (req, res) => {
+  try {
+    const customerKey = String(req.headers["x-printo-customer-key"] || "").trim();
+    if (!customerKey) {
+      return res.status(401).json({ ok: false, loginRequired: true, error: "Please log in first." });
+    }
+
+    const account = await queryWithRetry(
+      `SELECT email FROM greeting_customer_accounts WHERE customer_key = $1 LIMIT 1`,
+      [customerKey]
+    );
+    if (!account.rows[0]) {
+      return res.status(401).json({ ok: false, loginRequired: true, error: "Your login has expired." });
+    }
+
+    const payment = buildGreetingPaymentLinks({ customerKey, templateId: "birthday" });
+    if (!payment.shopify) {
+      return res.status(503).json({
+        ok: false,
+        error: "The Shopify Standard greeting variant is not configured."
+      });
+    }
+
+    return res.json({
+      ok: true,
+      credits: PRINTO_STANDARD_SINGLE_PURCHASE_CREDITS,
+      checkoutUrl: payment.shopify
+    });
+  } catch (error) {
+    console.error("Standard Shopify checkout creation failed:", error);
+    return res.status(500).json({ ok: false, error: "Could not open Shopify checkout." });
+  }
+});
+
+app.get("/standard-checkout", (_req, res) => {
+  res.type("html").send(`<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><title>Opening Shopify Checkout</title><style>body{font-family:Arial;background:#082a8f;color:#fff;display:grid;place-items:center;min-height:100vh;margin:0}.card{background:#fff;color:#082a8f;padding:28px;border-radius:18px;max-width:520px;text-align:center}a{color:#082a8f;font-weight:900}</style></head><body><main class="card"><h1>Opening Shopify Checkout…</h1><p id="status">Connecting this $4.99 order to your Printo account for 20 credits.</p><p><a href="/greetings">Return to Printo Studio</a></p></main><script>(async()=>{const key=localStorage.getItem('printoGreetingCustomerKey')||'';if(!key){location.replace('/customer-login?next=%2Fstandard-checkout');return;}try{const r=await fetch('/api/customer/standard-checkout',{cache:'no-store',headers:{'x-printo-customer-key':key}});const d=await r.json();if(!r.ok||!d.ok)throw new Error(d.error||'Could not open checkout.');location.replace(d.checkoutUrl);}catch(e){document.getElementById('status').textContent=e.message||'Could not open checkout.';}})();</script></body></html>`);
+});
+
+app.get("/subscriptions", (req,res)=>res.type('html').send(`<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><title>Printo Plans</title><style>*{box-sizing:border-box}body{margin:0;font-family:Arial;background:linear-gradient(150deg,#071b61,#0b63ce);color:#fff;padding:24px}.wrap{max-width:1180px;margin:auto;text-align:center}.topbar{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}.close-link{background:#fff;color:#082a8f;text-decoration:none;padding:11px 16px;border-radius:999px;font-weight:900}.section{margin:28px 0 38px}.section-title{font-size:30px;margin:0 0 8px}.section-sub{margin:0 0 18px}.plans{display:grid;grid-template-columns:repeat(4,1fr);gap:16px}.plan{background:#fff;color:#082a8f;border:3px solid #ffd21f;border-radius:22px;padding:22px;position:relative}.plan.premium{border-color:#c13cff;box-shadow:0 10px 28px rgba(0,0,0,.18)}.badge{display:inline-block;background:#123faa;color:#fff;border-radius:999px;padding:7px 12px;font-size:13px;font-weight:900;margin-bottom:8px}.premium .badge{background:#7b2cbf}.price{font-size:34px;font-weight:900}.plan a{display:block;background:#7b2cbf;color:#fff;text-decoration:none;padding:14px;border-radius:12px;font-weight:900;margin-top:16px}.standard a{background:#123faa}.best{transform:scale(1.03)}.note{background:#fff4b8;color:#082a8f;border:3px solid #ffd21f;border-radius:18px;padding:16px;margin:0 auto 20px;max-width:820px;font-weight:900}@media(max-width:950px){.plans{grid-template-columns:1fr 1fr}}@media(max-width:560px){body{padding:16px}.plans{grid-template-columns:1fr}.best{transform:none}.topbar{justify-content:center}.section-title{font-size:25px}}</style></head><body><main class="wrap"><div class="topbar"><h1>⭐ Printo Credits & Subscriptions</h1><a class="close-link" href="/greetings">✕ Close / Return to Studio</a></div><div class="note">🎁 Every new user receives 100 FREE credits — enough for 5 standard creations. Each standard creation uses 20 credits.</div><p>Use one universal Printo credit wallet for Standard, Premium Video, and Premium Multi-Image creations.</p><section class="section"><h2 class="section-title">🎁 Standard Greeting Plans</h2><p class="section-sub">For personalized standard greeting video cards with names, messages, Printo music and voice.</p><div class="plans"><article class="plan standard"><span class="badge">STANDARD</span><h2>Single Creation</h2><div class="price">$4.99</div><p>20 credits • 1 standard creation</p><a href="/standard-checkout">Buy One</a></article><article class="plan standard"><span class="badge">STANDARD</span><h2>Monthly</h2><div class="price">$${PRINTO_STANDARD_SUBSCRIPTION_PRICES.monthly.toFixed(2)}</div><p>100 credits monthly • 5 standard creations</p><a href="${PRINTO_STANDARD_MONTHLY_SUBSCRIPTION_URL}">Choose Standard Monthly</a></article><article class="plan standard"><span class="badge">STANDARD</span><h2>6 Months</h2><div class="price">$${PRINTO_STANDARD_SUBSCRIPTION_PRICES.six_months.toFixed(2)}</div><p>600 credits • 30 standard creations</p><a href="${PRINTO_STANDARD_SIX_MONTH_SUBSCRIPTION_URL}">Choose Standard 6 Months</a></article><article class="plan standard best"><span class="badge">BEST STANDARD VALUE</span><h2>1 Year</h2><div class="price">$${PRINTO_STANDARD_SUBSCRIPTION_PRICES.yearly.toFixed(2)}</div><p>1,200 credits • 60 standard creations</p><a href="${PRINTO_STANDARD_YEARLY_SUBSCRIPTION_URL}">Choose Standard Annual</a></article></div></section><section class="section"><h2 class="section-title">🌟 Premium Subscription Plans</h2><p class="section-sub">For Premium Tribute and enhanced personalized video experiences. Credit costs: Standard 20, Premium Video 25, Premium Multi-Image 50.</p><div class="plans"><article class="plan premium"><span class="badge">PREMIUM</span><h2>Monthly</h2><div class="price">$${PRINTO_SUBSCRIPTION_PRICES.monthly.toFixed(2)}</div><p>100 credits now, then 100 credits each active month</p><a href="${PRINTO_MONTHLY_SUBSCRIPTION_URL}">Choose Premium Monthly</a></article><article class="plan premium"><span class="badge">PREMIUM</span><h2>6 Months</h2><div class="price">$${PRINTO_SUBSCRIPTION_PRICES.six_months.toFixed(2)}</div><p>100 credits monthly for 6 months</p><a href="${PRINTO_SIX_MONTH_SUBSCRIPTION_URL}">Choose Premium 6 Months</a></article><article class="plan premium best"><span class="badge">BEST PREMIUM VALUE</span><h2>1 Year</h2><div class="price">$${PRINTO_SUBSCRIPTION_PRICES.yearly.toFixed(2)}</div><p>100 credits monthly for 12 months</p><a href="${PRINTO_YEARLY_SUBSCRIPTION_URL}">Choose Premium Annual</a></article></div></section><p><a class="close-link" href="/greetings">← Return to Printo Greeting Studio</a></p></main></body></html>`));
 
 app.get("/customer-dashboard", (req,res)=>res.type('html').send(`<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><title>My Printo Dashboard</title><style>body{font-family:Arial;margin:0;background:#082a8f;color:#fff;padding:20px}.wrap{max-width:900px;margin:auto}.head{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}.close-link{background:#fff;color:#082a8f;text-decoration:none;padding:11px 16px;border-radius:999px;font-weight:900}.card{background:#fff;color:#082a8f;border-radius:18px;padding:18px;margin:14px 0}.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}.stat{background:#edf4ff;padding:15px;border-radius:14px;text-align:center}.buttons a{display:inline-block;margin:6px;padding:12px 16px;border-radius:12px;background:#7b2cbf;color:#fff;text-decoration:none;font-weight:bold}.video{border-top:1px solid #ddd;padding:12px 0}@media(max-width:600px){.stats{grid-template-columns:1fr}.head{justify-content:center}}</style></head><body><main class="wrap"><div class="head"><h1>⭐ My Printo Dashboard</h1><a class="close-link" href="/greetings">✕ Close / Return to Studio</a></div><div id="content" class="card">Loading…</div></main><script>let key=localStorage.getItem('printoGreetingCustomerKey')||'';if(!key){window.location.replace('/customer-login?next=%2Fcustomer-dashboard')}else fetch('/api/customer/account/dashboard',{cache:'no-store',headers:{'x-printo-customer-key':key}}).then(r=>r.json()).then(d=>{if(!d.ok)throw Error(d.error);document.getElementById('content').innerHTML='<div style="background:#fff4b8;border:2px solid #ffd21f;border-radius:14px;padding:14px;margin-bottom:14px;font-weight:900">🎁 Welcome Bonus: Every new user receives 100 FREE credits for 5 standard creations.</div><div class="stats"><div class="stat"><h2>'+d.creditBalance+'</h2>Credits</div><div class="stat"><h2>'+d.remainingCreations+'</h2>Standard Creations Remaining</div><div class="stat"><h2>'+String(d.subscriptionPlan||'Free Welcome')+'</h2>Plan</div></div><div class="buttons"><a href="/birthday?lang=en&template=birthday">'+((Number(d.totalGenerated||0)>0||d.videos.length)?'Create Another Greeting':'Create Your First Greeting')+'</a><a href="/subscriptions">Buy Credits / Subscribe</a><a href="/greetings">✕ Close / Return to Studio</a></div><h2>My Finished Videos</h2>'+(d.videos.length?d.videos.map(v=>'<div class="video"><strong>For '+(v.toName||'Recipient')+'</strong><br><a href="'+v.resultUrl+'">▶ Play</a> &nbsp; <a href="'+v.downloadUrl+'">⬇ Download</a></div>').join(''):((Number(d.totalGenerated||0)>0)?'<p>Your earlier creation record is saved, but its old temporary video file is no longer available. New finished videos will remain here after deployments and restarts.</p>':'<p>🎉 You have not created your first greeting yet. Click <strong>Create Your First Greeting</strong> to surprise someone special.</p>'))}).catch(e=>{localStorage.removeItem('printoGreetingCustomerKey');window.location.replace('/customer-login?next=%2Fcustomer-dashboard')})</script></body></html>`));
 
