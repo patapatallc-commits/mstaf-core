@@ -15615,6 +15615,7 @@ function buildBirthdayGeneratorPage(language = "en", templateId = "birthday") {
       <input type="hidden" id="formLanguage" name="language" value="${lang}" />
       <input type="hidden" id="formCustomerId" name="customerId" value="" />
       <input type="hidden" id="formCustomerKey" name="customerKey" value="" />
+      <input type="hidden" id="formTermsAccepted" name="termsAccepted" value="yes" />
       <div class="agreement"><input id="termsAccepted" name="termsAccepted" type="checkbox" value="yes" required><label for="termsAccepted">I confirm that I have permission to use all names, photos, videos, voices and other content submitted, and I agree to the <a href="/greetings?lang=${lang}#terms" target="_blank" rel="noopener">Terms of Use, Privacy Policy and Refund Policy</a>.</label></div>
       <button id="generateBtn" class="generate" type="submit">✨ ${t.generate}</button>
       <div id="status" class="status"></div>
@@ -17001,8 +17002,30 @@ app.post("/birthday-submit", async (req, res) => {
   });
 
   try {
-    const customerId = String(req.body?.customerId || "").trim();
-    const customerKey = String(req.body?.customerKey || "").trim();
+    let customerId = String(req.body?.customerId || "").trim();
+    let customerKey = String(
+      req.body?.customerKey ||
+      readPrintoCookie(req, "printo_customer_key") ||
+      ""
+    ).trim();
+
+    // Native form submission can happen when a browser restores an older tab.
+    // Recover the logged-in account from the submitted email when the hidden
+    // customer key or cookie is unavailable.
+    if (!customerKey && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(customerId)) {
+      const accountLookup = await queryWithRetry(
+        `SELECT customer_key FROM greeting_customer_accounts WHERE email = $1 LIMIT 1`,
+        [normalizePrintoAccountEmail(customerId)]
+      );
+      customerKey = String(accountLookup.rows[0]?.customer_key || "").trim();
+    }
+
+    if (!customerKey) {
+      return res.redirect(
+        `/customer-login?next=${encodeURIComponent(`/birthday?lang=${language}&template=birthday`)}`
+      );
+    }
+
     const apiResponse = await axios.post(
       `${publicBase}/api/greeting/birthday/generate`,
       {
@@ -17011,7 +17034,8 @@ app.post("/birthday-submit", async (req, res) => {
         message: req.body?.message || "",
         language,
         customerId,
-        customerKey
+        customerKey,
+        termsAccepted: true
       },
       {
         headers: {
