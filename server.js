@@ -14618,7 +14618,7 @@ async function generatePrintoBirthdayVoice({ recipientName, senderName, message,
     return { ok: false, reason: "missing_elevenlabs_config" };
   }
 
-  const voiceText = `Happy Birthday, ${recipientName}! This special greeting comes with love from ${senderName}. ${message}`;
+  const voiceText = `Happy Birthday, ${recipientName}. ${message} This greeting is from ${senderName}.`;
 
   try {
     const response = await axios.post(
@@ -14823,19 +14823,37 @@ app.post("/api/greeting/birthday/generate", async (req, res) => {
 
     if (
       !fs.existsSync(framePath) ||
-      !fs.existsSync(masterPath) ||
-      !fs.existsSync(audioPath)
+      !fs.existsSync(masterPath)
     ) {
       return res.status(400).json({
         ok: false,
-        error: "Birthday template assets missing. Birthday_Image_V2.png (or frame.png), master.mp4, and birthday_audio.m4a are required."
+        error: "Birthday template assets missing. Birthday_Image_V2.png (or frame.png) and master.mp4 are required."
       });
     }
 
     customerIdentity = getGreetingCustomerIdentity(req, req.body || {});
+    if (customerIdentity.identitySource !== "customer_key") {
+      return res.status(401).json({
+        ok: false,
+        loginRequired: true,
+        error: "Please log in to your Printo account before generating."
+      });
+    }
+    const registeredAccount = await queryWithRetry(
+      `SELECT email FROM greeting_customer_accounts WHERE customer_key = $1 LIMIT 1`,
+      [customerIdentity.customerKey]
+    );
+    if (!registeredAccount.rows[0]) {
+      return res.status(401).json({
+        ok: false,
+        loginRequired: true,
+        error: "Your Printo login has expired. Please log in again."
+      });
+    }
     accessReservation = await reserveGreetingGenerationAccess(
       customerIdentity.customerKey,
-      customerIdentity.contactPhone
+      customerIdentity.contactPhone,
+      "standard"
     );
 
     if (!accessReservation.allowed) {
@@ -14919,6 +14937,23 @@ Africa Payment: ${payment.africa}`
       outputPath: voicePath
     });
     const hasPrintoVoice = Boolean(voiceResult.ok && fs.existsSync(voicePath));
+    if (!hasPrintoVoice) {
+      if (accessReservation?.allowed && customerIdentity?.customerKey) {
+        await refundGreetingGenerationAccess(
+          customerIdentity.customerKey,
+          accessReservation.source,
+          accessReservation.creditsUsed
+        );
+        accessReservation = null;
+      }
+      saveBirthdayJobStatus(birthdayJobId, {
+        status: "failed",
+        progress: 100,
+        error: "Personalized voice could not be created.",
+        message: "Printo could not create the personalized voice. Your 20 credits were restored."
+      });
+      return;
+    }
 
     // Stable Printo Birthday production layout.
     // No animation filters. The master video is scaled/cropped safely
@@ -14946,12 +14981,9 @@ Africa Payment: ${payment.africa}`
       `drawtext=text=${quoteDrawtextText(messageLines[8])}:x=218+(590-text_w)/2:y=${messageStartY + (8 * messageLineGap)}:fontsize=${messageFontSize}:fontcolor=#2f267f:borderw=1:bordercolor=white@0.35,` +
       `drawtext=text=${quoteDrawtextText(messageLines[9])}:x=218+(590-text_w)/2:y=${messageStartY + (9 * messageLineGap)}:fontsize=${messageFontSize}:fontcolor=#2f267f:borderw=1:bordercolor=white@0.35[outv]`;
 
-    const audioFilter = hasPrintoVoice
-      ? `[2:a]volume=0.30,apad=pad_dur=10,atrim=0:10[music];` +
-        `[3:a]adelay=900|900,volume=1.25,apad=pad_dur=10,atrim=0:10[voice];` +
-        `[music][voice]amix=inputs=2:duration=longest:dropout_transition=2,` +
-        `loudnorm=I=-16:TP=-1.5:LRA=11,atrim=0:10[aout]`
-      : `[2:a]apad=pad_dur=10,atrim=0:10[aout]`;
+    const audioFilter =
+      `[2:a]adelay=500|500,volume=1.15,apad=pad_dur=10,atrim=0:10,` +
+      `loudnorm=I=-16:TP=-1.5:LRA=11[aout]`;
 
     const ffmpegArgs = [
       "-y",
@@ -14963,8 +14995,7 @@ Africa Payment: ${payment.africa}`
       "-loop", "1",
       "-i", framePath,
       "-i", masterPath,
-      "-i", audioPath,
-      ...(hasPrintoVoice ? ["-i", voicePath] : []),
+      "-i", voicePath,
       "-t", "10",
       "-filter_complex", `${videoFilter};${audioFilter}`,
       "-map", "[outv]",
@@ -15072,7 +15103,7 @@ Africa Payment: ${payment.africa}`
           getConfiguredPublicOrigin(req)
         ).replace(/\/$/, "")}/greeting-assets/birthday-v2.png`;
 
-        const finishResponse = () => {
+        const finishResponse = async () => {
           const posterUrl = fs.existsSync(posterPath)
             ? buildGeneratedUrl(req, posterName)
             : fallbackPosterUrl;
@@ -15095,6 +15126,8 @@ Africa Payment: ${payment.africa}`
             sharePosterUrl,
             toName: toNameRaw,
             fromName: fromNameRaw,
+            message: messageRaw,
+            spokenText: voiceResult.text || "",
             language: requestLanguage,
             customerKey: customerIdentity?.customerKey || "",
             customerId: String(req.body.customerId || req.headers["x-printo-customer-id"] || ""),
@@ -15107,6 +15140,10 @@ Africa Payment: ${payment.africa}`
             fs.unlink(voicePath, () => {});
           }
 
+          const latestAccess = await getGreetingAccessStatus(
+            customerIdentity?.customerKey || "",
+            customerIdentity?.contactPhone || ""
+          );
           saveBirthdayJobStatus(birthdayJobId, {
             status: "ready",
             progress: 100,
@@ -15123,11 +15160,10 @@ Africa Payment: ${payment.africa}`
             customerKey: customerIdentity?.customerKey || "",
             access: {
               source: accessReservation?.source || "",
-              firstFreeGreeting: accessReservation?.source === "free",
-              paidCreditsRemaining: accessReservation?.paidCredits ?? 0,
-              creditBalance: accessReservation?.creditBalance ?? accessReservation?.paidCredits ?? 0,
-              remainingCreations: accessReservation?.remainingCreations ?? 0,
-              creditsUsed: accessReservation?.creditsUsed ?? 0
+              paidCreditsRemaining: latestAccess.creditBalance,
+              creditBalance: latestAccess.creditBalance,
+              remainingCreations: latestAccess.remainingCreations,
+              creditsUsed: accessReservation?.creditsUsed ?? 20
             }
           });
           return;
@@ -15148,7 +15184,15 @@ Africa Payment: ${payment.africa}`
           }
 
           // Return the greeting whether poster extraction succeeded or not.
-          finishResponse();
+          finishResponse().catch((finishError) => {
+            console.error("Birthday final status update failed:", finishError);
+            saveBirthdayJobStatus(birthdayJobId, {
+              status: "failed",
+              progress: 100,
+              error: "Could not finalize the generated greeting.",
+              message: "The video rendered, but account finalization failed. Please contact support."
+            });
+          });
 
           if (cleanPosterErr || !fs.existsSync(posterPath)) {
             return;
@@ -17239,7 +17283,7 @@ app.get("/api/customer/account/dashboard", async (req,res)=>{
     for(const name of fs.readdirSync(generatedDir).filter(n=>n.endsWith(".json"))){
       try{
         const m=JSON.parse(fs.readFileSync(path.join(generatedDir,name),"utf8"));
-        if(m.customerKey===identity.customerKey) videos.push({id:name.replace(/\.json$/,""),toName:m.toName||"",fromName:m.fromName||"",createdAt:m.createdAt||"",resultUrl:`/g/${name.replace(/\.json$/,"")}`,downloadUrl:`/download/g/${name.replace(/\.json$/,"")}`});
+        if(m.customerKey===identity.customerKey) videos.push({id:name.replace(/\.json$/,""),toName:m.toName||"",fromName:m.fromName||"",message:m.message||"",createdAt:m.createdAt||"",resultUrl:`/g/${name.replace(/\.json$/,"")}`,downloadUrl:`/download/g/${name.replace(/\.json$/,"")}`});
       }catch(_){}
     }
     videos.sort((a,b)=>String(b.createdAt).localeCompare(String(a.createdAt)));
@@ -17262,7 +17306,7 @@ app.get("/api/customer/dashboard/:customerId", async (req,res)=>{
 
 app.get("/subscriptions", (req,res)=>res.type('html').send(`<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><title>Printo Plans</title><style>*{box-sizing:border-box}body{margin:0;font-family:Arial;background:linear-gradient(150deg,#071b61,#0b63ce);color:#fff;padding:24px}.wrap{max-width:1180px;margin:auto;text-align:center}.topbar{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}.close-link{background:#fff;color:#082a8f;text-decoration:none;padding:11px 16px;border-radius:999px;font-weight:900}.section{margin:28px 0 38px}.section-title{font-size:30px;margin:0 0 8px}.section-sub{margin:0 0 18px}.plans{display:grid;grid-template-columns:repeat(4,1fr);gap:16px}.plan{background:#fff;color:#082a8f;border:3px solid #ffd21f;border-radius:22px;padding:22px;position:relative}.plan.premium{border-color:#c13cff;box-shadow:0 10px 28px rgba(0,0,0,.18)}.badge{display:inline-block;background:#123faa;color:#fff;border-radius:999px;padding:7px 12px;font-size:13px;font-weight:900;margin-bottom:8px}.premium .badge{background:#7b2cbf}.price{font-size:34px;font-weight:900}.plan a{display:block;background:#7b2cbf;color:#fff;text-decoration:none;padding:14px;border-radius:12px;font-weight:900;margin-top:16px}.standard a{background:#123faa}.best{transform:scale(1.03)}.note{background:#fff4b8;color:#082a8f;border:3px solid #ffd21f;border-radius:18px;padding:16px;margin:0 auto 20px;max-width:820px;font-weight:900}@media(max-width:950px){.plans{grid-template-columns:1fr 1fr}}@media(max-width:560px){body{padding:16px}.plans{grid-template-columns:1fr}.best{transform:none}.topbar{justify-content:center}.section-title{font-size:25px}}</style></head><body><main class="wrap"><div class="topbar"><h1>⭐ Printo Credits & Subscriptions</h1><a class="close-link" href="/greetings">✕ Close / Return to Studio</a></div><div class="note">🎁 Every new user receives 100 FREE credits — enough for 5 standard creations. Each standard creation uses 20 credits.</div><p>Use one universal Printo credit wallet for Standard, Premium Video, and Premium Multi-Image creations.</p><section class="section"><h2 class="section-title">🎁 Standard Greeting Plans</h2><p class="section-sub">For personalized standard greeting video cards with names, messages, Printo music and voice.</p><div class="plans"><article class="plan standard"><span class="badge">STANDARD</span><h2>Single Creation</h2><div class="price">$4.99</div><p>20 credits • 1 standard creation</p><a href="${PRINTO_SINGLE_CREATION_URL}">Buy One</a></article><article class="plan standard"><span class="badge">STANDARD</span><h2>Monthly</h2><div class="price">$${PRINTO_STANDARD_SUBSCRIPTION_PRICES.monthly.toFixed(2)}</div><p>100 credits monthly • 5 standard creations</p><a href="${PRINTO_STANDARD_MONTHLY_SUBSCRIPTION_URL}">Choose Standard Monthly</a></article><article class="plan standard"><span class="badge">STANDARD</span><h2>6 Months</h2><div class="price">$${PRINTO_STANDARD_SUBSCRIPTION_PRICES.six_months.toFixed(2)}</div><p>600 credits • 30 standard creations</p><a href="${PRINTO_STANDARD_SIX_MONTH_SUBSCRIPTION_URL}">Choose Standard 6 Months</a></article><article class="plan standard best"><span class="badge">BEST STANDARD VALUE</span><h2>1 Year</h2><div class="price">$${PRINTO_STANDARD_SUBSCRIPTION_PRICES.yearly.toFixed(2)}</div><p>1,200 credits • 60 standard creations</p><a href="${PRINTO_STANDARD_YEARLY_SUBSCRIPTION_URL}">Choose Standard Annual</a></article></div></section><section class="section"><h2 class="section-title">🌟 Premium Subscription Plans</h2><p class="section-sub">For Premium Tribute and enhanced personalized video experiences. Credit costs: Standard 20, Premium Video 25, Premium Multi-Image 50.</p><div class="plans"><article class="plan premium"><span class="badge">PREMIUM</span><h2>Monthly</h2><div class="price">$${PRINTO_SUBSCRIPTION_PRICES.monthly.toFixed(2)}</div><p>100 credits now, then 100 credits each active month</p><a href="${PRINTO_MONTHLY_SUBSCRIPTION_URL}">Choose Premium Monthly</a></article><article class="plan premium"><span class="badge">PREMIUM</span><h2>6 Months</h2><div class="price">$${PRINTO_SUBSCRIPTION_PRICES.six_months.toFixed(2)}</div><p>100 credits monthly for 6 months</p><a href="${PRINTO_SIX_MONTH_SUBSCRIPTION_URL}">Choose Premium 6 Months</a></article><article class="plan premium best"><span class="badge">BEST PREMIUM VALUE</span><h2>1 Year</h2><div class="price">$${PRINTO_SUBSCRIPTION_PRICES.yearly.toFixed(2)}</div><p>100 credits monthly for 12 months</p><a href="${PRINTO_YEARLY_SUBSCRIPTION_URL}">Choose Premium Annual</a></article></div></section><p><a class="close-link" href="/greetings">← Return to Printo Greeting Studio</a></p></main></body></html>`));
 
-app.get("/customer-dashboard", (req,res)=>res.type('html').send(`<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><title>My Printo Dashboard</title><style>body{font-family:Arial;margin:0;background:#082a8f;color:#fff;padding:20px}.wrap{max-width:900px;margin:auto}.head{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}.close-link{background:#fff;color:#082a8f;text-decoration:none;padding:11px 16px;border-radius:999px;font-weight:900}.card{background:#fff;color:#082a8f;border-radius:18px;padding:18px;margin:14px 0}.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}.stat{background:#edf4ff;padding:15px;border-radius:14px;text-align:center}.buttons a{display:inline-block;margin:6px;padding:12px 16px;border-radius:12px;background:#7b2cbf;color:#fff;text-decoration:none;font-weight:bold}.video{border-top:1px solid #ddd;padding:12px 0}@media(max-width:600px){.stats{grid-template-columns:1fr}.head{justify-content:center}}</style></head><body><main class="wrap"><div class="head"><h1>⭐ My Printo Dashboard</h1><a class="close-link" href="/greetings">✕ Close / Return to Studio</a></div><div id="content" class="card">Loading…</div></main><script>let key=localStorage.getItem('printoGreetingCustomerKey')||'';if(!key){window.location.replace('/customer-login?next=%2Fcustomer-dashboard')}else fetch('/api/customer/account/dashboard',{cache:'no-store',headers:{'x-printo-customer-key':key}}).then(r=>r.json()).then(d=>{if(!d.ok)throw Error(d.error);document.getElementById('content').innerHTML='<div style="background:#fff4b8;border:2px solid #ffd21f;border-radius:14px;padding:14px;margin-bottom:14px;font-weight:900">🎁 Welcome Bonus: Every new user receives 100 FREE credits for 5 standard creations.</div><div class="stats"><div class="stat"><h2>'+d.creditBalance+'</h2>Credits</div><div class="stat"><h2>'+d.remainingCreations+'</h2>Creations</div><div class="stat"><h2>'+String(d.subscriptionPlan||'Free Welcome')+'</h2>Plan</div></div><div class="buttons"><a href="/greetings">'+(d.videos.length?'Create Another Greeting':'Create Your First Greeting')+'</a><a href="/subscriptions">Buy Credits / Subscribe</a><a href="/greetings">✕ Close / Return to Studio</a></div><h2>My Finished Videos</h2>'+(d.videos.length?d.videos.map(v=>'<div class="video"><strong>For '+(v.toName||'Recipient')+'</strong><br><a href="'+v.resultUrl+'">▶ Play</a> &nbsp; <a href="'+v.downloadUrl+'">⬇ Download</a></div>').join(''):'<p>🎉 You have not created your first greeting yet. Click <strong>Create Your First Greeting</strong> to surprise someone special.</p>')}).catch(e=>{localStorage.removeItem('printoGreetingCustomerKey');window.location.replace('/customer-login?next=%2Fcustomer-dashboard')})</script></body></html>`));
+app.get("/customer-dashboard", (req,res)=>res.type('html').send(`<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><title>My Printo Dashboard</title><style>body{font-family:Arial;margin:0;background:#082a8f;color:#fff;padding:20px}.wrap{max-width:900px;margin:auto}.head{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}.close-link{background:#fff;color:#082a8f;text-decoration:none;padding:11px 16px;border-radius:999px;font-weight:900}.card{background:#fff;color:#082a8f;border-radius:18px;padding:18px;margin:14px 0}.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}.stat{background:#edf4ff;padding:15px;border-radius:14px;text-align:center}.buttons a{display:inline-block;margin:6px;padding:12px 16px;border-radius:12px;background:#7b2cbf;color:#fff;text-decoration:none;font-weight:bold}.video{border-top:1px solid #ddd;padding:12px 0}@media(max-width:600px){.stats{grid-template-columns:1fr}.head{justify-content:center}}</style></head><body><main class="wrap"><div class="head"><h1>⭐ My Printo Dashboard</h1><a class="close-link" href="/greetings">✕ Close / Return to Studio</a></div><div id="content" class="card">Loading…</div></main><script>let key=localStorage.getItem('printoGreetingCustomerKey')||'';if(!key){window.location.replace('/customer-login?next=%2Fcustomer-dashboard')}else fetch('/api/customer/account/dashboard',{cache:'no-store',headers:{'x-printo-customer-key':key}}).then(r=>r.json()).then(d=>{if(!d.ok)throw Error(d.error);document.getElementById('content').innerHTML='<div style="background:#fff4b8;border:2px solid #ffd21f;border-radius:14px;padding:14px;margin-bottom:14px;font-weight:900">🎁 Welcome Bonus: Every new user receives 100 FREE credits for 5 standard creations.</div><div class="stats"><div class="stat"><h2>'+d.creditBalance+'</h2>Credits</div><div class="stat"><h2>'+d.remainingCreations+'</h2>Creations</div><div class="stat"><h2>'+String(d.subscriptionPlan||'Free Welcome')+'</h2>Plan</div></div><div class="buttons"><a href="/birthday?lang=en&template=birthday">'+(d.videos.length?'Create Another Greeting':'Create Your First Greeting')+'</a><a href="/subscriptions">Buy Credits / Subscribe</a><a href="/greetings">✕ Close / Return to Studio</a></div><h2>My Finished Videos</h2>'+(d.videos.length?d.videos.map(v=>'<div class="video"><strong>For '+(v.toName||'Recipient')+'</strong><br><a href="'+v.resultUrl+'">▶ Play</a> &nbsp; <a href="'+v.downloadUrl+'">⬇ Download</a></div>').join(''):'<p>🎉 You have not created your first greeting yet. Click <strong>Create Your First Greeting</strong> to surprise someone special.</p>')}).catch(e=>{localStorage.removeItem('printoGreetingCustomerKey');window.location.replace('/customer-login?next=%2Fcustomer-dashboard')})</script></body></html>`));
 
 app.get("/g/:id", (req, res) => {
   res.setHeader("Cache-Control", "public, max-age=60, must-revalidate");
