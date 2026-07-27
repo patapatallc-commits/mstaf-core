@@ -60,18 +60,48 @@ async function downloadWhatsAppMediaToUploads(mediaId, fallbackName, mimeType, r
 }
 
   
+const PRINTO_BRANDED_ORIGIN = "https://studio.patapata.us";
+
 function getConfiguredPublicOrigin(req) {
   const configured =
     process.env.PUBLIC_BASE_URL ||
     process.env.PRINTO_PUBLIC_URL ||
     process.env.PRINTO_STUDIO_ORIGIN ||
-    "https://studio.patapata.us";
+    PRINTO_BRANDED_ORIGIN;
 
   const fallback = req
     ? `${req.protocol}://${req.get("host")}`
-    : "https://studio.patapata.us";
+    : PRINTO_BRANDED_ORIGIN;
 
-  return String(configured || fallback).replace(/\/+$/, "");
+  const candidate = String(configured || fallback).replace(/\/+$/, "");
+
+  // Never expose Render's technical hostname in customer-facing links.
+  // The verified Printo custom domain is used for finished videos, media,
+  // WhatsApp/Facebook/X sharing, progress pages, downloads and Studio links.
+  if (/\.onrender\.com$/i.test(candidate.replace(/^https?:\/\//i, ""))) {
+    return PRINTO_BRANDED_ORIGIN;
+  }
+
+  return candidate || PRINTO_BRANDED_ORIGIN;
+}
+
+function usePrintoBrandedUrl(value = "") {
+  const raw = String(value || "").trim();
+  if (!raw || !/^https?:\/\//i.test(raw)) return raw;
+
+  try {
+    const parsed = new URL(raw);
+    if (parsed.hostname.toLowerCase().endsWith(".onrender.com")) {
+      parsed.protocol = "https:";
+      parsed.host = "studio.patapata.us";
+    }
+    return parsed.toString();
+  } catch (_error) {
+    return raw.replace(
+      /^https?:\/\/[^/]*\.onrender\.com(?=\/|$)/i,
+      PRINTO_BRANDED_ORIGIN
+    );
+  }
 }
 
    function buildUploadUrl(req, finalName) {
@@ -315,16 +345,17 @@ const app = express();
 // HIDE_RENDER_HOST=true. Browser page visits to the Render hostname will then
 // move to the branded domain, while APIs, webhooks and media routes keep working.
 app.use((req, res, next) => {
-  const hideRenderHost = String(process.env.HIDE_RENDER_HOST || "").toLowerCase() === "true";
   const host = String(req.get("host") || "").toLowerCase();
   const isRenderHost = host.endsWith(".onrender.com");
   const isBrowserPage = req.method === "GET" && ![
     "/api/", "/webhook", "/webhooks/", "/uploads/", "/generated/",
-    "/premium-media/", "/health", "/api/health"
+    "/standard-media/", "/premium-media/", "/health", "/api/health"
   ].some((prefix) => req.path === prefix || req.path.startsWith(prefix));
 
-  if (hideRenderHost && isRenderHost && isBrowserPage) {
-    return res.redirect(302, `${getConfiguredPublicOrigin(req)}${req.originalUrl}`);
+  // Old Render page links are redirected to the real Printo domain too.
+  // API, webhook and media requests remain available without browser redirects.
+  if (isRenderHost && isBrowserPage) {
+    return res.redirect(302, `${PRINTO_BRANDED_ORIGIN}${req.originalUrl}`);
   }
   return next();
 });
@@ -392,10 +423,12 @@ app.get("/uploads/:file", (req, res) => {
 });
 const PORT = process.env.PORT || 10000;
 const SUPPORT_PHONE = process.env.SUPPORT_PHONE || process.env.PATAPATA_PHONE || "18622306637";
-const PRINTO_STUDIO_URL =
+const configuredPrintoStudioUrl =
   process.env.PRINTO_STUDIO_URL ||
   process.env.PRINTO_STUDIO_WEB_URL ||
   `${getConfiguredPublicOrigin()}/greetings`;
+const PRINTO_STUDIO_URL = usePrintoBrandedUrl(configuredPrintoStudioUrl) ||
+  `${PRINTO_BRANDED_ORIGIN}/greetings`;
 const GREETING_AFRICA_PAYMENT_URL =
   process.env.GREETING_AFRICA_PAYMENT_URL ||
   "https://www.patapata.us/pages/africa-payment";
@@ -17965,12 +17998,15 @@ app.get(["/birthday", "/birthday-generator", "/generate-birthday", "/greetings/c
 });
 
 function renderGreetingResult(req, res) {
-  const videoUrl = String(req.query.video || "");
+  const videoUrl = usePrintoBrandedUrl(String(req.query.video || ""));
   const toName = String(req.query.to || "");
   const fromName = String(req.query.from || "");
-  const posterUrl = String(req.query.poster || "");
-  const sharePosterUrl = String(req.query.sharePoster || req.query.poster || "");
-  const requestedDownloadUrl = String(req.query.download || "").trim();
+  const posterUrl = usePrintoBrandedUrl(String(req.query.poster || ""));
+  const sharePosterUrl = usePrintoBrandedUrl(
+    String(req.query.sharePoster || req.query.poster || "")
+  );
+  const requestedDownloadUrlRaw = String(req.query.download || "").trim();
+  const requestedDownloadUrl = usePrintoBrandedUrl(requestedDownloadUrlRaw);
   const downloadUrl = requestedDownloadUrl || videoUrl;
   const language = ["en", "es", "fr", "de", "pt", "ar", "zh"].includes(String(req.query.lang || "en").toLowerCase())
     ? String(req.query.lang || "en").toLowerCase()
@@ -17988,10 +18024,12 @@ function renderGreetingResult(req, res) {
   const safeSharePoster = sharePosterUrl.startsWith("http")
     ? escapeHtml(sharePosterUrl)
     : safePoster;
-  const publicBase = String(
-    getConfiguredPublicOrigin(req)
-  ).replace(/\/$/, "");
-  const pageUrl = `${publicBase}${req.originalUrl}`;
+  const publicBase = String(getConfiguredPublicOrigin(req)).replace(/\/$/, "");
+  const greetingId = String(req.query.greetingId || "").trim();
+  const pageUrl = greetingId
+    ? `${publicBase}/g/${encodeURIComponent(greetingId)}`
+    : usePrintoBrandedUrl(`${publicBase}${req.originalUrl}`);
+  const studioReturnUrl = `${PRINTO_STUDIO_URL}${PRINTO_STUDIO_URL.includes("?") ? "&" : "?"}lang=${encodeURIComponent(language)}`;
   const title = `A special Printo greeting${toName ? ` for ${toName}` : ""}`;
 
   res.send(`<!DOCTYPE html>
@@ -18017,7 +18055,7 @@ function renderGreetingResult(req, res) {
     .wrap{max-width:680px;margin:auto;text-align:center}.brand{font-size:28px;font-weight:900;margin:8px 0}.sub{opacity:.9;margin-bottom:18px}
     .player{position:relative;width:min(100%,680px);aspect-ratio:2/3;margin:0 auto;border:4px solid #ffd21f;border-radius:22px;overflow:hidden;background:#071b61;box-shadow:0 12px 35px rgba(0,0,0,.35)}
     .player video{display:block;width:100%;height:100%;object-fit:contain;object-position:center;background:#071b61}.bigPlay{position:absolute;z-index:10;inset:0;margin:auto;width:190px;height:190px;border-radius:50%;border:9px solid #fff;background:rgba(7,84,184,.88);color:#fff;font-size:98px;line-height:166px;padding-left:16px;cursor:pointer;box-shadow:0 12px 34px rgba(0,0,0,.55)}
-    .actions{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin-top:18px}.btn{display:block;padding:14px 10px;border-radius:14px;text-decoration:none;color:#fff;font-weight:900;border:0;font-size:15px;cursor:pointer}.download{background:#7b2cbf}.whatsapp{background:#25D366}.facebook{background:#1877F2}.xshare{background:#000}.copy{background:#334155}.social{background:#d63384}.youtube{background:#ff0000}.tiktok{background:#111}.email{background:#0f766e}.shopify{background:#4f772d}.nigeria{background:#008751}.full{grid-column:1/-1}
+    .actions{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin-top:18px}.btn{display:block;padding:14px 10px;border-radius:14px;text-decoration:none;color:#fff;font-weight:900;border:0;font-size:15px;cursor:pointer}.download{background:#7b2cbf}.whatsapp{background:#25D366}.facebook{background:#1877F2}.xshare{background:#000}.copy{background:#334155}.social{background:#d63384}.youtube{background:#ff0000}.tiktok{background:#111}.email{background:#0f766e}.shopify{background:#4f772d}.nigeria{background:#008751}.studioBack{display:inline-block;margin:0 0 18px;padding:12px 20px;border-radius:13px;background:#ffd21f;color:#10245e;text-decoration:none;font-weight:900;box-shadow:0 7px 20px rgba(0,0,0,.24)}.full{grid-column:1/-1}
     .note{font-size:13px;line-height:19px;background:rgba(255,255,255,.12);padding:12px;border-radius:12px;margin-top:14px}.toast{min-height:22px;color:#ffd21f;font-weight:800;margin-top:10px}
     @media(max-width:480px){.actions{grid-template-columns:1fr}.full{grid-column:auto}.bigPlay{width:154px;height:154px;font-size:80px;line-height:132px;border-width:8px}}
   </style>
@@ -18026,6 +18064,7 @@ function renderGreetingResult(req, res) {
   <div class="wrap">
     <div class="brand">🎉 Printo Greeting Studio</div>
     <div class="sub">${toName ? `Created for <strong>${toName}</strong>` : "Your personalized greeting is ready"}${fromName ? ` from <strong>${fromName}</strong>` : ""}</div>
+    <a class="studioBack" href="${escapeHtml(studioReturnUrl)}">← Back to Printo Studio</a>
     <div class="player">
       <video id="greetingVideo" playsinline preload="metadata" ${safePoster ? `poster="${safePoster}"` : ""} src="${safeVideo}"></video>
       <button id="bigPlay" class="bigPlay" aria-label="Play greeting">▶</button>
@@ -18041,7 +18080,7 @@ function renderGreetingResult(req, res) {
       <button class="btn tiktok" onclick="downloadThenOpen('tiktok')">🎵 Share Video to TikTok</button>
       <button class="btn email" onclick="shareEmail()">📧 Email</button>
       <button class="btn copy full" onclick="copyLink()">🔗 Copy Short Greeting Link</button>
-      <a class="btn social" href="/greetings">✨ Create Another</a>
+      <a class="btn social" href="${escapeHtml(studioReturnUrl)}">✨ Create Another</a>
       <a class="btn download" href="/customer-dashboard">⭐ My Videos & Credits</a>
       <a class="btn shopify full" href="/subscriptions">➕ Buy More Credits / Subscribe</a>
       <a class="btn shopify" href="${shopifyUrl}" target="_blank" rel="noopener">🛒 Buy via Shopify</a>
@@ -18052,7 +18091,7 @@ function renderGreetingResult(req, res) {
 <script>
   const video=document.getElementById('greetingVideo'); const play=document.getElementById('bigPlay'); const toast=document.getElementById('toast');
   const pageUrl=${JSON.stringify(pageUrl)}; const videoUrl=${JSON.stringify(videoUrl)};
-  const studioUrl=${JSON.stringify(PRINTO_STUDIO_URL)};
+  const studioUrl=${JSON.stringify(studioReturnUrl)};
   const shareText=${JSON.stringify(`🎉 Watch my personalized Printo greeting!
 
 ▶️ Tap the greeting preview above to watch the finished video.
