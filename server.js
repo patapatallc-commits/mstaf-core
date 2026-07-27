@@ -198,7 +198,7 @@ const PREMIUM_MUSIC_MAX_BYTES = 30 * 1024 * 1024;
 const PREMIUM_FINAL_VIDEO_MAX_BYTES = 70 * 1024 * 1024;
 
 // Printo Studio uses one universal credit wallet for every creation service.
-// Every new customer receives 100 welcome credits.
+// Each verified phone number receives 100 welcome credits only once.
 const PRINTO_FREE_CREDITS = 100;
 const PRINTO_MONTHLY_CREDIT_ALLOCATION = 100;
 const PRINTO_CREATION_CREDIT_COSTS = Object.freeze({
@@ -2341,8 +2341,8 @@ async function ensurePrintoAccountTables() {
         customer_key TEXT PRIMARY KEY,
         contact_phone TEXT NOT NULL DEFAULT '',
         free_used BOOLEAN NOT NULL DEFAULT FALSE,
-        paid_credits INTEGER NOT NULL DEFAULT 100 CHECK (paid_credits >= 0),
-        free_credits_granted BOOLEAN NOT NULL DEFAULT TRUE,
+        paid_credits INTEGER NOT NULL DEFAULT 0 CHECK (paid_credits >= 0),
+        free_credits_granted BOOLEAN NOT NULL DEFAULT FALSE,
         total_generated INTEGER NOT NULL DEFAULT 0 CHECK (total_generated >= 0),
         last_generation_source TEXT NOT NULL DEFAULT '',
         last_generated_at TIMESTAMPTZ,
@@ -2357,13 +2357,71 @@ async function ensurePrintoAccountTables() {
         customer_key TEXT UNIQUE NOT NULL,
         pin_salt TEXT NOT NULL,
         pin_hash TEXT NOT NULL,
+        phone_e164 TEXT,
+        phone_verified_at TIMESTAMPTZ,
+        account_type TEXT NOT NULL DEFAULT 'legacy_email',
+        failed_login_attempts INTEGER NOT NULL DEFAULT 0,
+        locked_until TIMESTAMPTZ,
+        last_failed_login_at TIMESTAMPTZ,
         created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
         last_login_at TIMESTAMPTZ
       )
     `);
 
+    await queryWithRetry(`ALTER TABLE greeting_customer_accounts ADD COLUMN IF NOT EXISTS phone_e164 TEXT`);
+    await queryWithRetry(`ALTER TABLE greeting_customer_accounts ADD COLUMN IF NOT EXISTS phone_verified_at TIMESTAMPTZ`);
+    await queryWithRetry(`ALTER TABLE greeting_customer_accounts ADD COLUMN IF NOT EXISTS account_type TEXT NOT NULL DEFAULT 'legacy_email'`);
+    await queryWithRetry(`ALTER TABLE greeting_customer_accounts ADD COLUMN IF NOT EXISTS failed_login_attempts INTEGER NOT NULL DEFAULT 0`);
+    await queryWithRetry(`ALTER TABLE greeting_customer_accounts ADD COLUMN IF NOT EXISTS locked_until TIMESTAMPTZ`);
+    await queryWithRetry(`ALTER TABLE greeting_customer_accounts ADD COLUMN IF NOT EXISTS last_failed_login_at TIMESTAMPTZ`);
+    await queryWithRetry(`
+      CREATE UNIQUE INDEX IF NOT EXISTS greeting_customer_accounts_phone_unique
+      ON greeting_customer_accounts(phone_e164)
+      WHERE phone_e164 IS NOT NULL AND phone_e164 <> ''
+    `);
+
+    // This registry survives account recreation and permanently records whether
+    // the one-time welcome credits were already issued to a verified phone.
+    await queryWithRetry(`
+      CREATE TABLE IF NOT EXISTS greeting_verified_phones (
+        phone_e164 TEXT PRIMARY KEY,
+        customer_key TEXT UNIQUE NOT NULL,
+        first_verified_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        last_verified_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        welcome_credits_granted BOOLEAN NOT NULL DEFAULT FALSE,
+        account_created_at TIMESTAMPTZ,
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+
+    // Browser verification starts with a random challenge. The customer sends
+    // that challenge from their own WhatsApp number to the existing Printo bot.
+    // Only Meta-signed webhook requests can confirm a challenge.
+    await queryWithRetry(`
+      CREATE TABLE IF NOT EXISTS greeting_phone_verification_challenges (
+        challenge_hash TEXT PRIMARY KEY,
+        phone_e164 TEXT NOT NULL,
+        request_ip_hash TEXT NOT NULL DEFAULT '',
+        status TEXT NOT NULL DEFAULT 'pending',
+        expires_at TIMESTAMPTZ NOT NULL,
+        confirmed_at TIMESTAMPTZ,
+        used_at TIMESTAMPTZ,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    await queryWithRetry(`
+      CREATE INDEX IF NOT EXISTS greeting_phone_verification_phone_idx
+      ON greeting_phone_verification_challenges(phone_e164, created_at DESC)
+    `);
+    await queryWithRetry(`
+      CREATE INDEX IF NOT EXISTS greeting_phone_verification_ip_idx
+      ON greeting_phone_verification_challenges(request_ip_hash, created_at DESC)
+    `);
+
     await queryWithRetry(`ALTER TABLE greeting_customer_access ADD COLUMN IF NOT EXISTS free_credits_granted BOOLEAN NOT NULL DEFAULT FALSE`);
-    await queryWithRetry(`ALTER TABLE greeting_customer_access ALTER COLUMN paid_credits SET DEFAULT 100`);
+    await queryWithRetry(`ALTER TABLE greeting_customer_access ALTER COLUMN paid_credits SET DEFAULT 0`);
+    await queryWithRetry(`ALTER TABLE greeting_customer_access ALTER COLUMN free_credits_granted SET DEFAULT FALSE`);
     await queryWithRetry(`ALTER TABLE greeting_customer_access ADD COLUMN IF NOT EXISTS subscription_plan TEXT NOT NULL DEFAULT 'free'`);
     await queryWithRetry(`ALTER TABLE greeting_customer_access ADD COLUMN IF NOT EXISTS subscription_status TEXT NOT NULL DEFAULT 'inactive'`);
     await queryWithRetry(`ALTER TABLE greeting_customer_access ADD COLUMN IF NOT EXISTS subscription_started_at TIMESTAMPTZ`);
@@ -2374,16 +2432,6 @@ async function ensurePrintoAccountTables() {
     await queryWithRetry(`ALTER TABLE greeting_customer_access ADD COLUMN IF NOT EXISTS monthly_credit_amount INTEGER NOT NULL DEFAULT 0`);
     await queryWithRetry(`ALTER TABLE greeting_customer_access ADD COLUMN IF NOT EXISTS membership_order_reference TEXT NOT NULL DEFAULT ''`);
 
-    await queryWithRetry(`
-      UPDATE greeting_customer_access
-      SET paid_credits = CASE
-            WHEN free_credits_granted = FALSE AND paid_credits < $1 THEN $1
-            ELSE paid_credits
-          END,
-          free_credits_granted = TRUE,
-          updated_at = NOW()
-      WHERE free_credits_granted = FALSE
-    `, [PRINTO_FREE_CREDITS]);
   })().catch((error) => {
     // Permit a later request to retry after a temporary database failure.
     printoAccountSchemaReadyPromise = null;
@@ -2647,7 +2695,7 @@ async function ensureGreetingCustomerRow(customerKey, contactPhone = "") {
       created_at,
       updated_at
     )
-    VALUES ($1, $2, $3, TRUE, NOW(), NOW())
+    VALUES ($1, $2, 0, FALSE, NOW(), NOW())
     ON CONFLICT (customer_key)
     DO UPDATE SET
       contact_phone = CASE
@@ -2656,7 +2704,7 @@ async function ensureGreetingCustomerRow(customerKey, contactPhone = "") {
       END,
       updated_at = NOW()
     `,
-    [customerKey, String(contactPhone || "").replace(/\D+/g, ""), PRINTO_FREE_CREDITS]
+    [customerKey, String(contactPhone || "").replace(/\D+/g, "")]
   );
 }
 
@@ -2739,7 +2787,7 @@ async function reserveGreetingGenerationAccess(customerKey, contactPhone = "", c
         created_at,
         updated_at
       )
-      VALUES ($1, $2, $3, TRUE, NOW(), NOW())
+      VALUES ($1, $2, 0, FALSE, NOW(), NOW())
       ON CONFLICT (customer_key)
       DO UPDATE SET
         contact_phone = CASE
@@ -2748,7 +2796,7 @@ async function reserveGreetingGenerationAccess(customerKey, contactPhone = "", c
         END,
         updated_at = NOW()
       `,
-      [customerKey, String(contactPhone || "").replace(/\D+/g, ""), PRINTO_FREE_CREDITS]
+      [customerKey, String(contactPhone || "").replace(/\D+/g, "")]
     );
 
     const paidResult = await client.query(
@@ -5405,6 +5453,25 @@ function normalizePrintoAccountEmail(value = "") {
   return String(value || "").trim().toLowerCase();
 }
 
+function normalizePrintoPhone(value = "") {
+  let digits = String(value || "").trim().replace(/[^0-9]+/g, "");
+  if (digits.startsWith("00")) digits = digits.slice(2);
+  if (digits.length < 8 || digits.length > 15) return "";
+  return `+${digits}`;
+}
+
+function printoPhoneDigits(value = "") {
+  return String(normalizePrintoPhone(value) || "").replace(/\D+/g, "");
+}
+
+function maskPrintoPhone(value = "") {
+  const normalized = normalizePrintoPhone(value);
+  if (!normalized) return "";
+  const digits = normalized.slice(1);
+  if (digits.length <= 6) return normalized;
+  return `+${digits.slice(0, 3)}••••${digits.slice(-3)}`;
+}
+
 function validatePrintoPin(value = "") {
   return /^\d{4,8}$/.test(String(value || "").trim());
 }
@@ -5423,92 +5490,439 @@ function safePinMatch(pin, salt, storedHash) {
   }
 }
 
-app.post("/api/customer/account/register", async (req, res) => {
+function getPrintoWhatsAppAppSecret() {
+  return String(
+    process.env.META_APP_SECRET ||
+    process.env.WHATSAPP_APP_SECRET ||
+    process.env.FACEBOOK_APP_SECRET ||
+    ""
+  ).trim();
+}
+
+function verifyPrintoWhatsAppWebhookSignature(req) {
+  const secret = getPrintoWhatsAppAppSecret();
+  const provided = String(req.headers["x-hub-signature-256"] || "").trim();
+  if (!secret || !provided || !req.rawBody) return false;
+
+  const expected = `sha256=${crypto
+    .createHmac("sha256", secret)
+    .update(req.rawBody)
+    .digest("hex")}`;
+
+  const left = Buffer.from(expected);
+  const right = Buffer.from(provided);
+  return left.length === right.length && crypto.timingSafeEqual(left, right);
+}
+
+function hashPrintoPhoneChallenge(token = "") {
+  return crypto.createHash("sha256").update(String(token || "")).digest("hex");
+}
+
+function getPrintoRequestIpHash(req) {
+  const forwarded = String(req.headers["x-forwarded-for"] || "").split(",")[0].trim();
+  const ip = forwarded || req.ip || req.socket?.remoteAddress || "unknown";
+  const salt =
+    getPrintoWhatsAppAppSecret() ||
+    String(process.env.DASHBOARD_KEY || process.env.SYSTEM_KEY || "printo-phone-verification");
+  return crypto.createHmac("sha256", salt).update(String(ip)).digest("hex");
+}
+
+function makePrintoPhoneInternalEmail(phoneE164 = "") {
+  const suffix = crypto.createHash("sha256").update(String(phoneE164)).digest("hex").slice(0, 40);
+  return `phone-${suffix}@accounts.printo.local`;
+}
+
+app.post("/api/customer/account/phone/start", async (req, res) => {
   try {
     await ensurePrintoAccountTables();
-    const email = normalizePrintoAccountEmail(req.body?.email);
-    const pin = String(req.body?.pin || "").trim();
 
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-      return res.status(400).json({ ok: false, error: "Enter a valid email address." });
+    if (!getPrintoWhatsAppAppSecret()) {
+      return res.status(503).json({
+        ok: false,
+        setupRequired: true,
+        error: "Phone verification is being configured. Please try again shortly."
+      });
     }
-    if (!validatePrintoPin(pin)) {
-      return res.status(400).json({ ok: false, error: "PIN must contain 4 to 8 numbers." });
+
+    const phone = normalizePrintoPhone(req.body?.phone);
+    if (!phone) {
+      return res.status(400).json({
+        ok: false,
+        error: "Enter a valid phone number with country code, for example +1 862 230 6637."
+      });
     }
 
     const existing = await queryWithRetry(
-      `SELECT email FROM greeting_customer_accounts WHERE email = $1 LIMIT 1`,
-      [email]
+      `SELECT customer_key FROM greeting_customer_accounts WHERE phone_e164 = $1 LIMIT 1`,
+      [phone]
     );
     if (existing.rows[0]) {
       return res.status(409).json({
         ok: false,
         accountExists: true,
-        error: "An account already exists for this email. Please log in."
+        error: "An account already exists for this verified phone number. Please log in."
       });
     }
 
-    const customerKey = makeGreetingCustomerKey(`email:${email}`);
-    const salt = crypto.randomBytes(16).toString("hex");
-    const pinHash = hashPrintoPin(pin, salt);
+    const ipHash = getPrintoRequestIpHash(req);
+    await queryWithRetry(`
+      DELETE FROM greeting_phone_verification_challenges
+      WHERE created_at < NOW() - INTERVAL '2 days'
+    `);
+
+    const limits = await queryWithRetry(
+      `
+      SELECT
+        COUNT(*) FILTER (WHERE phone_e164 = $1 AND created_at > NOW() - INTERVAL '1 hour') AS phone_hour,
+        MAX(created_at) FILTER (WHERE phone_e164 = $1) AS last_phone_request,
+        COUNT(*) FILTER (WHERE request_ip_hash = $2 AND created_at > NOW() - INTERVAL '1 hour') AS ip_hour
+      FROM greeting_phone_verification_challenges
+      `,
+      [phone, ipHash]
+    );
+    const limitRow = limits.rows[0] || {};
+    const phoneHour = Number(limitRow.phone_hour || 0);
+    const ipHour = Number(limitRow.ip_hour || 0);
+    const lastPhoneRequest = limitRow.last_phone_request
+      ? new Date(limitRow.last_phone_request).getTime()
+      : 0;
+    const secondsSinceLast = lastPhoneRequest
+      ? Math.floor((Date.now() - lastPhoneRequest) / 1000)
+      : 9999;
+
+    if (secondsSinceLast < 60) {
+      return res.status(429).json({
+        ok: false,
+        retryAfter: 60 - secondsSinceLast,
+        error: `Please wait ${60 - secondsSinceLast} seconds before requesting another verification.`
+      });
+    }
+    if (phoneHour >= 5 || ipHour >= 15) {
+      return res.status(429).json({
+        ok: false,
+        error: "Too many verification attempts. Please wait one hour and try again."
+      });
+    }
+
+    const challengeToken = crypto.randomBytes(24).toString("base64url");
+    const challengeHash = hashPrintoPhoneChallenge(challengeToken);
 
     await queryWithRetry(
-      `INSERT INTO greeting_customer_accounts
-        (email, customer_key, pin_salt, pin_hash, created_at, last_login_at)
-       VALUES ($1, $2, $3, $4, NOW(), NOW())`,
-      [email, customerKey, salt, pinHash]
+      `
+      INSERT INTO greeting_phone_verification_challenges (
+        challenge_hash, phone_e164, request_ip_hash, status,
+        expires_at, created_at, updated_at
+      )
+      VALUES ($1, $2, $3, 'pending', NOW() + INTERVAL '10 minutes', NOW(), NOW())
+      `,
+      [challengeHash, phone, ipHash]
     );
 
-    const status = await getGreetingAccessStatus(customerKey, "");
+    const verificationMessage = `PRINTO VERIFY ${challengeToken}`;
+    const whatsappUrl =
+      `https://wa.me/${encodeURIComponent(String(SUPPORT_PHONE).replace(/\D+/g, ""))}` +
+      `?text=${encodeURIComponent(verificationMessage)}`;
+
+    return res.json({
+      ok: true,
+      challengeToken,
+      whatsappUrl,
+      maskedPhone: maskPrintoPhone(phone),
+      expiresInSeconds: 600
+    });
+  } catch (error) {
+    console.error("Printo phone verification start error:", error);
+    return res.status(500).json({ ok: false, error: "Could not start phone verification." });
+  }
+});
+
+app.post("/api/customer/account/phone/status", async (req, res) => {
+  try {
+    await ensurePrintoAccountTables();
+    const token = String(req.body?.challengeToken || "").trim();
+    if (!/^[A-Za-z0-9_-]{20,80}$/.test(token)) {
+      return res.status(400).json({ ok: false, error: "Invalid verification session." });
+    }
+
+    const result = await queryWithRetry(
+      `
+      SELECT phone_e164, status, expires_at, confirmed_at, used_at
+      FROM greeting_phone_verification_challenges
+      WHERE challenge_hash = $1
+      LIMIT 1
+      `,
+      [hashPrintoPhoneChallenge(token)]
+    );
+    const row = result.rows[0];
+    if (!row) {
+      return res.status(404).json({ ok: false, error: "Verification session not found." });
+    }
+
+    const expired = new Date(row.expires_at).getTime() <= Date.now();
+    if (expired && row.status === "pending") {
+      await queryWithRetry(
+        `UPDATE greeting_phone_verification_challenges SET status = 'expired', updated_at = NOW() WHERE challenge_hash = $1`,
+        [hashPrintoPhoneChallenge(token)]
+      );
+    }
+
+    return res.json({
+      ok: true,
+      confirmed: !expired && row.status === "confirmed" && !row.used_at,
+      used: Boolean(row.used_at) || row.status === "used",
+      expired,
+      maskedPhone: maskPrintoPhone(row.phone_e164)
+    });
+  } catch (error) {
+    return res.status(500).json({ ok: false, error: "Could not check phone verification." });
+  }
+});
+
+app.post("/api/customer/account/register", async (req, res) => {
+  let client;
+  try {
+    await ensurePrintoAccountTables();
+    client = await pool.connect();
+    const phone = normalizePrintoPhone(req.body?.phone);
+    const pin = String(req.body?.pin || "").trim();
+    const challengeToken = String(req.body?.challengeToken || "").trim();
+
+    if (!phone) {
+      return res.status(400).json({
+        ok: false,
+        error: "Enter a valid phone number with country code."
+      });
+    }
+    if (!validatePrintoPin(pin)) {
+      return res.status(400).json({ ok: false, error: "PIN must contain 4 to 8 numbers." });
+    }
+    if (!/^[A-Za-z0-9_-]{20,80}$/.test(challengeToken)) {
+      return res.status(400).json({ ok: false, error: "Verify this phone number through WhatsApp first." });
+    }
+
+    const challengeHash = hashPrintoPhoneChallenge(challengeToken);
+    await client.query("BEGIN");
+
+    const challengeResult = await client.query(
+      `
+      SELECT phone_e164, status, expires_at, used_at
+      FROM greeting_phone_verification_challenges
+      WHERE challenge_hash = $1
+      FOR UPDATE
+      `,
+      [challengeHash]
+    );
+    const challenge = challengeResult.rows[0];
+    if (
+      !challenge ||
+      challenge.phone_e164 !== phone ||
+      challenge.status !== "confirmed" ||
+      challenge.used_at ||
+      new Date(challenge.expires_at).getTime() <= Date.now()
+    ) {
+      await client.query("ROLLBACK");
+      return res.status(400).json({
+        ok: false,
+        error: "Phone verification is incomplete or expired. Please verify again."
+      });
+    }
+
+    const registryResult = await client.query(
+      `SELECT phone_e164, customer_key, welcome_credits_granted
+       FROM greeting_verified_phones
+       WHERE phone_e164 = $1
+       FOR UPDATE`,
+      [phone]
+    );
+    const registry = registryResult.rows[0];
+    if (!registry) {
+      await client.query("ROLLBACK");
+      return res.status(400).json({ ok: false, error: "Phone verification could not be confirmed." });
+    }
+
+    const existing = await client.query(
+      `SELECT customer_key FROM greeting_customer_accounts
+       WHERE phone_e164 = $1 OR customer_key = $2
+       LIMIT 1`,
+      [phone, registry.customer_key]
+    );
+    if (existing.rows[0]) {
+      await client.query("ROLLBACK");
+      return res.status(409).json({
+        ok: false,
+        accountExists: true,
+        error: "This verified phone number already has a Printo account. Please log in."
+      });
+    }
+
+    const customerKey = registry.customer_key;
+    const internalEmail = makePrintoPhoneInternalEmail(phone);
+    const salt = crypto.randomBytes(16).toString("hex");
+    const pinHash = hashPrintoPin(pin, salt);
+    const welcomeAlreadyGranted = Boolean(registry.welcome_credits_granted);
+    const welcomeCredits = welcomeAlreadyGranted ? 0 : PRINTO_FREE_CREDITS;
+
+    await client.query(
+      `
+      INSERT INTO greeting_customer_accounts (
+        email, customer_key, pin_salt, pin_hash,
+        phone_e164, phone_verified_at, account_type,
+        created_at, last_login_at
+      )
+      VALUES ($1, $2, $3, $4, $5, NOW(), 'verified_phone', NOW(), NOW())
+      `,
+      [internalEmail, customerKey, salt, pinHash, phone]
+    );
+
+    await client.query(
+      `
+      INSERT INTO greeting_customer_access (
+        customer_key, contact_phone, paid_credits,
+        free_credits_granted, created_at, updated_at
+      )
+      VALUES ($1, $2, $3, TRUE, NOW(), NOW())
+      ON CONFLICT (customer_key)
+      DO UPDATE SET
+        contact_phone = EXCLUDED.contact_phone,
+        paid_credits = CASE
+          WHEN $3 > 0 THEN GREATEST(greeting_customer_access.paid_credits, $3)
+          ELSE greeting_customer_access.paid_credits
+        END,
+        free_credits_granted = TRUE,
+        updated_at = NOW()
+      `,
+      [customerKey, printoPhoneDigits(phone), welcomeCredits]
+    );
+
+    await client.query(
+      `
+      UPDATE greeting_verified_phones
+      SET welcome_credits_granted = TRUE,
+          account_created_at = COALESCE(account_created_at, NOW()),
+          updated_at = NOW()
+      WHERE phone_e164 = $1
+      `,
+      [phone]
+    );
+    await client.query(
+      `
+      UPDATE greeting_phone_verification_challenges
+      SET status = 'used', used_at = NOW(), updated_at = NOW()
+      WHERE challenge_hash = $1
+      `,
+      [challengeHash]
+    );
+
+    await client.query("COMMIT");
+    const status = await getGreetingAccessStatus(customerKey, printoPhoneDigits(phone));
     setPrintoAccountCookie(res, customerKey);
     return res.json({
       ok: true,
-      email,
+      phone,
+      maskedPhone: maskPrintoPhone(phone),
       customerKey,
-      customerId: email,
+      customerId: phone,
+      welcomeCreditsAdded: welcomeCredits,
       ...status
     });
   } catch (error) {
-    console.error("Printo account registration error:", error);
-    return res.status(500).json({ ok: false, error: "Could not create the account." });
+    if (client) await client.query("ROLLBACK").catch(() => {});
+    console.error("Printo verified-phone registration error:", error);
+    return res.status(500).json({ ok: false, error: "Could not create the phone-verified account." });
+  } finally {
+    if (client) client.release();
   }
 });
 
 app.post("/api/customer/account/login", async (req, res) => {
   try {
     await ensurePrintoAccountTables();
-    const email = normalizePrintoAccountEmail(req.body?.email);
+    const phone = normalizePrintoPhone(req.body?.phone);
+    const legacyEmail = normalizePrintoAccountEmail(req.body?.email || req.body?.legacyEmail);
     const pin = String(req.body?.pin || "").trim();
 
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || !validatePrintoPin(pin)) {
-      return res.status(400).json({ ok: false, error: "Enter your email and 4–8 number PIN." });
+    if (!validatePrintoPin(pin)) {
+      return res.status(400).json({ ok: false, error: "Enter your phone number and 4–8 number PIN." });
     }
 
-    const found = await queryWithRetry(
-      `SELECT email, customer_key, pin_salt, pin_hash
-       FROM greeting_customer_accounts
-       WHERE email = $1
-       LIMIT 1`,
-      [email]
-    );
+    let found;
+    if (phone) {
+      found = await queryWithRetry(
+        `SELECT email, customer_key, pin_salt, pin_hash, phone_e164, account_type,
+                failed_login_attempts, locked_until
+         FROM greeting_customer_accounts
+         WHERE phone_e164 = $1
+         LIMIT 1`,
+        [phone]
+      );
+    } else if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(legacyEmail)) {
+      // Transition path only for accounts created before verified-phone signup.
+      found = await queryWithRetry(
+        `SELECT email, customer_key, pin_salt, pin_hash, phone_e164, account_type,
+                failed_login_attempts, locked_until
+         FROM greeting_customer_accounts
+         WHERE email = $1
+         LIMIT 1`,
+        [legacyEmail]
+      );
+    } else {
+      return res.status(400).json({
+        ok: false,
+        error: "Enter a valid phone number with country code and your PIN."
+      });
+    }
+
     const account = found.rows[0];
+    if (account?.locked_until && new Date(account.locked_until).getTime() > Date.now()) {
+      const minutes = Math.max(1, Math.ceil((new Date(account.locked_until).getTime() - Date.now()) / 60000));
+      return res.status(429).json({
+        ok: false,
+        error: `Too many incorrect PIN attempts. Try again in about ${minutes} minute${minutes === 1 ? "" : "s"}.`
+      });
+    }
 
     if (!account || !safePinMatch(pin, account.pin_salt, account.pin_hash)) {
-      return res.status(401).json({ ok: false, error: "Incorrect email or PIN." });
+      if (account) {
+        await queryWithRetry(
+          `
+          UPDATE greeting_customer_accounts
+          SET failed_login_attempts = failed_login_attempts + 1,
+              last_failed_login_at = NOW(),
+              locked_until = CASE
+                WHEN failed_login_attempts + 1 >= 5 THEN NOW() + INTERVAL '15 minutes'
+                ELSE locked_until
+              END
+          WHERE customer_key = $1
+          `,
+          [account.customer_key]
+        );
+      }
+      return res.status(401).json({ ok: false, error: "Incorrect phone number or PIN." });
     }
 
     await queryWithRetry(
-      `UPDATE greeting_customer_accounts SET last_login_at = NOW() WHERE email = $1`,
-      [email]
+      `
+      UPDATE greeting_customer_accounts
+      SET last_login_at = NOW(),
+          failed_login_attempts = 0,
+          locked_until = NULL,
+          last_failed_login_at = NULL
+      WHERE customer_key = $1
+      `,
+      [account.customer_key]
     );
 
-    const status = await getGreetingAccessStatus(account.customer_key, "");
+    const publicPhone = normalizePrintoPhone(account.phone_e164 || "");
+    const status = await getGreetingAccessStatus(account.customer_key, printoPhoneDigits(publicPhone));
     setPrintoAccountCookie(res, account.customer_key);
     return res.json({
       ok: true,
-      email: account.email,
+      phone: publicPhone,
+      maskedPhone: maskPrintoPhone(publicPhone),
+      email: account.account_type === "legacy_email" ? account.email : "",
       customerKey: account.customer_key,
-      customerId: account.email,
+      customerId: publicPhone || account.email,
+      legacyAccount: account.account_type === "legacy_email",
       ...status
     });
   } catch (error) {
@@ -5533,18 +5947,29 @@ app.get("/api/customer/account/status", async (req, res) => {
       return res.status(401).json({ ok: false, loginRequired: true, error: "Please log in." });
     }
     const account = await queryWithRetry(
-      `SELECT email FROM greeting_customer_accounts WHERE customer_key = $1 LIMIT 1`,
+      `SELECT email, phone_e164, account_type
+       FROM greeting_customer_accounts
+       WHERE customer_key = $1
+       LIMIT 1`,
       [identity.customerKey]
     );
-    if (!account.rows[0]) {
+    const row = account.rows[0];
+    if (!row) {
       return res.status(401).json({ ok: false, loginRequired: true, error: "Please log in." });
     }
-    const status = await getGreetingAccessStatus(identity.customerKey, "");
-    // A customer may still have a valid account key in localStorage after the
-    // HttpOnly cookie expires or is cleared. Refresh the cookie after the key
-    // is verified so protected greeting pages open normally on the next click.
+    const phone = normalizePrintoPhone(row.phone_e164 || "");
+    const status = await getGreetingAccessStatus(identity.customerKey, printoPhoneDigits(phone));
     setPrintoAccountCookie(res, identity.customerKey);
-    return res.json({ ok: true, email: account.rows[0].email, customerKey: identity.customerKey, ...status });
+    return res.json({
+      ok: true,
+      phone,
+      maskedPhone: maskPrintoPhone(phone),
+      email: row.account_type === "legacy_email" ? row.email : "",
+      customerId: phone || row.email,
+      legacyAccount: row.account_type === "legacy_email",
+      customerKey: identity.customerKey,
+      ...status
+    });
   } catch (error) {
     return res.status(500).json({ ok: false, error: "Could not load the account." });
   }
@@ -5556,16 +5981,17 @@ async function requirePrintoAccountPage(req, res, next) {
 
   try {
     await ensurePrintoAccountTables();
-    const customerKey = String(
-      readPrintoCookie(req, "printo_customer_key") || ""
-    ).trim();
+    const customerKey = String(readPrintoCookie(req, "printo_customer_key") || "").trim();
 
     if (!/^g_[a-f0-9]{64}$/i.test(customerKey)) {
       return res.redirect(302, loginUrl);
     }
 
     const account = await queryWithRetry(
-      `SELECT email FROM greeting_customer_accounts WHERE customer_key = $1 LIMIT 1`,
+      `SELECT email, phone_e164, account_type
+       FROM greeting_customer_accounts
+       WHERE customer_key = $1
+       LIMIT 1`,
       [customerKey]
     );
 
@@ -5575,7 +6001,8 @@ async function requirePrintoAccountPage(req, res, next) {
 
     req.printoAccount = {
       customerKey,
-      email: account.rows[0].email
+      phone: normalizePrintoPhone(account.rows[0].phone_e164 || ""),
+      email: account.rows[0].account_type === "legacy_email" ? account.rows[0].email : ""
     };
     return next();
   } catch (error) {
@@ -5591,28 +6018,37 @@ app.get("/customer-login", (req, res) => {
 <html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Printo Account</title><style>
 *{box-sizing:border-box}body{margin:0;font-family:Arial;background:linear-gradient(160deg,#071b61,#0b63ce);min-height:100vh;color:#fff;padding:20px}
-.wrap{max-width:560px;margin:35px auto}.head{text-align:center}.card{background:#fff;color:#102a72;border-radius:22px;padding:22px;box-shadow:0 18px 50px rgba(0,0,0,.35)}
+.wrap{max-width:590px;margin:28px auto}.head{text-align:center}.card{background:#fff;color:#102a72;border-radius:22px;padding:22px;box-shadow:0 18px 50px rgba(0,0,0,.35)}
 .tabs{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:16px}.tabs button{border:0;border-radius:12px;padding:13px;font-weight:900;cursor:pointer}
 .tabs .active{background:#123faa;color:#fff}.tabs button:not(.active){background:#e8efff;color:#123faa}
 label{display:block;font-weight:900;margin:13px 0 7px}input{width:100%;padding:13px;border:2px solid #cbd5e1;border-radius:12px;font-size:17px}
-.submit{width:100%;margin-top:18px;border:0;border-radius:13px;padding:15px;background:linear-gradient(90deg,#7b2cbf,#d63384);color:#fff;font-size:18px;font-weight:900;cursor:pointer}
-.status{min-height:26px;text-align:center;margin-top:12px;font-weight:800}.note{background:#fff4b8;border:2px solid #ffd21f;border-radius:13px;padding:13px;line-height:1.5}
-.back{display:block;text-align:center;color:#ffd21f;font-weight:900;text-decoration:none;margin-top:16px}
-</style></head><body><main class="wrap"><div class="head"><h1>⭐ Printo Account</h1><p>Create an account before receiving free credits, or log in to continue.</p></div>
-<div class="card"><div class="note">🎁 A new email account receives 100 welcome credits only once. Your credits and finished videos remain connected to this account.</div>
+.verifyBox{background:#edf7ff;border:2px solid #71b7ff;border-radius:14px;padding:14px;margin-top:14px}.verifyBtn{width:100%;border:0;border-radius:12px;padding:14px;background:#25D366;color:#073b1a;font-size:17px;font-weight:900;cursor:pointer}.verifyBtn:disabled{opacity:.6}
+.submit{width:100%;margin-top:18px;border:0;border-radius:13px;padding:15px;background:linear-gradient(90deg,#7b2cbf,#d63384);color:#fff;font-size:18px;font-weight:900;cursor:pointer}.submit:disabled{opacity:.5;cursor:not-allowed}
+.status{min-height:28px;text-align:center;margin-top:12px;font-weight:800;line-height:1.45}.note{background:#fff4b8;border:2px solid #ffd21f;border-radius:13px;padding:13px;line-height:1.5}.back{display:block;text-align:center;color:#ffd21f;font-weight:900;text-decoration:none;margin-top:16px}.small{font-size:13px;line-height:1.45;color:#475569}.legacy{margin-top:14px;text-align:center}.legacy button{border:0;background:transparent;color:#123faa;text-decoration:underline;font-weight:900;cursor:pointer}.hidden{display:none!important}.verified{color:#087a35}.error{color:#b42318}.waFallback{display:inline-block;margin-top:9px;font-weight:900;color:#123faa}
+</style></head><body><main class="wrap"><div class="head"><h1>⭐ Printo Account</h1><p>Use one verified WhatsApp phone number for one Printo account.</p></div>
+<div class="card"><div class="note">🎁 A verified phone number receives the 100 welcome credits only once. Invented email addresses can no longer create free-credit accounts.</div>
 <div class="tabs"><button id="registerTab" class="active" type="button">Create Account</button><button id="loginTab" type="button">Log In</button></div>
-<form id="accountForm"><input id="mode" type="hidden" value="register"><label>Email Address</label><input id="email" type="email" autocomplete="email" required>
+<form id="accountForm"><input id="mode" type="hidden" value="register">
+<div id="phoneGroup"><label>WhatsApp Phone Number</label><input id="phone" type="tel" autocomplete="tel" required placeholder="+1 862 230 6637"><div class="small">Include the country code. The number must be connected to WhatsApp.</div></div>
+<div id="verifyBox" class="verifyBox"><button id="verifyBtn" class="verifyBtn" type="button">✅ Verify Number with WhatsApp</button><div id="verifyStatus" class="status">Tap the button, send the prepared message in WhatsApp, then return here.</div><a id="waFallback" class="waFallback hidden" target="_blank" rel="noopener">Open WhatsApp verification</a></div>
+<div id="legacyGroup" class="hidden"><label>Existing Email Address</label><input id="legacyEmail" type="email" autocomplete="email"><div class="small">Only for an account created before phone verification was introduced.</div></div>
 <label>PIN Number</label><input id="pin" type="password" inputmode="numeric" pattern="[0-9]{4,8}" minlength="4" maxlength="8" autocomplete="current-password" required placeholder="4–8 numbers">
-<button id="submit" class="submit" type="submit">Create Account & Receive 100 Credits</button><div id="status" class="status"></div></form></div>
+<button id="submit" class="submit" type="submit" disabled>Create Account & Receive 100 Credits</button><div id="status" class="status"></div></form>
+<div id="legacyLink" class="legacy hidden"><button id="legacyToggle" type="button">Existing old email account? Log in here</button></div></div>
 <a class="back" href="/greetings">← Return to Printo Studio</a></main>
 <script>
-const next=${JSON.stringify(safeNext)},form=document.getElementById('accountForm'),mode=document.getElementById('mode'),submit=document.getElementById('submit'),statusBox=document.getElementById('status'),registerTab=document.getElementById('registerTab'),loginTab=document.getElementById('loginTab');
-function selectMode(value){mode.value=value;registerTab.classList.toggle('active',value==='register');loginTab.classList.toggle('active',value==='login');submit.textContent=value==='register'?'Create Account & Receive 100 Credits':'Log In to My Account';statusBox.textContent='';}
+const next=${JSON.stringify(safeNext)};
+const form=document.getElementById('accountForm'),mode=document.getElementById('mode'),submit=document.getElementById('submit'),statusBox=document.getElementById('status'),registerTab=document.getElementById('registerTab'),loginTab=document.getElementById('loginTab'),phoneInput=document.getElementById('phone'),pinInput=document.getElementById('pin'),verifyBox=document.getElementById('verifyBox'),verifyBtn=document.getElementById('verifyBtn'),verifyStatus=document.getElementById('verifyStatus'),waFallback=document.getElementById('waFallback'),legacyLink=document.getElementById('legacyLink'),legacyToggle=document.getElementById('legacyToggle'),legacyGroup=document.getElementById('legacyGroup'),legacyEmail=document.getElementById('legacyEmail');
+let challengeToken='',verifiedPhone='',pollTimer=null,legacyMode=false;
+function stopPolling(){if(pollTimer){clearInterval(pollTimer);pollTimer=null;}}
+function resetVerification(){stopPolling();challengeToken='';verifiedPhone='';verifyBtn.disabled=false;verifyStatus.className='status';verifyStatus.textContent='Tap the button, send the prepared message in WhatsApp, then return here.';waFallback.classList.add('hidden');waFallback.removeAttribute('href');if(mode.value==='register')submit.disabled=true;}
+function selectMode(value){mode.value=value;registerTab.classList.toggle('active',value==='register');loginTab.classList.toggle('active',value==='login');verifyBox.classList.toggle('hidden',value!=='register');legacyLink.classList.toggle('hidden',value!=='login');legacyGroup.classList.add('hidden');legacyMode=false;legacyToggle.textContent='Existing old email account? Log in here';phoneInput.required=true;legacyEmail.required=false;submit.textContent=value==='register'?'Create Account & Receive 100 Credits':'Log In to My Account';submit.disabled=value==='register';statusBox.textContent='';resetVerification();}
 registerTab.onclick=()=>selectMode('register');loginTab.onclick=()=>selectMode('login');
-form.addEventListener('submit',async(e)=>{e.preventDefault();submit.disabled=true;statusBox.textContent=mode.value==='register'?'Creating your account...':'Logging in...';
-try{const response=await fetch('/api/customer/account/'+mode.value,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email:document.getElementById('email').value,pin:document.getElementById('pin').value})});const data=await response.json();if(!response.ok||!data.ok)throw new Error(data.error||'Account request failed');
-localStorage.setItem('printoGreetingCustomerKey',String(data.customerKey));localStorage.setItem('printoGreetingCustomerId',String(data.customerId||data.email));localStorage.setItem('printoGreetingCustomerEmail',String(data.email||''));
-statusBox.textContent='✅ Success. Opening Printo Studio...';window.location.href=next;}catch(error){statusBox.textContent='❌ '+error.message;}finally{submit.disabled=false;}});
+legacyToggle.onclick=()=>{legacyMode=!legacyMode;legacyGroup.classList.toggle('hidden',!legacyMode);document.getElementById('phoneGroup').classList.toggle('hidden',legacyMode);legacyEmail.required=legacyMode;phoneInput.required=!legacyMode;legacyToggle.textContent=legacyMode?'Use phone-number login instead':'Existing old email account? Log in here';};
+phoneInput.addEventListener('input',()=>{if(phoneInput.value!==verifiedPhone)resetVerification();});
+async function pollVerification(){if(!challengeToken)return;try{const response=await fetch('/api/customer/account/phone/status',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({challengeToken})});const data=await response.json();if(!response.ok||!data.ok)throw new Error(data.error||'Could not check verification.');if(data.confirmed){stopPolling();verifiedPhone=phoneInput.value;verifyStatus.className='status verified';verifyStatus.textContent='✅ Phone number verified. Choose your PIN and create the account.';verifyBtn.disabled=true;submit.disabled=false;}else if(data.expired||data.used){stopPolling();verifyStatus.className='status error';verifyStatus.textContent='❌ Verification expired. Tap Verify Number with WhatsApp again.';verifyBtn.disabled=false;submit.disabled=true;}}catch(_){}}
+verifyBtn.onclick=async()=>{resetVerification();verifyBtn.disabled=true;verifyStatus.textContent='Preparing WhatsApp verification...';let popup=null;try{popup=window.open('about:blank','_blank');const response=await fetch('/api/customer/account/phone/start',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({phone:phoneInput.value})});const data=await response.json();if(!response.ok||!data.ok)throw new Error(data.error||'Could not start verification.');challengeToken=String(data.challengeToken||'');waFallback.href=data.whatsappUrl;waFallback.classList.remove('hidden');verifyStatus.textContent='WhatsApp is opening. Send the prepared PRINTO VERIFY message, then return to this page.';if(popup)popup.location=data.whatsappUrl;else window.location.href=data.whatsappUrl;pollTimer=setInterval(pollVerification,2000);pollVerification();}catch(error){if(popup)popup.close();verifyStatus.className='status error';verifyStatus.textContent='❌ '+error.message;verifyBtn.disabled=false;}};
+form.addEventListener('submit',async(e)=>{e.preventDefault();if(mode.value==='register'&&!challengeToken){statusBox.textContent='❌ Verify your WhatsApp phone number first.';return;}submit.disabled=true;statusBox.textContent=mode.value==='register'?'Creating your verified account...':'Logging in...';try{const payload={pin:pinInput.value};if(mode.value==='register'){payload.phone=phoneInput.value;payload.challengeToken=challengeToken;}else if(legacyMode){payload.email=legacyEmail.value;}else{payload.phone=phoneInput.value;}const response=await fetch('/api/customer/account/'+mode.value,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});const data=await response.json();if(!response.ok||!data.ok)throw new Error(data.error||'Account request failed');localStorage.setItem('printoGreetingCustomerKey',String(data.customerKey));localStorage.setItem('printoGreetingCustomerId',String(data.customerId||data.phone||data.email||''));if(data.phone)localStorage.setItem('printoGreetingCustomerPhone',String(data.phone));else localStorage.removeItem('printoGreetingCustomerPhone');if(data.email)localStorage.setItem('printoGreetingCustomerEmail',String(data.email));else localStorage.removeItem('printoGreetingCustomerEmail');statusBox.className='status verified';statusBox.textContent='✅ Success. Opening Printo Studio...';window.location.href=next;}catch(error){statusBox.className='status error';statusBox.textContent='❌ '+error.message;}finally{if(mode.value==='login'||verifiedPhone)submit.disabled=false;}});
 </script></body></html>`);
 });
 
@@ -6078,7 +6514,7 @@ app.post("/api/greeting-studio/create", async (req, res) => {
       });
     }
     const registeredAccount = await queryWithRetry(
-      `SELECT email FROM greeting_customer_accounts WHERE customer_key = $1 LIMIT 1`,
+      `SELECT email, phone_e164 FROM greeting_customer_accounts WHERE customer_key = $1 LIMIT 1`,
       [customerIdentity.customerKey]
     );
     if (!registeredAccount.rows[0]) {
@@ -6350,6 +6786,78 @@ app.post("/webhook", async (req, res) => {
     }
 
     const lower = String(text || "").toLowerCase().trim();
+
+    const phoneVerificationMatch = String(text || "")
+      .trim()
+      .match(/^PRINTO\s+VERIFY\s+([A-Za-z0-9_-]{20,80})$/i);
+
+    if (type === "text" && phoneVerificationMatch) {
+      if (!verifyPrintoWhatsAppWebhookSignature(req)) {
+        console.error("Rejected unsigned Printo phone verification webhook.");
+        return res.sendStatus(401);
+      }
+
+      const challengeToken = phoneVerificationMatch[1];
+      const challengeHash = hashPrintoPhoneChallenge(challengeToken);
+      const senderPhone = normalizePrintoPhone(from);
+      let client;
+
+      try {
+        await ensurePrintoAccountTables();
+        client = await pool.connect();
+        await client.query("BEGIN");
+        const confirmed = await client.query(
+          `
+          UPDATE greeting_phone_verification_challenges
+          SET status = 'confirmed', confirmed_at = NOW(), updated_at = NOW()
+          WHERE challenge_hash = $1
+            AND phone_e164 = $2
+            AND status = 'pending'
+            AND used_at IS NULL
+            AND expires_at > NOW()
+          RETURNING phone_e164
+          `,
+          [challengeHash, senderPhone]
+        );
+
+        if (!confirmed.rows[0]) {
+          await client.query("ROLLBACK");
+          await sendMessage(
+            from,
+            "❌ This Printo verification request is invalid, expired, or belongs to another phone number. Return to Printo Studio and start verification again."
+          );
+          return res.sendStatus(200);
+        }
+
+        const customerKey = makeGreetingCustomerKey(`phone:${senderPhone}`);
+        await client.query(
+          `
+          INSERT INTO greeting_verified_phones (
+            phone_e164, customer_key, first_verified_at, last_verified_at, updated_at
+          )
+          VALUES ($1, $2, NOW(), NOW(), NOW())
+          ON CONFLICT (phone_e164)
+          DO UPDATE SET
+            last_verified_at = NOW(),
+            updated_at = NOW()
+          `,
+          [senderPhone, customerKey]
+        );
+        await client.query("COMMIT");
+
+        await sendMessage(
+          from,
+          "✅ Your phone number is verified for Printo Studio. Return to the browser page, choose your PIN, and finish creating your account."
+        );
+        return res.sendStatus(200);
+      } catch (verificationError) {
+        if (client) await client.query("ROLLBACK").catch(() => {});
+        console.error("Printo inbound phone verification failed:", verificationError);
+        return res.sendStatus(500);
+      } finally {
+        if (client) client.release();
+      }
+    }
     if (
   type === "text" &&
   ["hello", "hi", "hey", "menu", "start"].includes(lower)
@@ -16405,6 +16913,7 @@ function buildGreetingStudioHomePage(language = "en") {
     localStorage.removeItem('printoGreetingCustomerKey');
     localStorage.removeItem('printoGreetingCustomerId');
     localStorage.removeItem('printoGreetingCustomerEmail');
+    localStorage.removeItem('printoGreetingCustomerPhone');
   }
   function openPrintoLogin(nextUrl){
     window.location.href='/customer-login?next='+encodeURIComponent(nextUrl||location.pathname+location.search);
@@ -16423,7 +16932,10 @@ function buildGreetingStudioHomePage(language = "en") {
       const data=await response.json();
       if(!response.ok||!data.ok)throw new Error(data.error||'Please log in.');
       if(data.customerKey)localStorage.setItem('printoGreetingCustomerKey',String(data.customerKey));
-      if(data.email){
+      if(data.phone){
+        localStorage.setItem('printoGreetingCustomerId',String(data.phone));
+        localStorage.setItem('printoGreetingCustomerPhone',String(data.phone));
+      }else if(data.email){
         localStorage.setItem('printoGreetingCustomerId',String(data.email));
         localStorage.setItem('printoGreetingCustomerEmail',String(data.email));
       }
@@ -16526,9 +17038,10 @@ function buildBirthdayGeneratorPage(language = "en", templateId = "birthday") {
       const data=await response.json();
       if(response.ok&&data.ok&&data.customerKey){
         customerKey=String(data.customerKey);
-        customerId=String(data.email||data.customerId||customerId||'');
+        customerId=String(data.phone||data.customerId||data.email||customerId||'');
         localStorage.setItem('printoGreetingCustomerKey',customerKey);
         localStorage.setItem('printoGreetingCustomerId',customerId);
+        if(data.phone)localStorage.setItem('printoGreetingCustomerPhone',String(data.phone));
         if(data.email)localStorage.setItem('printoGreetingCustomerEmail',String(data.email));
         document.getElementById('formCustomerId').value=customerId;
         document.getElementById('formCustomerKey').value=customerKey;
@@ -18331,11 +18844,13 @@ app.get("/api/customer/account/dashboard", async (req,res)=>{
     if(identity.identitySource!=="customer_key"){
       return res.status(401).json({ok:false,loginRequired:true,error:"Please log in."});
     }
-    const account=await queryWithRetry(`SELECT email FROM greeting_customer_accounts WHERE customer_key=$1 LIMIT 1`,[identity.customerKey]);
+    const account=await queryWithRetry(`SELECT email, phone_e164, account_type FROM greeting_customer_accounts WHERE customer_key=$1 LIMIT 1`,[identity.customerKey]);
     if(!account.rows[0]) return res.status(401).json({ok:false,loginRequired:true,error:"Please log in."});
-    const status=await getGreetingAccessStatus(identity.customerKey,"");
+    const accountRow=account.rows[0];
+    const phone=normalizePrintoPhone(accountRow.phone_e164||"");
+    const status=await getGreetingAccessStatus(identity.customerKey,printoPhoneDigits(phone));
     const videos=await listStandardGreetingVideos(identity.customerKey);
-    return res.json({ok:true,email:account.rows[0].email,...status,videos});
+    return res.json({ok:true,phone,email:accountRow.account_type==="legacy_email"?accountRow.email:"",...status,videos});
   }catch(error){return res.status(500).json({ok:false,error:error.message});}
 });
 
@@ -18386,9 +18901,9 @@ app.get("/standard-checkout", (_req, res) => {
   res.type("html").send(`<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><title>Opening Shopify Checkout</title><style>body{font-family:Arial;background:#082a8f;color:#fff;display:grid;place-items:center;min-height:100vh;margin:0}.card{background:#fff;color:#082a8f;padding:28px;border-radius:18px;max-width:520px;text-align:center}a{color:#082a8f;font-weight:900}</style></head><body><main class="card"><h1>Opening Shopify Checkout…</h1><p id="status">Connecting this $4.99 order to your Printo account for 20 credits.</p><p><a href="/greetings">Return to Printo Studio</a></p></main><script>(async()=>{const key=localStorage.getItem('printoGreetingCustomerKey')||'';if(!key){location.replace('/customer-login?next=%2Fstandard-checkout');return;}try{const r=await fetch('/api/customer/standard-checkout',{cache:'no-store',headers:{'x-printo-customer-key':key}});const d=await r.json();if(!r.ok||!d.ok)throw new Error(d.error||'Could not open checkout.');location.replace(d.checkoutUrl);}catch(e){document.getElementById('status').textContent=e.message||'Could not open checkout.';}})();</script></body></html>`);
 });
 
-app.get("/subscriptions", (req,res)=>res.type('html').send(`<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><title>Printo Plans</title><style>*{box-sizing:border-box}body{margin:0;font-family:Arial;background:linear-gradient(150deg,#071b61,#0b63ce);color:#fff;padding:24px}.wrap{max-width:1180px;margin:auto;text-align:center}.topbar{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}.close-link{background:#fff;color:#082a8f;text-decoration:none;padding:11px 16px;border-radius:999px;font-weight:900}.section{margin:28px 0 38px}.section-title{font-size:30px;margin:0 0 8px}.section-sub{margin:0 0 18px}.plans{display:grid;grid-template-columns:repeat(4,1fr);gap:16px}.plan{background:#fff;color:#082a8f;border:3px solid #ffd21f;border-radius:22px;padding:22px;position:relative}.plan.premium{border-color:#c13cff;box-shadow:0 10px 28px rgba(0,0,0,.18)}.badge{display:inline-block;background:#123faa;color:#fff;border-radius:999px;padding:7px 12px;font-size:13px;font-weight:900;margin-bottom:8px}.premium .badge{background:#7b2cbf}.price{font-size:34px;font-weight:900}.plan a{display:block;background:#7b2cbf;color:#fff;text-decoration:none;padding:14px;border-radius:12px;font-weight:900;margin-top:16px}.standard a{background:#123faa}.best{transform:scale(1.03)}.note{background:#fff4b8;color:#082a8f;border:3px solid #ffd21f;border-radius:18px;padding:16px;margin:0 auto 20px;max-width:820px;font-weight:900}@media(max-width:950px){.plans{grid-template-columns:1fr 1fr}}@media(max-width:560px){body{padding:16px}.plans{grid-template-columns:1fr}.best{transform:none}.topbar{justify-content:center}.section-title{font-size:25px}}</style></head><body><main class="wrap"><div class="topbar"><h1>⭐ Printo Credits & Subscriptions</h1><a class="close-link" href="/greetings">✕ Close / Return to Studio</a></div><div class="note">🎁 Every new user receives 100 FREE credits — enough for 5 standard creations. Each standard creation uses 20 credits.</div><p>Use one universal Printo credit wallet for Standard, Premium Video, and Premium Multi-Image creations.</p><section class="section"><h2 class="section-title">🎁 Standard Greeting Plans</h2><p class="section-sub">For personalized standard greeting video cards with names, messages, Printo music and voice.</p><div class="plans"><article class="plan standard"><span class="badge">STANDARD</span><h2>Single Creation</h2><div class="price">$4.99</div><p>20 credits • 1 standard creation</p><a href="/standard-checkout">Buy One</a></article><article class="plan standard"><span class="badge">STANDARD</span><h2>Monthly</h2><div class="price">$${PRINTO_STANDARD_SUBSCRIPTION_PRICES.monthly.toFixed(2)}</div><p>100 credits monthly • 5 standard creations</p><a href="${PRINTO_STANDARD_MONTHLY_SUBSCRIPTION_URL}">Choose Standard Monthly</a></article><article class="plan standard"><span class="badge">STANDARD</span><h2>6 Months</h2><div class="price">$${PRINTO_STANDARD_SUBSCRIPTION_PRICES.six_months.toFixed(2)}</div><p>600 credits • 30 standard creations</p><a href="${PRINTO_STANDARD_SIX_MONTH_SUBSCRIPTION_URL}">Choose Standard 6 Months</a></article><article class="plan standard best"><span class="badge">BEST STANDARD VALUE</span><h2>1 Year</h2><div class="price">$${PRINTO_STANDARD_SUBSCRIPTION_PRICES.yearly.toFixed(2)}</div><p>1,200 credits • 60 standard creations</p><a href="${PRINTO_STANDARD_YEARLY_SUBSCRIPTION_URL}">Choose Standard Annual</a></article></div></section><section class="section"><h2 class="section-title">🌟 Premium Subscription Plans</h2><p class="section-sub">For Premium Tribute and enhanced personalized video experiences. Credit costs: Standard 20, Premium Video 25, Premium Multi-Image 50.</p><div class="plans"><article class="plan premium"><span class="badge">PREMIUM</span><h2>Monthly</h2><div class="price">$${PRINTO_SUBSCRIPTION_PRICES.monthly.toFixed(2)}</div><p>100 credits now, then 100 credits each active month</p><a href="${PRINTO_MONTHLY_SUBSCRIPTION_URL}">Choose Premium Monthly</a></article><article class="plan premium"><span class="badge">PREMIUM</span><h2>6 Months</h2><div class="price">$${PRINTO_SUBSCRIPTION_PRICES.six_months.toFixed(2)}</div><p>100 credits monthly for 6 months</p><a href="${PRINTO_SIX_MONTH_SUBSCRIPTION_URL}">Choose Premium 6 Months</a></article><article class="plan premium best"><span class="badge">BEST PREMIUM VALUE</span><h2>1 Year</h2><div class="price">$${PRINTO_SUBSCRIPTION_PRICES.yearly.toFixed(2)}</div><p>100 credits monthly for 12 months</p><a href="${PRINTO_YEARLY_SUBSCRIPTION_URL}">Choose Premium Annual</a></article></div></section><p><a class="close-link" href="/greetings">← Return to Printo Greeting Studio</a></p></main></body></html>`));
+app.get("/subscriptions", (req,res)=>res.type('html').send(`<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><title>Printo Plans</title><style>*{box-sizing:border-box}body{margin:0;font-family:Arial;background:linear-gradient(150deg,#071b61,#0b63ce);color:#fff;padding:24px}.wrap{max-width:1180px;margin:auto;text-align:center}.topbar{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}.close-link{background:#fff;color:#082a8f;text-decoration:none;padding:11px 16px;border-radius:999px;font-weight:900}.section{margin:28px 0 38px}.section-title{font-size:30px;margin:0 0 8px}.section-sub{margin:0 0 18px}.plans{display:grid;grid-template-columns:repeat(4,1fr);gap:16px}.plan{background:#fff;color:#082a8f;border:3px solid #ffd21f;border-radius:22px;padding:22px;position:relative}.plan.premium{border-color:#c13cff;box-shadow:0 10px 28px rgba(0,0,0,.18)}.badge{display:inline-block;background:#123faa;color:#fff;border-radius:999px;padding:7px 12px;font-size:13px;font-weight:900;margin-bottom:8px}.premium .badge{background:#7b2cbf}.price{font-size:34px;font-weight:900}.plan a{display:block;background:#7b2cbf;color:#fff;text-decoration:none;padding:14px;border-radius:12px;font-weight:900;margin-top:16px}.standard a{background:#123faa}.best{transform:scale(1.03)}.note{background:#fff4b8;color:#082a8f;border:3px solid #ffd21f;border-radius:18px;padding:16px;margin:0 auto 20px;max-width:820px;font-weight:900}@media(max-width:950px){.plans{grid-template-columns:1fr 1fr}}@media(max-width:560px){body{padding:16px}.plans{grid-template-columns:1fr}.best{transform:none}.topbar{justify-content:center}.section-title{font-size:25px}}</style></head><body><main class="wrap"><div class="topbar"><h1>⭐ Printo Credits & Subscriptions</h1><a class="close-link" href="/greetings">✕ Close / Return to Studio</a></div><div class="note">🎁 Each verified phone number receives 100 FREE credits once — enough for 5 standard creations. Each standard creation uses 20 credits.</div><p>Use one universal Printo credit wallet for Standard, Premium Video, and Premium Multi-Image creations.</p><section class="section"><h2 class="section-title">🎁 Standard Greeting Plans</h2><p class="section-sub">For personalized standard greeting video cards with names, messages, Printo music and voice.</p><div class="plans"><article class="plan standard"><span class="badge">STANDARD</span><h2>Single Creation</h2><div class="price">$4.99</div><p>20 credits • 1 standard creation</p><a href="/standard-checkout">Buy One</a></article><article class="plan standard"><span class="badge">STANDARD</span><h2>Monthly</h2><div class="price">$${PRINTO_STANDARD_SUBSCRIPTION_PRICES.monthly.toFixed(2)}</div><p>100 credits monthly • 5 standard creations</p><a href="${PRINTO_STANDARD_MONTHLY_SUBSCRIPTION_URL}">Choose Standard Monthly</a></article><article class="plan standard"><span class="badge">STANDARD</span><h2>6 Months</h2><div class="price">$${PRINTO_STANDARD_SUBSCRIPTION_PRICES.six_months.toFixed(2)}</div><p>600 credits • 30 standard creations</p><a href="${PRINTO_STANDARD_SIX_MONTH_SUBSCRIPTION_URL}">Choose Standard 6 Months</a></article><article class="plan standard best"><span class="badge">BEST STANDARD VALUE</span><h2>1 Year</h2><div class="price">$${PRINTO_STANDARD_SUBSCRIPTION_PRICES.yearly.toFixed(2)}</div><p>1,200 credits • 60 standard creations</p><a href="${PRINTO_STANDARD_YEARLY_SUBSCRIPTION_URL}">Choose Standard Annual</a></article></div></section><section class="section"><h2 class="section-title">🌟 Premium Subscription Plans</h2><p class="section-sub">For Premium Tribute and enhanced personalized video experiences. Credit costs: Standard 20, Premium Video 25, Premium Multi-Image 50.</p><div class="plans"><article class="plan premium"><span class="badge">PREMIUM</span><h2>Monthly</h2><div class="price">$${PRINTO_SUBSCRIPTION_PRICES.monthly.toFixed(2)}</div><p>100 credits now, then 100 credits each active month</p><a href="${PRINTO_MONTHLY_SUBSCRIPTION_URL}">Choose Premium Monthly</a></article><article class="plan premium"><span class="badge">PREMIUM</span><h2>6 Months</h2><div class="price">$${PRINTO_SUBSCRIPTION_PRICES.six_months.toFixed(2)}</div><p>100 credits monthly for 6 months</p><a href="${PRINTO_SIX_MONTH_SUBSCRIPTION_URL}">Choose Premium 6 Months</a></article><article class="plan premium best"><span class="badge">BEST PREMIUM VALUE</span><h2>1 Year</h2><div class="price">$${PRINTO_SUBSCRIPTION_PRICES.yearly.toFixed(2)}</div><p>100 credits monthly for 12 months</p><a href="${PRINTO_YEARLY_SUBSCRIPTION_URL}">Choose Premium Annual</a></article></div></section><p><a class="close-link" href="/greetings">← Return to Printo Greeting Studio</a></p></main></body></html>`));
 
-app.get("/customer-dashboard", (req,res)=>res.type('html').send(`<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><title>My Printo Dashboard</title><style>body{font-family:Arial;margin:0;background:#082a8f;color:#fff;padding:20px}.wrap{max-width:900px;margin:auto}.head{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}.close-link{background:#fff;color:#082a8f;text-decoration:none;padding:11px 16px;border-radius:999px;font-weight:900}.card{background:#fff;color:#082a8f;border-radius:18px;padding:18px;margin:14px 0}.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}.stat{background:#edf4ff;padding:15px;border-radius:14px;text-align:center}.buttons a{display:inline-block;margin:6px;padding:12px 16px;border-radius:12px;background:#7b2cbf;color:#fff;text-decoration:none;font-weight:bold}.video{border-top:1px solid #ddd;padding:12px 0}@media(max-width:600px){.stats{grid-template-columns:1fr}.head{justify-content:center}}</style></head><body><main class="wrap"><div class="head"><h1>⭐ My Printo Dashboard</h1><a class="close-link" href="/greetings">✕ Close / Return to Studio</a></div><div id="content" class="card">Loading…</div></main><script>let key=localStorage.getItem('printoGreetingCustomerKey')||'';if(!key){window.location.replace('/customer-login?next=%2Fcustomer-dashboard')}else fetch('/api/customer/account/dashboard',{cache:'no-store',headers:{'x-printo-customer-key':key}}).then(r=>r.json()).then(d=>{if(!d.ok)throw Error(d.error);document.getElementById('content').innerHTML='<div style="background:#fff4b8;border:2px solid #ffd21f;border-radius:14px;padding:14px;margin-bottom:14px;font-weight:900">🎁 Welcome Bonus: Every new user receives 100 FREE credits for 5 standard creations.</div><div class="stats"><div class="stat"><h2>'+d.creditBalance+'</h2>Credits</div><div class="stat"><h2>'+d.remainingCreations+'</h2>Standard Creations Remaining</div><div class="stat"><h2>'+String(d.subscriptionPlan||'Free Welcome')+'</h2>Plan</div></div><div class="buttons"><a href="/birthday?lang=en&template=birthday">'+((Number(d.totalGenerated||0)>0||d.videos.length)?'Create Another Greeting':'Create Your First Greeting')+'</a><a href="/subscriptions">Buy Credits / Subscribe</a><a href="/greetings">✕ Close / Return to Studio</a></div><h2>My Finished Videos</h2>'+(d.videos.length?d.videos.map(v=>'<div class="video"><strong>For '+(v.toName||'Recipient')+'</strong><br><a href="'+v.resultUrl+'">▶ Play</a> &nbsp; <a href="'+v.downloadUrl+'">⬇ Download</a></div>').join(''):((Number(d.totalGenerated||0)>0)?'<p>Your earlier creation record is saved, but its old temporary video file is no longer available. New finished videos will remain here after deployments and restarts.</p>':'<p>🎉 You have not created your first greeting yet. Click <strong>Create Your First Greeting</strong> to surprise someone special.</p>'))}).catch(e=>{localStorage.removeItem('printoGreetingCustomerKey');window.location.replace('/customer-login?next=%2Fcustomer-dashboard')})</script></body></html>`));
+app.get("/customer-dashboard", (req,res)=>res.type('html').send(`<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><title>My Printo Dashboard</title><style>body{font-family:Arial;margin:0;background:#082a8f;color:#fff;padding:20px}.wrap{max-width:900px;margin:auto}.head{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}.close-link{background:#fff;color:#082a8f;text-decoration:none;padding:11px 16px;border-radius:999px;font-weight:900}.card{background:#fff;color:#082a8f;border-radius:18px;padding:18px;margin:14px 0}.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}.stat{background:#edf4ff;padding:15px;border-radius:14px;text-align:center}.buttons a{display:inline-block;margin:6px;padding:12px 16px;border-radius:12px;background:#7b2cbf;color:#fff;text-decoration:none;font-weight:bold}.video{border-top:1px solid #ddd;padding:12px 0}@media(max-width:600px){.stats{grid-template-columns:1fr}.head{justify-content:center}}</style></head><body><main class="wrap"><div class="head"><h1>⭐ My Printo Dashboard</h1><a class="close-link" href="/greetings">✕ Close / Return to Studio</a></div><div id="content" class="card">Loading…</div></main><script>let key=localStorage.getItem('printoGreetingCustomerKey')||'';if(!key){window.location.replace('/customer-login?next=%2Fcustomer-dashboard')}else fetch('/api/customer/account/dashboard',{cache:'no-store',headers:{'x-printo-customer-key':key}}).then(r=>r.json()).then(d=>{if(!d.ok)throw Error(d.error);document.getElementById('content').innerHTML='<div style="background:#fff4b8;border:2px solid #ffd21f;border-radius:14px;padding:14px;margin-bottom:14px;font-weight:900">🎁 Welcome Bonus: Each verified phone number receives 100 FREE credits once — enough for 5 standard creations.</div><div class="stats"><div class="stat"><h2>'+d.creditBalance+'</h2>Credits</div><div class="stat"><h2>'+d.remainingCreations+'</h2>Standard Creations Remaining</div><div class="stat"><h2>'+String(d.subscriptionPlan||'Free Welcome')+'</h2>Plan</div></div><div class="buttons"><a href="/birthday?lang=en&template=birthday">'+((Number(d.totalGenerated||0)>0||d.videos.length)?'Create Another Greeting':'Create Your First Greeting')+'</a><a href="/subscriptions">Buy Credits / Subscribe</a><a href="/greetings">✕ Close / Return to Studio</a></div><h2>My Finished Videos</h2>'+(d.videos.length?d.videos.map(v=>'<div class="video"><strong>For '+(v.toName||'Recipient')+'</strong><br><a href="'+v.resultUrl+'">▶ Play</a> &nbsp; <a href="'+v.downloadUrl+'">⬇ Download</a></div>').join(''):((Number(d.totalGenerated||0)>0)?'<p>Your earlier creation record is saved, but its old temporary video file is no longer available. New finished videos will remain here after deployments and restarts.</p>':'<p>🎉 You have not created your first greeting yet. Click <strong>Create Your First Greeting</strong> to surprise someone special.</p>'))}).catch(e=>{localStorage.removeItem('printoGreetingCustomerKey');window.location.replace('/customer-login?next=%2Fcustomer-dashboard')})</script></body></html>`));
 
 app.get("/g/:id", async (req, res) => {
   res.setHeader("Cache-Control", "public, max-age=60, must-revalidate");
