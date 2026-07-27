@@ -348,12 +348,52 @@ app.use(express.static("public"));
 app.get("/", (req, res) => {
   res.sendFile(path.join(__dirname, "public", "index.html"));
 });
-app.use(express.json({
+// Parse the WhatsApp webhook from its exact raw bytes before converting it
+// to JSON. Meta calculates X-Hub-Signature-256 from those exact bytes.
+// All other JSON routes continue using the normal Express JSON parser.
+const printoJsonParser = express.json({
   limit: "20mb",
   verify: (req, _res, buffer) => {
     req.rawBody = Buffer.from(buffer);
   }
-}));
+});
+
+const printoWebhookRawParser = express.raw({
+  type: "application/json",
+  limit: "20mb"
+});
+
+app.use((req, res, next) => {
+  const isWhatsAppWebhookPost =
+    req.method === "POST" && req.path === "/webhook";
+
+  if (!isWhatsAppWebhookPost) {
+    return printoJsonParser(req, res, next);
+  }
+
+  return printoWebhookRawParser(req, res, (error) => {
+    if (error) return next(error);
+
+    if (!Buffer.isBuffer(req.body)) {
+      console.error("WhatsApp webhook raw body was unavailable.");
+      return res.sendStatus(400);
+    }
+
+    req.rawBody = Buffer.from(req.body);
+
+    try {
+      req.body = JSON.parse(req.rawBody.toString("utf8"));
+    } catch (parseError) {
+      console.error(
+        "WhatsApp webhook JSON parse failed:",
+        parseError?.message || parseError
+      );
+      return res.sendStatus(400);
+    }
+
+    return next();
+  });
+});
 // Accept normal HTML form submissions as a reliable fallback when browser JavaScript is blocked or cached.
 app.use(express.urlencoded({ extended: true, limit: "2mb" }));
 const cors = require("cors");
@@ -5502,16 +5542,25 @@ function getPrintoWhatsAppAppSecret() {
 function verifyPrintoWhatsAppWebhookSignature(req) {
   const secret = getPrintoWhatsAppAppSecret();
   const provided = String(req.headers["x-hub-signature-256"] || "").trim();
-  if (!secret || !provided || !req.rawBody) return false;
+  const rawBody = Buffer.isBuffer(req.rawBody) ? req.rawBody : null;
 
-  const expected = `sha256=${crypto
+  if (!secret || !rawBody) return false;
+  if (!/^sha256=[a-f0-9]{64}$/i.test(provided)) return false;
+
+  const expectedDigest = crypto
     .createHmac("sha256", secret)
-    .update(req.rawBody)
-    .digest("hex")}`;
+    .update(rawBody)
+    .digest();
 
-  const left = Buffer.from(expected);
-  const right = Buffer.from(provided);
-  return left.length === right.length && crypto.timingSafeEqual(left, right);
+  const providedDigest = Buffer.from(
+    provided.slice("sha256=".length),
+    "hex"
+  );
+
+  return (
+    expectedDigest.length === providedDigest.length &&
+    crypto.timingSafeEqual(expectedDigest, providedDigest)
+  );
 }
 
 function hashPrintoPhoneChallenge(token = "") {
@@ -6793,7 +6842,15 @@ app.post("/webhook", async (req, res) => {
 
     if (type === "text" && phoneVerificationMatch) {
       if (!verifyPrintoWhatsAppWebhookSignature(req)) {
-        console.error("Rejected unsigned Printo phone verification webhook.");
+        console.error(
+          "Rejected Printo phone verification because the Meta signature did not match.",
+          {
+            hasAppSecret: Boolean(getPrintoWhatsAppAppSecret()),
+            hasSignature: Boolean(req.headers["x-hub-signature-256"]),
+            rawBodyBytes: Buffer.isBuffer(req.rawBody) ? req.rawBody.length : 0,
+            contentType: String(req.headers["content-type"] || "")
+          }
+        );
         return res.sendStatus(401);
       }
 
