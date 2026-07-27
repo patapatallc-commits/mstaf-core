@@ -60,18 +60,13 @@ async function downloadWhatsAppMediaToUploads(mediaId, fallbackName, mimeType, r
 }
 
   
-function getConfiguredPublicOrigin(req) {
-  const configured =
-    process.env.PUBLIC_BASE_URL ||
-    process.env.PRINTO_PUBLIC_URL ||
-    process.env.PRINTO_STUDIO_ORIGIN ||
-    "https://studio.patapata.us";
+// Canonical public origin for every customer-facing Printo link.
+// Do not allow an old Render environment value or request hostname to leak
+// mstaf-core-1.onrender.com into WhatsApp shares, previews, media, or result pages.
+const PRINTO_BRANDED_PUBLIC_ORIGIN = "https://studio.patapata.us";
 
-  const fallback = req
-    ? `${req.protocol}://${req.get("host")}`
-    : "https://studio.patapata.us";
-
-  return String(configured || fallback).replace(/\/+$/, "");
+function getConfiguredPublicOrigin(_req) {
+  return PRINTO_BRANDED_PUBLIC_ORIGIN;
 }
 
    function buildUploadUrl(req, finalName) {
@@ -392,15 +387,11 @@ app.get("/uploads/:file", (req, res) => {
 });
 const PORT = process.env.PORT || 10000;
 const SUPPORT_PHONE = process.env.SUPPORT_PHONE || process.env.PATAPATA_PHONE || "18622306637";
-const PRINTO_STUDIO_URL =
-  process.env.PRINTO_STUDIO_URL ||
-  process.env.PRINTO_STUDIO_WEB_URL ||
-  `${getConfiguredPublicOrigin()}/greetings`;
-
 // Always use the real branded Studio address in customer-facing links.
-// This prevents an old Render/Shopify environment value from sending users
-// to the Shopify storefront instead of Printo Greeting Studio.
-const PRINTO_BRANDED_STUDIO_BASE_URL = "https://studio.patapata.us/greetings";
+// This prevents old Render or Shopify environment values from sending users
+// to mstaf-core-1.onrender.com or the Shopify storefront.
+const PRINTO_BRANDED_STUDIO_BASE_URL = `${PRINTO_BRANDED_PUBLIC_ORIGIN}/greetings`;
+const PRINTO_STUDIO_URL = PRINTO_BRANDED_STUDIO_BASE_URL;
 
 function buildBrandedPrintoStudioUrl(language = "en") {
   const safeLanguage = ["en", "es", "fr", "de", "pt", "ar", "zh"].includes(
@@ -410,6 +401,27 @@ function buildBrandedPrintoStudioUrl(language = "en") {
     : "en";
 
   return `${PRINTO_BRANDED_STUDIO_BASE_URL}?lang=${encodeURIComponent(safeLanguage)}`;
+}
+
+// The final "create your own" link in a WhatsApp share opens the PATAPATA
+// Shopify storefront, where Printo Studio is now available in the main menu.
+// Greeting watch/share links continue to use the finished branded /g/ page.
+const PRINTO_SHOPIFY_STOREFRONT_URL =
+  process.env.PRINTO_SHOPIFY_STOREFRONT_URL ||
+  "https://www.patapata.us";
+
+function buildPrintoShopifyMenuUrl(language = "en") {
+  const safeLanguage = ["en", "es", "fr", "de", "pt", "ar", "zh"].includes(
+    String(language || "en").toLowerCase()
+  )
+    ? String(language || "en").toLowerCase()
+    : "en";
+
+  const storefrontBase = String(PRINTO_SHOPIFY_STOREFRONT_URL)
+    .trim()
+    .replace(/\/+$/, "");
+
+  return `${storefrontBase}/?lang=${encodeURIComponent(safeLanguage)}`;
 }
 const GREETING_AFRICA_PAYMENT_URL =
   process.env.GREETING_AFRICA_PAYMENT_URL ||
@@ -18009,6 +18021,7 @@ function renderGreetingResult(req, res) {
   const pageUrl = `${publicBase}${req.originalUrl}`;
   const title = `A special Printo greeting${toName ? ` for ${toName}` : ""}`;
   const studioReturnUrl = buildBrandedPrintoStudioUrl(language);
+  const shopifyMenuUrl = buildPrintoShopifyMenuUrl(language);
 
   res.send(`<!DOCTYPE html>
 <html lang="${language}" dir="${language === "ar" ? "rtl" : "ltr"}">
@@ -18069,7 +18082,7 @@ function renderGreetingResult(req, res) {
 <script>
   const video=document.getElementById('greetingVideo'); const play=document.getElementById('bigPlay'); const toast=document.getElementById('toast');
   const pageUrl=${JSON.stringify(pageUrl)}; const videoUrl=${JSON.stringify(videoUrl)};
-  const studioUrl=${JSON.stringify(studioReturnUrl)};
+  const createYourOwnUrl=${JSON.stringify(shopifyMenuUrl)};
   const shareText=${JSON.stringify(`🎉 Watch my personalized Printo greeting!
 
 ▶️ Tap the greeting preview above to watch the finished video.
@@ -18111,8 +18124,8 @@ function renderGreetingResult(req, res) {
   function shareWhatsApp(){
     const whatsappMessage =
       shareText +
-      '\\n\\n🎬 Watch this greeting:\\n' + pageUrl +
-      '\\n\\n🏠 Open Printo Studio to create your own:\\n' + studioUrl;
+      '\\n\\n🎬 Watch this finished greeting:\\n' + pageUrl +
+      '\\n\\n🏠 Create your own: Open the PATAPATA Store and tap Printo Studio:\\n' + createYourOwnUrl;
     window.open('https://wa.me/?text='+encodeURIComponent(whatsappMessage),'_blank');
   }
   function shareFacebook(){
