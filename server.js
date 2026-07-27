@@ -5502,50 +5502,16 @@ function getPrintoWhatsAppAppSecret() {
 function verifyPrintoWhatsAppWebhookSignature(req) {
   const secret = getPrintoWhatsAppAppSecret();
   const provided = String(req.headers["x-hub-signature-256"] || "").trim();
+  if (!secret || !provided || !req.rawBody) return false;
 
-  if (!secret || !provided || !Buffer.isBuffer(req.rawBody)) {
-    return false;
-  }
-
-  if (!provided.toLowerCase().startsWith("sha256=")) {
-    return false;
-  }
-
-  const providedHex = provided.slice("sha256=".length);
-  if (!/^[a-f0-9]{64}$/i.test(providedHex)) {
-    return false;
-  }
-
-  const expectedDigest = crypto
+  const expected = `sha256=${crypto
     .createHmac("sha256", secret)
     .update(req.rawBody)
-    .digest();
+    .digest("hex")}`;
 
-  const providedDigest = Buffer.from(providedHex, "hex");
-
-  return (
-    expectedDigest.length === providedDigest.length &&
-    crypto.timingSafeEqual(expectedDigest, providedDigest)
-  );
-}
-
-function requirePrintoWhatsAppWebhookSignature(req, res, next) {
-  if (!getPrintoWhatsAppAppSecret()) {
-    console.error(
-      "WhatsApp webhook rejected because META_APP_SECRET is not configured."
-    );
-    return res.sendStatus(503);
-  }
-
-  if (!verifyPrintoWhatsAppWebhookSignature(req)) {
-    console.error("Rejected WhatsApp webhook with an invalid Meta signature.", {
-      hasSignature: Boolean(req.headers["x-hub-signature-256"]),
-      hasRawBody: Buffer.isBuffer(req.rawBody)
-    });
-    return res.sendStatus(401);
-  }
-
-  return next();
+  const left = Buffer.from(expected);
+  const right = Buffer.from(provided);
+  return left.length === right.length && crypto.timingSafeEqual(left, right);
 }
 
 function hashPrintoPhoneChallenge(token = "") {
@@ -6795,7 +6761,7 @@ app.get("/webhook", (req, res) => {
 // =========================
 // WEBHOOK RECEIVE
 // =========================
-app.post("/webhook", requirePrintoWhatsAppWebhookSignature, async (req, res) => {
+app.post("/webhook", async (req, res) => {
   try {
     const message = req.body.entry?.[0]?.changes?.[0]?.value?.messages?.[0];
     if (!message) return res.sendStatus(200);
@@ -6826,6 +6792,11 @@ app.post("/webhook", requirePrintoWhatsAppWebhookSignature, async (req, res) => 
       .match(/^PRINTO\s+VERIFY\s+([A-Za-z0-9_-]{20,80})$/i);
 
     if (type === "text" && phoneVerificationMatch) {
+      if (!verifyPrintoWhatsAppWebhookSignature(req)) {
+        console.error("Rejected unsigned Printo phone verification webhook.");
+        return res.sendStatus(401);
+      }
+
       const challengeToken = phoneVerificationMatch[1];
       const challengeHash = hashPrintoPhoneChallenge(challengeToken);
       const senderPhone = normalizePrintoPhone(from);
