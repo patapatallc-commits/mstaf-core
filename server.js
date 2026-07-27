@@ -60,48 +60,18 @@ async function downloadWhatsAppMediaToUploads(mediaId, fallbackName, mimeType, r
 }
 
   
-const PRINTO_BRANDED_ORIGIN = "https://studio.patapata.us";
-
 function getConfiguredPublicOrigin(req) {
   const configured =
     process.env.PUBLIC_BASE_URL ||
     process.env.PRINTO_PUBLIC_URL ||
     process.env.PRINTO_STUDIO_ORIGIN ||
-    PRINTO_BRANDED_ORIGIN;
+    "https://studio.patapata.us";
 
   const fallback = req
     ? `${req.protocol}://${req.get("host")}`
-    : PRINTO_BRANDED_ORIGIN;
+    : "https://studio.patapata.us";
 
-  const candidate = String(configured || fallback).replace(/\/+$/, "");
-
-  // Never expose Render's technical hostname in customer-facing links.
-  // The verified Printo custom domain is used for finished videos, media,
-  // WhatsApp/Facebook/X sharing, progress pages, downloads and Studio links.
-  if (/\.onrender\.com$/i.test(candidate.replace(/^https?:\/\//i, ""))) {
-    return PRINTO_BRANDED_ORIGIN;
-  }
-
-  return candidate || PRINTO_BRANDED_ORIGIN;
-}
-
-function usePrintoBrandedUrl(value = "") {
-  const raw = String(value || "").trim();
-  if (!raw || !/^https?:\/\//i.test(raw)) return raw;
-
-  try {
-    const parsed = new URL(raw);
-    if (parsed.hostname.toLowerCase().endsWith(".onrender.com")) {
-      parsed.protocol = "https:";
-      parsed.host = "studio.patapata.us";
-    }
-    return parsed.toString();
-  } catch (_error) {
-    return raw.replace(
-      /^https?:\/\/[^/]*\.onrender\.com(?=\/|$)/i,
-      PRINTO_BRANDED_ORIGIN
-    );
-  }
+  return String(configured || fallback).replace(/\/+$/, "");
 }
 
    function buildUploadUrl(req, finalName) {
@@ -345,17 +315,16 @@ const app = express();
 // HIDE_RENDER_HOST=true. Browser page visits to the Render hostname will then
 // move to the branded domain, while APIs, webhooks and media routes keep working.
 app.use((req, res, next) => {
+  const hideRenderHost = String(process.env.HIDE_RENDER_HOST || "").toLowerCase() === "true";
   const host = String(req.get("host") || "").toLowerCase();
   const isRenderHost = host.endsWith(".onrender.com");
   const isBrowserPage = req.method === "GET" && ![
     "/api/", "/webhook", "/webhooks/", "/uploads/", "/generated/",
-    "/standard-media/", "/premium-media/", "/health", "/api/health"
+    "/premium-media/", "/health", "/api/health"
   ].some((prefix) => req.path === prefix || req.path.startsWith(prefix));
 
-  // Old Render page links are redirected to the real Printo domain too.
-  // API, webhook and media requests remain available without browser redirects.
-  if (isRenderHost && isBrowserPage) {
-    return res.redirect(302, `${PRINTO_BRANDED_ORIGIN}${req.originalUrl}`);
+  if (hideRenderHost && isRenderHost && isBrowserPage) {
+    return res.redirect(302, `${getConfiguredPublicOrigin(req)}${req.originalUrl}`);
   }
   return next();
 });
@@ -423,12 +392,25 @@ app.get("/uploads/:file", (req, res) => {
 });
 const PORT = process.env.PORT || 10000;
 const SUPPORT_PHONE = process.env.SUPPORT_PHONE || process.env.PATAPATA_PHONE || "18622306637";
-const configuredPrintoStudioUrl =
+const PRINTO_STUDIO_URL =
   process.env.PRINTO_STUDIO_URL ||
   process.env.PRINTO_STUDIO_WEB_URL ||
   `${getConfiguredPublicOrigin()}/greetings`;
-const PRINTO_STUDIO_URL = usePrintoBrandedUrl(configuredPrintoStudioUrl) ||
-  `${PRINTO_BRANDED_ORIGIN}/greetings`;
+
+// Always use the real branded Studio address in customer-facing links.
+// This prevents an old Render/Shopify environment value from sending users
+// to the Shopify storefront instead of Printo Greeting Studio.
+const PRINTO_BRANDED_STUDIO_BASE_URL = "https://studio.patapata.us/greetings";
+
+function buildBrandedPrintoStudioUrl(language = "en") {
+  const safeLanguage = ["en", "es", "fr", "de", "pt", "ar", "zh"].includes(
+    String(language || "en").toLowerCase()
+  )
+    ? String(language || "en").toLowerCase()
+    : "en";
+
+  return `${PRINTO_BRANDED_STUDIO_BASE_URL}?lang=${encodeURIComponent(safeLanguage)}`;
+}
 const GREETING_AFRICA_PAYMENT_URL =
   process.env.GREETING_AFRICA_PAYMENT_URL ||
   "https://www.patapata.us/pages/africa-payment";
@@ -457,7 +439,7 @@ function getPrintoStudioMenuFooter(language = "en") {
     zh: "↩️ 返回 Printo Studio"
   };
 
-  return `${labels[language] || labels.en}:\n${PRINTO_STUDIO_URL}`;
+  return `${labels[language] || labels.en}:\n${buildBrandedPrintoStudioUrl(language)}`;
 }
 
 function isNumberedWhatsAppMenu(text = "") {
@@ -5721,7 +5703,7 @@ You now have ${result.status?.paidCredits ?? PRINTO_CREATION_CREDIT_COST} Printo
 Each creation uses ${PRINTO_CREATION_CREDIT_COST} credits.
 
 Return to Printo Studio and tap Generate to create your next greeting:
-${PRINTO_STUDIO_URL}`
+${buildBrandedPrintoStudioUrl("en")}`
       );
     }
 
@@ -6030,7 +6012,7 @@ app.post("/webhooks/shopify/orders-paid", async (req, res) => {
 ${requestedCredits} Printo credits have been added to your account.
 
 Return to Printo Studio and tap Generate:
-${PRINTO_STUDIO_URL}`
+${buildBrandedPrintoStudioUrl("en")}`
       );
     }
 
@@ -17998,15 +17980,12 @@ app.get(["/birthday", "/birthday-generator", "/generate-birthday", "/greetings/c
 });
 
 function renderGreetingResult(req, res) {
-  const videoUrl = usePrintoBrandedUrl(String(req.query.video || ""));
+  const videoUrl = String(req.query.video || "");
   const toName = String(req.query.to || "");
   const fromName = String(req.query.from || "");
-  const posterUrl = usePrintoBrandedUrl(String(req.query.poster || ""));
-  const sharePosterUrl = usePrintoBrandedUrl(
-    String(req.query.sharePoster || req.query.poster || "")
-  );
-  const requestedDownloadUrlRaw = String(req.query.download || "").trim();
-  const requestedDownloadUrl = usePrintoBrandedUrl(requestedDownloadUrlRaw);
+  const posterUrl = String(req.query.poster || "");
+  const sharePosterUrl = String(req.query.sharePoster || req.query.poster || "");
+  const requestedDownloadUrl = String(req.query.download || "").trim();
   const downloadUrl = requestedDownloadUrl || videoUrl;
   const language = ["en", "es", "fr", "de", "pt", "ar", "zh"].includes(String(req.query.lang || "en").toLowerCase())
     ? String(req.query.lang || "en").toLowerCase()
@@ -18024,13 +18003,12 @@ function renderGreetingResult(req, res) {
   const safeSharePoster = sharePosterUrl.startsWith("http")
     ? escapeHtml(sharePosterUrl)
     : safePoster;
-  const publicBase = String(getConfiguredPublicOrigin(req)).replace(/\/$/, "");
-  const greetingId = String(req.query.greetingId || "").trim();
-  const pageUrl = greetingId
-    ? `${publicBase}/g/${encodeURIComponent(greetingId)}`
-    : usePrintoBrandedUrl(`${publicBase}${req.originalUrl}`);
-  const studioReturnUrl = `${PRINTO_STUDIO_URL}${PRINTO_STUDIO_URL.includes("?") ? "&" : "?"}lang=${encodeURIComponent(language)}`;
+  const publicBase = String(
+    getConfiguredPublicOrigin(req)
+  ).replace(/\/$/, "");
+  const pageUrl = `${publicBase}${req.originalUrl}`;
   const title = `A special Printo greeting${toName ? ` for ${toName}` : ""}`;
+  const studioReturnUrl = buildBrandedPrintoStudioUrl(language);
 
   res.send(`<!DOCTYPE html>
 <html lang="${language}" dir="${language === "ar" ? "rtl" : "ltr"}">
