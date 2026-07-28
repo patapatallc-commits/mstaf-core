@@ -14922,6 +14922,67 @@ app.get("/worker-dashboard", requireDashboardKey, async (req, res) => {
     .actionRow{
       display:flex;flex-wrap:wrap;gap:8px;margin-top:14px
     }
+    .jobBody > *,
+    .previewBox,
+    .detailBox,
+    .insBox{
+      min-width:0;
+      max-width:100%;
+    }
+    .insBox{
+      overflow-wrap:anywhere;
+      word-break:break-word;
+    }
+    .premiumProductionActions{
+      width:100%;
+      display:grid;
+      grid-template-columns:repeat(2,minmax(0,1fr));
+      gap:10px;
+      margin-top:12px;
+      align-items:stretch;
+    }
+    .premiumProductionActions .premiumAction,
+    .premiumProductionActions .premiumMusicForm,
+    .premiumProductionActions .premiumMusicChooseButton,
+    .premiumProductionActions .premiumRenderButton{
+      width:100%;
+      max-width:100%;
+      min-width:0;
+    }
+    .premiumProductionActions .premiumAction,
+    .premiumProductionActions .premiumMusicChooseButton,
+    .premiumProductionActions .premiumRenderButton{
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      min-height:48px;
+      padding:11px 12px;
+      border-radius:12px;
+      white-space:normal;
+      overflow-wrap:anywhere;
+      text-align:center;
+      line-height:1.25;
+      font-size:14px;
+      text-decoration:none;
+    }
+    .premiumProductionActions .premiumMusicForm{
+      display:block !important;
+    }
+    .premiumProductionStatus{
+      grid-column:1 / -1;
+      display:block;
+      width:100%;
+      padding:10px 12px;
+      border-radius:10px;
+      background:rgba(255,255,255,.05);
+      overflow-wrap:anywhere;
+      line-height:1.4;
+    }
+    .premiumProductionHint{
+      margin-top:10px;
+      line-height:1.45;
+      overflow-wrap:anywhere;
+    }
     .routeRow{
       display:grid;grid-template-columns:1fr auto;gap:8px;margin-top:14px
     }
@@ -14955,6 +15016,21 @@ app.get("/worker-dashboard", requireDashboardKey, async (req, res) => {
     a.fileLink:hover{text-decoration:underline}
     @media (max-width: 1100px){
       .hero,.main,.jobBody,.toolbar{grid-template-columns:1fr}
+    }
+    @media (max-width: 700px){
+      .wrap{padding:10px}
+      .panel,.sidePanel,.uploadPanel{padding:10px}
+      .jobHead,.jobBody{padding:11px}
+      .previewBox,.detailBox,.insBox{padding:10px}
+      .detailRow{grid-template-columns:1fr;gap:4px}
+      .premiumProductionActions{grid-template-columns:1fr}
+      .premiumProductionStatus{grid-column:auto}
+      .premiumProductionActions .premiumAction,
+      .premiumProductionActions .premiumMusicChooseButton,
+      .premiumProductionActions .premiumRenderButton{
+        min-height:52px;
+        font-size:15px;
+      }
     }
   </style>
 </head>
@@ -15496,44 +15572,85 @@ app.get("/worker-dashboard", requireDashboardKey, async (req, res) => {
     const photoUrl = extractLabeledInstructionUrl(job, "Recipient photo");
     const videoUrl = extractLabeledInstructionUrl(job, "Personal introduction video");
     const orderId = extractPremiumOrderId(job);
-    const combined = [job.instructions || "", job.notes || "", job.error_message || ""].join("\\n");
-    const urls = combined.match(/https?:\\/\\/[^\\s<]+/g) || [];
+    const combined = [job.instructions || "", job.notes || "", job.error_message || ""].join("\n");
+    const urls = combined.match(/https?:\/\/[^\s<]+/g) || [];
     const musicUrl = urls.find((url) => url.includes("/premium-media/") && url.includes("/music?")) || "";
     const finalUrl = urls.find((url) => url.includes("/premium-media/") && url.includes("/final?")) || "";
-    const buttons = [];
+    const actions = [];
 
-    if (photoUrl) {
-      buttons.push('<a class="fileLink" href="' + h(photoUrl) + '" target="_blank" rel="noopener noreferrer">📸 Open Recipient Photo</a>');
-    }
-    if (videoUrl) {
-      buttons.push('<a class="fileLink" href="' + h(videoUrl) + '" target="_blank" rel="noopener noreferrer">🎥 Play Introduction Video</a>');
-    }
-    if (musicUrl) {
-      buttons.push('<a class="fileLink" href="' + h(musicUrl) + '" target="_blank" rel="noopener noreferrer">🎵 Play Tribute Music</a>');
-    }
-    if (finalUrl) {
-      buttons.push('<a class="fileLink" href="' + h(finalUrl) + '" target="_blank" rel="noopener noreferrer">🎬 Play Finished Premium Video</a>');
-    }
     if (orderId) {
       const uploadLabel = musicUrl ? "✅ Replace Tribute Music" : "🎵 Upload Tribute Music";
-      buttons.push(
-        '<span class="premiumMusicForm" data-order-id="' + h(orderId) + '" ' +
-        'style="display:inline-flex;gap:7px;align-items:center;flex-wrap:wrap;">' +
+      const renderLabel = finalUrl
+        ? "🎬 Re-render Complete Premium Video"
+        : "🎬 Render Complete Premium Video";
+
+      actions.push(
+        '<span class="premiumMusicForm" data-order-id="' + h(orderId) + '">' +
           '<input class="premiumMusicInput" data-order-id="' + h(orderId) + '" name="tributeMusic" type="file" ' +
           'accept=".mp3,.wav,.m4a,.aac,.ogg,.opus,.flac,audio/*" ' +
-          'style="display:none;">' +
-          '<button type="button" class="btn secondary premiumMusicChooseButton" data-order-id="' + h(orderId) + '">' + uploadLabel + '</button>' +
+          'style="position:absolute;width:1px;height:1px;opacity:0;pointer-events:none;">' +
+          '<button type="button" class="btn secondary premiumMusicChooseButton" data-order-id="' + h(orderId) + '">' +
+            uploadLabel +
+          '</button>' +
         '</span>'
       );
-      buttons.push('<span class="small premiumMusicStatus" data-order-id="' + h(orderId) + '">' + (musicUrl ? '✅ Tribute music stored' : 'Choose the Suno song, then click Upload Tribute Music') + '</span>');
-      buttons.push('<button type="button" class="btn premiumRenderButton" data-order-id="' + h(orderId) + '" onclick="renderPremiumOrder(&quot;' + h(orderId) + '&quot;, this); return false;"' + (musicUrl ? '' : ' disabled title="Upload tribute music first"') + '>🎬 Re-render Complete Video</button>');
+
+      actions.push(
+        '<button type="button" class="btn premiumRenderButton" data-order-id="' + h(orderId) + '"' +
+          (musicUrl ? '' : ' disabled title="Upload tribute music first"') +
+          '>' + renderLabel + '</button>'
+      );
     }
 
-    if (!buttons.length) {
-      return '<div class="insBox"><b>Premium Production</b><br><span class="small">No Premium assets were found on this job.</span></div>';
+    if (photoUrl) {
+      actions.push(
+        '<a class="fileLink premiumAction" href="' + h(photoUrl) +
+        '" target="_blank" rel="noopener noreferrer">📸 Open Recipient Photo</a>'
+      );
     }
 
-    return '<div class="insBox"><b>Premium Production</b><br><div class="actionRow" style="margin-top:10px;">' + buttons.join(' ') + '</div><div class="small" style="margin-top:8px;">The introduction plays first. The uploaded Suno tribute song starts immediately afterward and continues to the final Printo screen.</div></div>';
+    if (videoUrl) {
+      actions.push(
+        '<a class="fileLink premiumAction" href="' + h(videoUrl) +
+        '" target="_blank" rel="noopener noreferrer">🎥 Play Introduction Video</a>'
+      );
+    }
+
+    if (musicUrl) {
+      actions.push(
+        '<a class="fileLink premiumAction" href="' + h(musicUrl) +
+        '" target="_blank" rel="noopener noreferrer">🎵 Play Tribute Music</a>'
+      );
+    }
+
+    if (finalUrl) {
+      actions.push(
+        '<a class="fileLink premiumAction" href="' + h(finalUrl) +
+        '" target="_blank" rel="noopener noreferrer">🎬 Play Finished Premium Video</a>'
+      );
+    }
+
+    if (!actions.length) {
+      return '<div class="insBox"><b>Premium Production</b><br>' +
+        '<span class="small">No Premium assets were found on this job.</span></div>';
+    }
+
+    const statusText = orderId
+      ? (musicUrl
+          ? "✅ Tribute music is stored. You can render or re-render the complete Premium video."
+          : "Choose the completed tribute song, tap Upload Tribute Music, then tap Render Complete Premium Video.")
+      : "Premium order ID was not found on this job. Refresh the dashboard or reopen the Premium order.";
+
+    return '<div class="insBox premiumProductionBox">' +
+      '<b>Premium Production</b>' +
+      '<div class="premiumProductionActions">' + actions.join("") + '</div>' +
+      '<span class="small premiumMusicStatus premiumProductionStatus" data-order-id="' +
+        h(orderId || "") + '">' + h(statusText) + '</span>' +
+      '<div class="small premiumProductionHint">' +
+        'The introduction video plays first. The uploaded tribute song begins immediately afterward ' +
+        'and continues through the final Printo screen.' +
+      '</div>' +
+    '</div>';
   }
 
   function renderInstructions(job) {
@@ -17677,6 +17794,37 @@ function buildPremiumGreetingOrderPage(language = "en") {
     zh: { title:"个人致敬音乐视频贺卡", intro:"填写订单信息，并上传收件人照片和您的个人介绍视频。保存订单后再付款。", recipient:"收件人姓名", sender:"发件人姓名", phone:"WhatsApp 电话", email:"电子邮件（可选）", message:"个人留言", songStyle:"致敬歌曲风格", notes:"故事、回忆、优点或歌曲内容", photo:"收件人照片", video:"您的个人介绍视频", submit:"保存高级订单", saving:"正在保存订单和文件…", required:"请填写必填项并选择两个文件。", success:"高级订单已保存。", pay:"选择付款方式", shopify:"Shopify 付款", africa:"非洲付款", worker:"通过 WhatsApp 发送给工作人员", back:"返回祝福工作室" }
   };
   const t = copy[lang] || copy.en;
+  const premiumPhoneGuidance = {
+    en: {
+      placeholder: "Enter country code + phone number, e.g. +1 862 230 6637",
+      hint: "Use the same verified WhatsApp number connected to your Printo account."
+    },
+    es: {
+      placeholder: "Ingrese código de país + número, ej. +1 862 230 6637",
+      hint: "Use el mismo número de WhatsApp verificado conectado a su cuenta Printo."
+    },
+    fr: {
+      placeholder: "Entrez l’indicatif + le numéro, ex. +1 862 230 6637",
+      hint: "Utilisez le même numéro WhatsApp vérifié associé à votre compte Printo."
+    },
+    de: {
+      placeholder: "Landesvorwahl + Nummer eingeben, z. B. +1 862 230 6637",
+      hint: "Verwenden Sie dieselbe verifizierte WhatsApp-Nummer wie in Ihrem Printo-Konto."
+    },
+    pt: {
+      placeholder: "Digite código do país + número, ex. +1 862 230 6637",
+      hint: "Use o mesmo número de WhatsApp verificado conectado à sua conta Printo."
+    },
+    ar: {
+      placeholder: "أدخل رمز الدولة والرقم، مثال: +1 862 230 6637",
+      hint: "استخدم نفس رقم واتساب الموثّق المرتبط بحساب Printo."
+    },
+    zh: {
+      placeholder: "输入国家代码和号码，例如 +1 862 230 6637",
+      hint: "请使用与 Printo 账户关联的同一个已验证 WhatsApp 号码。"
+    }
+  };
+  const phoneGuide = premiumPhoneGuidance[lang] || premiumPhoneGuidance.en;
   const dir = lang === "ar" ? "rtl" : "ltr";
   return `<!doctype html>
 <html lang="${lang}" dir="${dir}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${t.title}</title>
@@ -17684,7 +17832,7 @@ function buildPremiumGreetingOrderPage(language = "en") {
 *{box-sizing:border-box}body{margin:0;font-family:Arial,sans-serif;background:linear-gradient(150deg,#071b61,#0b63ce);color:#fff;min-height:100vh;padding:18px}.wrap{max-width:820px;margin:auto}.back{color:#ffd21f;font-weight:900;text-decoration:none}.hero{text-align:center;margin:12px 0 20px}.hero h1{font-size:34px;margin:8px}.hero p{line-height:1.55}.panel{background:#fff;color:#172554;border:3px solid #ffd21f;border-radius:25px;padding:22px;box-shadow:0 18px 44px rgba(0,0,0,.35)}.grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}.full{grid-column:1/-1}label{display:block;font-weight:900;margin:5px 0 7px}input,textarea,select{width:100%;padding:13px;border:2px solid #cbd5e1;border-radius:13px;font-size:16px}textarea{min-height:110px}.hint{font-size:12px;color:#64748b;margin-top:5px}.submit{width:100%;border:0;border-radius:15px;padding:16px;background:linear-gradient(90deg,#7b2cbf,#d63384);color:#fff;font-size:19px;font-weight:900;margin-top:15px;cursor:pointer}.submit:disabled{opacity:.55}.status{text-align:center;font-weight:900;min-height:26px;margin-top:12px}.result{display:none;background:#f1f5f9;padding:16px;border-radius:16px;margin-top:15px}.orderId{font-size:20px;font-weight:900}.payments{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:12px}.pay{display:block;text-align:center;text-decoration:none;color:#fff;font-weight:900;padding:14px;border-radius:13px}.shopify{background:#4f772d}.africa{background:#008751}.worker{background:#25D366;grid-column:1/-1}.disabled{opacity:.45;pointer-events:none}.agreement{display:flex;align-items:flex-start;gap:10px;background:#fff7d6;border:2px solid #ffd21f;border-radius:13px;padding:13px;margin-top:16px}.agreement input{width:20px;height:20px;flex:0 0 auto;margin:2px 0 0}.agreement label{margin:0;font-weight:800;line-height:1.45}.agreement a{color:#123faa;font-weight:900}@media(max-width:620px){.grid,.payments{grid-template-columns:1fr}.full,.worker{grid-column:auto}.hero h1{font-size:28px}}
 </style></head><body><main class="wrap"><a class="back" href="/greetings?lang=${lang}">← ${t.back}</a><section class="hero"><h1>🌟 ${t.title}</h1><p>${t.intro}</p></section><section class="panel">
 <form id="premiumForm" enctype="multipart/form-data"><input type="hidden" name="language" value="${lang}"><input type="hidden" id="customerId" name="customerId"><input type="hidden" id="premiumCustomerKey" name="customerKey">
-<div class="grid"><div><label>${t.recipient} *</label><input name="recipientName" maxlength="24" required></div><div><label>${t.sender} *</label><input name="senderName" maxlength="24" required></div><div><label>${t.phone} *</label><input name="customerPhone" inputmode="tel" required></div><div><label>${t.email}</label><input name="customerEmail" type="email"></div><div class="full"><label>${t.message} *</label><textarea name="personalMessage" maxlength="220" required></textarea></div><div><label>${t.songStyle}</label><select name="songStyle"><option value="">Worker will discuss with me</option><option>Afrobeat</option><option>Gospel</option><option>R&B / Soul</option><option>Pop</option><option>Highlife</option><option>Hip-Hop / Rap</option><option>Soft acoustic</option><option>Other</option></select></div><div><label>${t.notes}</label><textarea name="tributeNotes" maxlength="1000"></textarea></div><div><label>${t.photo} *</label><input name="recipientPhoto" type="file" accept="image/*" required><div class="hint">JPG, PNG or WebP. Clear portrait preferred.</div></div><div><label>${t.video} *</label><input name="introVideo" type="file" accept="video/mp4,video/quicktime,video/webm,video/*" required><div class="hint">Maximum 60 seconds and 100 MB. Large files are compressed automatically to a smaller 720p MP4 before permanent storage.</div></div></div>
+<div class="grid"><div><label>${t.recipient} *</label><input name="recipientName" maxlength="24" required></div><div><label>${t.sender} *</label><input name="senderName" maxlength="24" required></div><div><label>${t.phone} *</label><input id="premiumCustomerPhone" name="customerPhone" type="tel" inputmode="tel" autocomplete="tel" placeholder="${phoneGuide.placeholder}" required><div class="hint">${phoneGuide.hint}</div></div><div><label>${t.email}</label><input name="customerEmail" type="email"></div><div class="full"><label>${t.message} *</label><textarea name="personalMessage" maxlength="220" required></textarea></div><div><label>${t.songStyle}</label><select name="songStyle"><option value="">Worker will discuss with me</option><option>Afrobeat</option><option>Gospel</option><option>R&B / Soul</option><option>Pop</option><option>Highlife</option><option>Hip-Hop / Rap</option><option>Soft acoustic</option><option>Other</option></select></div><div><label>${t.notes}</label><textarea name="tributeNotes" maxlength="1000"></textarea></div><div><label>${t.photo} *</label><input name="recipientPhoto" type="file" accept="image/*" required><div class="hint">JPG, PNG or WebP. Clear portrait preferred.</div></div><div><label>${t.video} *</label><input name="introVideo" type="file" accept="video/mp4,video/quicktime,video/webm,video/*" required><div class="hint">Maximum 60 seconds and 100 MB. Large files are compressed automatically to a smaller 720p MP4 before permanent storage.</div></div></div>
 <div class="agreement"><input id="premiumTermsAccepted" name="termsAccepted" type="checkbox" value="yes" required><label for="premiumTermsAccepted">I confirm that I own or have permission to use the recipient photo, introduction video, voice, names, music instructions and all other submitted content. I agree to the <a href="/greetings?lang=${lang}#terms" target="_blank" rel="noopener">Terms of Use, Privacy Policy and Refund Policy</a>.</label></div>
 <button id="submitBtn" class="submit" type="submit">✨ ${t.submit}</button><div id="status" class="status"></div></form><div id="result" class="result"><div>${t.success}</div><div id="orderId" class="orderId"></div><h3>${t.pay}</h3><div class="payments"><a id="shopifyPay" class="pay shopify" target="_blank" rel="noopener">🛒 ${t.shopify}</a><a id="africaPay" class="pay africa" target="_blank" rel="noopener">🌍 ${t.africa}</a><a id="workerLink" class="pay worker" target="_blank" rel="noopener">💬 ${t.worker}</a></div></div></section></main>
 <script>
@@ -17697,6 +17845,11 @@ setTimeout(syncPremiumButton,0);
 setTimeout(syncPremiumButton,250);
 let accountKey=localStorage.getItem('printoGreetingCustomerKey')||'';if(!accountKey){window.location.replace('/customer-login?next='+encodeURIComponent(location.pathname+location.search));}
 document.getElementById('premiumCustomerKey').value=accountKey;
+const premiumCustomerPhone=document.getElementById('premiumCustomerPhone');
+const savedVerifiedPhone=localStorage.getItem('printoGreetingCustomerPhone')||'';
+if(premiumCustomerPhone&&savedVerifiedPhone&&!premiumCustomerPhone.value){
+  premiumCustomerPhone.value=savedVerifiedPhone;
+}
 let customerId=localStorage.getItem('printoGreetingCustomerId')||localStorage.getItem('printoPremiumCustomerId');if(!customerId){customerId='premium_'+Date.now()+'_'+Math.random().toString(36).slice(2,11);localStorage.setItem('printoPremiumCustomerId',customerId)}document.getElementById('customerId').value=customerId;
 function readVideoDuration(file){return new Promise((resolve,reject)=>{const url=URL.createObjectURL(file),video=document.createElement('video');video.preload='metadata';video.onloadedmetadata=()=>{const duration=Number(video.duration||0);URL.revokeObjectURL(url);resolve(duration)};video.onerror=()=>{URL.revokeObjectURL(url);reject(new Error('The introduction video could not be read.'))};video.src=url;});}
 form.addEventListener('submit',async(e)=>{e.preventDefault();if(!termsAccepted.checked){statusBox.textContent='❌ Please confirm permission and accept the Terms, Privacy and Refund Policy.';return;}button.disabled=true;button.textContent='⏳ ${t.saving}';statusBox.textContent='';result.style.display='none';try{const fd=new FormData(form);const photo=fd.get('recipientPhoto'),video=fd.get('introVideo');if(!photo||!photo.size||!video||!video.size)throw new Error('${t.required}');if(photo.size>10*1024*1024)throw new Error('Recipient photo must be 10 MB or smaller.');if(video.size>100*1024*1024)throw new Error('Introduction video must be 100 MB or smaller.');const duration=await readVideoDuration(video);if(duration>60.25)throw new Error('Introduction video must be 60 seconds or shorter.');statusBox.textContent='⏳ Uploading and compressing your introduction video…';fd.set('customerKey',accountKey);const response=await fetch('/api/greeting/premium/request',{method:'POST',headers:{'x-printo-customer-id':customerId,'x-printo-customer-key':accountKey},body:fd});const data=await response.json();if(!response.ok||!data.ok)throw new Error(data.error||'Could not save premium order.');statusBox.textContent='✅ ${t.success} Introduction video compressed and stored safely.';orderIdBox.textContent='Order: '+data.orderId;shopifyPay.href=data.payment?.shopify||'#';africaPay.href=data.payment?.africa||'#';if(!data.payment?.shopify)shopifyPay.classList.add('disabled');else shopifyPay.classList.remove('disabled');workerLink.href=data.whatsappUrl;result.style.display='block';result.scrollIntoView({behavior:'smooth'});}catch(error){statusBox.textContent='❌ '+error.message;}finally{button.textContent='✨ ${t.submit}';syncPremiumButton();}});
