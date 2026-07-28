@@ -5530,37 +5530,67 @@ function safePinMatch(pin, salt, storedHash) {
   }
 }
 
+function getPrintoWhatsAppAppSecrets() {
+  const candidates = [
+    ["META_APP_SECRET", process.env.META_APP_SECRET],
+    ["WHATSAPP_APP_SECRET", process.env.WHATSAPP_APP_SECRET],
+    ["FACEBOOK_APP_SECRET", process.env.FACEBOOK_APP_SECRET]
+  ];
+
+  const extraSecrets = String(process.env.META_APP_SECRETS || "")
+    .split(",")
+    .map((value) => value.trim())
+    .filter(Boolean);
+
+  extraSecrets.forEach((secret, index) => {
+    candidates.push([`META_APP_SECRETS_${index + 1}`, secret]);
+  });
+
+  const seen = new Set();
+
+  return candidates
+    .map(([name, value]) => [name, String(value || "").trim()])
+    .filter(([, value]) => Boolean(value))
+    .filter(([, value]) => {
+      if (seen.has(value)) return false;
+      seen.add(value);
+      return true;
+    });
+}
+
 function getPrintoWhatsAppAppSecret() {
-  return String(
-    process.env.META_APP_SECRET ||
-    process.env.WHATSAPP_APP_SECRET ||
-    process.env.FACEBOOK_APP_SECRET ||
-    ""
-  ).trim();
+  return getPrintoWhatsAppAppSecrets()[0]?.[1] || "";
 }
 
 function verifyPrintoWhatsAppWebhookSignature(req) {
-  const secret = getPrintoWhatsAppAppSecret();
   const provided = String(req.headers["x-hub-signature-256"] || "").trim();
   const rawBody = Buffer.isBuffer(req.rawBody) ? req.rawBody : null;
+  const appSecrets = getPrintoWhatsAppAppSecrets();
 
-  if (!secret || !rawBody) return false;
+  if (!rawBody || appSecrets.length === 0) return false;
   if (!/^sha256=[a-f0-9]{64}$/i.test(provided)) return false;
-
-  const expectedDigest = crypto
-    .createHmac("sha256", secret)
-    .update(rawBody)
-    .digest();
 
   const providedDigest = Buffer.from(
     provided.slice("sha256=".length),
     "hex"
   );
 
-  return (
-    expectedDigest.length === providedDigest.length &&
-    crypto.timingSafeEqual(expectedDigest, providedDigest)
-  );
+  for (const [secretName, secretValue] of appSecrets) {
+    const expectedDigest = crypto
+      .createHmac("sha256", secretValue)
+      .update(rawBody)
+      .digest();
+
+    if (
+      expectedDigest.length === providedDigest.length &&
+      crypto.timingSafeEqual(expectedDigest, providedDigest)
+    ) {
+      req.printoMetaSecretSource = secretName;
+      return true;
+    }
+  }
+
+  return false;
 }
 
 function hashPrintoPhoneChallenge(token = "") {
@@ -6853,6 +6883,11 @@ app.post("/webhook", async (req, res) => {
         );
         return res.sendStatus(401);
       }
+
+      console.log(
+        "Verified Printo phone-verification webhook signature.",
+        { secretSource: req.printoMetaSecretSource || "configured-secret" }
+      );
 
       const challengeToken = phoneVerificationMatch[1];
       const challengeHash = hashPrintoPhoneChallenge(challengeToken);
