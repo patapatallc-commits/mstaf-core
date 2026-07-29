@@ -16055,12 +16055,18 @@ document.addEventListener("focusout", (e) => {
   }
 });
 
+// Refresh the worker dashboard every 30 seconds so workers have enough
+// time to read each job. Automatic refresh still pauses while media is
+// playing, while a worker is typing, or during active Premium production.
+const WORKER_DASHBOARD_REFRESH_MS = 30000;
+
 setInterval(() => {
+  if (document.hidden) return;
   if (mediaIsPlaying()) return;
   if (isUserTyping) return;
   if (premiumWorkIsActive()) return;
   loadJobs();
-}, 8000);
+}, WORKER_DASHBOARD_REFRESH_MS);
 </script>
 </body>
 </html>`);
