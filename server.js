@@ -3409,6 +3409,7 @@ async function listStandardGreetingVideos(customerKey) {
   );
   return result.rows.map((row) => ({
     id: row.greeting_id,
+    type: "standard",
     toName: row.recipient_name || "",
     fromName: row.sender_name || "",
     message: row.personal_message || "",
@@ -3417,6 +3418,55 @@ async function listStandardGreetingVideos(customerKey) {
     resultUrl: `/g/${encodeURIComponent(row.greeting_id)}`,
     downloadUrl: `/download/g/${encodeURIComponent(row.greeting_id)}`
   }));
+}
+
+
+async function listPremiumGreetingVideos(customerKey) {
+  const result = await queryWithRetry(
+    `SELECT order_id,
+            recipient_name,
+            sender_name,
+            personal_message,
+            media_token,
+            created_at,
+            updated_at
+     FROM premium_greeting_orders
+     WHERE customer_key = $1
+       AND render_status = 'completed'
+       AND final_video_data IS NOT NULL
+       AND COALESCE(media_token, '') <> ''
+     ORDER BY COALESCE(updated_at, created_at) DESC
+     LIMIT 100`,
+    [customerKey]
+  );
+
+  return result.rows.map((row) => {
+    const orderId = String(row.order_id || "");
+    const token = String(row.media_token || "");
+    const baseUrl =
+      `/premium-media/${encodeURIComponent(orderId)}/final` +
+      `?token=${encodeURIComponent(token)}`;
+
+    return {
+      id: orderId,
+      type: "premium",
+      toName: row.recipient_name || "",
+      fromName: row.sender_name || "",
+      message: row.personal_message || "",
+      language: "en",
+      createdAt: row.updated_at || row.created_at || null,
+      resultUrl: baseUrl,
+      downloadUrl: `${baseUrl}&download=1`
+    };
+  });
+}
+
+function mergeCustomerFinishedVideos(standardVideos = [], premiumVideos = []) {
+  return [...standardVideos, ...premiumVideos].sort((left, right) => {
+    const leftTime = new Date(left?.createdAt || 0).getTime() || 0;
+    const rightTime = new Date(right?.createdAt || 0).getTime() || 0;
+    return rightTime - leftTime;
+  });
 }
 
 async function refundInterruptedStandardGreetingGenerations() {
@@ -3928,7 +3978,13 @@ function sendPremiumMediaBuffer(req, res, media) {
   const fileName = safeBaseName(media.name || defaultName);
 
   res.setHeader("Content-Type", mime);
-  res.setHeader("Content-Disposition", `inline; filename="${fileName}"`);
+  const forceDownload =
+    String(req.query.download || "") === "1" ||
+    String(req.query.download || "").toLowerCase() === "true";
+  res.setHeader(
+    "Content-Disposition",
+    `${forceDownload ? "attachment" : "inline"}; filename="${fileName}"`
+  );
   res.setHeader("X-Content-Type-Options", "nosniff");
   res.setHeader("Cache-Control", "private, no-store, max-age=0");
 
@@ -4004,6 +4060,57 @@ async function probeMediaDurationSeconds(filePath) {
   return duration;
 }
 
+async function probeSpokenAudioEndSeconds(filePath, totalDurationSeconds) {
+  const safeTotal = Number(totalDurationSeconds || 0);
+  if (!Number.isFinite(safeTotal) || safeTotal <= 0) return safeTotal;
+
+  try {
+    const { stderr } = await execFilePromise("ffmpeg", [
+      "-hide_banner",
+      "-nostdin",
+      "-i", filePath,
+      "-af",
+      "highpass=f=80,lowpass=f=9000,afftdn=nr=16:nf=-36:tn=1:gs=6,silencedetect=noise=-38dB:d=0.18",
+      "-f", "null",
+      "-"
+    ], {
+      timeout: 30000,
+      maxBuffer: 2 * 1024 * 1024
+    });
+
+    const logText = String(stderr || "");
+    const starts = [...logText.matchAll(/silence_start:\s*([0-9.]+)/g)]
+      .map((match) => Number(match[1]))
+      .filter(Number.isFinite);
+    const ends = [...logText.matchAll(/silence_end:\s*([0-9.]+)/g)]
+      .map((match) => Number(match[1]))
+      .filter(Number.isFinite);
+
+    const lastSilenceStart = starts.at(-1);
+    const lastSilenceEnd = ends.at(-1);
+
+    const reachesFileEnd =
+      Number.isFinite(lastSilenceStart) &&
+      (
+        !Number.isFinite(lastSilenceEnd) ||
+        lastSilenceEnd >= safeTotal - 0.25
+      );
+
+    // Keep a small safety floor so an unusual audio file can never produce
+    // a nearly empty video.
+    if (reachesFileEnd && lastSilenceStart >= 1.25) {
+      return Math.min(safeTotal, lastSilenceStart);
+    }
+  } catch (error) {
+    console.warn(
+      "Birthday trailing-silence detection failed; using full voice duration:",
+      error.message
+    );
+  }
+
+  return safeTotal;
+}
+
 async function probePremiumMedia(filePath) {
   const { stdout } = await execFilePromise("ffprobe", [
     "-v", "error",
@@ -4040,6 +4147,8 @@ async function compressPremiumIntroductionVideo(inputPath, outputPath) {
     "-c:v", "libx264",
     "-preset", "veryfast",
     "-pix_fmt", "yuv420p",
+    "-af",
+    "highpass=f=80,lowpass=f=9000,afftdn=nr=18:nf=-35:tn=1:gs=8,alimiter=limit=0.95",
     "-c:a", "aac",
     "-b:a", "96k",
     "-ar", "44100",
@@ -16828,18 +16937,35 @@ Africa Payment: ${payment.africa}`
       );
     }
 
+    // Stop Printo's dancing at the actual final spoken word. ElevenLabs MP3
+    // files can contain extra encoded silence after speech, so measure the
+    // beginning of the final silence instead of using the full MP3 duration.
+    const birthdaySpokenEndSeconds = await probeSpokenAudioEndSeconds(
+      voicePath,
+      birthdayVoiceDurationSeconds
+    );
     const birthdayVoiceDelaySeconds = 0.4;
-    const birthdayVoiceTailSeconds = 1.0;
+    const birthdayFinalWordSafetySeconds = 0.08;
     const birthdayOutputDuration = Math.min(
       60,
       Math.max(
-        10,
-        Math.ceil((birthdayVoiceDurationSeconds + birthdayVoiceDelaySeconds + birthdayVoiceTailSeconds) * 10) / 10
+        1.5,
+        birthdayVoiceDelaySeconds +
+          birthdaySpokenEndSeconds +
+          birthdayFinalWordSafetySeconds
       )
     );
     const birthdayVoiceDelayMs = Math.round(birthdayVoiceDelaySeconds * 1000);
-    const birthdayMusicFadeOutStart = Math.max(0, birthdayOutputDuration - 0.8).toFixed(2);
-    const birthdayDurationText = birthdayOutputDuration.toFixed(2);
+    const birthdayMusicFadeDuration = Math.min(
+      0.22,
+      Math.max(0.08, birthdayOutputDuration / 20)
+    );
+    const birthdayMusicFadeOutStart = Math.max(
+      0,
+      birthdayOutputDuration - birthdayMusicFadeDuration
+    ).toFixed(3);
+    const birthdayMusicFadeDurationText = birthdayMusicFadeDuration.toFixed(3);
+    const birthdayDurationText = birthdayOutputDuration.toFixed(3);
 
     // Memory-safe Printo Birthday production layout.
     // First, burn all text into one still image. Then the video stage only has
@@ -16886,7 +17012,7 @@ Africa Payment: ${payment.africa}`
       `apad=pad_dur=${birthdayDurationText},atrim=0:${birthdayDurationText}[voice];` +
       `[3:a]aresample=48000:osf=fltp:ochl=stereo,` +
       `volume=0.28,afade=t=in:st=0:d=0.35,` +
-      `afade=t=out:st=${birthdayMusicFadeOutStart}:d=0.8,` +
+      `afade=t=out:st=${birthdayMusicFadeOutStart}:d=${birthdayMusicFadeDurationText},` +
       `apad=pad_dur=${birthdayDurationText},atrim=0:${birthdayDurationText}[music];` +
       `[music][voice]amix=inputs=2:duration=longest:dropout_transition=2:normalize=0,` +
       `loudnorm=I=-16:TP=-1.5:LRA=11,aresample=48000:osf=fltp:ochl=stereo[aout]`;
@@ -16955,7 +17081,9 @@ Africa Payment: ${payment.africa}`
       renderSize: `${BIRTHDAY_RENDER_WIDTH}x${BIRTHDAY_RENDER_HEIGHT}`,
       queueDepth: birthdayRenderQueueDepth + 1,
       voiceDurationSeconds: birthdayVoiceDurationSeconds,
+      spokenEndSeconds: birthdaySpokenEndSeconds,
       outputDurationSeconds: birthdayOutputDuration,
+      stopsAtFinalWord: true,
       voiceText: voiceResult.text,
       toNameLines,
       fromNameLines,
@@ -18548,9 +18676,19 @@ async function renderPremiumOrderVideo({ orderId, req, publicBaseUrl = "" }) {
 
     const introProbe = await probePremiumMedia(introPath);
     const musicProbe = await probePremiumMedia(selectedMusicPath);
-    const introDuration = Math.max(
+    const introMediaDuration = Math.max(
       1,
       Math.min(PREMIUM_VIDEO_MAX_SECONDS, Number(introProbe.duration || 1))
+    );
+    const detectedIntroSpokenEnd = introProbe.hasAudio
+      ? await probeSpokenAudioEndSeconds(introPath, introMediaDuration)
+      : introMediaDuration;
+    const introDuration = Math.max(
+      1,
+      Math.min(
+        introMediaDuration,
+        Number(detectedIntroSpokenEnd || introMediaDuration) + 0.08
+      )
     );
     // Final Premium sequence: sender introduction starts immediately.
     // The recipient photo and custom music begin at the exact frame where
@@ -18769,8 +18907,10 @@ async function renderPremiumOrderVideo({ orderId, req, publicBaseUrl = "" }) {
     if (introAudioIndex >= 0) {
       audioFilters.push(
         `[${introAudioIndex}:a]atrim=0:${introDuration},asetpts=PTS-STARTPTS,` +
-        `loudnorm=I=-16:TP=-1.5:LRA=11,volume=1.22,` +
-        `afade=t=out:st=${Math.max(0, introDuration - 0.12)}:d=0.12,` +
+        `highpass=f=80,lowpass=f=9000,` +
+        `afftdn=nr=18:nf=-35:tn=1:gs=8,` +
+        `loudnorm=I=-16:TP=-1.5:LRA=7,volume=1.08,` +
+        `afade=t=out:st=${Math.max(0, introDuration - 0.08)}:d=0.08,` +
         `apad=pad_dur=${introDuration},atrim=0:${introDuration}[intro_exact]`
       );
     } else {
@@ -18787,7 +18927,10 @@ async function renderPremiumOrderVideo({ orderId, req, publicBaseUrl = "" }) {
     console.log("Premium exact switch timing:", {
       orderId,
       openingDuration,
+      introMediaDuration,
+      detectedIntroSpokenEnd,
       introDuration,
+      stopsIntroductionAtFinalWord: true,
       recipientPhotoStartsAt: introEnd,
       tributeMusicStartsAt: introEnd,
       noOpeningDelay: true,
@@ -19495,8 +19638,20 @@ app.get("/api/customer/account/dashboard", async (req,res)=>{
     const accountRow=account.rows[0];
     const phone=normalizePrintoPhone(accountRow.phone_e164||"");
     const status=await getGreetingAccessStatus(identity.customerKey,printoPhoneDigits(phone));
-    const videos=await listStandardGreetingVideos(identity.customerKey);
-    return res.json({ok:true,phone,email:accountRow.account_type==="legacy_email"?accountRow.email:"",...status,videos});
+    const [standardVideos,premiumVideos]=await Promise.all([
+      listStandardGreetingVideos(identity.customerKey),
+      listPremiumGreetingVideos(identity.customerKey)
+    ]);
+    const videos=mergeCustomerFinishedVideos(standardVideos,premiumVideos);
+    return res.json({
+      ok:true,
+      phone,
+      email:accountRow.account_type==="legacy_email"?accountRow.email:"",
+      ...status,
+      videos,
+      standardVideos,
+      premiumVideos
+    });
   }catch(error){return res.status(500).json({ok:false,error:error.message});}
 });
 
@@ -19504,8 +19659,12 @@ app.get("/api/customer/dashboard/:customerId", async (req,res)=>{
   try {
     const identity=getGreetingCustomerIdentity(req,{customerId:req.params.customerId,customerPhone:req.query.phone||"",email:req.query.email||""});
     const status=await getGreetingAccessStatus(identity.customerKey,identity.contactPhone);
-    const videos=await listStandardGreetingVideos(identity.customerKey);
-    res.json({ok:true,...status,videos});
+    const [standardVideos,premiumVideos]=await Promise.all([
+      listStandardGreetingVideos(identity.customerKey),
+      listPremiumGreetingVideos(identity.customerKey)
+    ]);
+    const videos=mergeCustomerFinishedVideos(standardVideos,premiumVideos);
+    res.json({ok:true,...status,videos,standardVideos,premiumVideos});
   } catch(error){res.status(500).json({ok:false,error:error.message});}
 });
 
@@ -19549,7 +19708,198 @@ app.get("/standard-checkout", (_req, res) => {
 
 app.get("/subscriptions", (req,res)=>res.type('html').send(`<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><title>Printo Plans</title><style>*{box-sizing:border-box}body{margin:0;font-family:Arial;background:linear-gradient(150deg,#071b61,#0b63ce);color:#fff;padding:24px}.wrap{max-width:1180px;margin:auto;text-align:center}.topbar{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}.close-link{background:#fff;color:#082a8f;text-decoration:none;padding:11px 16px;border-radius:999px;font-weight:900}.section{margin:28px 0 38px}.section-title{font-size:30px;margin:0 0 8px}.section-sub{margin:0 0 18px}.plans{display:grid;grid-template-columns:repeat(4,1fr);gap:16px}.plan{background:#fff;color:#082a8f;border:3px solid #ffd21f;border-radius:22px;padding:22px;position:relative}.plan.premium{border-color:#c13cff;box-shadow:0 10px 28px rgba(0,0,0,.18)}.badge{display:inline-block;background:#123faa;color:#fff;border-radius:999px;padding:7px 12px;font-size:13px;font-weight:900;margin-bottom:8px}.premium .badge{background:#7b2cbf}.price{font-size:34px;font-weight:900}.plan a{display:block;background:#7b2cbf;color:#fff;text-decoration:none;padding:14px;border-radius:12px;font-weight:900;margin-top:16px}.standard a{background:#123faa}.best{transform:scale(1.03)}.note{background:#fff4b8;color:#082a8f;border:3px solid #ffd21f;border-radius:18px;padding:16px;margin:0 auto 20px;max-width:820px;font-weight:900}@media(max-width:950px){.plans{grid-template-columns:1fr 1fr}}@media(max-width:560px){body{padding:16px}.plans{grid-template-columns:1fr}.best{transform:none}.topbar{justify-content:center}.section-title{font-size:25px}}</style></head><body><main class="wrap"><div class="topbar"><h1>⭐ Printo Credits & Subscriptions</h1><a class="close-link" href="/greetings">✕ Close / Return to Studio</a></div><div class="note">🎁 Each verified phone number receives 100 FREE credits once — enough for 5 standard creations. Each standard creation uses 20 credits.</div><p>Use one universal Printo credit wallet for Standard, Premium Video, and Premium Multi-Image creations.</p><section class="section"><h2 class="section-title">🎁 Standard Greeting Plans</h2><p class="section-sub">For personalized standard greeting video cards with names, messages, Printo music and voice.</p><div class="plans"><article class="plan standard"><span class="badge">STANDARD</span><h2>Single Creation</h2><div class="price">$4.99</div><p>20 credits • 1 standard creation</p><a href="/standard-checkout">Buy One</a></article><article class="plan standard"><span class="badge">STANDARD</span><h2>Monthly</h2><div class="price">$${PRINTO_STANDARD_SUBSCRIPTION_PRICES.monthly.toFixed(2)}</div><p>100 credits monthly • 5 standard creations</p><a href="${PRINTO_STANDARD_MONTHLY_SUBSCRIPTION_URL}">Choose Standard Monthly</a></article><article class="plan standard"><span class="badge">STANDARD</span><h2>6 Months</h2><div class="price">$${PRINTO_STANDARD_SUBSCRIPTION_PRICES.six_months.toFixed(2)}</div><p>600 credits • 30 standard creations</p><a href="${PRINTO_STANDARD_SIX_MONTH_SUBSCRIPTION_URL}">Choose Standard 6 Months</a></article><article class="plan standard best"><span class="badge">BEST STANDARD VALUE</span><h2>1 Year</h2><div class="price">$${PRINTO_STANDARD_SUBSCRIPTION_PRICES.yearly.toFixed(2)}</div><p>1,200 credits • 60 standard creations</p><a href="${PRINTO_STANDARD_YEARLY_SUBSCRIPTION_URL}">Choose Standard Annual</a></article></div></section><section class="section"><h2 class="section-title">🌟 Premium Subscription Plans</h2><p class="section-sub">For Premium Tribute and enhanced personalized video experiences. Credit costs: Standard 20, Premium Video 25, Premium Multi-Image 50.</p><div class="plans"><article class="plan premium"><span class="badge">PREMIUM</span><h2>Monthly</h2><div class="price">$${PRINTO_SUBSCRIPTION_PRICES.monthly.toFixed(2)}</div><p>100 credits now, then 100 credits each active month</p><a href="${PRINTO_MONTHLY_SUBSCRIPTION_URL}">Choose Premium Monthly</a></article><article class="plan premium"><span class="badge">PREMIUM</span><h2>6 Months</h2><div class="price">$${PRINTO_SUBSCRIPTION_PRICES.six_months.toFixed(2)}</div><p>100 credits monthly for 6 months</p><a href="${PRINTO_SIX_MONTH_SUBSCRIPTION_URL}">Choose Premium 6 Months</a></article><article class="plan premium best"><span class="badge">BEST PREMIUM VALUE</span><h2>1 Year</h2><div class="price">$${PRINTO_SUBSCRIPTION_PRICES.yearly.toFixed(2)}</div><p>100 credits monthly for 12 months</p><a href="${PRINTO_YEARLY_SUBSCRIPTION_URL}">Choose Premium Annual</a></article></div></section><p><a class="close-link" href="/greetings">← Return to Printo Greeting Studio</a></p></main></body></html>`));
 
-app.get("/customer-dashboard", (req,res)=>res.type('html').send(`<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><title>My Printo Dashboard</title><style>body{font-family:Arial;margin:0;background:#082a8f;color:#fff;padding:20px}.wrap{max-width:900px;margin:auto}.head{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}.close-link{background:#fff;color:#082a8f;text-decoration:none;padding:11px 16px;border-radius:999px;font-weight:900}.card{background:#fff;color:#082a8f;border-radius:18px;padding:18px;margin:14px 0}.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}.stat{background:#edf4ff;padding:15px;border-radius:14px;text-align:center}.buttons a{display:inline-block;margin:6px;padding:12px 16px;border-radius:12px;background:#7b2cbf;color:#fff;text-decoration:none;font-weight:bold}.video{border-top:1px solid #ddd;padding:12px 0}@media(max-width:600px){.stats{grid-template-columns:1fr}.head{justify-content:center}}</style></head><body><main class="wrap"><div class="head"><h1>⭐ My Printo Dashboard</h1><a class="close-link" href="/greetings">✕ Close / Return to Studio</a></div><div id="content" class="card">Loading…</div></main><script>let key=localStorage.getItem('printoGreetingCustomerKey')||'';if(!key){window.location.replace('/customer-login?next=%2Fcustomer-dashboard')}else fetch('/api/customer/account/dashboard',{cache:'no-store',headers:{'x-printo-customer-key':key}}).then(r=>r.json()).then(d=>{if(!d.ok)throw Error(d.error);document.getElementById('content').innerHTML='<div style="background:#fff4b8;border:2px solid #ffd21f;border-radius:14px;padding:14px;margin-bottom:14px;font-weight:900">🎁 Welcome Bonus: Each verified phone number receives 100 FREE credits once — enough for 5 standard creations.</div><div class="stats"><div class="stat"><h2>'+d.creditBalance+'</h2>Credits</div><div class="stat"><h2>'+d.remainingCreations+'</h2>Standard Creations Remaining</div><div class="stat"><h2>'+String(d.subscriptionPlan||'Free Welcome')+'</h2>Plan</div></div><div class="buttons"><a href="/birthday?lang=en&template=birthday">'+((Number(d.totalGenerated||0)>0||d.videos.length)?'Create Another Greeting':'Create Your First Greeting')+'</a><a href="/subscriptions">Buy Credits / Subscribe</a><a href="/greetings">✕ Close / Return to Studio</a></div><h2>My Finished Videos</h2>'+(d.videos.length?d.videos.map(v=>'<div class="video"><strong>For '+(v.toName||'Recipient')+'</strong><br><a href="'+v.resultUrl+'">▶ Play</a> &nbsp; <a href="'+v.downloadUrl+'">⬇ Download</a></div>').join(''):((Number(d.totalGenerated||0)>0)?'<p>Your earlier creation record is saved, but its old temporary video file is no longer available. New finished videos will remain here after deployments and restarts.</p>':'<p>🎉 You have not created your first greeting yet. Click <strong>Create Your First Greeting</strong> to surprise someone special.</p>'))}).catch(e=>{localStorage.removeItem('printoGreetingCustomerKey');window.location.replace('/customer-login?next=%2Fcustomer-dashboard')})</script></body></html>`));
+app.get("/customer-dashboard", (req, res) => {
+  const language = normalizePrintoStudioLanguage(req.query.lang || "en");
+  const studioHref = addPrintoLanguageToPath("/greetings", language);
+  const loginNext = addPrintoLanguageToPath("/customer-dashboard", language);
+
+  return res.type("html").send(`<!doctype html>
+<html lang="${language}" dir="${language === "ar" ? "rtl" : "ltr"}">
+<head>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>My Printo Dashboard</title>
+<style>
+*{box-sizing:border-box}
+body{
+  font-family:Arial;
+  margin:0;
+  background:#082a8f;
+  color:#fff;
+  padding:92px 20px 20px;
+}
+.wrap{max-width:900px;margin:auto}
+.head{
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  gap:14px;
+  flex-wrap:wrap;
+}
+.head h1{margin:0}
+.close-link{
+  background:#fff;
+  color:#082a8f;
+  text-decoration:none;
+  padding:11px 16px;
+  border-radius:999px;
+  font-weight:900;
+  line-height:1.25;
+  text-align:center;
+}
+.card{
+  background:#fff;
+  color:#082a8f;
+  border-radius:18px;
+  padding:18px;
+  margin:18px 0;
+}
+.stats{
+  display:grid;
+  grid-template-columns:repeat(3,1fr);
+  gap:10px
+}
+.stat{
+  background:#edf4ff;
+  padding:15px;
+  border-radius:14px;
+  text-align:center
+}
+.buttons{
+  display:flex;
+  flex-wrap:wrap;
+  gap:10px;
+  margin:8px 0 18px;
+}
+.buttons a{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  padding:12px 16px;
+  border-radius:12px;
+  background:#7b2cbf;
+  color:#fff;
+  text-decoration:none;
+  font-weight:bold;
+  text-align:center;
+}
+.video{
+  border-top:1px solid #ddd;
+  padding:14px 0;
+}
+.videoType{
+  display:inline-block;
+  margin-bottom:6px;
+  padding:5px 9px;
+  border-radius:999px;
+  background:#123faa;
+  color:#fff;
+  font-size:12px;
+  font-weight:900;
+}
+.videoType.premium{background:#7b2cbf}
+.videoLinks a{font-weight:800}
+@media(max-width:600px){
+  body{padding:82px 12px 12px}
+  .stats{grid-template-columns:1fr}
+  .head{justify-content:center;text-align:center}
+  .head h1{width:100%;font-size:28px}
+  .close-link{width:100%}
+  .buttons{display:grid;grid-template-columns:1fr}
+  .buttons a{width:100%}
+  .card{padding:14px}
+}
+</style>
+</head>
+<body>
+<main class="wrap">
+  <div class="head">
+    <h1>⭐ My Printo Dashboard</h1>
+    <a class="close-link" href="${studioHref}">✕ Close / Return to Studio</a>
+  </div>
+  <div id="content" class="card">Loading…</div>
+</main>
+<script>
+const dashboardLanguage=${JSON.stringify(language)};
+const loginNext=${JSON.stringify(loginNext)};
+const studioHref=${JSON.stringify(studioHref)};
+const key=localStorage.getItem('printoGreetingCustomerKey')||'';
+
+function escapeDashboardHtml(value){
+  return String(value==null?'':value)
+    .replace(/&/g,'&amp;')
+    .replace(/</g,'&lt;')
+    .replace(/>/g,'&gt;')
+    .replace(/"/g,'&quot;')
+    .replace(/'/g,'&#039;');
+}
+
+function safeDashboardUrl(value){
+  const raw=String(value||'');
+  if(!raw.startsWith('/')||raw.startsWith('//'))return '#';
+  return raw;
+}
+
+function renderFinishedVideo(video){
+  const isPremium=String(video.type||'standard')==='premium';
+  const label=isPremium?'🌟 Premium Tribute Video':'🎁 Standard Greeting Video';
+  const typeClass=isPremium?'videoType premium':'videoType';
+  const recipient=escapeDashboardHtml(video.toName||'Recipient');
+  const playUrl=escapeDashboardHtml(safeDashboardUrl(video.resultUrl));
+  const downloadUrl=escapeDashboardHtml(safeDashboardUrl(video.downloadUrl));
+
+  return '<div class="video">'+
+    '<span class="'+typeClass+'">'+label+'</span><br>'+
+    '<strong>For '+recipient+'</strong><br>'+
+    '<span class="videoLinks"><a href="'+playUrl+'">▶ Play</a> &nbsp; '+
+    '<a href="'+downloadUrl+'">⬇ Download</a></span>'+
+    '</div>';
+}
+
+if(!key){
+  window.location.replace('/customer-login?next='+encodeURIComponent(loginNext));
+}else{
+  fetch('/api/customer/account/dashboard',{
+    cache:'no-store',
+    headers:{'x-printo-customer-key':key}
+  })
+  .then(response=>response.json())
+  .then(data=>{
+    if(!data.ok)throw new Error(data.error||'Please log in.');
+    const videos=Array.isArray(data.videos)?data.videos:[];
+    const createHref='/birthday?lang='+encodeURIComponent(dashboardLanguage)+'&template=birthday';
+    const plansHref='/subscriptions?lang='+encodeURIComponent(dashboardLanguage);
+    const hasCreations=Number(data.totalGenerated||0)>0||videos.length>0;
+
+    document.getElementById('content').innerHTML=
+      '<div style="background:#fff4b8;border:2px solid #ffd21f;border-radius:14px;padding:14px;margin-bottom:14px;font-weight:900">'+
+      '🎁 Welcome Bonus: Each verified phone number receives 100 FREE credits once — enough for 5 standard creations.'+
+      '</div>'+
+      '<div class="stats">'+
+        '<div class="stat"><h2>'+Number(data.creditBalance||0)+'</h2>Credits</div>'+
+        '<div class="stat"><h2>'+Number(data.remainingCreations||0)+'</h2>Standard Creations Remaining</div>'+
+        '<div class="stat"><h2>'+escapeDashboardHtml(data.subscriptionPlan||'Free Welcome')+'</h2>Plan</div>'+
+      '</div>'+
+      '<div class="buttons">'+
+        '<a href="'+createHref+'">'+(hasCreations?'Create Another Greeting':'Create Your First Greeting')+'</a>'+
+        '<a href="'+plansHref+'">Buy Credits / Subscribe</a>'+
+        '<a href="'+escapeDashboardHtml(studioHref)+'">✕ Close / Return to Studio</a>'+
+      '</div>'+
+      '<h2>My Finished Videos</h2>'+
+      (videos.length
+        ? videos.map(renderFinishedVideo).join('')
+        : (Number(data.totalGenerated||0)>0
+          ? '<p>Your earlier creation record is saved, but its old temporary video file is no longer available. New finished videos will remain here after deployments and restarts.</p>'
+          : '<p>🎉 You have not created your first greeting yet. Click <strong>Create Your First Greeting</strong> to surprise someone special.</p>'));
+  })
+  .catch(()=>{
+    localStorage.removeItem('printoGreetingCustomerKey');
+    window.location.replace('/customer-login?next='+encodeURIComponent(loginNext));
+  });
+}
+</script>
+</body>
+</html>`);
+});
 
 app.get("/g/:id", async (req, res) => {
   res.setHeader("Cache-Control", "public, max-age=60, must-revalidate");
