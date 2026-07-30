@@ -196,6 +196,8 @@ const PREMIUM_VIDEO_STORED_MAX_BYTES = 40 * 1024 * 1024;
 const PREMIUM_VIDEO_MAX_SECONDS = 60;
 const PREMIUM_MUSIC_MAX_BYTES = 30 * 1024 * 1024;
 const PREMIUM_FINAL_VIDEO_MAX_BYTES = 70 * 1024 * 1024;
+const PREMIUM_MULTI_IMAGE_MIN_COUNT = 2;
+const PREMIUM_MULTI_IMAGE_MAX_COUNT = 8;
 
 // Printo Studio uses one universal credit wallet for every creation service.
 // Each verified phone number receives 100 welcome credits only once.
@@ -253,22 +255,22 @@ const premiumUpload = multer({
   storage: premiumTempStorage,
   limits: {
     fileSize: PREMIUM_VIDEO_UPLOAD_MAX_BYTES,
-    files: 2,
-    fields: 20
+    files: PREMIUM_MULTI_IMAGE_MAX_COUNT + 1,
+    fields: 24
   },
   fileFilter: (_req, file, cb) => {
     const fieldName = String(file.fieldname || "");
     const mime = String(file.mimetype || "").toLowerCase();
 
-    if (fieldName === "recipientPhoto" && !mime.startsWith("image/")) {
-      return cb(new Error("The recipient photo must be an image file."));
+    if (["recipientPhoto", "recipientImages"].includes(fieldName) && !mime.startsWith("image/")) {
+      return cb(new Error("Every Premium recipient file must be an image."));
     }
 
     if (fieldName === "introVideo" && !mime.startsWith("video/")) {
       return cb(new Error("The personal introduction must be a video file."));
     }
 
-    if (!["recipientPhoto", "introVideo"].includes(fieldName)) {
+    if (!["recipientPhoto", "recipientImages", "introVideo"].includes(fieldName)) {
       return cb(new Error("Unexpected Premium upload field."));
     }
 
@@ -354,6 +356,7 @@ function shouldInjectPrintoStudioLanguageTools(pathname = "") {
     "/generate-birthday",
     "/greetings/create",
     "/greetings/premium",
+    "/greetings/premium-multi-image",
     "/premium-greeting",
     "/customer-login",
     "/subscriptions",
@@ -365,6 +368,7 @@ function shouldInjectPrintoStudioLanguageTools(pathname = "") {
   return (
     exactPaths.has(pathValue) ||
     pathValue.startsWith("/g/") ||
+    pathValue.startsWith("/premium-result/") ||
     pathValue.startsWith("/birthday-progress/")
   );
 }
@@ -497,9 +501,9 @@ html[dir="rtl"] #printoLanguageDock{inset-inline-end:auto;inset-inline-start:12p
     return [
       "/greetings","/greeting","/birthday","/birthday-generator",
       "/generate-birthday","/greetings/create","/greetings/premium",
-      "/premium-greeting","/customer-login","/subscriptions",
+      "/premium-greeting","/greetings/premium-multi-image","/customer-login","/subscriptions",
       "/customer-dashboard","/greeting-result","/greeting-test"
-    ].indexOf(pathname)>=0||pathname.indexOf("/g/")===0||pathname.indexOf("/birthday-progress/")===0;
+    ].indexOf(pathname)>=0||pathname.indexOf("/g/")===0||pathname.indexOf("/premium-result/")===0||pathname.indexOf("/birthday-progress/")===0;
   }
 
   function addLanguageToLinks(root){
@@ -2878,6 +2882,7 @@ async function ensureGreetingAccessTables() {
   await pool.query(`
     CREATE TABLE IF NOT EXISTS premium_greeting_orders (
       order_id TEXT PRIMARY KEY,
+      creation_type TEXT NOT NULL DEFAULT 'premium_video',
       customer_key TEXT NOT NULL,
       contact_phone TEXT NOT NULL DEFAULT '',
       customer_email TEXT NOT NULL DEFAULT '',
@@ -2921,6 +2926,7 @@ async function ensureGreetingAccessTables() {
   `);
 
   // Upgrade existing databases without deleting any Premium orders.
+  await pool.query(`ALTER TABLE premium_greeting_orders ADD COLUMN IF NOT EXISTS creation_type TEXT NOT NULL DEFAULT 'premium_video'`);
   await pool.query(`ALTER TABLE premium_greeting_orders ADD COLUMN IF NOT EXISTS recipient_photo_data BYTEA`);
   await pool.query(`ALTER TABLE premium_greeting_orders ADD COLUMN IF NOT EXISTS recipient_photo_mime TEXT NOT NULL DEFAULT ''`);
   await pool.query(`ALTER TABLE premium_greeting_orders ADD COLUMN IF NOT EXISTS recipient_photo_name TEXT NOT NULL DEFAULT ''`);
@@ -2942,6 +2948,23 @@ async function ensureGreetingAccessTables() {
   await pool.query(`ALTER TABLE premium_greeting_orders ADD COLUMN IF NOT EXISTS render_status TEXT NOT NULL DEFAULT 'not_started'`);
   await pool.query(`ALTER TABLE premium_greeting_orders ADD COLUMN IF NOT EXISTS render_error TEXT NOT NULL DEFAULT ''`);
   await pool.query(`ALTER TABLE premium_greeting_orders ADD COLUMN IF NOT EXISTS media_token TEXT NOT NULL DEFAULT ''`);
+
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS premium_greeting_images (
+      order_id TEXT NOT NULL REFERENCES premium_greeting_orders(order_id) ON DELETE CASCADE,
+      image_position INTEGER NOT NULL,
+      image_data BYTEA NOT NULL,
+      image_mime TEXT NOT NULL DEFAULT 'image/jpeg',
+      image_name TEXT NOT NULL DEFAULT '',
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      PRIMARY KEY (order_id, image_position)
+    )
+  `);
+
+  await pool.query(`
+    CREATE INDEX IF NOT EXISTS premium_greeting_images_order_idx
+    ON premium_greeting_images(order_id, image_position)
+  `);
 
   await pool.query(`
     CREATE INDEX IF NOT EXISTS premium_greeting_orders_customer_idx
@@ -3426,6 +3449,7 @@ async function listPremiumGreetingVideos(customerKey) {
     `SELECT order_id,
             recipient_name,
             sender_name,
+            creation_type,
             personal_message,
             media_token,
             created_at,
@@ -3444,19 +3468,24 @@ async function listPremiumGreetingVideos(customerKey) {
     const orderId = String(row.order_id || "");
     const token = String(row.media_token || "");
     const baseUrl =
-      `/premium-media/${encodeURIComponent(orderId)}/final` +
+      `/premium-result/${encodeURIComponent(orderId)}` +
       `?token=${encodeURIComponent(token)}`;
+    const downloadUrl =
+      `/premium-media/${encodeURIComponent(orderId)}/final` +
+      `?token=${encodeURIComponent(token)}&download=1`;
 
     return {
       id: orderId,
-      type: "premium",
+      type: String(row.creation_type || "premium_video") === "premium_multi_image"
+        ? "premium_multi_image"
+        : "premium",
       toName: row.recipient_name || "",
       fromName: row.sender_name || "",
       message: row.personal_message || "",
       language: "en",
       createdAt: row.updated_at || row.created_at || null,
       resultUrl: baseUrl,
-      downloadUrl: `${baseUrl}&download=1`
+      downloadUrl
     };
   });
 }
@@ -4070,7 +4099,7 @@ async function probeSpokenAudioEndSeconds(filePath, totalDurationSeconds) {
       "-nostdin",
       "-i", filePath,
       "-af",
-      "highpass=f=80,lowpass=f=9000,afftdn=nr=16:nf=-36:tn=1:gs=6,silencedetect=noise=-38dB:d=0.18",
+      "highpass=f=90,lowpass=f=8500,afftdn=nr=22:nf=-38:tn=1:gs=8,agate=threshold=0.016:ratio=2.2:attack=8:release=180,silencedetect=noise=-36dB:d=0.18",
       "-f", "null",
       "-"
     ], {
@@ -4148,7 +4177,7 @@ async function compressPremiumIntroductionVideo(inputPath, outputPath) {
     "-preset", "veryfast",
     "-pix_fmt", "yuv420p",
     "-af",
-    "highpass=f=80,lowpass=f=9000,afftdn=nr=18:nf=-35:tn=1:gs=8,alimiter=limit=0.95",
+    "highpass=f=90,lowpass=f=8500,afftdn=nr=24:nf=-38:tn=1:gs=10,agate=threshold=0.018:ratio=2.5:attack=8:release=220,alimiter=limit=0.95",
     "-c:a", "aac",
     "-b:a", "96k",
     "-ar", "44100",
@@ -4262,11 +4291,27 @@ async function createPremiumGreetingDashboardJob({
   language = "en",
   introDuration = 0,
   originalVideoBytes = 0,
-  storedVideoBytes = 0
+  storedVideoBytes = 0,
+  creationType = "premium_video",
+  imageCount = 1,
+  imageUrls = []
 }) {
-  const instructions = `PRINTO PREMIUM PERSONAL TRIBUTE ORDER
+  const normalizedCreationType = normalizePrintoCreationType(creationType);
+  const isMultiImage = normalizedCreationType === "premium_multi_image";
+  const serviceLabel = isMultiImage
+    ? "PRINTO PREMIUM MULTI-IMAGE FLIP TRIBUTE"
+    : "PRINTO PREMIUM PERSONAL TRIBUTE";
+  const creationCreditCost = getPrintoCreationCreditCost(normalizedCreationType);
+  const extraImageList = Array.isArray(imageUrls) && imageUrls.length
+    ? imageUrls.map((url, index) => `Image ${index + 1}: ${url}`).join("\n")
+    : recipientPhotoUrl || "Not uploaded";
+
+  const instructions = `${serviceLabel} ORDER
 
 Premium order ID: ${orderId}
+Creation type: ${normalizedCreationType}
+Separate creation price: ${creationCreditCost} Printo credits
+Image count: ${Number(imageCount || 1)}
 Customer key: ${customerKey}
 Payment status: AWAITING PAYMENT
 Language: ${language}
@@ -4285,8 +4330,8 @@ ${songStyle || "Worker to discuss with customer"}
 Story / memories / song notes:
 ${tributeNotes || "Worker to discuss with customer"}
 
-Recipient photo:
-${recipientPhotoUrl || "Not uploaded"}
+Recipient photo(s):
+${extraImageList}
 
 Personal introduction video:
 ${introVideoUrl || "Not uploaded"}
@@ -4337,7 +4382,7 @@ NEXT ACTION FOR WORKER:
         created_at,
         updated_at
       )
-      VALUES ($1, 'AGENT', 'pending', 'GREETING_PREMIUM', $2, $3, $4, $5, $6, $7, $8, 1, 1, 0, NOW(), NOW())
+      VALUES ($1, 'AGENT', 'pending', $9, $2, $3, $4, $5, $6, $7, $8, 1, 1, 0, NOW(), NOW())
       RETURNING *
       `,
       [
@@ -4345,10 +4390,11 @@ NEXT ACTION FOR WORKER:
         senderName || recipientName || "Premium Greeting Customer",
         customerEmail || "",
         contactPhone || "",
-        `Printo Premium Tribute - ${recipientName}`,
+        `${isMultiImage ? "Printo Premium Multi-Image Flip" : "Printo Premium Tribute"} - ${recipientName}`,
         primaryFileUrl,
         primaryMime,
-        instructions
+        instructions,
+        isMultiImage ? "GREETING_PREMIUM_MULTI_IMAGE" : "GREETING_PREMIUM"
       ]
     );
 
@@ -15676,7 +15722,7 @@ app.get("/worker-dashboard", requireDashboardKey, async (req, res) => {
   }
 
   function renderPremiumAssetLinks(job) {
-    if (String(job.service_type || "").toUpperCase() !== "GREETING_PREMIUM") return "";
+    if (!String(job.service_type || "").toUpperCase().startsWith("GREETING_PREMIUM")) return "";
 
     const photoUrl = extractLabeledInstructionUrl(job, "Recipient photo");
     const videoUrl = extractLabeledInstructionUrl(job, "Personal introduction video");
@@ -15684,7 +15730,9 @@ app.get("/worker-dashboard", requireDashboardKey, async (req, res) => {
     const combined = [job.instructions || "", job.notes || "", job.error_message || ""].join("\\n");
     const urls = combined.match(/https?:\\/\\/[^\\s<]+/g) || [];
     const musicUrl = urls.find((url) => url.includes("/premium-media/") && url.includes("/music?")) || "";
-    const finalUrl = urls.find((url) => url.includes("/premium-media/") && url.includes("/final?")) || "";
+    const finalShareUrl = urls.find((url) => url.includes("/premium-result/")) || "";
+    const finalDownloadUrl = urls.find((url) => url.includes("/premium-media/") && url.includes("/final?")) || "";
+    const finalUrl = finalShareUrl || finalDownloadUrl;
     const actions = [];
 
     if (orderId) {
@@ -15735,7 +15783,14 @@ app.get("/worker-dashboard", requireDashboardKey, async (req, res) => {
     if (finalUrl) {
       actions.push(
         '<a class="fileLink premiumAction" href="' + h(finalUrl) +
-        '" target="_blank" rel="noopener noreferrer">🎬 Play Finished Premium Video</a>'
+        '" target="_blank" rel="noopener noreferrer">🎬 Play & Share Finished Premium Video</a>'
+      );
+    }
+
+    if (finalDownloadUrl) {
+      actions.push(
+        '<a class="fileLink premiumAction" href="' + h(finalDownloadUrl) +
+        '" target="_blank" rel="noopener noreferrer">⬇ Download Finished Premium Video</a>'
       );
     }
 
@@ -17559,6 +17614,30 @@ function buildGreetingStudioHomePage(language = "en") {
   *{box-sizing:border-box}body{margin:0;font-family:Arial,sans-serif;background:radial-gradient(circle at top,#1b56c9 0,#082a8f 40%,#031442 100%);color:#fff;min-height:100vh}.wrap{max-width:1160px;margin:auto;padding:22px}.hero{text-align:center;padding:20px 10px 12px}.hero h1{font-size:42px;margin:6px}.hero p{font-size:18px;line-height:1.55;max-width:760px;margin:12px auto}.toplinks{display:flex;justify-content:center;gap:10px;flex-wrap:wrap;margin:16px 0}.toplinks button,.toplinks a{border:0;padding:12px 18px;border-radius:999px;text-decoration:none;font-weight:900;cursor:pointer;font-size:16px}.credits{background:#ffd21f;color:#082a8f}.home{background:#fff;color:#082a8f}.premium{position:relative;overflow:hidden;background:linear-gradient(110deg,#fff1a8,#fff,#e8f1ff);color:#071b61;border:3px solid #ffd21f;border-radius:28px;padding:24px;margin:22px 0 28px;box-shadow:0 18px 48px rgba(0,0,0,.3)}.premium-badge{display:inline-block;background:#123faa;color:#ffd21f;font-weight:900;padding:9px 16px;border-radius:999px}.premium-grid{display:grid;grid-template-columns:38% 1fr;gap:25px;align-items:center;margin-top:16px}.premium-media{position:relative;border-radius:24px;overflow:hidden;min-height:270px;background:#092b92;border:2px solid #3158b6;cursor:pointer;padding:0}.premium-media img{display:block;width:100%;height:100%;min-height:270px;object-fit:cover}.premium-media .play,.media .play{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:72px;height:72px;border-radius:50%;display:grid;place-items:center;background:#ffd21f;color:#082a8f;font-size:32px;box-shadow:0 10px 25px rgba(0,0,0,.3)}.premium h2{font-size:32px;margin:0 0 10px}.premium p{line-height:1.55}.premium ul{display:grid;grid-template-columns:1fr 1fr;gap:8px 20px;padding:0;list-style:none;font-weight:800}.premium-actions,.actions{display:flex;flex-wrap:wrap;gap:10px;margin-top:16px}.premium-actions a,.premium-actions button,.actions a,.actions button{border:0;border-radius:999px;padding:12px 16px;text-decoration:none;font-weight:900;cursor:pointer;font-size:14px}.watch,.secondary{background:#123faa;color:#fff}.buy{background:#0f9d58;color:#fff}.create{background:linear-gradient(90deg,#7b2cbf,#d63384);color:#fff}.worker{background:#25D366;color:#072b17}.choose{text-align:center;font-size:34px;margin:20px 0}.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:20px}.card{background:#fff;color:#0a286d;border-radius:24px;overflow:hidden;box-shadow:0 14px 30px rgba(0,0,0,.25);display:flex;flex-direction:column}.media{position:relative;border:0;padding:0;width:100%;aspect-ratio:16/9;background:#dbeafe;cursor:pointer;overflow:hidden}.media img{width:100%;height:100%;object-fit:cover;display:block;transition:transform .25s}.media:hover img{transform:scale(1.025)}.media .play{width:58px;height:58px;font-size:25px}.card-body{padding:18px;display:flex;flex-direction:column;flex:1}.card h3{font-size:23px;margin:0 0 8px}.card p{color:#475569;line-height:1.45;min-height:61px;margin:0}.actions{margin-top:auto}.actions a,.actions button{flex:1;text-align:center;min-width:125px}.modal{display:none;position:fixed;z-index:9999;inset:0;background:rgba(0,0,0,.84);padding:20px;align-items:center;justify-content:center}.modal.open{display:flex}.modal-box{width:min(920px,100%);background:#fff;color:#082a8f;border-radius:25px;padding:18px;box-shadow:0 25px 80px rgba(0,0,0,.55)}.modal-head{display:flex;justify-content:space-between;align-items:center;gap:10px}.modal-head h2{margin:5px}.modal-close{border:0;background:#e2e8f0;color:#0f172a;padding:10px 15px;border-radius:999px;font-weight:900;cursor:pointer}.modal-video{width:100%;border-radius:18px;margin-top:12px;display:block;max-height:68vh;background:#061b62}.modal-note{text-align:center;color:#475569;font-weight:700;line-height:1.45}.credit-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-top:15px}.credit-stat{background:#eff6ff;border:2px solid #bfdbfe;border-radius:16px;padding:17px;text-align:center}.credit-stat strong{display:block;font-size:30px;color:#7b2cbf}.credit-stat span{display:block;margin-top:5px;font-weight:800;color:#475569}.credit-status{text-align:center;padding:18px;font-weight:900;color:#475569}.legal{margin:38px 0 10px;background:#fff;color:#172554;border:3px solid #ffd21f;border-radius:26px;padding:26px;box-shadow:0 18px 48px rgba(0,0,0,.3)}.legal h2{text-align:center;color:#082a8f;font-size:30px;margin:0 0 8px}.legal-intro{text-align:center;color:#475569;max-width:850px;margin:0 auto 22px;line-height:1.6}.legal-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}.legal-card{background:#f8fafc;border:2px solid #dbeafe;border-radius:18px;padding:18px}.legal-card h3{color:#123faa;margin:0 0 9px;font-size:20px}.legal-card p,.legal-card li{color:#334155;line-height:1.6}.legal-card ul{padding-left:21px;margin:8px 0}.legal-alert{background:#fff7d6;border-color:#ffd21f}.legal-danger{background:#fff1f2;border-color:#fb7185}.legal-contact{text-align:center;background:#eff6ff;border:2px solid #93c5fd;border-radius:18px;padding:18px;margin-top:16px;color:#172554;line-height:1.65}.legal-contact a{color:#123faa;font-weight:900}.footer{text-align:center;padding:32px 10px;color:#dbeafe;font-weight:700}@media(max-width:850px){.grid{grid-template-columns:repeat(2,1fr)}.premium-grid{grid-template-columns:1fr}.premium-media img,.premium-media{min-height:230px}}@media(max-width:570px){.wrap{padding:12px}.hero h1{font-size:32px}.choose{font-size:28px}.grid{grid-template-columns:1fr}.premium{padding:16px}.premium h2{font-size:27px}.premium ul{grid-template-columns:1fr}.actions a,.actions button{min-width:100%}.modal{padding:8px}.modal-box{padding:12px}.credit-grid{grid-template-columns:1fr}.legal{padding:18px}.legal-grid{grid-template-columns:1fr}.legal h2{font-size:25px}}
   </style></head><body><main class="wrap"><section class="hero"><h1>🎁 ${t.title}</h1><p>${t.hero}</p><div class="toplinks"><button id="creditsButton" class="credits" type="button">⭐ ${t.credits}</button><a class="home" href="${studioUrl}" target="_blank" rel="noopener">🏠 ${t.studio}</a></div></section>
   <section class="premium"><span class="premium-badge">🌟 PREMIUM EXPERIENCE</span><div class="premium-grid"><button class="premium-media sample-open" type="button" data-video="/greeting-assets/premium-sample-video" data-poster="/greeting-assets/premium-tribute-sample.svg?lang=${encodeURIComponent(lang)}" data-title="Personal Tribute Music Video Card"><img src="/greeting-assets/premium-tribute-sample.svg?lang=${encodeURIComponent(lang)}" alt="Premium tribute sample"><span class="play">▶</span></button><div><h2>Personal Tribute Music Video Card</h2><p>Create a powerful personal tribute using the recipient photo, your personal introduction video, an original tribute song, names and a heartfelt message.</p><ul><li>✓ Recipient photo on screen</li><li>✓ Personal introduction video</li><li>✓ Original tribute song</li><li>✓ Recipient and sender names</li><li>✓ Personal message</li><li>✓ Downloadable finished video</li></ul><div class="premium-actions"><button class="watch sample-open" type="button" data-video="/greeting-assets/premium-sample-video" data-poster="/greeting-assets/premium-tribute-sample.svg?lang=${encodeURIComponent(lang)}" data-title="Personal Tribute Music Video Card">▶ ${t.watch}</button><a class="buy" href="${shopifyBase}" target="_blank" rel="noopener">🛒 ${t.buy}</a><a class="create account-required" href="${premiumOrderUrl}">✨ ${t.create}</a><a class="worker" href="${premiumWhatsAppUrl}" target="_blank" rel="noopener">💬 ${t.help}</a></div></div></div></section>
+  <section class="premium">
+    <span class="premium-badge">🌟 PREMIUM MULTI-IMAGE • ${PRINTO_CREATION_CREDIT_COSTS.premium_multi_image} CREDITS</span>
+    <div class="premium-grid">
+      <div class="premium-media" style="display:grid;place-items:center;background:linear-gradient(135deg,#123faa,#7b2cbf);min-height:270px">
+        <div style="font-size:72px">🖼️↔️🖼️</div>
+      </div>
+      <div>
+        <h2>Premium Multi-Image Flip Tribute</h2>
+        <p>Upload 2–8 recipient photos. After the personal introduction ends, the images flip one after another while the custom tribute music plays.</p>
+        <ul>
+          <li>✓ 2–8 recipient photos</li>
+          <li>✓ Flip-style image transitions</li>
+          <li>✓ Personal introduction video</li>
+          <li>✓ Custom tribute music</li>
+          <li>✓ Separate price: ${PRINTO_CREATION_CREDIT_COSTS.premium_multi_image} credits</li>
+          <li>✓ Share and download page</li>
+        </ul>
+        <div class="premium-actions">
+          <a class="create account-required" href="/greetings/premium-multi-image?lang=${encodeURIComponent(lang)}">✨ Create Multi-Image Flip</a>
+          <a class="worker" href="${premiumWhatsAppUrl}" target="_blank" rel="noopener">💬 ${t.help}</a>
+        </div>
+      </div>
+    </div>
+  </section>
   <h2 class="choose">${t.choose}</h2><section class="grid">${cards}</section>
   <section id="terms" class="legal">
     <h2>📜 Printto Studio Terms of Use, Privacy &amp; Refund Policy</h2>
@@ -17893,7 +17972,7 @@ function buildBirthdayGeneratorPage(language = "en", templateId = "birthday") {
 </html>`;
 }
 
-function buildPremiumGreetingOrderPage(language = "en") {
+function buildPremiumGreetingOrderPage(language = "en", creationType = "premium_video") {
   const lang = ["en", "es", "fr", "de", "pt", "ar", "zh"].includes(language)
     ? language
     : "en";
@@ -17928,6 +18007,29 @@ function buildPremiumGreetingOrderPage(language = "en") {
     zh: { title:"个人致敬音乐视频贺卡", intro:"填写订单信息，并上传收件人照片和您的个人介绍视频。保存订单后再付款。", recipient:"收件人姓名", sender:"发件人姓名", phone:"WhatsApp 电话", email:"电子邮件（可选）", message:"个人留言", songStyle:"致敬歌曲风格", notes:"故事、回忆、优点或歌曲内容", photo:"收件人照片", video:"您的个人介绍视频", submit:"保存高级订单", saving:"正在保存订单和文件…", required:"请填写必填项并选择两个文件。", success:"高级订单已保存。", pay:"选择付款方式", shopify:"Shopify 付款", africa:"非洲付款", worker:"通过 WhatsApp 发送给工作人员", back:"返回祝福工作室" }
   };
   const t = copy[lang] || copy.en;
+  const normalizedCreationType = normalizePrintoCreationType(creationType);
+  const isMultiImage = normalizedCreationType === "premium_multi_image";
+  const multiCopy = {
+    en: {
+      title: "Premium Multi-Image Flip Tribute",
+      intro: "Upload 2–8 photos and your personal introduction video. After your last spoken word, the photos flip one after another while the custom tribute music plays.",
+      photo: "Recipient photos (2–8)",
+      required: "Choose 2–8 recipient photos and one introduction video.",
+      submit: "Save Multi-Image Flip Order",
+      success: "Premium Multi-Image Flip order saved successfully."
+    },
+    es: { title:"Homenaje Premium con cambio de imágenes", intro:"Suba de 2 a 8 fotos y su video de introducción. Después de la última palabra, las fotos cambian mientras suena la música personalizada.", photo:"Fotos del destinatario (2–8)", required:"Elija de 2 a 8 fotos y un video de introducción.", submit:"Guardar pedido Multiimagen", success:"Pedido Multiimagen Premium guardado." },
+    fr: { title:"Hommage Premium multi-images", intro:"Importez 2 à 8 photos et votre vidéo d’introduction. Après votre dernier mot, les images s’enchaînent avec la musique personnalisée.", photo:"Photos du destinataire (2–8)", required:"Choisissez 2 à 8 photos et une vidéo d’introduction.", submit:"Enregistrer la commande multi-images", success:"Commande Premium multi-images enregistrée." },
+    de: { title:"Premium Multi-Bild-Flip-Tribute", intro:"Laden Sie 2–8 Fotos und Ihr Einführungsvideo hoch. Nach dem letzten gesprochenen Wort wechseln die Bilder zur eigenen Musik.", photo:"Empfängerfotos (2–8)", required:"Wählen Sie 2–8 Fotos und ein Einführungsvideo.", submit:"Multi-Bild-Bestellung speichern", success:"Premium Multi-Bild-Bestellung gespeichert." },
+    pt: { title:"Homenagem Premium com várias imagens", intro:"Envie de 2 a 8 fotos e seu vídeo de introdução. Depois da última palavra, as fotos mudam com a música personalizada.", photo:"Fotos do destinatário (2–8)", required:"Escolha de 2 a 8 fotos e um vídeo de introdução.", submit:"Salvar pedido Multi-Imagem", success:"Pedido Premium Multi-Imagem salvo." },
+    ar: { title:"تكريم Premium متعدد الصور", intro:"ارفع من صورتين إلى 8 صور وفيديو التقديم. بعد آخر كلمة، تتبدل الصور مع الموسيقى المخصصة.", photo:"صور المستلم (2–8)", required:"اختر من صورتين إلى 8 صور وفيديو تقديم واحد.", submit:"حفظ طلب الصور المتعددة", success:"تم حفظ طلب Premium متعدد الصور." },
+    zh: { title:"Premium 多图片翻转致敬", intro:"上传 2–8 张照片和介绍视频。最后一句话结束后，照片会随着自定义音乐依次切换。", photo:"收件人照片（2–8 张）", required:"请选择 2–8 张照片和一个介绍视频。", submit:"保存多图片订单", success:"Premium 多图片订单已保存。" }
+  };
+  if (isMultiImage) Object.assign(t, multiCopy[lang] || multiCopy.en);
+  const creationCreditCost = getPrintoCreationCreditCost(normalizedCreationType);
+  const photoInputHtml = isMultiImage
+    ? `<input name="recipientImages" type="file" accept="image/*" multiple required><div class="hint">Choose 2–8 JPG, PNG or WebP photos. Each image must be 10 MB or smaller. Flip price: ${creationCreditCost} credits.</div>`
+    : `<input name="recipientPhoto" type="file" accept="image/*" required><div class="hint">JPG, PNG or WebP. Clear portrait preferred. Price: ${creationCreditCost} credits.</div>`;
   const premiumPhoneGuidance = {
     en: {
       placeholder: "Enter country code + phone number, e.g. +1 862 230 6637",
@@ -17963,14 +18065,16 @@ function buildPremiumGreetingOrderPage(language = "en") {
   return `<!doctype html>
 <html lang="${lang}" dir="${dir}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${t.title}</title>
 <style>
-*{box-sizing:border-box}body{margin:0;font-family:Arial,sans-serif;background:linear-gradient(150deg,#071b61,#0b63ce);color:#fff;min-height:100vh;padding:18px}.wrap{max-width:820px;margin:auto}.back{color:#ffd21f;font-weight:900;text-decoration:none}.hero{text-align:center;margin:12px 0 20px}.hero h1{font-size:34px;margin:8px}.hero p{line-height:1.55}.panel{background:#fff;color:#172554;border:3px solid #ffd21f;border-radius:25px;padding:22px;box-shadow:0 18px 44px rgba(0,0,0,.35)}.grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}.full{grid-column:1/-1}label{display:block;font-weight:900;margin:5px 0 7px}input,textarea,select{width:100%;padding:13px;border:2px solid #cbd5e1;border-radius:13px;font-size:16px}textarea{min-height:110px}.hint{font-size:12px;color:#64748b;margin-top:5px}.submit{width:100%;border:0;border-radius:15px;padding:16px;background:linear-gradient(90deg,#7b2cbf,#d63384);color:#fff;font-size:19px;font-weight:900;margin-top:15px;cursor:pointer}.submit:disabled{opacity:.55}.status{text-align:center;font-weight:900;min-height:26px;margin-top:12px}.result{display:none;background:#f1f5f9;padding:16px;border-radius:16px;margin-top:15px}.orderId{font-size:20px;font-weight:900}.payments{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:12px}.pay{display:block;text-align:center;text-decoration:none;color:#fff;font-weight:900;padding:14px;border-radius:13px}.shopify{background:#4f772d}.africa{background:#008751}.worker{background:#25D366;grid-column:1/-1}.disabled{opacity:.45;pointer-events:none}.agreement{display:flex;align-items:flex-start;gap:10px;background:#fff7d6;border:2px solid #ffd21f;border-radius:13px;padding:13px;margin-top:16px}.agreement input{width:20px;height:20px;flex:0 0 auto;margin:2px 0 0}.agreement label{margin:0;font-weight:800;line-height:1.45}.agreement a{color:#123faa;font-weight:900}@media(max-width:620px){.grid,.payments{grid-template-columns:1fr}.full,.worker{grid-column:auto}.hero h1{font-size:28px}}
-</style></head><body><main class="wrap"><a class="back" href="/greetings?lang=${lang}">← ${t.back}</a><section class="hero"><h1>🌟 ${t.title}</h1><p>${t.intro}</p></section><section class="panel">
-<form id="premiumForm" enctype="multipart/form-data"><input type="hidden" name="language" value="${lang}"><input type="hidden" id="customerId" name="customerId"><input type="hidden" id="premiumCustomerKey" name="customerKey">
-<div class="grid"><div><label>${t.recipient} *</label><input name="recipientName" maxlength="24" required></div><div><label>${t.sender} *</label><input name="senderName" maxlength="24" required></div><div><label>${t.phone} *</label><input id="premiumCustomerPhone" name="customerPhone" type="tel" inputmode="tel" autocomplete="tel" placeholder="${phoneGuide.placeholder}" required><div class="hint">${phoneGuide.hint}</div></div><div><label>${t.email}</label><input name="customerEmail" type="email"></div><div class="full"><label>${t.message} *</label><textarea name="personalMessage" maxlength="220" required></textarea></div><div><label>${t.songStyle}</label><select name="songStyle"><option value="">Worker will discuss with me</option><option>Afrobeat</option><option>Gospel</option><option>R&B / Soul</option><option>Pop</option><option>Highlife</option><option>Hip-Hop / Rap</option><option>Soft acoustic</option><option>Other</option></select></div><div><label>${t.notes}</label><textarea name="tributeNotes" maxlength="1000"></textarea></div><div><label>${t.photo} *</label><input name="recipientPhoto" type="file" accept="image/*" required><div class="hint">JPG, PNG or WebP. Clear portrait preferred.</div></div><div><label>${t.video} *</label><input name="introVideo" type="file" accept="video/mp4,video/quicktime,video/webm,video/*" required><div class="hint">Maximum 60 seconds and 100 MB. Large files are compressed automatically to a smaller 720p MP4 before permanent storage.</div></div></div>
+*{box-sizing:border-box}body{margin:0;font-family:Arial,sans-serif;background:linear-gradient(150deg,#071b61,#0b63ce);color:#fff;min-height:100vh;padding:18px}.wrap{max-width:820px;margin:auto}.back{color:#ffd21f;font-weight:900;text-decoration:none}.hero{text-align:center;margin:12px 0 20px}.hero h1{font-size:34px;margin:8px}.hero p{line-height:1.55}.creditPrice{display:inline-block;background:#ffd21f;color:#082a8f;padding:9px 14px;border-radius:999px;font-weight:900;margin-top:8px}.panel{background:#fff;color:#172554;border:3px solid #ffd21f;border-radius:25px;padding:22px;box-shadow:0 18px 44px rgba(0,0,0,.35)}.grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}.full{grid-column:1/-1}label{display:block;font-weight:900;margin:5px 0 7px}input,textarea,select{width:100%;padding:13px;border:2px solid #cbd5e1;border-radius:13px;font-size:16px}textarea{min-height:110px}.hint{font-size:12px;color:#64748b;margin-top:5px}.submit{width:100%;border:0;border-radius:15px;padding:16px;background:linear-gradient(90deg,#7b2cbf,#d63384);color:#fff;font-size:19px;font-weight:900;margin-top:15px;cursor:pointer}.submit:disabled{opacity:.55}.status{text-align:center;font-weight:900;min-height:26px;margin-top:12px}.result{display:none;background:#f1f5f9;padding:16px;border-radius:16px;margin-top:15px}.orderId{font-size:20px;font-weight:900}.payments{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:12px}.pay{display:block;text-align:center;text-decoration:none;color:#fff;font-weight:900;padding:14px;border-radius:13px}.shopify{background:#4f772d}.africa{background:#008751}.worker{background:#25D366;grid-column:1/-1}.disabled{opacity:.45;pointer-events:none}.agreement{display:flex;align-items:flex-start;gap:10px;background:#fff7d6;border:2px solid #ffd21f;border-radius:13px;padding:13px;margin-top:16px}.agreement input{width:20px;height:20px;flex:0 0 auto;margin:2px 0 0}.agreement label{margin:0;font-weight:800;line-height:1.45}.agreement a{color:#123faa;font-weight:900}@media(max-width:620px){.grid,.payments{grid-template-columns:1fr}.full,.worker{grid-column:auto}.hero h1{font-size:28px}}
+</style></head><body><main class="wrap"><a class="back" href="/greetings?lang=${lang}">← ${t.back}</a><section class="hero"><h1>🌟 ${t.title}</h1><p>${t.intro}</p><span class="creditPrice">${creationCreditCost} Printo credits per creation</span></section><section class="panel">
+<form id="premiumForm" enctype="multipart/form-data"><input type="hidden" name="language" value="${lang}"><input type="hidden" name="creationType" value="${normalizedCreationType}"><input type="hidden" id="customerId" name="customerId"><input type="hidden" id="premiumCustomerKey" name="customerKey">
+<div class="grid"><div><label>${t.recipient} *</label><input name="recipientName" maxlength="24" required></div><div><label>${t.sender} *</label><input name="senderName" maxlength="24" required></div><div><label>${t.phone} *</label><input id="premiumCustomerPhone" name="customerPhone" type="tel" inputmode="tel" autocomplete="tel" placeholder="${phoneGuide.placeholder}" required><div class="hint">${phoneGuide.hint}</div></div><div><label>${t.email}</label><input name="customerEmail" type="email"></div><div class="full"><label>${t.message} *</label><textarea name="personalMessage" maxlength="220" required></textarea></div><div><label>${t.songStyle}</label><select name="songStyle"><option value="">Worker will discuss with me</option><option>Afrobeat</option><option>Gospel</option><option>R&B / Soul</option><option>Pop</option><option>Highlife</option><option>Hip-Hop / Rap</option><option>Soft acoustic</option><option>Other</option></select></div><div><label>${t.notes}</label><textarea name="tributeNotes" maxlength="1000"></textarea></div><div><label>${t.photo} *</label>${photoInputHtml}</div><div><label>${t.video} *</label><input name="introVideo" type="file" accept="video/mp4,video/quicktime,video/webm,video/*" required><div class="hint">Maximum 60 seconds and 100 MB. Large files are compressed automatically to a smaller 720p MP4 before permanent storage.</div></div></div>
 <div class="agreement"><input id="premiumTermsAccepted" name="termsAccepted" type="checkbox" value="yes" required><label for="premiumTermsAccepted">I confirm that I own or have permission to use the recipient photo, introduction video, voice, names, music instructions and all other submitted content. I agree to the <a href="/greetings?lang=${lang}#terms" target="_blank" rel="noopener">Terms of Use, Privacy Policy and Refund Policy</a>.</label></div>
 <button id="submitBtn" class="submit" type="submit">✨ ${t.submit}</button><div id="status" class="status"></div></form><div id="result" class="result"><div>${t.success}</div><div id="orderId" class="orderId"></div><h3>${t.pay}</h3><div class="payments"><a id="shopifyPay" class="pay shopify" target="_blank" rel="noopener">🛒 ${t.shopify}</a><a id="africaPay" class="pay africa" target="_blank" rel="noopener">🌍 ${t.africa}</a><a id="workerLink" class="pay worker" target="_blank" rel="noopener">💬 ${t.worker}</a></div></div></section></main>
 <script>
 const form=document.getElementById('premiumForm'),button=document.getElementById('submitBtn'),termsAccepted=document.getElementById('premiumTermsAccepted'),statusBox=document.getElementById('status'),result=document.getElementById('result'),orderIdBox=document.getElementById('orderId'),shopifyPay=document.getElementById('shopifyPay'),africaPay=document.getElementById('africaPay'),workerLink=document.getElementById('workerLink');
+const premiumCreationType=${JSON.stringify(normalizedCreationType)};
+const premiumIsMultiImage=premiumCreationType==='premium_multi_image';
 function syncPremiumButton(){button.disabled=false;}
 termsAccepted.addEventListener('change',syncPremiumButton);
 window.addEventListener('pageshow',syncPremiumButton);
@@ -17986,13 +18090,18 @@ if(premiumCustomerPhone&&savedVerifiedPhone&&!premiumCustomerPhone.value){
 }
 let customerId=localStorage.getItem('printoGreetingCustomerId')||localStorage.getItem('printoPremiumCustomerId');if(!customerId){customerId='premium_'+Date.now()+'_'+Math.random().toString(36).slice(2,11);localStorage.setItem('printoPremiumCustomerId',customerId)}document.getElementById('customerId').value=customerId;
 function readVideoDuration(file){return new Promise((resolve,reject)=>{const url=URL.createObjectURL(file),video=document.createElement('video');video.preload='metadata';video.onloadedmetadata=()=>{const duration=Number(video.duration||0);URL.revokeObjectURL(url);resolve(duration)};video.onerror=()=>{URL.revokeObjectURL(url);reject(new Error('The introduction video could not be read.'))};video.src=url;});}
-form.addEventListener('submit',async(e)=>{e.preventDefault();if(!termsAccepted.checked){statusBox.textContent='❌ Please confirm permission and accept the Terms, Privacy and Refund Policy.';return;}button.disabled=true;button.textContent='⏳ ${t.saving}';statusBox.textContent='';result.style.display='none';try{const fd=new FormData(form);const photo=fd.get('recipientPhoto'),video=fd.get('introVideo');if(!photo||!photo.size||!video||!video.size)throw new Error('${t.required}');if(photo.size>10*1024*1024)throw new Error('Recipient photo must be 10 MB or smaller.');if(video.size>100*1024*1024)throw new Error('Introduction video must be 100 MB or smaller.');const duration=await readVideoDuration(video);if(duration>60.25)throw new Error('Introduction video must be 60 seconds or shorter.');statusBox.textContent='⏳ Uploading and compressing your introduction video…';fd.set('customerKey',accountKey);const response=await fetch('/api/greeting/premium/request',{method:'POST',headers:{'x-printo-customer-id':customerId,'x-printo-customer-key':accountKey},body:fd});const data=await response.json();if(!response.ok||!data.ok)throw new Error(data.error||'Could not save premium order.');statusBox.textContent='✅ ${t.success} Introduction video compressed and stored safely.';orderIdBox.textContent='Order: '+data.orderId;shopifyPay.href=data.payment?.shopify||'#';africaPay.href=data.payment?.africa||'#';if(!data.payment?.shopify)shopifyPay.classList.add('disabled');else shopifyPay.classList.remove('disabled');workerLink.href=data.whatsappUrl;result.style.display='block';result.scrollIntoView({behavior:'smooth'});}catch(error){statusBox.textContent='❌ '+error.message;}finally{button.textContent='✨ ${t.submit}';syncPremiumButton();}});
+form.addEventListener('submit',async(e)=>{e.preventDefault();if(!termsAccepted.checked){statusBox.textContent='❌ Please confirm permission and accept the Terms, Privacy and Refund Policy.';return;}button.disabled=true;button.textContent='⏳ ${t.saving}';statusBox.textContent='';result.style.display='none';try{const fd=new FormData(form);const video=fd.get('introVideo');const singlePhoto=fd.get('recipientPhoto');const multiPhotos=fd.getAll('recipientImages').filter(file=>file&&file.size);if(premiumIsMultiImage){if(multiPhotos.length<2||multiPhotos.length>8)throw new Error('${t.required}');for(const image of multiPhotos){if(image.size>10*1024*1024)throw new Error('Each recipient image must be 10 MB or smaller.');}}else{if(!singlePhoto||!singlePhoto.size)throw new Error('${t.required}');if(singlePhoto.size>10*1024*1024)throw new Error('Recipient photo must be 10 MB or smaller.');}if(!video||!video.size)throw new Error('${t.required}');if(video.size>100*1024*1024)throw new Error('Introduction video must be 100 MB or smaller.');const duration=await readVideoDuration(video);if(duration>60.25)throw new Error('Introduction video must be 60 seconds or shorter.');statusBox.textContent='⏳ Uploading and compressing your introduction video…';fd.set('customerKey',accountKey);const response=await fetch('/api/greeting/premium/request',{method:'POST',headers:{'x-printo-customer-id':customerId,'x-printo-customer-key':accountKey},body:fd});const data=await response.json();if(!response.ok||!data.ok)throw new Error(data.error||'Could not save premium order.');statusBox.textContent='✅ ${t.success} Introduction video compressed and stored safely.';orderIdBox.textContent='Order: '+data.orderId+' • '+String(data.creditCost||${creationCreditCost})+' credits';shopifyPay.href=data.payment?.shopify||'#';africaPay.href=data.payment?.africa||'#';if(!data.payment?.shopify)shopifyPay.classList.add('disabled');else shopifyPay.classList.remove('disabled');workerLink.href=data.whatsappUrl;result.style.display='block';result.scrollIntoView({behavior:'smooth'});}catch(error){statusBox.textContent='❌ '+error.message;}finally{button.textContent='✨ ${t.submit}';syncPremiumButton();}});
 </script></body></html>`;
 }
 
 app.get(["/greetings/premium", "/premium-greeting"], requirePrintoAccountPage, (req, res) => {
   const language = String(req.query.lang || "en").toLowerCase();
-  res.type("html").send(buildPremiumGreetingOrderPage(language));
+  res.type("html").send(buildPremiumGreetingOrderPage(language, "premium_video"));
+});
+
+app.get("/greetings/premium-multi-image", requirePrintoAccountPage, (req, res) => {
+  const language = String(req.query.lang || "en").toLowerCase();
+  res.type("html").send(buildPremiumGreetingOrderPage(language, "premium_multi_image"));
 });
 
 app.get(
@@ -18073,8 +18182,193 @@ app.get(
   }
 );
 
+
+app.get(
+  ["/premium-media/:orderId/image/:position", "/api/greeting/premium/media/:orderId/image/:position"],
+  async (req, res) => {
+    try {
+      const orderId = String(req.params.orderId || "").trim();
+      const token = String(req.query.token || "").trim();
+      const position = Math.max(1, Number.parseInt(String(req.params.position || "1"), 10) || 1);
+
+      const result = await queryWithRetry(
+        `SELECT image.image_data AS media_data,
+                image.image_mime AS media_mime,
+                image.image_name AS media_name
+         FROM premium_greeting_images AS image
+         JOIN premium_greeting_orders AS orders ON orders.order_id = image.order_id
+         WHERE image.order_id = $1
+           AND image.image_position = $2
+           AND orders.media_token = $3
+         LIMIT 1`,
+        [orderId, position, token],
+        { attempts: 6, baseDelayMs: 400 }
+      );
+
+      const row = result.rows[0];
+      if (!row) return res.status(404).send("Premium image not found.");
+
+      return sendPremiumMediaBuffer(req, res, {
+        data: row.media_data,
+        mime: row.media_mime,
+        name: row.media_name
+      });
+    } catch (error) {
+      console.error("Premium multi-image delivery error:", error);
+      return res.status(500).send("Could not open Premium image.");
+    }
+  }
+);
+
+
+app.get("/premium-result/:orderId", async (req, res) => {
+  try {
+    const orderId = String(req.params.orderId || "").trim();
+    const token = String(req.query.token || "").trim();
+    const language = normalizePrintoStudioLanguage(req.query.lang || "en");
+
+    const found = await queryWithRetry(
+      `SELECT order_id,
+              creation_type,
+              recipient_name,
+              sender_name,
+              personal_message,
+              media_token,
+              render_status,
+              final_video_data IS NOT NULL AS has_final_video
+       FROM premium_greeting_orders
+       WHERE order_id = $1
+         AND media_token = $2
+       LIMIT 1`,
+      [orderId, token]
+    );
+    const order = found.rows[0];
+
+    if (!order || !order.has_final_video || String(order.render_status) !== "completed") {
+      return res.status(404).type("html").send(
+        "<h2>Premium video is not ready yet.</h2><p>Return to My Videos and try again after rendering is complete.</p>"
+      );
+    }
+
+    const publicBase = getPublicBaseUrl(req).replace(/\/$/, "");
+    const pageUrl =
+      `${publicBase}/premium-result/${encodeURIComponent(orderId)}` +
+      `?token=${encodeURIComponent(token)}&lang=${encodeURIComponent(language)}`;
+    const videoUrl =
+      `${publicBase}/premium-media/${encodeURIComponent(orderId)}/final` +
+      `?token=${encodeURIComponent(token)}`;
+    const downloadUrl = `${videoUrl}&download=1`;
+    const posterUrl =
+      `${publicBase}/premium-media/${encodeURIComponent(orderId)}/photo` +
+      `?token=${encodeURIComponent(token)}`;
+    const recipient = String(order.recipient_name || "Someone Special").trim();
+    const sender = String(order.sender_name || "With Love").trim();
+    const message = String(order.personal_message || "").trim();
+    const creationType = normalizePrintoCreationType(order.creation_type || "premium_video");
+    const title = creationType === "premium_multi_image"
+      ? `Printo Premium Multi-Image Tribute for ${recipient}`
+      : `Printo Premium Tribute for ${recipient}`;
+    const shareText =
+      `🎉 ${title}\nFrom ${sender}\n\nWatch this personalized Printo video and create yours too.`;
+
+    return res.type("html").send(`<!doctype html>
+<html lang="${language}" dir="${language === "ar" ? "rtl" : "ltr"}">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>${escapeHtml(title)}</title>
+<meta property="og:type" content="video.other">
+<meta property="og:title" content="${escapeHtml(title)}">
+<meta property="og:description" content="${escapeHtml(message || "A personalized Printo Premium tribute video.")}">
+<meta property="og:url" content="${escapeHtml(pageUrl)}">
+<meta property="og:image" content="${escapeHtml(posterUrl)}">
+<meta property="og:video" content="${escapeHtml(videoUrl)}">
+<meta property="og:video:type" content="video/mp4">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="${escapeHtml(title)}">
+<meta name="twitter:description" content="${escapeHtml(message || "A personalized Printo Premium tribute video.")}">
+<meta name="twitter:image" content="${escapeHtml(posterUrl)}">
+<style>
+*{box-sizing:border-box}
+body{margin:0;font-family:Arial,sans-serif;background:linear-gradient(150deg,#020617,#082a8f);color:#fff;padding:22px}
+.wrap{max-width:760px;margin:auto;text-align:center}
+.back{display:inline-block;margin-bottom:15px;padding:11px 16px;border-radius:999px;background:#ffd21f;color:#082a8f;text-decoration:none;font-weight:900}
+h1{font-size:30px;margin:8px 0}
+.subtitle{color:#dbeafe;line-height:1.5}
+.videoShell{background:#000;border:3px solid #ffd21f;border-radius:20px;padding:8px;box-shadow:0 18px 50px rgba(0,0,0,.45)}
+video{display:block;width:100%;max-height:72vh;border-radius:13px;background:#000}
+.actions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-top:16px}
+.btn{border:0;border-radius:13px;padding:13px 10px;color:#fff;font-weight:900;font-size:15px;cursor:pointer;text-decoration:none;display:flex;align-items:center;justify-content:center;min-height:48px}
+.download{background:#7b2cbf}.whatsapp{background:#25D366;color:#082a24}.facebook{background:#1877F2}.xshare{background:#111}.instagram{background:#d63384}.youtube{background:#ef0000}.tiktok{background:#111}.email{background:#0f766e}.copy{background:#475569}.videos{background:#123faa}.credits{background:#4f772d}.full{grid-column:1/-1}
+.note{margin-top:15px;padding:13px;background:rgba(255,255,255,.1);border-radius:14px;line-height:1.5}
+@media(max-width:560px){body{padding:12px}.actions{grid-template-columns:1fr}h1{font-size:25px}.full{grid-column:auto}}
+</style>
+</head>
+<body>
+<main class="wrap">
+<a class="back" href="/greetings?lang=${encodeURIComponent(language)}">← Back to Printo Studio</a>
+<h1>🌟 ${escapeHtml(title)}</h1>
+<p class="subtitle">Created for <strong>${escapeHtml(recipient)}</strong> from <strong>${escapeHtml(sender)}</strong></p>
+<div class="videoShell"><video id="premiumVideo" controls playsinline preload="metadata" poster="${escapeHtml(posterUrl)}"><source src="${escapeHtml(videoUrl)}" type="video/mp4"></video></div>
+<div class="actions">
+<a class="btn download full" href="${escapeHtml(downloadUrl)}">⬇ Download Video</a>
+<button class="btn whatsapp" type="button" onclick="shareWhatsApp()">📱 WhatsApp</button>
+<button class="btn facebook" type="button" onclick="shareFacebook()">📘 Facebook</button>
+<button class="btn xshare" type="button" onclick="shareX()">𝕏 X / Twitter</button>
+<button class="btn instagram" type="button" onclick="shareVideoFile('Instagram')">📸 Instagram</button>
+<button class="btn youtube" type="button" onclick="shareVideoFile('YouTube')">▶ YouTube</button>
+<button class="btn tiktok" type="button" onclick="shareVideoFile('TikTok')">🎵 TikTok</button>
+<button class="btn email" type="button" onclick="shareEmail()">📧 Email</button>
+<button class="btn copy" type="button" onclick="copyLink()">🔗 Copy Link</button>
+<a class="btn videos" href="/customer-dashboard?lang=${encodeURIComponent(language)}">🎬 My Videos & Credits</a>
+<a class="btn credits" href="/subscriptions?lang=${encodeURIComponent(language)}">➕ Buy Credits / Subscribe</a>
+</div>
+<div class="note">Facebook, WhatsApp and X share the Premium result page. Instagram, YouTube and TikTok use your phone’s share sheet when available; otherwise the MP4 downloads first for upload.</div>
+</main>
+<script>
+const pageUrl=${JSON.stringify(pageUrl)};
+const videoUrl=${JSON.stringify(videoUrl)};
+const downloadUrl=${JSON.stringify(downloadUrl)};
+const shareText=${JSON.stringify(shareText)};
+const fileName=${JSON.stringify(`Printo-Premium-${orderId}.mp4`)};
+
+function popup(url){window.open(url,'_blank','noopener,noreferrer,width=760,height=720')}
+function shareWhatsApp(){popup('https://wa.me/?text='+encodeURIComponent(shareText+'\\n\\n'+pageUrl))}
+function shareFacebook(){popup('https://www.facebook.com/sharer/sharer.php?u='+encodeURIComponent(pageUrl))}
+function shareX(){popup('https://twitter.com/intent/tweet?text='+encodeURIComponent(shareText)+'&url='+encodeURIComponent(pageUrl))}
+function shareEmail(){window.location.href='mailto:?subject='+encodeURIComponent('Printo Premium Tribute')+'&body='+encodeURIComponent(shareText+'\\n\\n'+pageUrl)}
+async function copyLink(){try{await navigator.clipboard.writeText(pageUrl);alert('Premium video link copied.')}catch(_error){prompt('Copy this link:',pageUrl)}}
+async function shareVideoFile(platform){
+  try{
+    const response=await fetch(videoUrl);
+    if(!response.ok)throw new Error('Video download failed');
+    const blob=await response.blob();
+    const file=new File([blob],fileName,{type:'video/mp4'});
+    if(navigator.share&&(!navigator.canShare||navigator.canShare({files:[file]}))){
+      await navigator.share({title:'Printo Premium Tribute',text:shareText,files:[file]});
+      return;
+    }
+  }catch(_error){}
+  const link=document.createElement('a');
+  link.href=downloadUrl;
+  link.download=fileName;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  alert('The Premium MP4 has downloaded. Open '+platform+' and upload the video.');
+}
+</script>
+</body>
+</html>`);
+  } catch (error) {
+    console.error("Premium result page error:", error);
+    return res.status(500).send("Could not open the Premium result page.");
+  }
+});
+
 const handlePremiumUpload = premiumUpload.fields([
   { name: "recipientPhoto", maxCount: 1 },
+  { name: "recipientImages", maxCount: PREMIUM_MULTI_IMAGE_MAX_COUNT },
   { name: "introVideo", maxCount: 1 }
 ]);
 
@@ -18096,7 +18390,13 @@ app.post(
   async (req, res) => {
     let premiumAccessReservation = null;
     let premiumCustomerIdentity = null;
-    const photo = req.files?.recipientPhoto?.[0];
+    const requestedCreationType = normalizePrintoCreationType(req.body?.creationType || "premium_video");
+    const singlePhoto = req.files?.recipientPhoto?.[0];
+    const multiPhotos = Array.isArray(req.files?.recipientImages) ? req.files.recipientImages : [];
+    const premiumPhotos = requestedCreationType === "premium_multi_image"
+      ? multiPhotos
+      : (singlePhoto ? [singlePhoto] : []);
+    const photo = premiumPhotos[0];
     const introVideo = req.files?.introVideo?.[0];
     const compressedVideoPath = introVideo?.path
       ? path.join(premiumTempDir, `${path.parse(introVideo.path).name}_compressed.mp4`)
@@ -18112,6 +18412,7 @@ app.post(
       const songStyle = String(body.songStyle || "").trim().slice(0, 100);
       const tributeNotes = String(body.tributeNotes || "").trim().slice(0, 1000);
       const language = String(body.language || "en").toLowerCase();
+      const creationType = normalizePrintoCreationType(body.creationType || requestedCreationType);
 
       if (!recipientName || !senderName || !personalMessage || !customerPhone) {
         return res.status(400).json({
@@ -18120,8 +18421,19 @@ app.post(
         });
       }
 
-      if (!photo || !photo.path || !String(photo.mimetype || "").startsWith("image/")) {
+      if (creationType === "premium_multi_image") {
+        if (premiumPhotos.length < PREMIUM_MULTI_IMAGE_MIN_COUNT || premiumPhotos.length > PREMIUM_MULTI_IMAGE_MAX_COUNT) {
+          return res.status(400).json({
+            ok: false,
+            error: `Choose ${PREMIUM_MULTI_IMAGE_MIN_COUNT}–${PREMIUM_MULTI_IMAGE_MAX_COUNT} recipient photos for the Multi-Image Flip.`
+          });
+        }
+      } else if (!photo || !photo.path || !String(photo.mimetype || "").startsWith("image/")) {
         return res.status(400).json({ ok: false, error: "A recipient photo is required." });
+      }
+
+      if (premiumPhotos.some((item) => !item?.path || !String(item.mimetype || "").startsWith("image/"))) {
+        return res.status(400).json({ ok: false, error: "Every selected recipient file must be an image." });
       }
 
       if (!introVideo || !introVideo.path || !String(introVideo.mimetype || "").startsWith("video/")) {
@@ -18130,8 +18442,11 @@ app.post(
 
       const photoBytes = fs.statSync(photo.path).size;
       const originalVideoBytes = fs.statSync(introVideo.path).size;
-      if (photoBytes > PREMIUM_PHOTO_MAX_BYTES) {
-        return res.status(400).json({ ok: false, error: "Recipient photo must be 10 MB or smaller." });
+      for (const item of premiumPhotos) {
+        const itemBytes = fs.statSync(item.path).size;
+        if (itemBytes > PREMIUM_PHOTO_MAX_BYTES) {
+          return res.status(400).json({ ok: false, error: "Each recipient photo must be 10 MB or smaller." });
+        }
       }
       if (originalVideoBytes > PREMIUM_VIDEO_UPLOAD_MAX_BYTES) {
         return res.status(400).json({ ok: false, error: "Introduction video must be 100 MB or smaller." });
@@ -18167,7 +18482,7 @@ app.post(
       premiumAccessReservation = await reserveGreetingGenerationAccess(
         premiumCustomerIdentity.customerKey,
         premiumCustomerIdentity.contactPhone,
-        "premium_video"
+        creationType
       );
 
       if (!premiumAccessReservation.allowed) {
@@ -18179,7 +18494,7 @@ app.post(
         return res.status(402).json({
           ok: false,
           paymentRequired: true,
-          error: `You need ${PRINTO_CREATION_CREDIT_COSTS.premium_video} credits to create this Premium Tribute.`,
+          error: `You need ${getPrintoCreationCreditCost(creationType)} credits to create this ${creationType === "premium_multi_image" ? "Premium Multi-Image Flip" : "Premium Tribute"}.`,
           customerKey: premiumCustomerIdentity.customerKey,
           access: premiumAccessReservation,
           payment
@@ -18191,6 +18506,11 @@ app.post(
         compressedVideoPath
       );
       const photoBuffer = fs.readFileSync(photo.path);
+      const premiumImageBuffers = premiumPhotos.map((item) => ({
+        data: fs.readFileSync(item.path),
+        mime: item.mimetype || "image/jpeg",
+        name: safeBaseName(item.originalname || "recipient-photo")
+      }));
       const compressedVideoBuffer = fs.readFileSync(compressedVideoPath);
 
       const identity = premiumCustomerIdentity;
@@ -18198,6 +18518,10 @@ app.post(
       const orderId = makePremiumOrderId();
       const mediaToken = crypto.randomBytes(24).toString("hex");
       const recipientPhotoUrl = buildPremiumMediaUrl(req, orderId, mediaToken, "photo");
+      const publicBaseUrl = getPublicBaseUrl(req).replace(/\/$/, "");
+      const recipientImageUrls = premiumImageBuffers.map((_item, index) =>
+        `${publicBaseUrl}/premium-media/${encodeURIComponent(orderId)}/image/${index + 1}?token=${encodeURIComponent(mediaToken)}`
+      );
       const introVideoUrl = buildPremiumMediaUrl(req, orderId, mediaToken, "video");
       const finalVideoUrl = buildPremiumMediaUrl(req, orderId, mediaToken, "final");
       const voiceScript = buildPremiumVoiceScript({
@@ -18221,13 +18545,13 @@ app.post(
           intro_video_data, intro_video_mime, intro_video_name,
           intro_video_duration_seconds, intro_video_original_bytes,
           intro_video_stored_bytes, voice_script, final_video_url,
-          media_token, status, dashboard_job_id, render_status,
+          media_token, creation_type, status, dashboard_job_id, render_status,
           created_at, updated_at
         )
         VALUES (
           $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,
           $12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,
-          $23,'payment_required','','not_started',NOW(),NOW()
+          $23,$24,'payment_required','','not_started',NOW(),NOW()
         )
         `,
         [
@@ -18253,9 +18577,29 @@ app.post(
           compression.storedBytes,
           voiceScript,
           finalVideoUrl,
-          mediaToken
+          mediaToken,
+          creationType
         ]
       );
+
+      await queryWithRetry(
+        `DELETE FROM premium_greeting_images WHERE order_id = $1`,
+        [orderId]
+      );
+      for (let imageIndex = 0; imageIndex < premiumImageBuffers.length; imageIndex += 1) {
+        const image = premiumImageBuffers[imageIndex];
+        await queryWithRetry(
+          `INSERT INTO premium_greeting_images (
+             order_id, image_position, image_data, image_mime, image_name, created_at
+           )
+           VALUES ($1,$2,$3,$4,$5,NOW())
+           ON CONFLICT (order_id, image_position)
+           DO UPDATE SET image_data = EXCLUDED.image_data,
+                         image_mime = EXCLUDED.image_mime,
+                         image_name = EXCLUDED.image_name`,
+          [orderId, imageIndex + 1, image.data, image.mime, image.name]
+        );
+      }
 
       await queryWithRetry(
         `UPDATE premium_greeting_orders
@@ -18265,7 +18609,7 @@ app.post(
              paid_at = NOW(),
              updated_at = NOW()
          WHERE order_id = $1`,
-        [orderId, `credits:${PRINTO_CREATION_CREDIT_COSTS.premium_video}`]
+        [orderId, `credits:${getPrintoCreationCreditCost(creationType)}`]
       );
 
       const job = await createPremiumGreetingDashboardJob({
@@ -18287,7 +18631,10 @@ app.post(
         language,
         introDuration: compression.duration,
         originalVideoBytes,
-        storedVideoBytes: compression.storedBytes
+        storedVideoBytes: compression.storedBytes,
+        creationType,
+        imageCount: premiumImageBuffers.length,
+        imageUrls: recipientImageUrls
       });
 
       if (job?.id) {
@@ -18298,11 +18645,15 @@ app.post(
       }
 
       const workerMessage = [
-        "Printo Premium Tribute order saved",
+        creationType === "premium_multi_image"
+          ? "Printo Premium Multi-Image Flip order saved"
+          : "Printo Premium Tribute order saved",
         `Premium order ID: ${orderId}`,
         `Recipient: ${recipientName}`,
         `Sender: ${senderName}`,
         `Customer phone: ${customerPhone}`,
+        `Creation price: ${getPrintoCreationCreditCost(creationType)} Printo credits.`,
+        `Recipient images: ${premiumImageBuffers.length}.`,
         `Introduction: ${compression.duration.toFixed(1)} seconds; compressed from ${Math.round(originalVideoBytes / 1024 / 1024)} MB to ${Math.round(compression.storedBytes / 1024 / 1024)} MB.`,
         "I submitted the photo, introduction video, message, and tribute-song details on Printo Studio.",
         "Please confirm payment and help complete this premium order."
@@ -18317,6 +18668,9 @@ app.post(
         payment,
         whatsappUrl,
         status: "paid",
+        creationType,
+        creditCost: getPrintoCreationCreditCost(creationType),
+        imageCount: premiumImageBuffers.length,
         paymentRequired: false,
         access: premiumAccessReservation,
         creditBalance: premiumAccessReservation.creditBalance,
@@ -18349,7 +18703,7 @@ app.post(
         error: error.message || "Could not save premium greeting order."
       });
     } finally {
-      safeUnlink(photo?.path);
+      premiumPhotos.forEach((item) => safeUnlink(item?.path));
       safeUnlink(introVideo?.path);
       safeUnlink(compressedVideoPath);
     }
@@ -18587,6 +18941,7 @@ async function renderPremiumOrderVideo({ orderId, req, publicBaseUrl = "" }) {
             recipient_photo_mime,
             intro_video_mime,
             tribute_music_mime,
+            creation_type,
             tribute_music_data IS NOT NULL AS has_custom_music
      FROM premium_greeting_orders
      WHERE order_id = $1
@@ -18603,6 +18958,19 @@ async function renderPremiumOrderVideo({ orderId, req, publicBaseUrl = "" }) {
     );
   }
 
+  const creationType = normalizePrintoCreationType(order.creation_type || "premium_video");
+  const isMultiImage = creationType === "premium_multi_image";
+  const storedImageResult = isMultiImage
+    ? await queryWithRetry(
+        `SELECT image_position, image_data, image_mime, image_name
+         FROM premium_greeting_images
+         WHERE order_id = $1
+         ORDER BY image_position ASC`,
+        [orderId]
+      )
+    : { rows: [] };
+  const storedImages = Array.isArray(storedImageResult.rows) ? storedImageResult.rows : [];
+
   const runId = `${Date.now()}_${crypto.randomBytes(5).toString("hex")}`;
   const photoExt = getExtFromMime(order.recipient_photo_mime) || ".jpg";
   const musicExt = getExtFromMime(order.tribute_music_mime) || ".mp3";
@@ -18615,8 +18983,15 @@ async function renderPremiumOrderVideo({ orderId, req, publicBaseUrl = "" }) {
   const concatListPath = path.join(premiumTempDir, `${runId}_concat.txt`);
   const silentVideoPath = path.join(premiumTempDir, `${runId}_silent.mp4`);
   const outputPath = path.join(premiumTempDir, `${runId}_final.mp4`);
+  const multiImagePaths = storedImages.map((image, index) =>
+    path.join(
+      premiumTempDir,
+      `${runId}_image_${index + 1}${getExtFromMime(image.image_mime) || ".jpg"}`
+    )
+  );
   const cleanup = [
     photoPath,
+    ...multiImagePaths,
     introPath,
     customMusicPath,
     openingPath,
@@ -18635,13 +19010,30 @@ async function renderPremiumOrderVideo({ orderId, req, publicBaseUrl = "" }) {
       [orderId]
     );
 
-    console.log("Premium render stage 1/7 - loading photo:", orderId);
-    await readPremiumBinaryToFile(
-      orderId,
-      "recipient_photo_data",
-      photoPath,
-      "Recipient photo is missing."
-    );
+    console.log("Premium render stage 1/7 - loading recipient image(s):", orderId);
+    let tributeImagePaths = [];
+    if (isMultiImage) {
+      if (storedImages.length < PREMIUM_MULTI_IMAGE_MIN_COUNT) {
+        throw new Error("Premium Multi-Image Flip needs at least two stored recipient photos.");
+      }
+      for (let index = 0; index < storedImages.length; index += 1) {
+        const image = storedImages[index];
+        const imagePath = multiImagePaths[index];
+        if (!Buffer.isBuffer(image.image_data) || image.image_data.length === 0) {
+          throw new Error(`Premium image ${index + 1} is missing.`);
+        }
+        await fs.promises.writeFile(imagePath, image.image_data);
+        tributeImagePaths.push(imagePath);
+      }
+    } else {
+      await readPremiumBinaryToFile(
+        orderId,
+        "recipient_photo_data",
+        photoPath,
+        "Recipient photo is missing."
+      );
+      tributeImagePaths = [photoPath];
+    }
 
     console.log("Premium render stage 2/7 - loading introduction:", orderId);
     await readPremiumBinaryToFile(
@@ -18850,18 +19242,81 @@ async function renderPremiumOrderVideo({ orderId, req, publicBaseUrl = "" }) {
     // Tribute section: as soon as the sender speech finishes, replace the
     // sender video with the recipient photograph and play the custom music to
     // the end. The sender video is never frozen or left talking under the song.
-    await execFilePromise("ffmpeg", [
-      "-y", "-nostdin", "-loglevel", "error",
-      "-loop", "1", "-i", premiumFramePath,
-      "-loop", "1", "-i", photoPath,
-      "-filter_complex",
-      `[0:v]${baseFrame},${commonTextOverlay}[base];` +
-      `[1:v]${recipientPhotoFilter},` +
-      `tpad=stop_mode=clone:stop_duration=${tributeDuration}[recipient];` +
-      `[base][recipient]overlay=${introInnerX}:${introInnerY}:shortest=1[v]`,
-      "-map", "[v]",
-      ...premiumSegmentVideoArgs({ duration: tributeDuration, outputPath: tributePath, fps: 12 })
-    ], { timeout: PREMIUM_RENDER_STAGE_TIMEOUT_MS, maxBuffer: 8 * 1024 * 1024 });
+    if (tributeImagePaths.length > 1) {
+      const flipDuration = Math.min(0.7, Math.max(0.35, tributeDuration / 80));
+      const imageClipDuration =
+        (tributeDuration + (tributeImagePaths.length - 1) * flipDuration) /
+        tributeImagePaths.length;
+      const slideshowInputArgs = [
+        "-loop", "1", "-i", premiumFramePath
+      ];
+      tributeImagePaths.forEach((imagePath) => {
+        slideshowInputArgs.push(
+          "-loop", "1",
+          "-t", imageClipDuration.toFixed(3),
+          "-i", imagePath
+        );
+      });
+
+      const slideshowFilters = [
+        `[0:v]${baseFrame},${commonTextOverlay}[base]`
+      ];
+      tributeImagePaths.forEach((_imagePath, index) => {
+        slideshowFilters.push(
+          `[${index + 1}:v]${recipientPhotoFilter},fps=12,settb=AVTB,` +
+          `trim=duration=${imageClipDuration.toFixed(3)},setpts=PTS-STARTPTS[flip${index}]`
+        );
+      });
+
+      let previousLabel = "flip0";
+      for (let index = 1; index < tributeImagePaths.length; index += 1) {
+        const outputLabel = index === tributeImagePaths.length - 1
+          ? "slideshow"
+          : `flipmix${index}`;
+        const offset = index * (imageClipDuration - flipDuration);
+        slideshowFilters.push(
+          `[${previousLabel}][flip${index}]xfade=` +
+          `transition=squeezeh:duration=${flipDuration.toFixed(3)}:` +
+          `offset=${offset.toFixed(3)}[${outputLabel}]`
+        );
+        previousLabel = outputLabel;
+      }
+
+      slideshowFilters.push(
+        `[${previousLabel}]trim=duration=${tributeDuration.toFixed(3)},setpts=PTS-STARTPTS[recipient]`
+      );
+      slideshowFilters.push(
+        `[base][recipient]overlay=${introInnerX}:${introInnerY}:shortest=1[v]`
+      );
+
+      await execFilePromise("ffmpeg", [
+        "-y", "-nostdin", "-loglevel", "error",
+        ...slideshowInputArgs,
+        "-filter_complex", slideshowFilters.join(";"),
+        "-map", "[v]",
+        ...premiumSegmentVideoArgs({
+          duration: tributeDuration,
+          outputPath: tributePath,
+          fps: 12
+        })
+      ], {
+        timeout: PREMIUM_RENDER_STAGE_TIMEOUT_MS,
+        maxBuffer: 12 * 1024 * 1024
+      });
+    } else {
+      await execFilePromise("ffmpeg", [
+        "-y", "-nostdin", "-loglevel", "error",
+        "-loop", "1", "-i", premiumFramePath,
+        "-loop", "1", "-i", tributeImagePaths[0],
+        "-filter_complex",
+        `[0:v]${baseFrame},${commonTextOverlay}[base];` +
+        `[1:v]${recipientPhotoFilter},` +
+        `tpad=stop_mode=clone:stop_duration=${tributeDuration}[recipient];` +
+        `[base][recipient]overlay=${introInnerX}:${introInnerY}:shortest=1[v]`,
+        "-map", "[v]",
+        ...premiumSegmentVideoArgs({ duration: tributeDuration, outputPath: tributePath, fps: 12 })
+      ], { timeout: PREMIUM_RENDER_STAGE_TIMEOUT_MS, maxBuffer: 8 * 1024 * 1024 });
+    }
 
     const escapeConcatPath = (value) => String(value).replace(/'/g, "'\\''");
     await fs.promises.writeFile(
@@ -18907,9 +19362,10 @@ async function renderPremiumOrderVideo({ orderId, req, publicBaseUrl = "" }) {
     if (introAudioIndex >= 0) {
       audioFilters.push(
         `[${introAudioIndex}:a]atrim=0:${introDuration},asetpts=PTS-STARTPTS,` +
-        `highpass=f=80,lowpass=f=9000,` +
-        `afftdn=nr=18:nf=-35:tn=1:gs=8,` +
-        `loudnorm=I=-16:TP=-1.5:LRA=7,volume=1.08,` +
+        `highpass=f=90,lowpass=f=8500,` +
+        `afftdn=nr=24:nf=-38:tn=1:gs=10,` +
+        `agate=threshold=0.018:ratio=2.5:attack=8:release=220,` +
+        `loudnorm=I=-16:TP=-1.5:LRA=7,volume=1.05,` +
         `afade=t=out:st=${Math.max(0, introDuration - 0.08)}:d=0.08,` +
         `apad=pad_dur=${introDuration},atrim=0:${introDuration}[intro_exact]`
       );
@@ -18934,6 +19390,9 @@ async function renderPremiumOrderVideo({ orderId, req, publicBaseUrl = "" }) {
       recipientPhotoStartsAt: introEnd,
       tributeMusicStartsAt: introEnd,
       noOpeningDelay: true,
+      creationType,
+      imageCount: tributeImagePaths.length,
+      multiImageFlip: tributeImagePaths.length > 1,
       totalDuration
     });
 
@@ -18960,9 +19419,10 @@ async function renderPremiumOrderVideo({ orderId, req, publicBaseUrl = "" }) {
 
     console.log("Premium render stage 7/7 - saving finished video:", orderId);
     const finalBytes = await fs.promises.readFile(outputPath);
-    const finalVideoUrl = publicBaseUrl
+    const finalDownloadUrl = publicBaseUrl
       ? `${String(publicBaseUrl).replace(/\/$/, "")}/premium-media/${encodeURIComponent(orderId)}/final?token=${encodeURIComponent(order.media_token)}`
       : buildPremiumMediaUrl(req, orderId, order.media_token, "final");
+    const premiumResultUrl = `${String(publicBaseUrl || getPublicBaseUrl(req)).replace(/\/$/, "")}/premium-result/${encodeURIComponent(orderId)}?token=${encodeURIComponent(order.media_token)}`;
 
     await queryWithRetry(
       `UPDATE premium_greeting_orders
@@ -18980,7 +19440,7 @@ async function renderPremiumOrderVideo({ orderId, req, publicBaseUrl = "" }) {
         orderId,
         finalBytes,
         `Printo-Premium-${orderId}.mp4`,
-        finalVideoUrl,
+        premiumResultUrl,
         `Personal introduction by ${senderName}, followed by a tribute song for ${recipientName}.`
       ]
     );
@@ -18998,13 +19458,16 @@ async function renderPremiumOrderVideo({ orderId, req, publicBaseUrl = "" }) {
       [
         String(order.dashboard_job_id || ""),
         `%${orderId}%`,
-        `\n\n🎬 FINISHED PREMIUM VIDEO\n${finalVideoUrl}`
+        `\n\n🎬 FINISHED PREMIUM VIDEO\n${premiumResultUrl}\n\n⬇ PREMIUM DOWNLOAD\n${finalDownloadUrl}`
       ]
     );
 
     return {
       orderId,
-      finalVideoUrl,
+      finalVideoUrl: premiumResultUrl,
+      downloadUrl: finalDownloadUrl,
+      creationType,
+      imageCount: tributeImagePaths.length,
       totalDuration,
       hasVoice: Boolean(introProbe.hasAudio),
       usedCustomMusic: true,
@@ -19706,7 +20169,7 @@ app.get("/standard-checkout", (_req, res) => {
   res.type("html").send(`<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><title>Opening Shopify Checkout</title><style>body{font-family:Arial;background:#082a8f;color:#fff;display:grid;place-items:center;min-height:100vh;margin:0}.card{background:#fff;color:#082a8f;padding:28px;border-radius:18px;max-width:520px;text-align:center}a{color:#082a8f;font-weight:900}</style></head><body><main class="card"><h1>Opening Shopify Checkout…</h1><p id="status">Connecting this $4.99 order to your Printo account for 20 credits.</p><p><a href="/greetings">Return to Printo Studio</a></p></main><script>(async()=>{const key=localStorage.getItem('printoGreetingCustomerKey')||'';if(!key){location.replace('/customer-login?next=%2Fstandard-checkout');return;}try{const r=await fetch('/api/customer/standard-checkout',{cache:'no-store',headers:{'x-printo-customer-key':key}});const d=await r.json();if(!r.ok||!d.ok)throw new Error(d.error||'Could not open checkout.');location.replace(d.checkoutUrl);}catch(e){document.getElementById('status').textContent=e.message||'Could not open checkout.';}})();</script></body></html>`);
 });
 
-app.get("/subscriptions", (req,res)=>res.type('html').send(`<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><title>Printo Plans</title><style>*{box-sizing:border-box}body{margin:0;font-family:Arial;background:linear-gradient(150deg,#071b61,#0b63ce);color:#fff;padding:24px}.wrap{max-width:1180px;margin:auto;text-align:center}.topbar{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}.close-link{background:#fff;color:#082a8f;text-decoration:none;padding:11px 16px;border-radius:999px;font-weight:900}.section{margin:28px 0 38px}.section-title{font-size:30px;margin:0 0 8px}.section-sub{margin:0 0 18px}.plans{display:grid;grid-template-columns:repeat(4,1fr);gap:16px}.plan{background:#fff;color:#082a8f;border:3px solid #ffd21f;border-radius:22px;padding:22px;position:relative}.plan.premium{border-color:#c13cff;box-shadow:0 10px 28px rgba(0,0,0,.18)}.badge{display:inline-block;background:#123faa;color:#fff;border-radius:999px;padding:7px 12px;font-size:13px;font-weight:900;margin-bottom:8px}.premium .badge{background:#7b2cbf}.price{font-size:34px;font-weight:900}.plan a{display:block;background:#7b2cbf;color:#fff;text-decoration:none;padding:14px;border-radius:12px;font-weight:900;margin-top:16px}.standard a{background:#123faa}.best{transform:scale(1.03)}.note{background:#fff4b8;color:#082a8f;border:3px solid #ffd21f;border-radius:18px;padding:16px;margin:0 auto 20px;max-width:820px;font-weight:900}@media(max-width:950px){.plans{grid-template-columns:1fr 1fr}}@media(max-width:560px){body{padding:16px}.plans{grid-template-columns:1fr}.best{transform:none}.topbar{justify-content:center}.section-title{font-size:25px}}</style></head><body><main class="wrap"><div class="topbar"><h1>⭐ Printo Credits & Subscriptions</h1><a class="close-link" href="/greetings">✕ Close / Return to Studio</a></div><div class="note">🎁 Each verified phone number receives 100 FREE credits once — enough for 5 standard creations. Each standard creation uses 20 credits.</div><p>Use one universal Printo credit wallet for Standard, Premium Video, and Premium Multi-Image creations.</p><section class="section"><h2 class="section-title">🎁 Standard Greeting Plans</h2><p class="section-sub">For personalized standard greeting video cards with names, messages, Printo music and voice.</p><div class="plans"><article class="plan standard"><span class="badge">STANDARD</span><h2>Single Creation</h2><div class="price">$4.99</div><p>20 credits • 1 standard creation</p><a href="/standard-checkout">Buy One</a></article><article class="plan standard"><span class="badge">STANDARD</span><h2>Monthly</h2><div class="price">$${PRINTO_STANDARD_SUBSCRIPTION_PRICES.monthly.toFixed(2)}</div><p>100 credits monthly • 5 standard creations</p><a href="${PRINTO_STANDARD_MONTHLY_SUBSCRIPTION_URL}">Choose Standard Monthly</a></article><article class="plan standard"><span class="badge">STANDARD</span><h2>6 Months</h2><div class="price">$${PRINTO_STANDARD_SUBSCRIPTION_PRICES.six_months.toFixed(2)}</div><p>600 credits • 30 standard creations</p><a href="${PRINTO_STANDARD_SIX_MONTH_SUBSCRIPTION_URL}">Choose Standard 6 Months</a></article><article class="plan standard best"><span class="badge">BEST STANDARD VALUE</span><h2>1 Year</h2><div class="price">$${PRINTO_STANDARD_SUBSCRIPTION_PRICES.yearly.toFixed(2)}</div><p>1,200 credits • 60 standard creations</p><a href="${PRINTO_STANDARD_YEARLY_SUBSCRIPTION_URL}">Choose Standard Annual</a></article></div></section><section class="section"><h2 class="section-title">🌟 Premium Subscription Plans</h2><p class="section-sub">For Premium Tribute and enhanced personalized video experiences. Credit costs: Standard 20, Premium Video 25, Premium Multi-Image 50.</p><div class="plans"><article class="plan premium"><span class="badge">PREMIUM</span><h2>Monthly</h2><div class="price">$${PRINTO_SUBSCRIPTION_PRICES.monthly.toFixed(2)}</div><p>100 credits now, then 100 credits each active month</p><a href="${PRINTO_MONTHLY_SUBSCRIPTION_URL}">Choose Premium Monthly</a></article><article class="plan premium"><span class="badge">PREMIUM</span><h2>6 Months</h2><div class="price">$${PRINTO_SUBSCRIPTION_PRICES.six_months.toFixed(2)}</div><p>100 credits monthly for 6 months</p><a href="${PRINTO_SIX_MONTH_SUBSCRIPTION_URL}">Choose Premium 6 Months</a></article><article class="plan premium best"><span class="badge">BEST PREMIUM VALUE</span><h2>1 Year</h2><div class="price">$${PRINTO_SUBSCRIPTION_PRICES.yearly.toFixed(2)}</div><p>100 credits monthly for 12 months</p><a href="${PRINTO_YEARLY_SUBSCRIPTION_URL}">Choose Premium Annual</a></article></div></section><p><a class="close-link" href="/greetings">← Return to Printo Greeting Studio</a></p></main></body></html>`));
+app.get("/subscriptions", (req,res)=>res.type('html').send(`<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><title>Printo Plans</title><style>*{box-sizing:border-box}body{margin:0;font-family:Arial;background:linear-gradient(150deg,#071b61,#0b63ce);color:#fff;padding:24px}.wrap{max-width:1180px;margin:auto;text-align:center}.topbar{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}.close-link{background:#fff;color:#082a8f;text-decoration:none;padding:11px 16px;border-radius:999px;font-weight:900}.section{margin:28px 0 38px}.section-title{font-size:30px;margin:0 0 8px}.section-sub{margin:0 0 18px}.plans{display:grid;grid-template-columns:repeat(4,1fr);gap:16px}.plan{background:#fff;color:#082a8f;border:3px solid #ffd21f;border-radius:22px;padding:22px;position:relative}.plan.premium{border-color:#c13cff;box-shadow:0 10px 28px rgba(0,0,0,.18)}.badge{display:inline-block;background:#123faa;color:#fff;border-radius:999px;padding:7px 12px;font-size:13px;font-weight:900;margin-bottom:8px}.premium .badge{background:#7b2cbf}.price{font-size:34px;font-weight:900}.plan a{display:block;background:#7b2cbf;color:#fff;text-decoration:none;padding:14px;border-radius:12px;font-weight:900;margin-top:16px}.standard a{background:#123faa}.best{transform:scale(1.03)}.note{background:#fff4b8;color:#082a8f;border:3px solid #ffd21f;border-radius:18px;padding:16px;margin:0 auto 20px;max-width:820px;font-weight:900}@media(max-width:950px){.plans{grid-template-columns:1fr 1fr}}@media(max-width:560px){body{padding:16px}.plans{grid-template-columns:1fr}.best{transform:none}.topbar{justify-content:center}.section-title{font-size:25px}}</style></head><body><main class="wrap"><div class="topbar"><h1>⭐ Printo Credits & Subscriptions</h1><a class="close-link" href="/greetings">✕ Close / Return to Studio</a></div><div class="note">🎁 Each verified phone number receives 100 FREE credits once — enough for 5 standard creations. Each standard creation uses 20 credits.</div><p>Use one universal Printo credit wallet for Standard, Premium Video, and Premium Multi-Image creations.</p><section class="section"><h2 class="section-title">🎁 Standard Greeting Plans</h2><p class="section-sub">For personalized standard greeting video cards with names, messages, Printo music and voice.</p><div class="plans"><article class="plan standard"><span class="badge">STANDARD</span><h2>Single Creation</h2><div class="price">$4.99</div><p>20 credits • 1 standard creation</p><a href="/standard-checkout">Buy One</a></article><article class="plan standard"><span class="badge">STANDARD</span><h2>Monthly</h2><div class="price">$${PRINTO_STANDARD_SUBSCRIPTION_PRICES.monthly.toFixed(2)}</div><p>100 credits monthly • 5 standard creations</p><a href="${PRINTO_STANDARD_MONTHLY_SUBSCRIPTION_URL}">Choose Standard Monthly</a></article><article class="plan standard"><span class="badge">STANDARD</span><h2>6 Months</h2><div class="price">$${PRINTO_STANDARD_SUBSCRIPTION_PRICES.six_months.toFixed(2)}</div><p>600 credits • 30 standard creations</p><a href="${PRINTO_STANDARD_SIX_MONTH_SUBSCRIPTION_URL}">Choose Standard 6 Months</a></article><article class="plan standard best"><span class="badge">BEST STANDARD VALUE</span><h2>1 Year</h2><div class="price">$${PRINTO_STANDARD_SUBSCRIPTION_PRICES.yearly.toFixed(2)}</div><p>1,200 credits • 60 standard creations</p><a href="${PRINTO_STANDARD_YEARLY_SUBSCRIPTION_URL}">Choose Standard Annual</a></article></div></section><section class="section"><h2 class="section-title">🌟 Premium Creation Prices & Subscription Plans</h2><p class="section-sub">Each Premium service has its own separate creation price in the universal Printo credit wallet.</p><div class="plans"><article class="plan premium"><span class="badge">PREMIUM VIDEO</span><h2>Personal Tribute Video</h2><div class="price">${PRINTO_CREATION_CREDIT_COSTS.premium_video} Credits</div><p>1 recipient photo • introduction video • custom music</p><a href="/greetings/premium">Create Premium Video</a></article><article class="plan premium"><span class="badge">MULTI-IMAGE FLIP</span><h2>Premium Multi-Image</h2><div class="price">${PRINTO_CREATION_CREDIT_COSTS.premium_multi_image} Credits</div><p>2–8 photos • flip transitions • introduction • custom music</p><a href="/greetings/premium-multi-image">Create Multi-Image Flip</a></article><article class="plan premium"><span class="badge">PREMIUM</span><h2>Monthly</h2><div class="price">$${PRINTO_SUBSCRIPTION_PRICES.monthly.toFixed(2)}</div><p>100 credits now, then 100 credits each active month</p><a href="${PRINTO_MONTHLY_SUBSCRIPTION_URL}">Choose Premium Monthly</a></article><article class="plan premium"><span class="badge">PREMIUM</span><h2>6 Months</h2><div class="price">$${PRINTO_SUBSCRIPTION_PRICES.six_months.toFixed(2)}</div><p>100 credits monthly for 6 months</p><a href="${PRINTO_SIX_MONTH_SUBSCRIPTION_URL}">Choose Premium 6 Months</a></article><article class="plan premium best"><span class="badge">BEST PREMIUM VALUE</span><h2>1 Year</h2><div class="price">$${PRINTO_SUBSCRIPTION_PRICES.yearly.toFixed(2)}</div><p>100 credits monthly for 12 months</p><a href="${PRINTO_YEARLY_SUBSCRIPTION_URL}">Choose Premium Annual</a></article></div></section><p><a class="close-link" href="/greetings">← Return to Printo Greeting Studio</a></p></main></body></html>`));
 
 app.get("/customer-dashboard", (req, res) => {
   const language = normalizePrintoStudioLanguage(req.query.lang || "en");
@@ -19840,8 +20303,11 @@ function safeDashboardUrl(value){
 }
 
 function renderFinishedVideo(video){
-  const isPremium=String(video.type||'standard')==='premium';
-  const label=isPremium?'🌟 Premium Tribute Video':'🎁 Standard Greeting Video';
+  const videoType=String(video.type||'standard');
+  const isPremium=videoType==='premium'||videoType==='premium_multi_image';
+  const label=videoType==='premium_multi_image'
+    ? '🌟 Premium Multi-Image Flip Video'
+    : (isPremium?'🌟 Premium Tribute Video':'🎁 Standard Greeting Video');
   const typeClass=isPremium?'videoType premium':'videoType';
   const recipient=escapeDashboardHtml(video.toName||'Recipient');
   const playUrl=escapeDashboardHtml(safeDashboardUrl(video.resultUrl));
