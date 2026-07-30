@@ -209,6 +209,11 @@ const PRINTO_CREATION_CREDIT_COSTS = Object.freeze({
   premium_multi_image: 50
 });
 const PRINTO_CREATION_CREDIT_COST = PRINTO_CREATION_CREDIT_COSTS.standard;
+const PRINTO_MULTI_IMAGE_PRICE_USD = 14.99;
+const PRINTO_MULTI_IMAGE_FREE_TRIAL_VALUE_CREDITS =
+  PRINTO_CREATION_CREDIT_COSTS.premium_multi_image;
+const PRINTO_MULTI_IMAGE_SINGLE_PURCHASE_CREDITS =
+  PRINTO_CREATION_CREDIT_COSTS.premium_multi_image;
 
 // The $4.99 Shopify Standard product always purchases exactly one Standard
 // creation. Never trust a customer-editable URL value for the credit amount.
@@ -759,6 +764,10 @@ const PRINTO_STANDARD_YEARLY_SUBSCRIPTION_URL = process.env.PRINTO_STANDARD_YEAR
 const PRINTO_MONTHLY_SUBSCRIPTION_URL = process.env.PRINTO_MONTHLY_SUBSCRIPTION_URL || "https://www.patapata.us/collections/printo-subscriptions";
 const PRINTO_SIX_MONTH_SUBSCRIPTION_URL = process.env.PRINTO_SIX_MONTH_SUBSCRIPTION_URL || "https://www.patapata.us/collections/printo-subscriptions";
 const PRINTO_YEARLY_SUBSCRIPTION_URL = process.env.PRINTO_YEARLY_SUBSCRIPTION_URL || "https://www.patapata.us/collections/printo-subscriptions";
+const PRINTO_MULTI_IMAGE_SHOPIFY_URL =
+  process.env.GREETING_PREMIUM_MULTI_IMAGE_SHOPIFY_URL ||
+  process.env.PRINTO_MULTI_IMAGE_SHOPIFY_URL ||
+  "";
 const PRINTO_STANDARD_SUBSCRIPTION_PRICES = { monthly: 9.99, six_months: 49.99, yearly: 89.99 };
 const PRINTO_SUBSCRIPTION_PRICES = { monthly: 9.99, six_months: 49.99, yearly: 89.99 };
 
@@ -2390,6 +2399,8 @@ VIDEO_ADVANCED: process.env.SHOPIFY_VARIANT_VIDEO_ADVANCED || "52582037160235",
   ID_PRINT: process.env.SHOPIFY_VARIANT_ID_PRINT || "52746952278315",
   GREETING_STANDARD: process.env.SHOPIFY_VARIANT_GREETING_STANDARD || "",
   GREETING_PREMIUM: process.env.SHOPIFY_VARIANT_GREETING_PREMIUM || "",
+  GREETING_PREMIUM_MULTI_IMAGE:
+    process.env.SHOPIFY_VARIANT_GREETING_PREMIUM_MULTI_IMAGE || "",
 };
 
 // =========================
@@ -2665,6 +2676,7 @@ async function ensurePrintoAccountTables() {
         free_used BOOLEAN NOT NULL DEFAULT FALSE,
         paid_credits INTEGER NOT NULL DEFAULT 0 CHECK (paid_credits >= 0),
         free_credits_granted BOOLEAN NOT NULL DEFAULT FALSE,
+        free_multi_image_trial_used BOOLEAN NOT NULL DEFAULT FALSE,
         total_generated INTEGER NOT NULL DEFAULT 0 CHECK (total_generated >= 0),
         last_generation_source TEXT NOT NULL DEFAULT '',
         last_generated_at TIMESTAMPTZ,
@@ -2742,6 +2754,7 @@ async function ensurePrintoAccountTables() {
     `);
 
     await queryWithRetry(`ALTER TABLE greeting_customer_access ADD COLUMN IF NOT EXISTS free_credits_granted BOOLEAN NOT NULL DEFAULT FALSE`);
+    await queryWithRetry(`ALTER TABLE greeting_customer_access ADD COLUMN IF NOT EXISTS free_multi_image_trial_used BOOLEAN NOT NULL DEFAULT FALSE`);
     await queryWithRetry(`ALTER TABLE greeting_customer_access ALTER COLUMN paid_credits SET DEFAULT 0`);
     await queryWithRetry(`ALTER TABLE greeting_customer_access ALTER COLUMN free_credits_granted SET DEFAULT FALSE`);
     await queryWithRetry(`ALTER TABLE greeting_customer_access ADD COLUMN IF NOT EXISTS subscription_plan TEXT NOT NULL DEFAULT 'free'`);
@@ -3060,6 +3073,7 @@ async function getGreetingAccessStatus(customerKey, contactPhone = "") {
       free_used,
       paid_credits,
       free_credits_granted,
+      free_multi_image_trial_used,
       total_generated,
       last_generation_source,
       last_generated_at,
@@ -3086,6 +3100,11 @@ async function getGreetingAccessStatus(customerKey, contactPhone = "") {
     freeAvailable: creditBalance >= PRINTO_CREATION_CREDIT_COST,
     freeUsed: creditBalance < PRINTO_FREE_CREDITS,
     freeCreditsGranted: Boolean(row.free_credits_granted),
+    freeMultiImageTrialUsed: Boolean(row.free_multi_image_trial_used),
+    freeMultiImageTrialAvailable: !Boolean(row.free_multi_image_trial_used),
+    freeMultiImageTrialValueCredits:
+      PRINTO_MULTI_IMAGE_FREE_TRIAL_VALUE_CREDITS,
+    multiImagePriceUsd: PRINTO_MULTI_IMAGE_PRICE_USD,
     paidCredits: creditBalance,
     creditBalance,
     creationCost: PRINTO_CREATION_CREDIT_COST,
@@ -3139,6 +3158,51 @@ async function reserveGreetingGenerationAccess(customerKey, contactPhone = "", c
       `,
       [customerKey, String(contactPhone || "").replace(/\D+/g, "")]
     );
+
+    if (normalizedCreationType === "premium_multi_image") {
+      const trialResult = await client.query(
+        `
+        UPDATE greeting_customer_access AS access
+        SET
+          free_multi_image_trial_used = TRUE,
+          total_generated = total_generated + 1,
+          last_generation_source = 'free:premium_multi_image_trial',
+          last_generated_at = NOW(),
+          updated_at = NOW()
+        WHERE access.customer_key = $1
+          AND access.free_multi_image_trial_used = FALSE
+          AND EXISTS (
+            SELECT 1
+            FROM greeting_customer_accounts AS account
+            WHERE account.customer_key = access.customer_key
+              AND account.account_type = 'verified_phone'
+              AND account.phone_verified_at IS NOT NULL
+          )
+        RETURNING access.*
+        `,
+        [customerKey]
+      );
+
+      if (trialResult.rows[0]) {
+        await client.query("COMMIT");
+        const row = trialResult.rows[0];
+        const creditBalance = Number(row.paid_credits || 0);
+
+        return {
+          allowed: true,
+          source: "free_multi_image_trial",
+          creationType: normalizedCreationType,
+          customerKey,
+          creditsUsed: 0,
+          trialValueCredits: PRINTO_MULTI_IMAGE_FREE_TRIAL_VALUE_CREDITS,
+          freeMultiImageTrialUsed: true,
+          paidCredits: creditBalance,
+          creditBalance,
+          remainingCreations: Math.floor(creditBalance / creditCost),
+          totalGenerated: Number(row.total_generated || 0)
+        };
+      }
+    }
 
     const paidResult = await client.query(
       `
@@ -3203,8 +3267,30 @@ async function reserveGreetingGenerationAccess(customerKey, contactPhone = "", c
 }
 
 async function refundGreetingGenerationAccess(customerKey, source = "", creditsUsed = PRINTO_CREATION_CREDIT_COST) {
-  if (!customerKey || source !== "credits") return;
-  const safeCreditsUsed = Math.max(1, Number(creditsUsed) || PRINTO_CREATION_CREDIT_COST);
+  if (!customerKey) return;
+
+  if (source === "free_multi_image_trial") {
+    await pool.query(
+      `
+      UPDATE greeting_customer_access
+      SET
+        free_multi_image_trial_used = FALSE,
+        total_generated = GREATEST(total_generated - 1, 0),
+        last_generation_source = '',
+        last_generated_at = NULL,
+        updated_at = NOW()
+      WHERE customer_key = $1
+      `,
+      [customerKey]
+    );
+    return;
+  }
+
+  if (source !== "credits") return;
+  const safeCreditsUsed = Math.max(
+    1,
+    Number(creditsUsed) || PRINTO_CREATION_CREDIT_COST
+  );
 
   await pool.query(
     `
@@ -3943,6 +4029,56 @@ function buildGreetingPaymentLinks({
   return { shopify, africa };
 }
 
+
+function getMultiImageShopifyBaseUrl() {
+  const explicit = String(PRINTO_MULTI_IMAGE_SHOPIFY_URL || "").trim();
+  if (explicit) return explicit;
+
+  const cartUrl = buildGreetingCheckoutUrl("PREMIUM_MULTI_IMAGE", 1);
+  return cartUrl || "";
+}
+
+function buildMultiImagePurchaseLinks({
+  customerKey,
+  contactPhone = ""
+} = {}) {
+  const phone = String(contactPhone || "").replace(/\D+/g, "");
+  const credits = String(PRINTO_MULTI_IMAGE_SINGLE_PURCHASE_CREDITS);
+  const packageName = "GREETING_PREMIUM_MULTI_IMAGE_CREDITS";
+  const baseUrl = getMultiImageShopifyBaseUrl();
+
+  const properties = encodeShopifyCartProperties({
+    "Greeting Customer Key": customerKey || "",
+    "Greeting Package": packageName,
+    "Greeting Credits": credits,
+    "Greeting Phone": phone,
+    "Multi-Image Price": `$${PRINTO_MULTI_IMAGE_PRICE_USD.toFixed(2)}`
+  });
+
+  const shopify = baseUrl
+    ? appendUrlParameters(baseUrl, {
+        properties,
+        "attributes[Greeting Customer Key]": customerKey || "",
+        "attributes[Greeting Package]": packageName,
+        "attributes[Greeting Credits]": credits,
+        "attributes[Greeting Phone]": phone,
+        "attributes[Multi-Image Price]":
+          `$${PRINTO_MULTI_IMAGE_PRICE_USD.toFixed(2)}`,
+        ref: "printo-multi-image-credits"
+      })
+    : "";
+
+  const africa = appendUrlParameters(GREETING_AFRICA_PAYMENT_URL, {
+    greeting_customer_key: customerKey || "",
+    greeting_package: packageName,
+    greeting_credits: credits,
+    greeting_phone: phone,
+    multi_image_price_usd: PRINTO_MULTI_IMAGE_PRICE_USD.toFixed(2)
+  });
+
+  return { shopify, africa };
+}
+
 function makePremiumOrderId() {
   return `PPM-${Date.now()}-${Math.random().toString(36).slice(2, 8).toUpperCase()}`;
 }
@@ -4099,7 +4235,7 @@ async function probeSpokenAudioEndSeconds(filePath, totalDurationSeconds) {
       "-nostdin",
       "-i", filePath,
       "-af",
-      "highpass=f=90,lowpass=f=8500,afftdn=nr=22:nf=-38:tn=1:gs=8,agate=threshold=0.016:ratio=2.2:attack=8:release=180,silencedetect=noise=-36dB:d=0.18",
+      "highpass=f=100,lowpass=f=7800,anlmdn=s=0.0007:p=0.002:r=0.006:m=15,afftdn=nr=26:nf=-40:tn=1:tr=1:ad=0.35:gs=10,agate=threshold=0.011:ratio=2.8:range=0.12:attack=5:release=200,silencedetect=noise=-34dB:d=0.18",
       "-f", "null",
       "-"
     ], {
@@ -4177,7 +4313,7 @@ async function compressPremiumIntroductionVideo(inputPath, outputPath) {
     "-preset", "veryfast",
     "-pix_fmt", "yuv420p",
     "-af",
-    "highpass=f=90,lowpass=f=8500,afftdn=nr=24:nf=-38:tn=1:gs=10,agate=threshold=0.018:ratio=2.5:attack=8:release=220,alimiter=limit=0.95",
+    "highpass=f=100,lowpass=f=7800,adeclick=w=20:o=75:a=2:t=2:b=2,anlmdn=s=0.0008:p=0.002:r=0.006:m=15,afftdn=nr=28:nf=-40:tn=1:tr=1:ad=0.35:gs=12,agate=threshold=0.012:ratio=3:range=0.1:attack=5:release=220,alimiter=limit=0.95",
     "-c:a", "aac",
     "-b:a", "96k",
     "-ar", "44100",
@@ -4553,6 +4689,52 @@ function getStandardGreetingShopifyQuantity(order = {}) {
   return Math.min(100, Math.max(0, quantity));
 }
 
+function getMultiImageGreetingShopifyQuantity(order = {}) {
+  const lineItems = Array.isArray(order.line_items) ? order.line_items : [];
+  const configuredVariantId = String(
+    SHOPIFY_VARIANTS.GREETING_PREMIUM_MULTI_IMAGE || ""
+  ).trim();
+  let quantity = 0;
+
+  for (const item of lineItems) {
+    const itemVariantId = String(
+      item?.variant_id || item?.variant?.id || ""
+    ).trim();
+    const title =
+      `${item?.title || ""} ${item?.name || ""} ${item?.variant_title || ""}`
+        .toLowerCase();
+
+    const isConfiguredVariant =
+      Boolean(configuredVariantId) && itemVariantId === configuredVariantId;
+    const isNamedMultiImage =
+      title.includes("printo") &&
+      (
+        title.includes("multi-image") ||
+        title.includes("multi image") ||
+        title.includes("image flip")
+      ) &&
+      !title.includes("subscription");
+
+    if (isConfiguredVariant || isNamedMultiImage) {
+      quantity += Math.max(1, Number(item?.quantity || 1));
+    }
+  }
+
+  if (quantity === 0) {
+    const packageName = getShopifyNoteAttribute(order, [
+      "Greeting Package",
+      "greeting_package",
+      "Printo Greeting Package"
+    ]).toUpperCase();
+
+    if (packageName === "GREETING_PREMIUM_MULTI_IMAGE_CREDITS") {
+      quantity = 1;
+    }
+  }
+
+  return Math.min(100, Math.max(0, quantity));
+}
+
 // =========================
 // PRINTO GREETING STUDIO
 // =========================
@@ -4866,6 +5048,9 @@ function parseGreetingRequest(rawText = "") {
 
 function getGreetingVariantId(packageType = "STANDARD") {
   const type = String(packageType || "STANDARD").toUpperCase();
+  if (type === "PREMIUM_MULTI_IMAGE") {
+    return SHOPIFY_VARIANTS.GREETING_PREMIUM_MULTI_IMAGE;
+  }
   if (type === "PREMIUM") return SHOPIFY_VARIANTS.GREETING_PREMIUM;
   return SHOPIFY_VARIANTS.GREETING_STANDARD;
 }
@@ -6943,6 +7128,7 @@ app.post("/webhooks/shopify/orders-paid", async (req, res) => {
       ]) ||
       String(order.phone || order.customer?.phone || "").replace(/\D+/g, "");
 
+    const multiImageQuantity = getMultiImageGreetingShopifyQuantity(order);
     const standardGreetingQuantity = getStandardGreetingShopifyQuantity(order);
 
     if (!customerKey) {
@@ -6960,6 +7146,40 @@ app.post("/webhooks/shopify/orders-paid", async (req, res) => {
         ok: true,
         ignored: true,
         reason: "No greeting customer key was attached to the order."
+      });
+    }
+
+    if (multiImageQuantity > 0) {
+      const requestedCredits =
+        PRINTO_MULTI_IMAGE_SINGLE_PURCHASE_CREDITS * multiImageQuantity;
+
+      const result = await grantGreetingPaidCredits({
+        customerKey,
+        contactPhone,
+        credits: requestedCredits,
+        provider: "shopify",
+        eventKey: `shopify:multi-image:${orderReference}`,
+        payload: order
+      });
+
+      if (contactPhone && !result.duplicate) {
+        await sendMessage(
+          contactPhone,
+          `✅ Your Printo Multi-Image Flip payment is confirmed.
+
+${requestedCredits} Printo credits have been added to your account.
+
+You can now create one Multi-Image Flip video:
+${buildBrandedPrintoStudioUrl("en")}`
+        );
+      }
+
+      return res.status(200).json({
+        ok: true,
+        multiImagePurchase: true,
+        customerKey,
+        credits: requestedCredits,
+        result
       });
     }
 
@@ -17628,7 +17848,8 @@ function buildGreetingStudioHomePage(language = "en") {
           <li>✓ Flip-style image transitions</li>
           <li>✓ Personal introduction video</li>
           <li>✓ Custom tribute music</li>
-          <li>✓ Separate price: ${PRINTO_CREATION_CREDIT_COSTS.premium_multi_image} credits</li>
+          <li>✓ First verified-account test is FREE</li>
+          <li>✓ After the free test: ${PRINTO_CREATION_CREDIT_COSTS.premium_multi_image} credits or $${PRINTO_MULTI_IMAGE_PRICE_USD.toFixed(2)}</li>
           <li>✓ Share and download page</li>
         </ul>
         <div class="premium-actions">
@@ -18027,8 +18248,11 @@ function buildPremiumGreetingOrderPage(language = "en", creationType = "premium_
   };
   if (isMultiImage) Object.assign(t, multiCopy[lang] || multiCopy.en);
   const creationCreditCost = getPrintoCreationCreditCost(normalizedCreationType);
+  const creationPriceLabel = isMultiImage
+    ? `First verified-account test FREE • Then ${creationCreditCost} credits or $${PRINTO_MULTI_IMAGE_PRICE_USD.toFixed(2)}`
+    : `${creationCreditCost} Printo credits per creation`;
   const photoInputHtml = isMultiImage
-    ? `<input name="recipientImages" type="file" accept="image/*" multiple required><div class="hint">Choose 2–8 JPG, PNG or WebP photos. Each image must be 10 MB or smaller. Flip price: ${creationCreditCost} credits.</div>`
+    ? `<input name="recipientImages" type="file" accept="image/*" multiple required><div class="hint">Choose 2–8 JPG, PNG or WebP photos. Each image must be 10 MB or smaller. Your first verified-account test is free. Afterward: ${creationCreditCost} credits or $${PRINTO_MULTI_IMAGE_PRICE_USD.toFixed(2)}.</div>`
     : `<input name="recipientPhoto" type="file" accept="image/*" required><div class="hint">JPG, PNG or WebP. Clear portrait preferred. Price: ${creationCreditCost} credits.</div>`;
   const premiumPhoneGuidance = {
     en: {
@@ -18066,7 +18290,7 @@ function buildPremiumGreetingOrderPage(language = "en", creationType = "premium_
 <html lang="${lang}" dir="${dir}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${t.title}</title>
 <style>
 *{box-sizing:border-box}body{margin:0;font-family:Arial,sans-serif;background:linear-gradient(150deg,#071b61,#0b63ce);color:#fff;min-height:100vh;padding:18px}.wrap{max-width:820px;margin:auto}.back{color:#ffd21f;font-weight:900;text-decoration:none}.hero{text-align:center;margin:12px 0 20px}.hero h1{font-size:34px;margin:8px}.hero p{line-height:1.55}.creditPrice{display:inline-block;background:#ffd21f;color:#082a8f;padding:9px 14px;border-radius:999px;font-weight:900;margin-top:8px}.panel{background:#fff;color:#172554;border:3px solid #ffd21f;border-radius:25px;padding:22px;box-shadow:0 18px 44px rgba(0,0,0,.35)}.grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}.full{grid-column:1/-1}label{display:block;font-weight:900;margin:5px 0 7px}input,textarea,select{width:100%;padding:13px;border:2px solid #cbd5e1;border-radius:13px;font-size:16px}textarea{min-height:110px}.hint{font-size:12px;color:#64748b;margin-top:5px}.submit{width:100%;border:0;border-radius:15px;padding:16px;background:linear-gradient(90deg,#7b2cbf,#d63384);color:#fff;font-size:19px;font-weight:900;margin-top:15px;cursor:pointer}.submit:disabled{opacity:.55}.status{text-align:center;font-weight:900;min-height:26px;margin-top:12px}.result{display:none;background:#f1f5f9;padding:16px;border-radius:16px;margin-top:15px}.orderId{font-size:20px;font-weight:900}.payments{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:12px}.pay{display:block;text-align:center;text-decoration:none;color:#fff;font-weight:900;padding:14px;border-radius:13px}.shopify{background:#4f772d}.africa{background:#008751}.worker{background:#25D366;grid-column:1/-1}.disabled{opacity:.45;pointer-events:none}.agreement{display:flex;align-items:flex-start;gap:10px;background:#fff7d6;border:2px solid #ffd21f;border-radius:13px;padding:13px;margin-top:16px}.agreement input{width:20px;height:20px;flex:0 0 auto;margin:2px 0 0}.agreement label{margin:0;font-weight:800;line-height:1.45}.agreement a{color:#123faa;font-weight:900}@media(max-width:620px){.grid,.payments{grid-template-columns:1fr}.full,.worker{grid-column:auto}.hero h1{font-size:28px}}
-</style></head><body><main class="wrap"><a class="back" href="/greetings?lang=${lang}">← ${t.back}</a><section class="hero"><h1>🌟 ${t.title}</h1><p>${t.intro}</p><span class="creditPrice">${creationCreditCost} Printo credits per creation</span></section><section class="panel">
+</style></head><body><main class="wrap"><a class="back" href="/greetings?lang=${lang}">← ${t.back}</a><section class="hero"><h1>🌟 ${t.title}</h1><p>${t.intro}</p><span class="creditPrice">${creationPriceLabel}</span></section><section class="panel">
 <form id="premiumForm" enctype="multipart/form-data"><input type="hidden" name="language" value="${lang}"><input type="hidden" name="creationType" value="${normalizedCreationType}"><input type="hidden" id="customerId" name="customerId"><input type="hidden" id="premiumCustomerKey" name="customerKey">
 <div class="grid"><div><label>${t.recipient} *</label><input name="recipientName" maxlength="24" required></div><div><label>${t.sender} *</label><input name="senderName" maxlength="24" required></div><div><label>${t.phone} *</label><input id="premiumCustomerPhone" name="customerPhone" type="tel" inputmode="tel" autocomplete="tel" placeholder="${phoneGuide.placeholder}" required><div class="hint">${phoneGuide.hint}</div></div><div><label>${t.email}</label><input name="customerEmail" type="email"></div><div class="full"><label>${t.message} *</label><textarea name="personalMessage" maxlength="220" required></textarea></div><div><label>${t.songStyle}</label><select name="songStyle"><option value="">Worker will discuss with me</option><option>Afrobeat</option><option>Gospel</option><option>R&B / Soul</option><option>Pop</option><option>Highlife</option><option>Hip-Hop / Rap</option><option>Soft acoustic</option><option>Other</option></select></div><div><label>${t.notes}</label><textarea name="tributeNotes" maxlength="1000"></textarea></div><div><label>${t.photo} *</label>${photoInputHtml}</div><div><label>${t.video} *</label><input name="introVideo" type="file" accept="video/mp4,video/quicktime,video/webm,video/*" required><div class="hint">Maximum 60 seconds and 100 MB. Large files are compressed automatically to a smaller 720p MP4 before permanent storage.</div></div></div>
 <div class="agreement"><input id="premiumTermsAccepted" name="termsAccepted" type="checkbox" value="yes" required><label for="premiumTermsAccepted">I confirm that I own or have permission to use the recipient photo, introduction video, voice, names, music instructions and all other submitted content. I agree to the <a href="/greetings?lang=${lang}#terms" target="_blank" rel="noopener">Terms of Use, Privacy Policy and Refund Policy</a>.</label></div>
@@ -18090,7 +18314,7 @@ if(premiumCustomerPhone&&savedVerifiedPhone&&!premiumCustomerPhone.value){
 }
 let customerId=localStorage.getItem('printoGreetingCustomerId')||localStorage.getItem('printoPremiumCustomerId');if(!customerId){customerId='premium_'+Date.now()+'_'+Math.random().toString(36).slice(2,11);localStorage.setItem('printoPremiumCustomerId',customerId)}document.getElementById('customerId').value=customerId;
 function readVideoDuration(file){return new Promise((resolve,reject)=>{const url=URL.createObjectURL(file),video=document.createElement('video');video.preload='metadata';video.onloadedmetadata=()=>{const duration=Number(video.duration||0);URL.revokeObjectURL(url);resolve(duration)};video.onerror=()=>{URL.revokeObjectURL(url);reject(new Error('The introduction video could not be read.'))};video.src=url;});}
-form.addEventListener('submit',async(e)=>{e.preventDefault();if(!termsAccepted.checked){statusBox.textContent='❌ Please confirm permission and accept the Terms, Privacy and Refund Policy.';return;}button.disabled=true;button.textContent='⏳ ${t.saving}';statusBox.textContent='';result.style.display='none';try{const fd=new FormData(form);const video=fd.get('introVideo');const singlePhoto=fd.get('recipientPhoto');const multiPhotos=fd.getAll('recipientImages').filter(file=>file&&file.size);if(premiumIsMultiImage){if(multiPhotos.length<2||multiPhotos.length>8)throw new Error('${t.required}');for(const image of multiPhotos){if(image.size>10*1024*1024)throw new Error('Each recipient image must be 10 MB or smaller.');}}else{if(!singlePhoto||!singlePhoto.size)throw new Error('${t.required}');if(singlePhoto.size>10*1024*1024)throw new Error('Recipient photo must be 10 MB or smaller.');}if(!video||!video.size)throw new Error('${t.required}');if(video.size>100*1024*1024)throw new Error('Introduction video must be 100 MB or smaller.');const duration=await readVideoDuration(video);if(duration>60.25)throw new Error('Introduction video must be 60 seconds or shorter.');statusBox.textContent='⏳ Uploading and compressing your introduction video…';fd.set('customerKey',accountKey);const response=await fetch('/api/greeting/premium/request',{method:'POST',headers:{'x-printo-customer-id':customerId,'x-printo-customer-key':accountKey},body:fd});const data=await response.json();if(!response.ok||!data.ok)throw new Error(data.error||'Could not save premium order.');statusBox.textContent='✅ ${t.success} Introduction video compressed and stored safely.';orderIdBox.textContent='Order: '+data.orderId+' • '+String(data.creditCost||${creationCreditCost})+' credits';shopifyPay.href=data.payment?.shopify||'#';africaPay.href=data.payment?.africa||'#';if(!data.payment?.shopify)shopifyPay.classList.add('disabled');else shopifyPay.classList.remove('disabled');workerLink.href=data.whatsappUrl;result.style.display='block';result.scrollIntoView({behavior:'smooth'});}catch(error){statusBox.textContent='❌ '+error.message;}finally{button.textContent='✨ ${t.submit}';syncPremiumButton();}});
+form.addEventListener('submit',async(e)=>{e.preventDefault();if(!termsAccepted.checked){statusBox.textContent='❌ Please confirm permission and accept the Terms, Privacy and Refund Policy.';return;}button.disabled=true;button.textContent='⏳ ${t.saving}';statusBox.textContent='';result.style.display='none';try{const fd=new FormData(form);const video=fd.get('introVideo');const singlePhoto=fd.get('recipientPhoto');const multiPhotos=fd.getAll('recipientImages').filter(file=>file&&file.size);if(premiumIsMultiImage){if(multiPhotos.length<2||multiPhotos.length>8)throw new Error('${t.required}');for(const image of multiPhotos){if(image.size>10*1024*1024)throw new Error('Each recipient image must be 10 MB or smaller.');}}else{if(!singlePhoto||!singlePhoto.size)throw new Error('${t.required}');if(singlePhoto.size>10*1024*1024)throw new Error('Recipient photo must be 10 MB or smaller.');}if(!video||!video.size)throw new Error('${t.required}');if(video.size>100*1024*1024)throw new Error('Introduction video must be 100 MB or smaller.');const duration=await readVideoDuration(video);if(duration>60.25)throw new Error('Introduction video must be 60 seconds or shorter.');statusBox.textContent='⏳ Uploading and compressing your introduction video…';fd.set('customerKey',accountKey);const response=await fetch('/api/greeting/premium/request',{method:'POST',headers:{'x-printo-customer-id':customerId,'x-printo-customer-key':accountKey},body:fd});const data=await response.json();if(response.status===402&&data.paymentRequired){statusBox.textContent='💳 '+(data.error||'Payment is required.');orderIdBox.textContent=premiumIsMultiImage?'Multi-Image Flip: $'+String(data.priceUsd||${PRINTO_MULTI_IMAGE_PRICE_USD})+' or '+String(data.access?.creditsNeeded||${creationCreditCost})+' more credits':'Premium payment required';shopifyPay.href=data.payment?.shopify||'/multi-image-checkout';africaPay.href=data.payment?.africa||'#';if(!data.payment?.shopify&&premiumIsMultiImage)shopifyPay.href='/multi-image-checkout';workerLink.classList.add('disabled');result.style.display='block';result.scrollIntoView({behavior:'smooth'});return;}if(!response.ok||!data.ok)throw new Error(data.error||'Could not save premium order.');statusBox.textContent='✅ ${t.success} Introduction video compressed and stored safely.';orderIdBox.textContent='Order: '+data.orderId+' • '+(data.usedFreeMultiImageTrial?'FREE TEST — 0 credits deducted':String(data.chargedCredits??data.creditCost??${creationCreditCost})+' credits deducted');shopifyPay.href=data.payment?.shopify||'#';africaPay.href=data.payment?.africa||'#';if(!data.payment?.shopify)shopifyPay.classList.add('disabled');else shopifyPay.classList.remove('disabled');workerLink.href=data.whatsappUrl;result.style.display='block';result.scrollIntoView({behavior:'smooth'});}catch(error){statusBox.textContent='❌ '+error.message;}finally{button.textContent='✨ ${t.submit}';syncPremiumButton();}});
 </script></body></html>`;
 }
 
@@ -18486,17 +18710,26 @@ app.post(
       );
 
       if (!premiumAccessReservation.allowed) {
-        const payment = buildGreetingPaymentLinks({
-          customerKey: premiumCustomerIdentity.customerKey,
-          templateId: "premium-tribute",
-          contactPhone: customerPhone
-        });
+        const payment = creationType === "premium_multi_image"
+          ? buildMultiImagePurchaseLinks({
+              customerKey: premiumCustomerIdentity.customerKey,
+              contactPhone: customerPhone
+            })
+          : buildGreetingPaymentLinks({
+              customerKey: premiumCustomerIdentity.customerKey,
+              templateId: "premium-tribute",
+              contactPhone: customerPhone
+            });
         return res.status(402).json({
           ok: false,
           paymentRequired: true,
           error: `You need ${getPrintoCreationCreditCost(creationType)} credits to create this ${creationType === "premium_multi_image" ? "Premium Multi-Image Flip" : "Premium Tribute"}.`,
           customerKey: premiumCustomerIdentity.customerKey,
           access: premiumAccessReservation,
+          priceUsd:
+            creationType === "premium_multi_image"
+              ? PRINTO_MULTI_IMAGE_PRICE_USD
+              : null,
           payment
         });
       }
@@ -18670,6 +18903,13 @@ app.post(
         status: "paid",
         creationType,
         creditCost: getPrintoCreationCreditCost(creationType),
+        chargedCredits: Number(premiumAccessReservation.creditsUsed || 0),
+        usedFreeMultiImageTrial:
+          premiumAccessReservation.source === "free_multi_image_trial",
+        multiImagePriceUsd:
+          creationType === "premium_multi_image"
+            ? PRINTO_MULTI_IMAGE_PRICE_USD
+            : null,
         imageCount: premiumImageBuffers.length,
         paymentRequired: false,
         access: premiumAccessReservation,
@@ -18690,7 +18930,8 @@ app.post(
       if (premiumAccessReservation?.allowed && premiumCustomerIdentity?.customerKey) {
         await refundGreetingGenerationAccess(
           premiumCustomerIdentity.customerKey,
-          premiumAccessReservation.source
+          premiumAccessReservation.source,
+          premiumAccessReservation.creditsUsed
         ).catch((refundError) => {
           console.error("Premium credit refund failed:", refundError);
         });
@@ -19362,10 +19603,12 @@ async function renderPremiumOrderVideo({ orderId, req, publicBaseUrl = "" }) {
     if (introAudioIndex >= 0) {
       audioFilters.push(
         `[${introAudioIndex}:a]atrim=0:${introDuration},asetpts=PTS-STARTPTS,` +
-        `highpass=f=90,lowpass=f=8500,` +
-        `afftdn=nr=24:nf=-38:tn=1:gs=10,` +
-        `agate=threshold=0.018:ratio=2.5:attack=8:release=220,` +
-        `loudnorm=I=-16:TP=-1.5:LRA=7,volume=1.05,` +
+        `highpass=f=100,lowpass=f=7800,` +
+        `adeclick=w=20:o=75:a=2:t=2:b=2,` +
+        `anlmdn=s=0.00045:p=0.002:r=0.006:m=15,` +
+        `afftdn=nr=20:nf=-42:tn=1:tr=1:ad=0.4:gs=8,` +
+        `agate=threshold=0.01:ratio=2.5:range=0.14:attack=5:release=200,` +
+        `loudnorm=I=-16:TP=-1.5:LRA=7,volume=1.02,` +
         `afade=t=out:st=${Math.max(0, introDuration - 0.08)}:d=0.08,` +
         `apad=pad_dur=${introDuration},atrim=0:${introDuration}[intro_exact]`
       );
@@ -20169,7 +20412,112 @@ app.get("/standard-checkout", (_req, res) => {
   res.type("html").send(`<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><title>Opening Shopify Checkout</title><style>body{font-family:Arial;background:#082a8f;color:#fff;display:grid;place-items:center;min-height:100vh;margin:0}.card{background:#fff;color:#082a8f;padding:28px;border-radius:18px;max-width:520px;text-align:center}a{color:#082a8f;font-weight:900}</style></head><body><main class="card"><h1>Opening Shopify Checkout…</h1><p id="status">Connecting this $4.99 order to your Printo account for 20 credits.</p><p><a href="/greetings">Return to Printo Studio</a></p></main><script>(async()=>{const key=localStorage.getItem('printoGreetingCustomerKey')||'';if(!key){location.replace('/customer-login?next=%2Fstandard-checkout');return;}try{const r=await fetch('/api/customer/standard-checkout',{cache:'no-store',headers:{'x-printo-customer-key':key}});const d=await r.json();if(!r.ok||!d.ok)throw new Error(d.error||'Could not open checkout.');location.replace(d.checkoutUrl);}catch(e){document.getElementById('status').textContent=e.message||'Could not open checkout.';}})();</script></body></html>`);
 });
 
-app.get("/subscriptions", (req,res)=>res.type('html').send(`<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><title>Printo Plans</title><style>*{box-sizing:border-box}body{margin:0;font-family:Arial;background:linear-gradient(150deg,#071b61,#0b63ce);color:#fff;padding:24px}.wrap{max-width:1180px;margin:auto;text-align:center}.topbar{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}.close-link{background:#fff;color:#082a8f;text-decoration:none;padding:11px 16px;border-radius:999px;font-weight:900}.section{margin:28px 0 38px}.section-title{font-size:30px;margin:0 0 8px}.section-sub{margin:0 0 18px}.plans{display:grid;grid-template-columns:repeat(4,1fr);gap:16px}.plan{background:#fff;color:#082a8f;border:3px solid #ffd21f;border-radius:22px;padding:22px;position:relative}.plan.premium{border-color:#c13cff;box-shadow:0 10px 28px rgba(0,0,0,.18)}.badge{display:inline-block;background:#123faa;color:#fff;border-radius:999px;padding:7px 12px;font-size:13px;font-weight:900;margin-bottom:8px}.premium .badge{background:#7b2cbf}.price{font-size:34px;font-weight:900}.plan a{display:block;background:#7b2cbf;color:#fff;text-decoration:none;padding:14px;border-radius:12px;font-weight:900;margin-top:16px}.standard a{background:#123faa}.best{transform:scale(1.03)}.note{background:#fff4b8;color:#082a8f;border:3px solid #ffd21f;border-radius:18px;padding:16px;margin:0 auto 20px;max-width:820px;font-weight:900}@media(max-width:950px){.plans{grid-template-columns:1fr 1fr}}@media(max-width:560px){body{padding:16px}.plans{grid-template-columns:1fr}.best{transform:none}.topbar{justify-content:center}.section-title{font-size:25px}}</style></head><body><main class="wrap"><div class="topbar"><h1>⭐ Printo Credits & Subscriptions</h1><a class="close-link" href="/greetings">✕ Close / Return to Studio</a></div><div class="note">🎁 Each verified phone number receives 100 FREE credits once — enough for 5 standard creations. Each standard creation uses 20 credits.</div><p>Use one universal Printo credit wallet for Standard, Premium Video, and Premium Multi-Image creations.</p><section class="section"><h2 class="section-title">🎁 Standard Greeting Plans</h2><p class="section-sub">For personalized standard greeting video cards with names, messages, Printo music and voice.</p><div class="plans"><article class="plan standard"><span class="badge">STANDARD</span><h2>Single Creation</h2><div class="price">$4.99</div><p>20 credits • 1 standard creation</p><a href="/standard-checkout">Buy One</a></article><article class="plan standard"><span class="badge">STANDARD</span><h2>Monthly</h2><div class="price">$${PRINTO_STANDARD_SUBSCRIPTION_PRICES.monthly.toFixed(2)}</div><p>100 credits monthly • 5 standard creations</p><a href="${PRINTO_STANDARD_MONTHLY_SUBSCRIPTION_URL}">Choose Standard Monthly</a></article><article class="plan standard"><span class="badge">STANDARD</span><h2>6 Months</h2><div class="price">$${PRINTO_STANDARD_SUBSCRIPTION_PRICES.six_months.toFixed(2)}</div><p>600 credits • 30 standard creations</p><a href="${PRINTO_STANDARD_SIX_MONTH_SUBSCRIPTION_URL}">Choose Standard 6 Months</a></article><article class="plan standard best"><span class="badge">BEST STANDARD VALUE</span><h2>1 Year</h2><div class="price">$${PRINTO_STANDARD_SUBSCRIPTION_PRICES.yearly.toFixed(2)}</div><p>1,200 credits • 60 standard creations</p><a href="${PRINTO_STANDARD_YEARLY_SUBSCRIPTION_URL}">Choose Standard Annual</a></article></div></section><section class="section"><h2 class="section-title">🌟 Premium Creation Prices & Subscription Plans</h2><p class="section-sub">Each Premium service has its own separate creation price in the universal Printo credit wallet.</p><div class="plans"><article class="plan premium"><span class="badge">PREMIUM VIDEO</span><h2>Personal Tribute Video</h2><div class="price">${PRINTO_CREATION_CREDIT_COSTS.premium_video} Credits</div><p>1 recipient photo • introduction video • custom music</p><a href="/greetings/premium">Create Premium Video</a></article><article class="plan premium"><span class="badge">MULTI-IMAGE FLIP</span><h2>Premium Multi-Image</h2><div class="price">${PRINTO_CREATION_CREDIT_COSTS.premium_multi_image} Credits</div><p>2–8 photos • flip transitions • introduction • custom music</p><a href="/greetings/premium-multi-image">Create Multi-Image Flip</a></article><article class="plan premium"><span class="badge">PREMIUM</span><h2>Monthly</h2><div class="price">$${PRINTO_SUBSCRIPTION_PRICES.monthly.toFixed(2)}</div><p>100 credits now, then 100 credits each active month</p><a href="${PRINTO_MONTHLY_SUBSCRIPTION_URL}">Choose Premium Monthly</a></article><article class="plan premium"><span class="badge">PREMIUM</span><h2>6 Months</h2><div class="price">$${PRINTO_SUBSCRIPTION_PRICES.six_months.toFixed(2)}</div><p>100 credits monthly for 6 months</p><a href="${PRINTO_SIX_MONTH_SUBSCRIPTION_URL}">Choose Premium 6 Months</a></article><article class="plan premium best"><span class="badge">BEST PREMIUM VALUE</span><h2>1 Year</h2><div class="price">$${PRINTO_SUBSCRIPTION_PRICES.yearly.toFixed(2)}</div><p>100 credits monthly for 12 months</p><a href="${PRINTO_YEARLY_SUBSCRIPTION_URL}">Choose Premium Annual</a></article></div></section><p><a class="close-link" href="/greetings">← Return to Printo Greeting Studio</a></p></main></body></html>`));
+
+app.get("/api/customer/multi-image-checkout", async (req, res) => {
+  try {
+    const customerKey = String(
+      req.headers["x-printo-customer-key"] || ""
+    ).trim();
+
+    if (!customerKey) {
+      return res.status(401).json({
+        ok: false,
+        loginRequired: true,
+        error: "Please log in first."
+      });
+    }
+
+    const account = await queryWithRetry(
+      `SELECT phone_e164
+       FROM greeting_customer_accounts
+       WHERE customer_key = $1
+       LIMIT 1`,
+      [customerKey]
+    );
+
+    if (!account.rows[0]) {
+      return res.status(401).json({
+        ok: false,
+        loginRequired: true,
+        error: "Your login has expired."
+      });
+    }
+
+    const payment = buildMultiImagePurchaseLinks({
+      customerKey,
+      contactPhone: account.rows[0].phone_e164 || ""
+    });
+
+    if (!payment.shopify) {
+      return res.status(503).json({
+        ok: false,
+        setupRequired: true,
+        error:
+          "Create the $14.99 Shopify Multi-Image product, then add its URL as GREETING_PREMIUM_MULTI_IMAGE_SHOPIFY_URL or add its variant ID as SHOPIFY_VARIANT_GREETING_PREMIUM_MULTI_IMAGE."
+      });
+    }
+
+    return res.json({
+      ok: true,
+      priceUsd: PRINTO_MULTI_IMAGE_PRICE_USD,
+      credits: PRINTO_MULTI_IMAGE_SINGLE_PURCHASE_CREDITS,
+      checkoutUrl: payment.shopify
+    });
+  } catch (error) {
+    console.error("Multi-Image Shopify checkout creation failed:", error);
+    return res.status(500).json({
+      ok: false,
+      error: "Could not open the Multi-Image checkout."
+    });
+  }
+});
+
+app.get("/multi-image-checkout", (_req, res) => {
+  res.type("html").send(`<!doctype html>
+<html>
+<head>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Opening Multi-Image Checkout</title>
+<style>
+body{font-family:Arial;background:#082a8f;color:#fff;display:grid;place-items:center;min-height:100vh;margin:0;padding:18px}
+.card{background:#fff;color:#082a8f;padding:28px;border-radius:18px;max-width:560px;text-align:center}
+a{color:#082a8f;font-weight:900}
+</style>
+</head>
+<body>
+<main class="card">
+<h1>Opening Shopify Checkout…</h1>
+<p id="status">Connecting this $14.99 purchase to your Printo account for 50 universal credits.</p>
+<p><a href="/greetings/premium-multi-image">Return to Multi-Image Flip</a></p>
+</main>
+<script>
+(async()=>{
+  const key=localStorage.getItem('printoGreetingCustomerKey')||'';
+  if(!key){
+    location.replace('/customer-login?next=%2Fmulti-image-checkout');
+    return;
+  }
+  try{
+    const response=await fetch('/api/customer/multi-image-checkout',{
+      cache:'no-store',
+      headers:{'x-printo-customer-key':key}
+    });
+    const data=await response.json();
+    if(!response.ok||!data.ok){
+      throw new Error(data.error||'Could not open checkout.');
+    }
+    location.replace(data.checkoutUrl);
+  }catch(error){
+    document.getElementById('status').textContent=
+      error.message||'Could not open checkout.';
+  }
+})();
+</script>
+</body>
+</html>`);
+});
+
+app.get("/subscriptions", (req,res)=>res.type('html').send(`<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><title>Printo Plans</title><style>*{box-sizing:border-box}body{margin:0;font-family:Arial;background:linear-gradient(150deg,#071b61,#0b63ce);color:#fff;padding:24px}.wrap{max-width:1180px;margin:auto;text-align:center}.topbar{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}.close-link{background:#fff;color:#082a8f;text-decoration:none;padding:11px 16px;border-radius:999px;font-weight:900}.section{margin:28px 0 38px}.section-title{font-size:30px;margin:0 0 8px}.section-sub{margin:0 0 18px}.plans{display:grid;grid-template-columns:repeat(4,1fr);gap:16px}.plan{background:#fff;color:#082a8f;border:3px solid #ffd21f;border-radius:22px;padding:22px;position:relative}.plan.premium{border-color:#c13cff;box-shadow:0 10px 28px rgba(0,0,0,.18)}.badge{display:inline-block;background:#123faa;color:#fff;border-radius:999px;padding:7px 12px;font-size:13px;font-weight:900;margin-bottom:8px}.premium .badge{background:#7b2cbf}.price{font-size:34px;font-weight:900}.plan a{display:block;background:#7b2cbf;color:#fff;text-decoration:none;padding:14px;border-radius:12px;font-weight:900;margin-top:16px}.standard a{background:#123faa}.best{transform:scale(1.03)}.note{background:#fff4b8;color:#082a8f;border:3px solid #ffd21f;border-radius:18px;padding:16px;margin:0 auto 20px;max-width:820px;font-weight:900}@media(max-width:950px){.plans{grid-template-columns:1fr 1fr}}@media(max-width:560px){body{padding:16px}.plans{grid-template-columns:1fr}.best{transform:none}.topbar{justify-content:center}.section-title{font-size:25px}}</style></head><body><main class="wrap"><div class="topbar"><h1>⭐ Printo Credits & Subscriptions</h1><a class="close-link" href="/greetings">✕ Close / Return to Studio</a></div><div class="note">🎁 Each verified phone number receives 100 FREE universal credits once, plus one FREE Multi-Image Flip test worth 50 credits. After the free Multi-Image test, each Multi-Image creation costs 50 credits or $14.99.</div><p>Use one universal Printo credit wallet for Standard, Premium Video, and Premium Multi-Image creations.</p><section class="section"><h2 class="section-title">🎁 Standard Greeting Plans</h2><p class="section-sub">For personalized standard greeting video cards with names, messages, Printo music and voice.</p><div class="plans"><article class="plan standard"><span class="badge">STANDARD</span><h2>Single Creation</h2><div class="price">$4.99</div><p>20 credits • 1 standard creation</p><a href="/standard-checkout">Buy One</a></article><article class="plan standard"><span class="badge">STANDARD</span><h2>Monthly</h2><div class="price">$${PRINTO_STANDARD_SUBSCRIPTION_PRICES.monthly.toFixed(2)}</div><p>100 credits monthly • 5 standard creations</p><a href="${PRINTO_STANDARD_MONTHLY_SUBSCRIPTION_URL}">Choose Standard Monthly</a></article><article class="plan standard"><span class="badge">STANDARD</span><h2>6 Months</h2><div class="price">$${PRINTO_STANDARD_SUBSCRIPTION_PRICES.six_months.toFixed(2)}</div><p>600 credits • 30 standard creations</p><a href="${PRINTO_STANDARD_SIX_MONTH_SUBSCRIPTION_URL}">Choose Standard 6 Months</a></article><article class="plan standard best"><span class="badge">BEST STANDARD VALUE</span><h2>1 Year</h2><div class="price">$${PRINTO_STANDARD_SUBSCRIPTION_PRICES.yearly.toFixed(2)}</div><p>1,200 credits • 60 standard creations</p><a href="${PRINTO_STANDARD_YEARLY_SUBSCRIPTION_URL}">Choose Standard Annual</a></article></div></section><section class="section"><h2 class="section-title">🌟 Premium Creation Prices & Subscription Plans</h2><p class="section-sub">Each Premium service has its own separate creation price in the universal Printo credit wallet.</p><div class="plans"><article class="plan premium"><span class="badge">PREMIUM VIDEO</span><h2>Personal Tribute Video</h2><div class="price">${PRINTO_CREATION_CREDIT_COSTS.premium_video} Credits</div><p>1 recipient photo • introduction video • custom music</p><a href="/greetings/premium">Create Premium Video</a></article><article class="plan premium"><span class="badge">MULTI-IMAGE FLIP</span><h2>Premium Multi-Image</h2><div class="price">$${PRINTO_MULTI_IMAGE_PRICE_USD.toFixed(2)}</div><p>First verified-account test FREE • then ${PRINTO_CREATION_CREDIT_COSTS.premium_multi_image} credits • 2–8 photos • flip transitions • introduction • custom music</p><a href="/greetings/premium-multi-image">Use Free Test / Create</a><a href="/multi-image-checkout">Buy 50 Credits</a></article><article class="plan premium"><span class="badge">PREMIUM</span><h2>Monthly</h2><div class="price">$${PRINTO_SUBSCRIPTION_PRICES.monthly.toFixed(2)}</div><p>100 credits now, then 100 credits each active month</p><a href="${PRINTO_MONTHLY_SUBSCRIPTION_URL}">Choose Premium Monthly</a></article><article class="plan premium"><span class="badge">PREMIUM</span><h2>6 Months</h2><div class="price">$${PRINTO_SUBSCRIPTION_PRICES.six_months.toFixed(2)}</div><p>100 credits monthly for 6 months</p><a href="${PRINTO_SIX_MONTH_SUBSCRIPTION_URL}">Choose Premium 6 Months</a></article><article class="plan premium best"><span class="badge">BEST PREMIUM VALUE</span><h2>1 Year</h2><div class="price">$${PRINTO_SUBSCRIPTION_PRICES.yearly.toFixed(2)}</div><p>100 credits monthly for 12 months</p><a href="${PRINTO_YEARLY_SUBSCRIPTION_URL}">Choose Premium Annual</a></article></div></section><p><a class="close-link" href="/greetings">← Return to Printo Greeting Studio</a></p></main></body></html>`));
 
 app.get("/customer-dashboard", (req, res) => {
   const language = normalizePrintoStudioLanguage(req.query.lang || "en");
@@ -20218,7 +20566,7 @@ body{
 }
 .stats{
   display:grid;
-  grid-template-columns:repeat(3,1fr);
+  grid-template-columns:repeat(4,1fr);
   gap:10px
 }
 .stat{
@@ -20338,12 +20686,13 @@ if(!key){
 
     document.getElementById('content').innerHTML=
       '<div style="background:#fff4b8;border:2px solid #ffd21f;border-radius:14px;padding:14px;margin-bottom:14px;font-weight:900">'+
-      '🎁 Welcome Bonus: Each verified phone number receives 100 FREE credits once — enough for 5 standard creations.'+
+      '🎁 Welcome Bonus: 100 FREE universal credits plus one FREE Multi-Image Flip test worth 50 credits for each verified phone account.'+
       '</div>'+
       '<div class="stats">'+
         '<div class="stat"><h2>'+Number(data.creditBalance||0)+'</h2>Credits</div>'+
         '<div class="stat"><h2>'+Number(data.remainingCreations||0)+'</h2>Standard Creations Remaining</div>'+
         '<div class="stat"><h2>'+escapeDashboardHtml(data.subscriptionPlan||'Free Welcome')+'</h2>Plan</div>'+
+        '<div class="stat"><h2>'+(data.freeMultiImageTrialAvailable?'Available':'Used')+'</h2>Free Multi-Image Test</div>'+
       '</div>'+
       '<div class="buttons">'+
         '<a href="'+createHref+'">'+(hasCreations?'Create Another Greeting':'Create Your First Greeting')+'</a>'+
