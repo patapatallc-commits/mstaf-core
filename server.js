@@ -18667,6 +18667,10 @@ async function generatePremiumSharePreviewFile(videoPath, previewPath) {
     "[foreground]scale=1200:600:force_original_aspect_ratio=decrease[card];" +
     "[blurred][card]overlay=(W-w)/2:(H-h)/2," +
       "drawbox=x=0:y=0:w=iw:h=ih:color=black@0.10:t=fill," +
+      "drawtext=fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf:" +
+        "text='▶':fontsize=170:fontcolor=white:" +
+        "x=(w-text_w)/2+8:y=(h-text_h)/2-8:" +
+        "box=1:boxcolor=black@0.62:boxborderw=42," +
       "format=yuvj420p[preview]";
 
   await execFilePromise("ffmpeg", [
@@ -18723,6 +18727,7 @@ async function generatePremiumSharePreviewFile(videoPath, previewPath) {
 async function ensurePremiumSharePreview(orderId, token) {
   const found = await queryWithRetry(
     `SELECT share_preview_data,
+            share_preview_name,
             final_video_data,
             updated_at
      FROM premium_greeting_orders
@@ -18736,10 +18741,12 @@ async function ensurePremiumSharePreview(orderId, token) {
   const row = found.rows[0];
   if (!row) return null;
 
-  if (
+  const hasCurrentPlayPreview =
     Buffer.isBuffer(row.share_preview_data) &&
-    row.share_preview_data.length > 0
-  ) {
+    row.share_preview_data.length > 0 &&
+    String(row.share_preview_name || "").includes("-Play-");
+
+  if (hasCurrentPlayPreview) {
     return {
       ready: true,
       updatedAt: row.updated_at
@@ -18777,7 +18784,7 @@ async function ensurePremiumSharePreview(orderId, token) {
         orderId,
         token,
         previewData,
-        `Printo-Premium-Preview-${orderId}.jpg`
+        `Printo-Premium-Preview-Play-${orderId}.jpg`
       ]
     );
 
@@ -19024,8 +19031,31 @@ body{margin:0;font-family:Arial,sans-serif;background:linear-gradient(150deg,#02
 .back{display:inline-block;margin-bottom:15px;padding:11px 16px;border-radius:999px;background:#ffd21f;color:#082a8f;text-decoration:none;font-weight:900}
 h1{font-size:30px;margin:8px 0}
 .subtitle{color:#dbeafe;line-height:1.5}
-.videoShell{background:#000;border:3px solid #ffd21f;border-radius:20px;padding:8px;box-shadow:0 18px 50px rgba(0,0,0,.45)}
+.videoShell{position:relative;background:#000;border:3px solid #ffd21f;border-radius:20px;padding:8px;box-shadow:0 18px 50px rgba(0,0,0,.45)}
 video{display:block;width:100%;max-height:72vh;border-radius:13px;background:#000}
+.bigPlayButton{
+  position:absolute;
+  left:50%;
+  top:50%;
+  transform:translate(-50%,-50%);
+  width:112px;
+  height:112px;
+  border-radius:50%;
+  border:5px solid rgba(255,255,255,.94);
+  background:rgba(0,0,0,.68);
+  color:#fff;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  font-size:54px;
+  line-height:1;
+  padding:0 0 2px 8px;
+  cursor:pointer;
+  z-index:5;
+  box-shadow:0 8px 28px rgba(0,0,0,.55);
+}
+.bigPlayButton:hover{transform:translate(-50%,-50%) scale(1.06)}
+.bigPlayButton.hidden{display:none}
 .actions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-top:16px}
 .btn{border:0;border-radius:13px;padding:13px 10px;color:#fff;font-weight:900;font-size:15px;cursor:pointer;text-decoration:none;display:flex;align-items:center;justify-content:center;min-height:48px}
 .download{background:#7b2cbf}.whatsapp{background:#25D366;color:#082a24}.facebook{background:#1877F2}.xshare{background:#111}.instagram{background:#d63384}.youtube{background:#ef0000}.tiktok{background:#111}.email{background:#0f766e}.copy{background:#475569}.videos{background:#123faa}.credits{background:#4f772d}.full{grid-column:1/-1}
@@ -19038,7 +19068,10 @@ video{display:block;width:100%;max-height:72vh;border-radius:13px;background:#00
 <a class="back" href="/greetings?lang=${encodeURIComponent(language)}">← Back to Printo Studio</a>
 <h1>🌟 ${escapeHtml(title)}</h1>
 <p class="subtitle">Created for <strong>${escapeHtml(recipient)}</strong> from <strong>${escapeHtml(sender)}</strong></p>
-<div class="videoShell"><video id="premiumVideo" controls playsinline preload="metadata" poster="${escapeHtml(videoPosterUrl)}"><source src="${escapeHtml(videoUrl)}" type="video/mp4"></video></div>
+<div class="videoShell">
+<video id="premiumVideo" controls playsinline preload="metadata" poster="${escapeHtml(videoPosterUrl)}"><source src="${escapeHtml(videoUrl)}" type="video/mp4"></video>
+<button id="bigPlayButton" class="bigPlayButton" type="button" aria-label="Play Premium video">▶</button>
+</div>
 <div class="actions">
 <a class="btn download full" href="${escapeHtml(downloadUrl)}">⬇ Download Video</a>
 <button class="btn whatsapp" type="button" onclick="shareWhatsApp()">📱 WhatsApp</button>
@@ -19060,6 +19093,38 @@ const videoUrl=${JSON.stringify(videoUrl)};
 const downloadUrl=${JSON.stringify(downloadUrl)};
 const shareText=${JSON.stringify(shareText)};
 const fileName=${JSON.stringify(`Printo-Premium-${orderId}.mp4`)};
+const premiumVideo=document.getElementById('premiumVideo');
+const bigPlayButton=document.getElementById('bigPlayButton');
+
+function syncBigPlayButton(){
+  if(!premiumVideo||!bigPlayButton)return;
+  if(premiumVideo.paused||premiumVideo.ended){
+    bigPlayButton.classList.remove('hidden');
+  }else{
+    bigPlayButton.classList.add('hidden');
+  }
+}
+
+async function playPremiumVideo(){
+  if(!premiumVideo)return;
+  try{
+    await premiumVideo.play();
+  }catch(_error){
+    premiumVideo.controls=true;
+  }
+  syncBigPlayButton();
+}
+
+if(bigPlayButton){
+  bigPlayButton.addEventListener('click',playPremiumVideo);
+}
+if(premiumVideo){
+  premiumVideo.addEventListener('play',syncBigPlayButton);
+  premiumVideo.addEventListener('pause',syncBigPlayButton);
+  premiumVideo.addEventListener('ended',syncBigPlayButton);
+  premiumVideo.addEventListener('loadeddata',syncBigPlayButton);
+}
+syncBigPlayButton();
 
 function popup(url){window.open(url,'_blank','noopener,noreferrer,width=760,height=720')}
 function shareWhatsApp(){popup('https://wa.me/?text='+encodeURIComponent(shareText+'\\n\\n'+pageUrl))}
@@ -20367,7 +20432,7 @@ async function renderPremiumOrderVideo({ orderId, req, publicBaseUrl = "" }) {
         premiumResultUrl,
         `${introMediaType === "audio" ? "Voice introduction" : "Video introduction"} by ${senderName}, followed by a tribute song for ${recipientName}.`,
         sharePreviewBytes,
-        `Printo-Premium-Preview-${orderId}.jpg`
+        `Printo-Premium-Preview-Play-${orderId}.jpg`
       ]
     );
 
