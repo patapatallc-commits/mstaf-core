@@ -2943,6 +2943,9 @@ async function ensureGreetingAccessTables() {
       final_video_mime TEXT NOT NULL DEFAULT '',
       final_video_name TEXT NOT NULL DEFAULT '',
       final_video_url TEXT NOT NULL DEFAULT '',
+      share_preview_data BYTEA,
+      share_preview_mime TEXT NOT NULL DEFAULT '',
+      share_preview_name TEXT NOT NULL DEFAULT '',
       render_status TEXT NOT NULL DEFAULT 'not_started',
       render_error TEXT NOT NULL DEFAULT '',
       media_token TEXT NOT NULL DEFAULT '',
@@ -2978,6 +2981,9 @@ async function ensureGreetingAccessTables() {
   await pool.query(`ALTER TABLE premium_greeting_orders ADD COLUMN IF NOT EXISTS final_video_mime TEXT NOT NULL DEFAULT ''`);
   await pool.query(`ALTER TABLE premium_greeting_orders ADD COLUMN IF NOT EXISTS final_video_name TEXT NOT NULL DEFAULT ''`);
   await pool.query(`ALTER TABLE premium_greeting_orders ADD COLUMN IF NOT EXISTS final_video_url TEXT NOT NULL DEFAULT ''`);
+  await pool.query(`ALTER TABLE premium_greeting_orders ADD COLUMN IF NOT EXISTS share_preview_data BYTEA`);
+  await pool.query(`ALTER TABLE premium_greeting_orders ADD COLUMN IF NOT EXISTS share_preview_mime TEXT NOT NULL DEFAULT ''`);
+  await pool.query(`ALTER TABLE premium_greeting_orders ADD COLUMN IF NOT EXISTS share_preview_name TEXT NOT NULL DEFAULT ''`);
   await pool.query(`ALTER TABLE premium_greeting_orders ADD COLUMN IF NOT EXISTS render_status TEXT NOT NULL DEFAULT 'not_started'`);
   await pool.query(`ALTER TABLE premium_greeting_orders ADD COLUMN IF NOT EXISTS render_error TEXT NOT NULL DEFAULT ''`);
   await pool.query(`ALTER TABLE premium_greeting_orders ADD COLUMN IF NOT EXISTS media_token TEXT NOT NULL DEFAULT ''`);
@@ -4143,7 +4149,7 @@ function getPublicBaseUrl(req) {
 }
 
 function buildPremiumMediaUrl(req, orderId, mediaToken, kind) {
-  const allowedKinds = new Set(["photo", "video", "music", "final"]);
+  const allowedKinds = new Set(["photo", "video", "music", "final", "preview"]);
   const safeKind = allowedKinds.has(String(kind || "").toLowerCase())
     ? String(kind).toLowerCase()
     : "photo";
@@ -4171,7 +4177,10 @@ function sendPremiumMediaBuffer(req, res, media) {
     `${forceDownload ? "attachment" : "inline"}; filename="${fileName}"`
   );
   res.setHeader("X-Content-Type-Options", "nosniff");
-  res.setHeader("Cache-Control", "private, no-store, max-age=0");
+  res.setHeader(
+    "Cache-Control",
+    media.cacheControl || "private, no-store, max-age=0"
+  );
 
   if (mime.startsWith("video/")) {
     res.setHeader("Accept-Ranges", "bytes");
@@ -4255,7 +4264,7 @@ async function probeSpokenAudioEndSeconds(filePath, totalDurationSeconds) {
       "-nostdin",
       "-i", filePath,
       "-af",
-      "highpass=f=75,lowpass=f=11000,silencedetect=noise=-42dB:d=0.35",
+      "highpass=f=100,lowpass=f=7800,anlmdn=s=0.0007:p=0.002:r=0.006:m=15,afftdn=nr=26:nf=-40:tn=1:tr=1:ad=0.35:gs=10,agate=threshold=0.011:ratio=2.8:range=0.12:attack=5:release=200,silencedetect=noise=-34dB:d=0.18",
       "-f", "null",
       "-"
     ], {
@@ -4389,10 +4398,10 @@ async function compressPremiumIntroductionVideo(inputPath, outputPath) {
     "-preset", "veryfast",
     "-pix_fmt", "yuv420p",
     "-af",
-    "highpass=f=75,lowpass=f=11000,afftdn=nr=8:nf=-48:tn=1:tr=1:ad=0.15:gs=4,acompressor=threshold=0.12:ratio=2:attack=20:release=250:makeup=1.35,alimiter=limit=0.95",
+    "highpass=f=100,lowpass=f=7800,adeclick=w=20:o=75:a=2:t=2:b=2,anlmdn=s=0.0008:p=0.002:r=0.006:m=15,afftdn=nr=28:nf=-40:tn=1:tr=1:ad=0.35:gs=12,agate=threshold=0.012:ratio=3:range=0.1:attack=5:release=220,alimiter=limit=0.95",
     "-c:a", "aac",
     "-b:a", "96k",
-    "-ar", "48000",
+    "-ar", "44100",
     "-ac", "2",
     "-movflags", "+faststart"
   ];
@@ -4446,14 +4455,16 @@ async function compressPremiumIntroductionAudio(inputPath, outputPath) {
     "-t", String(Math.min(source.duration, PREMIUM_VIDEO_MAX_SECONDS)),
     "-vn",
     "-af",
-    "highpass=f=75,lowpass=f=11000," +
-      "afftdn=nr=8:nf=-48:tn=1:tr=1:ad=0.15:gs=4," +
-      "acompressor=threshold=0.12:ratio=2:attack=20:release=250:makeup=1.35," +
-      "loudnorm=I=-17:TP=-2:LRA=9," +
+    "highpass=f=100,lowpass=f=7800," +
+      "adeclick=w=20:o=75:a=2:t=2:b=2," +
+      "anlmdn=s=0.0008:p=0.002:r=0.006:m=15," +
+      "afftdn=nr=28:nf=-40:tn=1:tr=1:ad=0.35:gs=12," +
+      "agate=threshold=0.012:ratio=3:range=0.1:attack=5:release=220," +
+      "loudnorm=I=-16:TP=-1.5:LRA=7," +
       "alimiter=limit=0.95",
     "-c:a", "aac",
     "-b:a", "96k",
-    "-ar", "48000",
+    "-ar", "44100",
     "-ac", "1",
     "-movflags", "+faststart",
     outputPath
@@ -18647,6 +18658,139 @@ form.addEventListener('submit',async(e)=>{e.preventDefault();if(!termsAccepted.c
 </script></body></html>`;
 }
 
+
+async function generatePremiumSharePreviewFile(videoPath, previewPath) {
+  const filter =
+    "[0:v]split=2[background][foreground];" +
+    "[background]scale=1200:630:force_original_aspect_ratio=increase," +
+      "crop=1200:630,gblur=sigma=28[blurred];" +
+    "[foreground]scale=1200:600:force_original_aspect_ratio=decrease[card];" +
+    "[blurred][card]overlay=(W-w)/2:(H-h)/2," +
+      "drawbox=x=0:y=0:w=iw:h=ih:color=black@0.10:t=fill," +
+      "format=yuvj420p[preview]";
+
+  await execFilePromise("ffmpeg", [
+    "-y", "-nostdin", "-loglevel", "error",
+    "-ss", "0.35",
+    "-i", videoPath,
+    "-filter_complex", filter,
+    "-map", "[preview]",
+    "-frames:v", "1",
+    "-q:v", "7",
+    "-map_metadata", "-1",
+    previewPath
+  ], {
+    timeout: 120000,
+    maxBuffer: 6 * 1024 * 1024
+  });
+
+  let stat = await fs.promises.stat(previewPath);
+
+  if (stat.size > 700 * 1024) {
+    const smallerPath = `${previewPath}.smaller.jpg`;
+    await execFilePromise("ffmpeg", [
+      "-y", "-nostdin", "-loglevel", "error",
+      "-ss", "0.35",
+      "-i", videoPath,
+      "-filter_complex", filter,
+      "-map", "[preview]",
+      "-frames:v", "1",
+      "-q:v", "11",
+      "-map_metadata", "-1",
+      smallerPath
+    ], {
+      timeout: 120000,
+      maxBuffer: 6 * 1024 * 1024
+    });
+
+    safeUnlink(previewPath);
+    fs.renameSync(smallerPath, previewPath);
+    stat = await fs.promises.stat(previewPath);
+  }
+
+  if (!Number.isFinite(stat.size) || stat.size <= 0) {
+    throw new Error("Premium share preview could not be generated.");
+  }
+
+  return {
+    bytes: stat.size,
+    width: 1200,
+    height: 630,
+    mime: "image/jpeg"
+  };
+}
+
+async function ensurePremiumSharePreview(orderId, token) {
+  const found = await queryWithRetry(
+    `SELECT share_preview_data,
+            final_video_data,
+            updated_at
+     FROM premium_greeting_orders
+     WHERE order_id = $1
+       AND media_token = $2
+     LIMIT 1`,
+    [orderId, token],
+    { attempts: 5, baseDelayMs: 350 }
+  );
+
+  const row = found.rows[0];
+  if (!row) return null;
+
+  if (
+    Buffer.isBuffer(row.share_preview_data) &&
+    row.share_preview_data.length > 0
+  ) {
+    return {
+      ready: true,
+      updatedAt: row.updated_at
+    };
+  }
+
+  if (
+    !Buffer.isBuffer(row.final_video_data) ||
+    row.final_video_data.length === 0
+  ) {
+    return null;
+  }
+
+  const runId = `${Date.now()}_${crypto.randomBytes(5).toString("hex")}`;
+  const videoPath =
+    path.join(premiumTempDir, `${runId}_preview_source.mp4`);
+  const previewPath =
+    path.join(premiumTempDir, `${runId}_share_preview.jpg`);
+
+  try {
+    await fs.promises.writeFile(videoPath, row.final_video_data);
+    await generatePremiumSharePreviewFile(videoPath, previewPath);
+    const previewData = await fs.promises.readFile(previewPath);
+
+    const saved = await queryWithRetry(
+      `UPDATE premium_greeting_orders
+       SET share_preview_data = $3,
+           share_preview_mime = 'image/jpeg',
+           share_preview_name = $4,
+           updated_at = NOW()
+       WHERE order_id = $1
+         AND media_token = $2
+       RETURNING updated_at`,
+      [
+        orderId,
+        token,
+        previewData,
+        `Printo-Premium-Preview-${orderId}.jpg`
+      ]
+    );
+
+    return {
+      ready: true,
+      updatedAt: saved.rows[0]?.updated_at || new Date()
+    };
+  } finally {
+    safeUnlink(videoPath);
+    safeUnlink(previewPath);
+  }
+}
+
 app.get(["/greetings/premium", "/premium-greeting"], requirePrintoAccountPage, (req, res) => {
   const language = String(req.query.lang || "en").toLowerCase();
   res.type("html").send(buildPremiumGreetingOrderPage(language, "premium_video"));
@@ -18690,6 +18834,12 @@ app.get(
           data: "final_video_data",
           mime: "final_video_mime",
           name: "final_video_name"
+        },
+        preview: {
+          data: "share_preview_data",
+          mime: "share_preview_mime",
+          name: "share_preview_name",
+          cacheControl: "public, max-age=31536000, immutable"
         }
       };
 
@@ -18719,7 +18869,8 @@ app.get(
       return sendPremiumMediaBuffer(req, res, {
         data: row.media_data,
         mime: row.media_mime,
-        name: row.media_name
+        name: row.media_name,
+        cacheControl: selected.cacheControl
       });
     } catch (error) {
       console.error("Premium media delivery error:", {
@@ -18793,6 +18944,7 @@ app.get("/premium-result/:orderId", async (req, res) => {
               personal_message,
               media_token,
               render_status,
+              updated_at,
               final_video_data IS NOT NULL AS has_final_video
        FROM premium_greeting_orders
        WHERE order_id = $1
@@ -18808,6 +18960,7 @@ app.get("/premium-result/:orderId", async (req, res) => {
       );
     }
 
+    const previewState = await ensurePremiumSharePreview(orderId, token);
     const publicBase = getPublicBaseUrl(req).replace(/\/$/, "");
     const pageUrl =
       `${publicBase}/premium-result/${encodeURIComponent(orderId)}` +
@@ -18816,7 +18969,13 @@ app.get("/premium-result/:orderId", async (req, res) => {
       `${publicBase}/premium-media/${encodeURIComponent(orderId)}/final` +
       `?token=${encodeURIComponent(token)}`;
     const downloadUrl = `${videoUrl}&download=1`;
-    const posterUrl =
+    const previewVersion = encodeURIComponent(
+      String(previewState?.updatedAt || order.updated_at || orderId)
+    );
+    const sharePreviewUrl =
+      `${publicBase}/premium-media/${encodeURIComponent(orderId)}/preview` +
+      `?token=${encodeURIComponent(token)}&v=${previewVersion}`;
+    const videoPosterUrl =
       `${publicBase}/premium-media/${encodeURIComponent(orderId)}/photo` +
       `?token=${encodeURIComponent(token)}`;
     const recipient = String(order.recipient_name || "Someone Special").trim();
@@ -18829,6 +18988,7 @@ app.get("/premium-result/:orderId", async (req, res) => {
     const shareText =
       `🎉 ${title}\nFrom ${sender}\n\nWatch this personalized Printo video and create yours too.`;
 
+    res.setHeader("Cache-Control", "public, max-age=300, must-revalidate");
     return res.type("html").send(`<!doctype html>
 <html lang="${language}" dir="${language === "ar" ? "rtl" : "ltr"}">
 <head>
@@ -18839,13 +18999,24 @@ app.get("/premium-result/:orderId", async (req, res) => {
 <meta property="og:title" content="${escapeHtml(title)}">
 <meta property="og:description" content="${escapeHtml(message || "A personalized Printo Premium tribute video.")}">
 <meta property="og:url" content="${escapeHtml(pageUrl)}">
-<meta property="og:image" content="${escapeHtml(posterUrl)}">
+<meta property="og:site_name" content="Printo Studio">
+<meta property="og:image" content="${escapeHtml(sharePreviewUrl)}">
+<meta property="og:image:secure_url" content="${escapeHtml(sharePreviewUrl)}">
+<meta property="og:image:type" content="image/jpeg">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="${escapeHtml(title)}">
+<link rel="image_src" href="${escapeHtml(sharePreviewUrl)}">
 <meta property="og:video" content="${escapeHtml(videoUrl)}">
+<meta property="og:video:secure_url" content="${escapeHtml(videoUrl)}">
 <meta property="og:video:type" content="video/mp4">
+<meta property="og:video:width" content="720">
+<meta property="og:video:height" content="1280">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="${escapeHtml(title)}">
 <meta name="twitter:description" content="${escapeHtml(message || "A personalized Printo Premium tribute video.")}">
-<meta name="twitter:image" content="${escapeHtml(posterUrl)}">
+<meta name="twitter:image" content="${escapeHtml(sharePreviewUrl)}">
+<meta name="twitter:image:alt" content="${escapeHtml(title)}">
 <style>
 *{box-sizing:border-box}
 body{margin:0;font-family:Arial,sans-serif;background:linear-gradient(150deg,#020617,#082a8f);color:#fff;padding:22px}
@@ -18867,7 +19038,7 @@ video{display:block;width:100%;max-height:72vh;border-radius:13px;background:#00
 <a class="back" href="/greetings?lang=${encodeURIComponent(language)}">← Back to Printo Studio</a>
 <h1>🌟 ${escapeHtml(title)}</h1>
 <p class="subtitle">Created for <strong>${escapeHtml(recipient)}</strong> from <strong>${escapeHtml(sender)}</strong></p>
-<div class="videoShell"><video id="premiumVideo" controls playsinline preload="metadata" poster="${escapeHtml(posterUrl)}"><source src="${escapeHtml(videoUrl)}" type="video/mp4"></video></div>
+<div class="videoShell"><video id="premiumVideo" controls playsinline preload="metadata" poster="${escapeHtml(videoPosterUrl)}"><source src="${escapeHtml(videoUrl)}" type="video/mp4"></video></div>
 <div class="actions">
 <a class="btn download full" href="${escapeHtml(downloadUrl)}">⬇ Download Video</a>
 <button class="btn whatsapp" type="button" onclick="shareWhatsApp()">📱 WhatsApp</button>
@@ -19494,6 +19665,9 @@ app.post(
              final_video_mime = '',
              final_video_name = '',
              final_video_url = '',
+             share_preview_data = NULL,
+             share_preview_mime = '',
+             share_preview_name = '',
              updated_at = NOW()
          WHERE order_id = $1
          RETURNING order_id,
@@ -19688,6 +19862,8 @@ async function renderPremiumOrderVideo({ orderId, req, publicBaseUrl = "" }) {
   const concatListPath = path.join(premiumTempDir, `${runId}_concat.txt`);
   const silentVideoPath = path.join(premiumTempDir, `${runId}_silent.mp4`);
   const outputPath = path.join(premiumTempDir, `${runId}_final.mp4`);
+  const sharePreviewPath =
+    path.join(premiumTempDir, `${runId}_share_preview.jpg`);
   const multiImagePaths = storedImages.map((image, index) =>
     path.join(
       premiumTempDir,
@@ -19704,7 +19880,8 @@ async function renderPremiumOrderVideo({ orderId, req, publicBaseUrl = "" }) {
     tributePath,
     concatListPath,
     silentVideoPath,
-    outputPath
+    outputPath,
+    sharePreviewPath
   ];
 
   try {
@@ -20091,11 +20268,13 @@ async function renderPremiumOrderVideo({ orderId, req, publicBaseUrl = "" }) {
     if (introAudioIndex >= 0) {
       audioFilters.push(
         `[${introAudioIndex}:a]atrim=0:${introDuration},asetpts=PTS-STARTPTS,` +
-        `highpass=f=75,lowpass=f=11000,` +
-        `aformat=channel_layouts=mono,pan=stereo|c0=c0|c1=c0,` +
-        `acompressor=threshold=0.12:ratio=1.7:attack=25:release=280:makeup=1.08,` +
-        `loudnorm=I=-17:TP=-2:LRA=9,` +
-        `afade=t=out:st=${Math.max(0, introDuration - 0.12)}:d=0.12,` +
+        `highpass=f=100,lowpass=f=7800,` +
+        `adeclick=w=20:o=75:a=2:t=2:b=2,` +
+        `anlmdn=s=0.00045:p=0.002:r=0.006:m=15,` +
+        `afftdn=nr=20:nf=-42:tn=1:tr=1:ad=0.4:gs=8,` +
+        `agate=threshold=0.01:ratio=2.5:range=0.14:attack=5:release=200,` +
+        `loudnorm=I=-16:TP=-1.5:LRA=7,volume=1.02,` +
+        `afade=t=out:st=${Math.max(0, introDuration - 0.08)}:d=0.08,` +
         `apad=pad_dur=${introDuration},atrim=0:${introDuration}[intro_exact]`
       );
     } else {
@@ -20117,7 +20296,6 @@ async function renderPremiumOrderVideo({ orderId, req, publicBaseUrl = "" }) {
       detectedIntroSpokenEnd,
       introDuration,
       stopsIntroductionAtFinalWord: true,
-      introAudioProcessing: "gentle-single-pass-no-gate-mono-center",
       recipientPhotoStartsAt: introEnd,
       tributeMusicStartsAt: introEnd,
       noOpeningDelay: true,
@@ -20148,8 +20326,20 @@ async function renderPremiumOrderVideo({ orderId, req, publicBaseUrl = "" }) {
       throw new Error("Finished Premium video is larger than the temporary launch storage limit.");
     }
 
-    console.log("Premium render stage 7/7 - saving finished video:", orderId);
+    console.log("Premium render stage 7/7 - preparing share preview:", orderId);
+    const sharePreviewInfo = await generatePremiumSharePreviewFile(
+      outputPath,
+      sharePreviewPath
+    );
+
+    console.log("Premium render stage 7/7 - saving finished video:", {
+      orderId,
+      previewBytes: sharePreviewInfo.bytes,
+      previewWidth: sharePreviewInfo.width,
+      previewHeight: sharePreviewInfo.height
+    });
     const finalBytes = await fs.promises.readFile(outputPath);
+    const sharePreviewBytes = await fs.promises.readFile(sharePreviewPath);
     const finalDownloadUrl = publicBaseUrl
       ? `${String(publicBaseUrl).replace(/\/$/, "")}/premium-media/${encodeURIComponent(orderId)}/final?token=${encodeURIComponent(order.media_token)}`
       : buildPremiumMediaUrl(req, orderId, order.media_token, "final");
@@ -20162,6 +20352,9 @@ async function renderPremiumOrderVideo({ orderId, req, publicBaseUrl = "" }) {
            final_video_name = $3,
            final_video_url = $4,
            voice_script = $5,
+           share_preview_data = $6,
+           share_preview_mime = 'image/jpeg',
+           share_preview_name = $7,
            render_status = 'completed',
            render_error = '',
            status = CASE WHEN status = 'paid' THEN 'completed' ELSE status END,
@@ -20172,7 +20365,9 @@ async function renderPremiumOrderVideo({ orderId, req, publicBaseUrl = "" }) {
         finalBytes,
         `Printo-Premium-${orderId}.mp4`,
         premiumResultUrl,
-        `${introMediaType === "audio" ? "Voice introduction" : "Video introduction"} by ${senderName}, followed by a tribute song for ${recipientName}.`
+        `${introMediaType === "audio" ? "Voice introduction" : "Video introduction"} by ${senderName}, followed by a tribute song for ${recipientName}.`,
+        sharePreviewBytes,
+        `Printo-Premium-Preview-${orderId}.jpg`
       ]
     );
 
