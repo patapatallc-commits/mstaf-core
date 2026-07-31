@@ -4255,7 +4255,7 @@ async function probeSpokenAudioEndSeconds(filePath, totalDurationSeconds) {
       "-nostdin",
       "-i", filePath,
       "-af",
-      "highpass=f=100,lowpass=f=7800,anlmdn=s=0.0007:p=0.002:r=0.006:m=15,afftdn=nr=26:nf=-40:tn=1:tr=1:ad=0.35:gs=10,agate=threshold=0.011:ratio=2.8:range=0.12:attack=5:release=200,silencedetect=noise=-34dB:d=0.18",
+      "highpass=f=75,lowpass=f=11000,silencedetect=noise=-42dB:d=0.35",
       "-f", "null",
       "-"
     ], {
@@ -4389,10 +4389,10 @@ async function compressPremiumIntroductionVideo(inputPath, outputPath) {
     "-preset", "veryfast",
     "-pix_fmt", "yuv420p",
     "-af",
-    "highpass=f=100,lowpass=f=7800,adeclick=w=20:o=75:a=2:t=2:b=2,anlmdn=s=0.0008:p=0.002:r=0.006:m=15,afftdn=nr=28:nf=-40:tn=1:tr=1:ad=0.35:gs=12,agate=threshold=0.012:ratio=3:range=0.1:attack=5:release=220,alimiter=limit=0.95",
+    "highpass=f=75,lowpass=f=11000,afftdn=nr=8:nf=-48:tn=1:tr=1:ad=0.15:gs=4,acompressor=threshold=0.12:ratio=2:attack=20:release=250:makeup=1.35,alimiter=limit=0.95",
     "-c:a", "aac",
     "-b:a", "96k",
-    "-ar", "44100",
+    "-ar", "48000",
     "-ac", "2",
     "-movflags", "+faststart"
   ];
@@ -4446,16 +4446,14 @@ async function compressPremiumIntroductionAudio(inputPath, outputPath) {
     "-t", String(Math.min(source.duration, PREMIUM_VIDEO_MAX_SECONDS)),
     "-vn",
     "-af",
-    "highpass=f=100,lowpass=f=7800," +
-      "adeclick=w=20:o=75:a=2:t=2:b=2," +
-      "anlmdn=s=0.0008:p=0.002:r=0.006:m=15," +
-      "afftdn=nr=28:nf=-40:tn=1:tr=1:ad=0.35:gs=12," +
-      "agate=threshold=0.012:ratio=3:range=0.1:attack=5:release=220," +
-      "loudnorm=I=-16:TP=-1.5:LRA=7," +
+    "highpass=f=75,lowpass=f=11000," +
+      "afftdn=nr=8:nf=-48:tn=1:tr=1:ad=0.15:gs=4," +
+      "acompressor=threshold=0.12:ratio=2:attack=20:release=250:makeup=1.35," +
+      "loudnorm=I=-17:TP=-2:LRA=9," +
       "alimiter=limit=0.95",
     "-c:a", "aac",
     "-b:a", "96k",
-    "-ar", "44100",
+    "-ar", "48000",
     "-ac", "1",
     "-movflags", "+faststart",
     outputPath
@@ -20093,13 +20091,11 @@ async function renderPremiumOrderVideo({ orderId, req, publicBaseUrl = "" }) {
     if (introAudioIndex >= 0) {
       audioFilters.push(
         `[${introAudioIndex}:a]atrim=0:${introDuration},asetpts=PTS-STARTPTS,` +
-        `highpass=f=100,lowpass=f=7800,` +
-        `adeclick=w=20:o=75:a=2:t=2:b=2,` +
-        `anlmdn=s=0.00045:p=0.002:r=0.006:m=15,` +
-        `afftdn=nr=20:nf=-42:tn=1:tr=1:ad=0.4:gs=8,` +
-        `agate=threshold=0.01:ratio=2.5:range=0.14:attack=5:release=200,` +
-        `loudnorm=I=-16:TP=-1.5:LRA=7,volume=1.02,` +
-        `afade=t=out:st=${Math.max(0, introDuration - 0.08)}:d=0.08,` +
+        `highpass=f=75,lowpass=f=11000,` +
+        `aformat=channel_layouts=mono,pan=stereo|c0=c0|c1=c0,` +
+        `acompressor=threshold=0.12:ratio=1.7:attack=25:release=280:makeup=1.08,` +
+        `loudnorm=I=-17:TP=-2:LRA=9,` +
+        `afade=t=out:st=${Math.max(0, introDuration - 0.12)}:d=0.12,` +
         `apad=pad_dur=${introDuration},atrim=0:${introDuration}[intro_exact]`
       );
     } else {
@@ -20121,6 +20117,7 @@ async function renderPremiumOrderVideo({ orderId, req, publicBaseUrl = "" }) {
       detectedIntroSpokenEnd,
       introDuration,
       stopsIntroductionAtFinalWord: true,
+      introAudioProcessing: "gentle-single-pass-no-gate-mono-center",
       recipientPhotoStartsAt: introEnd,
       tributeMusicStartsAt: introEnd,
       noOpeningDelay: true,
