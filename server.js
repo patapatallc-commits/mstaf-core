@@ -263,7 +263,7 @@ const premiumUpload = multer({
   limits: {
     fileSize: PREMIUM_VIDEO_UPLOAD_MAX_BYTES,
     files: PREMIUM_MULTI_IMAGE_MAX_COUNT + 1,
-    fields: 24
+    fields: 30
   },
   fileFilter: (_req, file, cb) => {
     const fieldName = String(file.fieldname || "");
@@ -4311,6 +4311,62 @@ async function probePremiumMedia(filePath) {
     size: Number(parsed?.format?.size || 0),
     hasAudio: streams.some((stream) => stream.codec_type === "audio"),
     hasVideo: streams.some((stream) => stream.codec_type === "video")
+  };
+}
+
+
+async function compressPremiumRecipientImage(inputPath, outputPath) {
+  const firstPassArgs = [
+    "-y", "-nostdin", "-loglevel", "error",
+    "-i", inputPath,
+    "-vf",
+    "scale=1080:1350:force_original_aspect_ratio=decrease," +
+      "scale=trunc(iw/2)*2:trunc(ih/2)*2,setsar=1",
+    "-frames:v", "1",
+    "-map_metadata", "-1",
+    "-q:v", "4",
+    outputPath
+  ];
+
+  await execFilePromise("ffmpeg", firstPassArgs, {
+    timeout: 120000,
+    maxBuffer: 4 * 1024 * 1024
+  });
+
+  let outputSize = fs.statSync(outputPath).size;
+  const maxStoredImageBytes = 2.5 * 1024 * 1024;
+
+  if (outputSize > maxStoredImageBytes) {
+    const smallerPath = `${outputPath}.smaller.jpg`;
+    await execFilePromise("ffmpeg", [
+      "-y", "-nostdin", "-loglevel", "error",
+      "-i", inputPath,
+      "-vf",
+      "scale=900:1125:force_original_aspect_ratio=decrease," +
+        "scale=trunc(iw/2)*2:trunc(ih/2)*2,setsar=1",
+      "-frames:v", "1",
+      "-map_metadata", "-1",
+      "-q:v", "7",
+      smallerPath
+    ], {
+      timeout: 120000,
+      maxBuffer: 4 * 1024 * 1024
+    });
+
+    safeUnlink(outputPath);
+    fs.renameSync(smallerPath, outputPath);
+    outputSize = fs.statSync(outputPath).size;
+  }
+
+  if (!Number.isFinite(outputSize) || outputSize <= 0) {
+    throw new Error("One of the recipient photos could not be prepared.");
+  }
+
+  return {
+    path: outputPath,
+    storedBytes: outputSize,
+    mime: "image/jpeg",
+    name: "recipient-photo.jpg"
   };
 }
 
@@ -18328,6 +18384,8 @@ function buildPremiumGreetingOrderPage(language = "en", creationType = "premium_
     zh: { title:"个人致敬音乐视频贺卡", intro:"填写订单信息，并上传收件人照片和您的个人介绍视频。保存订单后再付款。", recipient:"收件人姓名", sender:"发件人姓名", phone:"WhatsApp 电话", email:"电子邮件（可选）", message:"个人留言", songStyle:"致敬歌曲风格", notes:"故事、回忆、优点或歌曲内容", photo:"收件人照片", video:"个人视频或语音介绍", introType:"选择视频或语音介绍", videoMode:"视频介绍", audioMode:"语音介绍", startRecording:"开始录音", stopRecording:"停止录音", playRecording:"播放录音", recordAgain:"重新录音", uploadAudio:"上传现有音频", audioHint:"请在安静的地方清晰讲话。Printo 会自动降低背景噪音。", audioFormats:"MP3、M4A、WAV、AAC、OGG、OPUS、WebM 或 FLAC • 最长 60 秒，最大 30 MB。", audioRequired:"请录制或上传语音介绍。", audioTooLarge:"语音介绍必须不超过 30 MB。", audioTooLong:"语音介绍必须不超过 60 秒。", audioUnreadable:"无法读取语音介绍。", audioUploading:"正在上传、清理并降低语音介绍中的背景噪音……", audioStored:"语音介绍已降噪并安全保存。", recordingUnsupported:"此浏览器不支持语音录制。请使用上传现有音频。", microphoneDenied:"未允许麦克风访问。请上传现有音频文件。", submit:"保存高级订单", saving:"正在保存订单和文件…", required:"请填写必填项并选择两个文件。", success:"高级订单已保存。", pay:"选择付款方式", shopify:"Shopify 付款", africa:"非洲付款", worker:"通过 WhatsApp 发送给工作人员", back:"返回祝福工作室" }
   };
   const t = copy[lang] || copy.en;
+  t.connectionInterrupted = t.connectionInterrupted ||
+    "The upload connection was interrupted. Check My Videos or the worker dashboard before submitting again.";
   const normalizedCreationType = normalizePrintoCreationType(creationType);
   const isMultiImage = normalizedCreationType === "premium_multi_image";
   const multiCopy = {
@@ -18587,7 +18645,7 @@ if(premiumCustomerPhone&&savedVerifiedPhone&&!premiumCustomerPhone.value){
 }
 let customerId=localStorage.getItem('printoGreetingCustomerId')||localStorage.getItem('printoPremiumCustomerId');if(!customerId){customerId='premium_'+Date.now()+'_'+Math.random().toString(36).slice(2,11);localStorage.setItem('printoPremiumCustomerId',customerId)}document.getElementById('customerId').value=customerId;
 function readMediaDuration(file,isAudio=false){return new Promise((resolve,reject)=>{const url=URL.createObjectURL(file),media=document.createElement(isAudio?'audio':'video');media.preload='metadata';media.onloadedmetadata=()=>{const duration=Number(media.duration||0);URL.revokeObjectURL(url);resolve(Number.isFinite(duration)?duration:0)};media.onerror=()=>{URL.revokeObjectURL(url);reject(new Error(isAudio?premiumIntroUi.audioUnreadable:'The introduction video could not be read.'))};media.src=url;});}
-form.addEventListener('submit',async(e)=>{e.preventDefault();if(!termsAccepted.checked){statusBox.textContent='❌ '+(premiumIsMultiImage?premiumMultiUi.acceptTerms:'Please confirm permission and accept the Terms, Privacy and Refund Policy.');return;}button.disabled=true;button.textContent='⏳ ${t.saving}';statusBox.textContent='';result.style.display='none';try{const fd=new FormData(form);const introMode=introMediaTypeInput.value==='audio'?'audio':'video';const video=fd.get('introVideo');const uploadedAudio=fd.get('introAudio');const singlePhoto=fd.get('recipientPhoto');const multiPhotos=fd.getAll('recipientImages').filter(file=>file&&file.size);if(premiumIsMultiImage){if(multiPhotos.length<2||multiPhotos.length>8)throw new Error('${t.required}');for(const image of multiPhotos){if(image.size>10*1024*1024)throw new Error(premiumMultiUi.imageTooLarge);}}else{if(!singlePhoto||!singlePhoto.size)throw new Error('${t.required}');if(singlePhoto.size>10*1024*1024)throw new Error('Recipient photo must be 10 MB or smaller.');}let introFile=null;if(introMode==='audio'){if(recordedAudioBlob){const extension=recordedAudioBlob.type.includes('mp4')?'m4a':recordedAudioBlob.type.includes('ogg')?'ogg':'webm';introFile=new File([recordedAudioBlob],'printo-voice-introduction.'+extension,{type:recordedAudioBlob.type||'audio/webm'});fd.set('introAudio',introFile);}else if(uploadedAudio&&uploadedAudio.size){introFile=uploadedAudio;}if(!introFile)throw new Error(premiumIntroUi.audioRequired);if(introFile.size>30*1024*1024)throw new Error(premiumIntroUi.audioTooLarge);const audioDuration=await readMediaDuration(introFile,true);if(audioDuration>60.25)throw new Error(premiumIntroUi.audioTooLong);fd.delete('introVideo');}else{introFile=video;if(!introFile||!introFile.size)throw new Error('${t.required}');if(introFile.size>100*1024*1024)throw new Error(premiumIsMultiImage?premiumMultiUi.videoTooLarge:'Introduction video must be 100 MB or smaller.');const videoDuration=await readMediaDuration(introFile,false);if(videoDuration>60.25)throw new Error(premiumIsMultiImage?premiumMultiUi.videoTooLong:'Introduction video must be 60 seconds or shorter.');fd.delete('introAudio');}fd.set('introMediaType',introMode);statusBox.textContent='⏳ '+(introMode==='audio'?premiumIntroUi.audioUploading:(premiumIsMultiImage?premiumMultiUi.uploading:'Uploading and compressing your introduction video…'));fd.set('customerKey',accountKey);const response=await fetch('/api/greeting/premium/request',{method:'POST',headers:{'x-printo-customer-id':customerId,'x-printo-customer-key':accountKey},body:fd});const data=await response.json();if(response.status===402&&data.paymentRequired){statusBox.textContent='💳 '+(premiumIsMultiImage?premiumMultiUi.paymentRequired:(data.error||'Payment is required.'));const creditsNeeded=String(data.access?.creditsNeeded||${creationCreditCost});orderIdBox.textContent=premiumIsMultiImage?premiumMultiUi.paymentSummary.replace('{credits}',creditsNeeded):'Premium payment required';shopifyPay.href=data.payment?.shopify||'/multi-image-checkout';africaPay.href=data.payment?.africa||'#';if(!data.payment?.shopify&&premiumIsMultiImage)shopifyPay.href='/multi-image-checkout';workerLink.classList.add('disabled');result.style.display='block';result.scrollIntoView({behavior:'smooth'});return;}if(!response.ok||!data.ok)throw new Error(data.error||'Could not save premium order.');statusBox.textContent='✅ ${t.success} '+(introMode==='audio'?premiumIntroUi.audioStored:(premiumIsMultiImage?premiumMultiUi.stored:'Introduction video compressed and stored safely.'));const chargeSummary=data.usedFreeMultiImageTrial?premiumMultiUi.freeTestUsed:String(data.chargedCredits??data.creditCost??${creationCreditCost})+' '+premiumMultiUi.creditsDeducted;orderIdBox.textContent=(premiumIsMultiImage?premiumMultiUi.order:'Order')+': '+data.orderId+' • '+chargeSummary;shopifyPay.href=data.payment?.shopify||'#';africaPay.href=data.payment?.africa||'#';if(!data.payment?.shopify)shopifyPay.classList.add('disabled');else shopifyPay.classList.remove('disabled');workerLink.href=data.whatsappUrl;result.style.display='block';result.scrollIntoView({behavior:'smooth'});}catch(error){statusBox.textContent='❌ '+error.message;}finally{button.textContent='✨ ${t.submit}';syncPremiumButton();}});
+form.addEventListener('submit',async(e)=>{e.preventDefault();if(!termsAccepted.checked){statusBox.textContent='❌ '+(premiumIsMultiImage?premiumMultiUi.acceptTerms:'Please confirm permission and accept the Terms, Privacy and Refund Policy.');return;}button.disabled=true;button.textContent='⏳ ${t.saving}';statusBox.textContent='';result.style.display='none';try{const fd=new FormData(form);const introMode=introMediaTypeInput.value==='audio'?'audio':'video';const video=fd.get('introVideo');const uploadedAudio=fd.get('introAudio');const singlePhoto=fd.get('recipientPhoto');const multiPhotos=fd.getAll('recipientImages').filter(file=>file&&file.size);if(premiumIsMultiImage){if(multiPhotos.length<2||multiPhotos.length>8)throw new Error('${t.required}');for(const image of multiPhotos){if(image.size>10*1024*1024)throw new Error(premiumMultiUi.imageTooLarge);}}else{if(!singlePhoto||!singlePhoto.size)throw new Error('${t.required}');if(singlePhoto.size>10*1024*1024)throw new Error('Recipient photo must be 10 MB or smaller.');}let introFile=null;if(introMode==='audio'){if(recordedAudioBlob){const extension=recordedAudioBlob.type.includes('mp4')?'m4a':recordedAudioBlob.type.includes('ogg')?'ogg':'webm';introFile=new File([recordedAudioBlob],'printo-voice-introduction.'+extension,{type:recordedAudioBlob.type||'audio/webm'});fd.set('introAudio',introFile);}else if(uploadedAudio&&uploadedAudio.size){introFile=uploadedAudio;}if(!introFile)throw new Error(premiumIntroUi.audioRequired);if(introFile.size>30*1024*1024)throw new Error(premiumIntroUi.audioTooLarge);const audioDuration=await readMediaDuration(introFile,true);if(audioDuration>60.25)throw new Error(premiumIntroUi.audioTooLong);fd.delete('introVideo');}else{introFile=video;if(!introFile||!introFile.size)throw new Error('${t.required}');if(introFile.size>100*1024*1024)throw new Error(premiumIsMultiImage?premiumMultiUi.videoTooLarge:'Introduction video must be 100 MB or smaller.');const videoDuration=await readMediaDuration(introFile,false);if(videoDuration>60.25)throw new Error(premiumIsMultiImage?premiumMultiUi.videoTooLong:'Introduction video must be 60 seconds or shorter.');fd.delete('introAudio');}fd.set('introMediaType',introMode);statusBox.textContent='⏳ '+(introMode==='audio'?premiumIntroUi.audioUploading:(premiumIsMultiImage?premiumMultiUi.uploading:'Uploading and compressing your introduction video…'));fd.set('customerKey',accountKey);let response;try{response=await fetch('/api/greeting/premium/request',{method:'POST',headers:{'x-printo-customer-id':customerId,'x-printo-customer-key':accountKey},body:fd});}catch(networkError){throw new Error(premiumIntroUi.connectionInterrupted||'The upload connection was interrupted. Check My Videos or the worker dashboard before submitting again.');}const responseText=await response.text();let data={};try{data=responseText?JSON.parse(responseText):{};}catch(_parseError){throw new Error(response.ok?'The server returned an unreadable response. Please check My Videos before retrying.':('Server error '+response.status+'. Please check Render logs.'));}if(response.status===402&&data.paymentRequired){statusBox.textContent='💳 '+(premiumIsMultiImage?premiumMultiUi.paymentRequired:(data.error||'Payment is required.'));const creditsNeeded=String(data.access?.creditsNeeded||${creationCreditCost});orderIdBox.textContent=premiumIsMultiImage?premiumMultiUi.paymentSummary.replace('{credits}',creditsNeeded):'Premium payment required';shopifyPay.href=data.payment?.shopify||'/multi-image-checkout';africaPay.href=data.payment?.africa||'#';if(!data.payment?.shopify&&premiumIsMultiImage)shopifyPay.href='/multi-image-checkout';workerLink.classList.add('disabled');result.style.display='block';result.scrollIntoView({behavior:'smooth'});return;}if(!response.ok||!data.ok)throw new Error(data.error||'Could not save premium order.');statusBox.textContent='✅ ${t.success} '+(introMode==='audio'?premiumIntroUi.audioStored:(premiumIsMultiImage?premiumMultiUi.stored:'Introduction video compressed and stored safely.'));const chargeSummary=data.usedFreeMultiImageTrial?premiumMultiUi.freeTestUsed:String(data.chargedCredits??data.creditCost??${creationCreditCost})+' '+premiumMultiUi.creditsDeducted;orderIdBox.textContent=(premiumIsMultiImage?premiumMultiUi.order:'Order')+': '+data.orderId+' • '+chargeSummary;shopifyPay.href=data.payment?.shopify||'#';africaPay.href=data.payment?.africa||'#';if(!data.payment?.shopify)shopifyPay.classList.add('disabled');else shopifyPay.classList.remove('disabled');workerLink.href=data.whatsappUrl;result.style.display='block';result.scrollIntoView({behavior:'smooth'});}catch(error){statusBox.textContent='❌ '+error.message;}finally{button.textContent='✨ ${t.submit}';syncPremiumButton();}});
 </script></body></html>`;
 }
 
@@ -18893,6 +18951,7 @@ app.post(
   async (req, res) => {
     let premiumAccessReservation = null;
     let premiumCustomerIdentity = null;
+    const preparedPhotoPaths = [];
     const requestedCreationType = normalizePrintoCreationType(req.body?.creationType || "premium_video");
     const singlePhoto = req.files?.recipientPhoto?.[0];
     const multiPhotos = Array.isArray(req.files?.recipientImages) ? req.files.recipientImages : [];
@@ -18970,7 +19029,6 @@ app.post(
         }
       }
 
-      const photoBytes = fs.statSync(photo.path).size;
       const originalIntroBytes = fs.statSync(introMedia.path).size;
       for (const item of premiumPhotos) {
         const itemBytes = fs.statSync(item.path).size;
@@ -19012,6 +19070,92 @@ app.post(
         });
       }
 
+      const accessPreview = await getGreetingAccessStatus(
+        premiumCustomerIdentity.customerKey,
+        premiumCustomerIdentity.contactPhone
+      );
+      const creationCreditCost = getPrintoCreationCreditCost(creationType);
+      const canUseFreeMultiImageTrial =
+        creationType === "premium_multi_image" &&
+        Boolean(accessPreview.freeMultiImageTrialAvailable);
+      const hasEnoughCredits =
+        Number(accessPreview.creditBalance || 0) >= creationCreditCost;
+
+      if (!canUseFreeMultiImageTrial && !hasEnoughCredits) {
+        const payment = creationType === "premium_multi_image"
+          ? buildMultiImagePurchaseLinks({
+              customerKey: premiumCustomerIdentity.customerKey,
+              contactPhone: customerPhone
+            })
+          : buildGreetingPaymentLinks({
+              customerKey: premiumCustomerIdentity.customerKey,
+              templateId: "premium-tribute",
+              contactPhone: customerPhone
+            });
+
+        return res.status(402).json({
+          ok: false,
+          paymentRequired: true,
+          error: `You need ${creationCreditCost} credits to create this ${creationType === "premium_multi_image" ? "Premium Multi-Image Flip" : "Premium Tribute"}.`,
+          customerKey: premiumCustomerIdentity.customerKey,
+          access: {
+            ...accessPreview,
+            creditsNeeded: Math.max(
+              0,
+              creationCreditCost - Number(accessPreview.creditBalance || 0)
+            )
+          },
+          priceUsd:
+            creationType === "premium_multi_image"
+              ? PRINTO_MULTI_IMAGE_PRICE_USD
+              : null,
+          payment
+        });
+      }
+
+      const compression = introMediaType === "audio"
+        ? await compressPremiumIntroductionAudio(
+            introMedia.path,
+            compressedIntroPath
+          )
+        : await compressPremiumIntroductionVideo(
+            introMedia.path,
+            compressedIntroPath
+          );
+
+      const premiumImageBuffers = [];
+      for (let imageIndex = 0; imageIndex < premiumPhotos.length; imageIndex += 1) {
+        const item = premiumPhotos[imageIndex];
+        const preparedPath = path.join(
+          premiumTempDir,
+          `${Date.now()}_${crypto.randomBytes(5).toString("hex")}_prepared_${imageIndex + 1}.jpg`
+        );
+        preparedPhotoPaths.push(preparedPath);
+
+        const prepared = await compressPremiumRecipientImage(
+          item.path,
+          preparedPath
+        );
+
+        // Read only the already-compressed image. This keeps the total memory
+        // footprint small even when the customer selected eight iPhone photos.
+        premiumImageBuffers.push({
+          data: fs.readFileSync(prepared.path),
+          mime: prepared.mime,
+          name: prepared.name,
+          storedBytes: prepared.storedBytes
+        });
+      }
+
+      if (!premiumImageBuffers.length) {
+        throw new Error("At least one recipient photo is required.");
+      }
+
+      const photoBuffer = premiumImageBuffers[0].data;
+      const compressedIntroBuffer = fs.readFileSync(compressedIntroPath);
+
+      // Consume the one-time trial or wallet credits only after all files have
+      // been validated, compressed, and made ready for storage.
       premiumAccessReservation = await reserveGreetingGenerationAccess(
         premiumCustomerIdentity.customerKey,
         premiumCustomerIdentity.contactPhone,
@@ -19029,10 +19173,11 @@ app.post(
               templateId: "premium-tribute",
               contactPhone: customerPhone
             });
+
         return res.status(402).json({
           ok: false,
           paymentRequired: true,
-          error: `You need ${getPrintoCreationCreditCost(creationType)} credits to create this ${creationType === "premium_multi_image" ? "Premium Multi-Image Flip" : "Premium Tribute"}.`,
+          error: "Your account balance changed while this order was being prepared. Please review your credits and try again.",
           customerKey: premiumCustomerIdentity.customerKey,
           access: premiumAccessReservation,
           priceUsd:
@@ -19042,17 +19187,6 @@ app.post(
           payment
         });
       }
-
-      const compression = introMediaType === "audio"
-        ? await compressPremiumIntroductionAudio(introMedia.path, compressedIntroPath)
-        : await compressPremiumIntroductionVideo(introMedia.path, compressedIntroPath);
-      const photoBuffer = fs.readFileSync(photo.path);
-      const premiumImageBuffers = premiumPhotos.map((item) => ({
-        data: fs.readFileSync(item.path),
-        mime: item.mimetype || "image/jpeg",
-        name: safeBaseName(item.originalname || "recipient-photo")
-      }));
-      const compressedIntroBuffer = fs.readFileSync(compressedIntroPath);
 
       const identity = premiumCustomerIdentity;
       const customerKey = identity.customerKey;
@@ -19114,8 +19248,8 @@ app.post(
           introMediaUrl,
           introMediaType,
           photoBuffer,
-          photo.mimetype,
-          safeBaseName(photo.originalname || "recipient-photo"),
+          premiumImageBuffers[0].mime,
+          premiumImageBuffers[0].name,
           compressedIntroBuffer,
           compression.mime,
           compression.name,
@@ -19173,7 +19307,7 @@ app.post(
         introMediaUrl,
         introMediaMime: compression.mime,
         introMediaType,
-        recipientPhotoMime: photo.mimetype,
+        recipientPhotoMime: premiumImageBuffers[0].mime,
         shopifyUrl: payment.shopify,
         africaUrl: payment.africa,
         language,
@@ -19202,6 +19336,12 @@ app.post(
         `Customer phone: ${customerPhone}`,
         `Creation price: ${getPrintoCreationCreditCost(creationType)} Printo credits.`,
         `Recipient images: ${premiumImageBuffers.length}.`,
+        `Prepared image storage: ${Math.round(
+          premiumImageBuffers.reduce(
+            (sum, image) => sum + Number(image.storedBytes || 0),
+            0
+          ) / 1024
+        )} KB total.`,
         `Introduction type: ${introMediaType}.`,
         `Introduction: ${compression.duration.toFixed(1)} seconds; cleaned from ${Math.round(originalIntroBytes / 1024 / 1024)} MB to ${Math.round(compression.storedBytes / 1024 / 1024)} MB.`,
         `I submitted the photo, ${introMediaType === "audio" ? "voice recording" : "introduction video"}, message, and tribute-song details on Printo Studio.`,
@@ -19264,6 +19404,7 @@ app.post(
       });
     } finally {
       premiumPhotos.forEach((item) => safeUnlink(item?.path));
+      preparedPhotoPaths.forEach((preparedPath) => safeUnlink(preparedPath));
       safeUnlink(introVideo?.path);
       safeUnlink(introAudio?.path);
       safeUnlink(compressedIntroPath);
