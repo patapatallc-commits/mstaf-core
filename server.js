@@ -19420,7 +19420,7 @@ async function readReliableAudioDuration(file){
     return 0;
   }
 }
-form.addEventListener('submit',async(e)=>{e.preventDefault();if(!termsAccepted.checked){statusBox.textContent='❌ '+(premiumIsMultiImage?premiumMultiUi.acceptTerms:'Please confirm permission and accept the Terms, Privacy and Refund Policy.');return;}button.disabled=true;button.textContent='⏳ ${t.saving}';statusBox.textContent='';result.style.display='none';try{const fd=new FormData(form);const introMode=introMediaTypeInput.value==='audio'?'audio':'video';const video=fd.get('introVideo');const uploadedAudio=fd.get('introAudio');const singlePhoto=fd.get('recipientPhoto');const multiPhotos=fd.getAll('recipientImages').filter(file=>file&&file.size);if(premiumIsMultiImage){if(multiPhotos.length<2||multiPhotos.length>8)throw new Error('${t.required}');for(const image of multiPhotos){if(image.size>10*1024*1024)throw new Error(premiumMultiUi.imageTooLarge);}}else{if(!singlePhoto||!singlePhoto.size)throw new Error('${t.required}');if(singlePhoto.size>10*1024*1024)throw new Error('Recipient photo must be 10 MB or smaller.');}let introFile=null;if(introMode==='audio'){if(recordedAudioBlob){const extension=recordedAudioBlob.type.includes('mp4')?'m4a':recordedAudioBlob.type.includes('ogg')?'ogg':'webm';introFile=new File([recordedAudioBlob],'printo-voice-introduction.'+extension,{type:recordedAudioBlob.type||'audio/webm'});fd.set('introAudio',introFile);}else if(uploadedAudio&&uploadedAudio.size){introFile=uploadedAudio;}if(!introFile)throw new Error(premiumIntroUi.audioRequired);if(!audioPreviewConfirmed)throw new Error('Tap Play Recording and confirm that you can hear your voice before saving the order.');if(introFile.size>30*1024*1024)throw new Error(premiumIntroUi.audioTooLarge);const audioDuration=await readReliableAudioDuration(introFile);if(audioDuration>60.25)throw new Error(premiumIntroUi.audioTooLong);fd.delete('introVideo');}else{introFile=video;if(!introFile||!introFile.size)throw new Error('${t.required}');if(introFile.size>100*1024*1024)throw new Error(premiumIsMultiImage?premiumMultiUi.videoTooLarge:'Introduction video must be 100 MB or smaller.');const videoDuration=await readMediaDuration(introFile,false);if(videoDuration>60.25)throw new Error(premiumIsMultiImage?premiumMultiUi.videoTooLong:'Introduction video must be 60 seconds or shorter.');fd.delete('introAudio');}fd.set('introMediaType',introMode);statusBox.textContent='⏳ '+(introMode==='audio'?premiumIntroUi.audioUploading:(premiumIsMultiImage?premiumMultiUi.uploading:'Uploading and compressing your introduction video…'));fd.set('customerKey',accountKey);let response;try{response=await fetch('/api/greeting/premium/request',{method:'POST',headers:{'x-printo-customer-id':customerId,'x-printo-customer-key':accountKey},body:fd});}catch(networkError){throw new Error(premiumIntroUi.connectionInterrupted||'The upload connection was interrupted. Check My Videos or the worker dashboard before submitting again.');}const responseText=await response.text();let data={};try{data=responseText?JSON.parse(responseText):{};}catch(_parseError){throw new Error(response.ok?'The server returned an unreadable response. Please check My Videos before retrying.':('Server error '+response.status+'. Please check Render logs.'));}if(response.status===402&&data.paymentRequired){statusBox.textContent='💳 '+(premiumIsMultiImage?premiumMultiUi.paymentRequired:(data.error||'Payment is required.'));const creditsNeeded=String(data.access?.creditsNeeded||${creationCreditCost});orderIdBox.textContent=premiumIsMultiImage?premiumMultiUi.paymentSummary.replace('{credits}',creditsNeeded):'Premium payment required';shopifyPay.href=data.payment?.shopify||'/multi-image-checkout';africaPay.href=data.payment?.africa||'#';if(!data.payment?.shopify&&premiumIsMultiImage)shopifyPay.href='/multi-image-checkout';workerLink.classList.add('disabled');result.style.display='block';result.scrollIntoView({behavior:'smooth'});return;}if(!response.ok||!data.ok)throw new Error(data.error||'Could not save premium order.');statusBox.textContent='✅ ${t.success} '+(introMode==='audio'?premiumIntroUi.audioStored:(premiumIsMultiImage?premiumMultiUi.stored:'Introduction video compressed and stored safely.'));const chargeSummary=data.usedFreeMultiImageTrial?premiumMultiUi.freeTestUsed:String(data.chargedCredits??data.creditCost??${creationCreditCost})+' '+premiumMultiUi.creditsDeducted;orderIdBox.textContent=(premiumIsMultiImage?premiumMultiUi.order:'Order')+': '+data.orderId+' • '+chargeSummary;shopifyPay.href=data.payment?.shopify||'#';africaPay.href=data.payment?.africa||'#';if(!data.payment?.shopify)shopifyPay.classList.add('disabled');else shopifyPay.classList.remove('disabled');workerLink.href=data.whatsappUrl;result.style.display='block';result.scrollIntoView({behavior:'smooth'});}catch(error){statusBox.textContent='❌ '+error.message;}finally{button.textContent='✨ ${t.submit}';syncPremiumButton();}});
+form.addEventListener('submit',async(e)=>{e.preventDefault();if(!termsAccepted.checked){statusBox.textContent='❌ '+(premiumIsMultiImage?premiumMultiUi.acceptTerms:'Please confirm permission and accept the Terms, Privacy and Refund Policy.');return;}button.disabled=true;button.textContent='⏳ ${t.saving}';statusBox.textContent='';result.style.display='none';try{const fd=new FormData(form);const introMode=introMediaTypeInput.value==='audio'?'audio':'video';const video=fd.get('introVideo');const uploadedAudio=fd.get('introAudio');const singlePhoto=fd.get('recipientPhoto');const multiPhotos=fd.getAll('recipientImages').filter(file=>file&&file.size);if(premiumIsMultiImage){if(multiPhotos.length<2||multiPhotos.length>8)throw new Error('${t.required}');for(const image of multiPhotos){if(image.size>10*1024*1024)throw new Error(premiumMultiUi.imageTooLarge);}}else{if(!singlePhoto||!singlePhoto.size)throw new Error('${t.required}');if(singlePhoto.size>10*1024*1024)throw new Error('Recipient photo must be 10 MB or smaller.');}let introFile=null;if(introMode==='audio'){if(recordedAudioBlob){const extension=recordedAudioBlob.type.includes('mp4')?'m4a':recordedAudioBlob.type.includes('ogg')?'ogg':'webm';introFile=new File([recordedAudioBlob],'printo-voice-introduction.'+extension,{type:recordedAudioBlob.type||'audio/webm'});fd.set('introAudio',introFile);}else if(uploadedAudio&&uploadedAudio.size){introFile=uploadedAudio;}if(!introFile)throw new Error(premiumIntroUi.audioRequired);if(!audioPreviewConfirmed)throw new Error('Tap Play Recording and confirm that you can hear your voice before saving the order.');if(introFile.size>30*1024*1024)throw new Error(premiumIntroUi.audioTooLarge);const audioDuration=await readReliableAudioDuration(introFile);if(audioDuration>60.25)throw new Error(premiumIntroUi.audioTooLong);fd.delete('introVideo');}else{introFile=video;if(!introFile||!introFile.size)throw new Error('${t.required}');if(introFile.size>100*1024*1024)throw new Error(premiumIsMultiImage?premiumMultiUi.videoTooLarge:'Introduction video must be 100 MB or smaller.');const videoDuration=await readMediaDuration(introFile,false);if(videoDuration>60.25)throw new Error(premiumIsMultiImage?premiumMultiUi.videoTooLong:'Introduction video must be 60 seconds or shorter.');fd.delete('introAudio');}fd.set('introMediaType',introMode);statusBox.textContent='⏳ '+(introMode==='audio'?premiumIntroUi.audioUploading:(premiumIsMultiImage?premiumMultiUi.uploading:'Uploading and compressing your introduction video…'));fd.set('customerKey',accountKey);let response;try{response=await fetch('/api/greeting/premium/request',{method:'POST',headers:{'x-printo-customer-id':customerId,'x-printo-customer-key':accountKey},body:fd});}catch(networkError){throw new Error(premiumIntroUi.connectionInterrupted||'The upload connection was interrupted. Check My Videos or the worker dashboard before submitting again.');}const responseText=await response.text();let data={};try{data=responseText?JSON.parse(responseText):{};}catch(_parseError){throw new Error(response.ok?'The server returned an unreadable response. Please check My Videos before retrying.':('Server error '+response.status+'. Please check Render logs.'));}if(response.status===402&&data.paymentRequired){statusBox.textContent=(data.saved?'✅ ${t.success} ':'')+'💳 '+(premiumIsMultiImage?premiumMultiUi.paymentRequired:(data.error||'Payment is required.'));const creditsNeeded=String(data.access?.creditsNeeded||${creationCreditCost});orderIdBox.textContent=data.orderId?((premiumIsMultiImage?premiumMultiUi.order:'Order')+': '+data.orderId+' • Payment required'):(premiumIsMultiImage?premiumMultiUi.paymentSummary.replace('{credits}',creditsNeeded):'Premium payment required');shopifyPay.href=data.payment?.shopify||'/multi-image-checkout';africaPay.href=data.payment?.africa||'#';if(!data.payment?.shopify&&premiumIsMultiImage)shopifyPay.href='/multi-image-checkout';if(data.whatsappUrl){workerLink.href=data.whatsappUrl;workerLink.classList.remove('disabled');}else{workerLink.classList.add('disabled');}result.style.display='block';result.scrollIntoView({behavior:'smooth'});return;}if(!response.ok||!data.ok)throw new Error(data.error||'Could not save premium order.');statusBox.textContent='✅ ${t.success} '+(introMode==='audio'?premiumIntroUi.audioStored:(premiumIsMultiImage?premiumMultiUi.stored:'Introduction video compressed and stored safely.'));const chargeSummary=data.usedFreeMultiImageTrial?premiumMultiUi.freeTestUsed:String(data.chargedCredits??data.creditCost??${creationCreditCost})+' '+premiumMultiUi.creditsDeducted;orderIdBox.textContent=(premiumIsMultiImage?premiumMultiUi.order:'Order')+': '+data.orderId+' • '+chargeSummary;shopifyPay.href=data.payment?.shopify||'#';africaPay.href=data.payment?.africa||'#';if(!data.payment?.shopify)shopifyPay.classList.add('disabled');else shopifyPay.classList.remove('disabled');workerLink.href=data.whatsappUrl;result.style.display='block';result.scrollIntoView({behavior:'smooth'});}catch(error){statusBox.textContent='❌ '+error.message;}finally{button.textContent='✨ ${t.submit}';syncPremiumButton();}});
 </script></body></html>`;
 }
 
@@ -20081,37 +20081,18 @@ app.post(
       const hasEnoughCredits =
         Number(accessPreview.creditBalance || 0) >= creationCreditCost;
 
-      if (!canUseFreeMultiImageTrial && !hasEnoughCredits) {
-        const payment = creationType === "premium_multi_image"
-          ? buildMultiImagePurchaseLinks({
-              customerKey: premiumCustomerIdentity.customerKey,
-              contactPhone: customerPhone
-            })
-          : buildGreetingPaymentLinks({
-              customerKey: premiumCustomerIdentity.customerKey,
-              templateId: "premium-tribute",
-              contactPhone: customerPhone
-            });
+      let externalPaymentRequired =
+        !canUseFreeMultiImageTrial && !hasEnoughCredits;
+      const paymentRequirementMessage =
+        `You need ${creationCreditCost} credits to create this ` +
+        `${creationType === "premium_multi_image"
+          ? "Premium Multi-Image Flip"
+          : "Premium Tribute"}.`;
 
-        return res.status(402).json({
-          ok: false,
-          paymentRequired: true,
-          error: `You need ${creationCreditCost} credits to create this ${creationType === "premium_multi_image" ? "Premium Multi-Image Flip" : "Premium Tribute"}.`,
-          customerKey: premiumCustomerIdentity.customerKey,
-          access: {
-            ...accessPreview,
-            creditsNeeded: Math.max(
-              0,
-              creationCreditCost - Number(accessPreview.creditBalance || 0)
-            )
-          },
-          priceUsd:
-            creationType === "premium_multi_image"
-              ? PRINTO_MULTI_IMAGE_PRICE_USD
-              : null,
-          payment
-        });
-      }
+      // Important: an unpaid Premium order must still be compressed, stored,
+      // and sent to the worker dashboard. Payment is confirmed afterward.
+      // Do not return here merely because the account lacks credits.
+
 
       const compression = introMediaType === "audio"
         ? await compressPremiumIntroductionAudio(
@@ -20156,36 +20137,19 @@ app.post(
 
       // Consume the one-time trial or wallet credits only after all files have
       // been validated, compressed, and made ready for storage.
-      premiumAccessReservation = await reserveGreetingGenerationAccess(
-        premiumCustomerIdentity.customerKey,
-        premiumCustomerIdentity.contactPhone,
-        creationType
-      );
+      if (!externalPaymentRequired) {
+        premiumAccessReservation = await reserveGreetingGenerationAccess(
+          premiumCustomerIdentity.customerKey,
+          premiumCustomerIdentity.contactPhone,
+          creationType
+        );
 
-      if (!premiumAccessReservation.allowed) {
-        const payment = creationType === "premium_multi_image"
-          ? buildMultiImagePurchaseLinks({
-              customerKey: premiumCustomerIdentity.customerKey,
-              contactPhone: customerPhone
-            })
-          : buildGreetingPaymentLinks({
-              customerKey: premiumCustomerIdentity.customerKey,
-              templateId: "premium-tribute",
-              contactPhone: customerPhone
-            });
-
-        return res.status(402).json({
-          ok: false,
-          paymentRequired: true,
-          error: "Your account balance changed while this order was being prepared. Please review your credits and try again.",
-          customerKey: premiumCustomerIdentity.customerKey,
-          access: premiumAccessReservation,
-          priceUsd:
-            creationType === "premium_multi_image"
-              ? PRINTO_MULTI_IMAGE_PRICE_USD
-              : null,
-          payment
-        });
+        if (!premiumAccessReservation.allowed) {
+          // A balance may change while the media is uploading. Keep the order
+          // instead of losing the customer's files and recording.
+          externalPaymentRequired = true;
+          premiumAccessReservation = null;
+        }
       }
 
       const identity = premiumCustomerIdentity;
@@ -20282,16 +20246,18 @@ app.post(
         );
       }
 
-      await queryWithRetry(
-        `UPDATE premium_greeting_orders
-         SET status = 'paid',
-             payment_provider = 'printo_credits',
-             payment_reference = $2,
-             paid_at = NOW(),
-             updated_at = NOW()
-         WHERE order_id = $1`,
-        [orderId, `credits:${getPrintoCreationCreditCost(creationType)}`]
-      );
+      if (!externalPaymentRequired && premiumAccessReservation?.allowed) {
+        await queryWithRetry(
+          `UPDATE premium_greeting_orders
+           SET status = 'paid',
+               payment_provider = 'printo_credits',
+               payment_reference = $2,
+               paid_at = NOW(),
+               updated_at = NOW()
+           WHERE order_id = $1`,
+          [orderId, `credits:${getPrintoCreationCreditCost(creationType)}`]
+        );
+      }
 
       const job = await createPremiumGreetingDashboardJob({
         orderId,
@@ -20349,6 +20315,62 @@ app.post(
       ].join("\n");
       const whatsappUrl = `https://wa.me/${SUPPORT_PHONE}?text=${encodeURIComponent(workerMessage)}`;
 
+      const storedStatus =
+        externalPaymentRequired ? "payment_required" : "paid";
+
+      console.log("Premium order stored:", {
+        orderId,
+        status: storedStatus,
+        creationType,
+        introMediaType,
+        jobId: job?.id || null,
+        imageCount: premiumImageBuffers.length
+      });
+
+      if (externalPaymentRequired) {
+        return res.status(402).json({
+          ok: false,
+          saved: true,
+          paymentRequired: true,
+          error: paymentRequirementMessage,
+          orderId,
+          customerKey,
+          jobId: job?.id || null,
+          payment,
+          whatsappUrl,
+          status: "payment_required",
+          creationType,
+          creditCost: creationCreditCost,
+          chargedCredits: 0,
+          usedFreeMultiImageTrial: false,
+          multiImagePriceUsd:
+            creationType === "premium_multi_image"
+              ? PRINTO_MULTI_IMAGE_PRICE_USD
+              : null,
+          imageCount: premiumImageBuffers.length,
+          access: {
+            ...accessPreview,
+            creditsNeeded: Math.max(
+              0,
+              creationCreditCost - Number(accessPreview.creditBalance || 0)
+            )
+          },
+          compression: {
+            durationSeconds: Number(compression.duration.toFixed(2)),
+            mediaType: introMediaType,
+            originalBytes: originalIntroBytes,
+            storedBytes: compression.storedBytes
+          },
+          media: {
+            photo: recipientPhotoUrl,
+            introduction: introMediaUrl,
+            video: introMediaType === "video" ? introMediaUrl : "",
+            audio: introMediaType === "audio" ? introMediaUrl : "",
+            final: finalVideoUrl
+          }
+        });
+      }
+
       return res.json({
         ok: true,
         orderId,
@@ -20359,9 +20381,9 @@ app.post(
         status: "paid",
         creationType,
         creditCost: getPrintoCreationCreditCost(creationType),
-        chargedCredits: Number(premiumAccessReservation.creditsUsed || 0),
+        chargedCredits: Number(premiumAccessReservation?.creditsUsed || 0),
         usedFreeMultiImageTrial:
-          premiumAccessReservation.source === "free_multi_image_trial",
+          premiumAccessReservation?.source === "free_multi_image_trial",
         multiImagePriceUsd:
           creationType === "premium_multi_image"
             ? PRINTO_MULTI_IMAGE_PRICE_USD
@@ -20369,8 +20391,8 @@ app.post(
         imageCount: premiumImageBuffers.length,
         paymentRequired: false,
         access: premiumAccessReservation,
-        creditBalance: premiumAccessReservation.creditBalance,
-        remainingCreations: premiumAccessReservation.remainingCreations,
+        creditBalance: premiumAccessReservation?.creditBalance ?? accessPreview.creditBalance,
+        remainingCreations: premiumAccessReservation?.remainingCreations ?? accessPreview.remainingCreations,
         compression: {
           durationSeconds: Number(compression.duration.toFixed(2)),
           mediaType: introMediaType,
