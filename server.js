@@ -4264,7 +4264,7 @@ async function probeSpokenAudioEndSeconds(filePath, totalDurationSeconds) {
       "-nostdin",
       "-i", filePath,
       "-af",
-      "highpass=f=100,lowpass=f=7800,anlmdn=s=0.0007:p=0.002:r=0.006:m=15,afftdn=nr=26:nf=-40:tn=1:tr=1:ad=0.35:gs=10,agate=threshold=0.011:ratio=2.8:range=0.12:attack=5:release=200,silencedetect=noise=-34dB:d=0.18",
+      "highpass=f=80,lowpass=f=9000,afftdn=nr=8:nf=-38:tn=1:tr=1:ad=0.25:gs=5,silencedetect=noise=-42dB:d=0.22",
       "-f", "null",
       "-"
     ], {
@@ -4320,6 +4320,75 @@ async function probePremiumMedia(filePath) {
     size: Number(parsed?.format?.size || 0),
     hasAudio: streams.some((stream) => stream.codec_type === "audio"),
     hasVideo: streams.some((stream) => stream.codec_type === "video")
+  };
+}
+
+async function probePremiumAudioLevels(filePath) {
+  const { stderr } = await execFilePromise("ffmpeg", [
+    "-hide_banner",
+    "-nostdin",
+    "-i", filePath,
+    "-vn",
+    "-af", "volumedetect",
+    "-f", "null",
+    "-"
+  ], {
+    timeout: 60000,
+    maxBuffer: 3 * 1024 * 1024
+  });
+
+  const logText = String(stderr || "");
+  const readDb = (label) => {
+    const match = logText.match(
+      new RegExp(`${label}:\\s*(-?inf|-?\\d+(?:\\.\\d+)?)\\s*dB`, "i")
+    );
+    if (!match) return Number.NEGATIVE_INFINITY;
+    if (String(match[1]).toLowerCase().includes("inf")) {
+      return Number.NEGATIVE_INFINITY;
+    }
+    return Number(match[1]);
+  };
+
+  return {
+    meanDb: readDb("mean_volume"),
+    maxDb: readDb("max_volume")
+  };
+}
+
+function assertPremiumIntroductionIsAudible(levels, label = "Voice introduction") {
+  const maxDb = Number(levels?.maxDb);
+  const meanDb = Number(levels?.meanDb);
+
+  if (
+    !Number.isFinite(maxDb) ||
+    maxDb < -42 ||
+    (!Number.isFinite(meanDb) && maxDb < -36)
+  ) {
+    throw new Error(
+      `${label} is silent or too quiet. Play the recording before submitting, then record again closer to the microphone.`
+    );
+  }
+}
+
+async function probePremiumStreamDurations(filePath) {
+  const { stdout } = await execFilePromise("ffprobe", [
+    "-v", "error",
+    "-show_entries", "stream=codec_type,duration",
+    "-of", "json",
+    filePath
+  ], {
+    timeout: 30000,
+    maxBuffer: 2 * 1024 * 1024
+  });
+
+  const parsed = JSON.parse(stdout || "{}");
+  const streams = Array.isArray(parsed.streams) ? parsed.streams : [];
+  const video = streams.find((stream) => stream.codec_type === "video");
+  const audio = streams.find((stream) => stream.codec_type === "audio");
+
+  return {
+    videoDuration: Number(video?.duration || 0),
+    audioDuration: Number(audio?.duration || 0)
   };
 }
 
@@ -4382,6 +4451,9 @@ async function compressPremiumRecipientImage(inputPath, outputPath) {
 async function compressPremiumIntroductionVideo(inputPath, outputPath) {
   const source = await probePremiumMedia(inputPath);
   if (!source.hasVideo) throw new Error("The introduction file does not contain a valid video stream.");
+  if (!source.hasAudio) {
+    throw new Error("The introduction video has no audio. Record or upload a video in which your voice can be heard.");
+  }
   if (!Number.isFinite(source.duration) || source.duration <= 0) {
     throw new Error("The introduction video duration could not be read.");
   }
@@ -4398,7 +4470,7 @@ async function compressPremiumIntroductionVideo(inputPath, outputPath) {
     "-preset", "veryfast",
     "-pix_fmt", "yuv420p",
     "-af",
-    "highpass=f=100,lowpass=f=7800,adeclick=w=20:o=75:a=2:t=2:b=2,anlmdn=s=0.0008:p=0.002:r=0.006:m=15,afftdn=nr=28:nf=-40:tn=1:tr=1:ad=0.35:gs=12,agate=threshold=0.012:ratio=3:range=0.1:attack=5:release=220,alimiter=limit=0.95",
+    "highpass=f=80,lowpass=f=9000,afftdn=nr=10:nf=-38:tn=1:tr=1:ad=0.30:gs=6,acompressor=threshold=0.06:ratio=2:attack=15:release=180:makeup=2,loudnorm=I=-16:TP=-1.5:LRA=9,alimiter=limit=0.95",
     "-c:a", "aac",
     "-b:a", "96k",
     "-ar", "44100",
@@ -4426,6 +4498,12 @@ async function compressPremiumIntroductionVideo(inputPath, outputPath) {
   if (outputSize > PREMIUM_VIDEO_STORED_MAX_BYTES) {
     throw new Error("The compressed introduction video is still too large. Please upload a shorter video.");
   }
+
+  const cleanedLevels = await probePremiumAudioLevels(outputPath);
+  assertPremiumIntroductionIsAudible(
+    cleanedLevels,
+    "Introduction-video voice"
+  );
 
   return {
     duration: source.duration,
@@ -4455,13 +4533,7 @@ async function compressPremiumIntroductionAudio(inputPath, outputPath) {
     "-t", String(Math.min(source.duration, PREMIUM_VIDEO_MAX_SECONDS)),
     "-vn",
     "-af",
-    "highpass=f=100,lowpass=f=7800," +
-      "adeclick=w=20:o=75:a=2:t=2:b=2," +
-      "anlmdn=s=0.0008:p=0.002:r=0.006:m=15," +
-      "afftdn=nr=28:nf=-40:tn=1:tr=1:ad=0.35:gs=12," +
-      "agate=threshold=0.012:ratio=3:range=0.1:attack=5:release=220," +
-      "loudnorm=I=-16:TP=-1.5:LRA=7," +
-      "alimiter=limit=0.95",
+    "highpass=f=80,lowpass=f=9000,afftdn=nr=10:nf=-38:tn=1:tr=1:ad=0.30:gs=6,acompressor=threshold=0.06:ratio=2:attack=15:release=180:makeup=2,loudnorm=I=-16:TP=-1.5:LRA=9,alimiter=limit=0.95",
     "-c:a", "aac",
     "-b:a", "96k",
     "-ar", "44100",
@@ -4477,6 +4549,9 @@ async function compressPremiumIntroductionAudio(inputPath, outputPath) {
   if (outputSize > PREMIUM_INTRO_AUDIO_STORED_MAX_BYTES) {
     throw new Error("The cleaned voice introduction is still too large. Please upload a shorter recording.");
   }
+
+  const cleanedLevels = await probePremiumAudioLevels(outputPath);
+  assertPremiumIntroductionIsAudible(cleanedLevels, "Voice introduction");
 
   return {
     duration: source.duration,
@@ -18600,7 +18675,7 @@ function buildPremiumGreetingOrderPage(language = "en", creationType = "premium_
 *{box-sizing:border-box}body{margin:0;font-family:Arial,sans-serif;background:linear-gradient(150deg,#071b61,#0b63ce);color:#fff;min-height:100vh;padding:18px}.wrap{max-width:820px;margin:auto}.back{color:#ffd21f;font-weight:900;text-decoration:none}.hero{text-align:center;margin:12px 0 20px}.hero h1{font-size:34px;margin:8px}.hero p{line-height:1.55}.creditPrice{display:inline-block;background:#ffd21f;color:#082a8f;padding:9px 14px;border-radius:999px;font-weight:900;margin-top:8px}.panel{background:#fff;color:#172554;border:3px solid #ffd21f;border-radius:25px;padding:22px;box-shadow:0 18px 44px rgba(0,0,0,.35)}.grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}.full{grid-column:1/-1}label{display:block;font-weight:900;margin:5px 0 7px}input,textarea,select{width:100%;padding:13px;border:2px solid #cbd5e1;border-radius:13px;font-size:16px}textarea{min-height:110px}.hint{font-size:12px;color:#64748b;margin-top:5px}.submit{width:100%;border:0;border-radius:15px;padding:16px;background:linear-gradient(90deg,#7b2cbf,#d63384);color:#fff;font-size:19px;font-weight:900;margin-top:15px;cursor:pointer}.submit:disabled{opacity:.55}.status{text-align:center;font-weight:900;min-height:26px;margin-top:12px}.result{display:none;background:#f1f5f9;padding:16px;border-radius:16px;margin-top:15px}.orderId{font-size:20px;font-weight:900}.payments{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:12px}.pay{display:block;text-align:center;text-decoration:none;color:#fff;font-weight:900;padding:14px;border-radius:13px}.shopify{background:#4f772d}.africa{background:#008751}.worker{background:#25D366;grid-column:1/-1}.disabled{opacity:.45;pointer-events:none}.introChoice{grid-column:1/-1;border:2px solid #bfdbfe;background:#eff6ff;border-radius:14px;padding:14px}.introChoiceTitle{font-weight:900;margin-bottom:10px}.introTabs{display:grid;grid-template-columns:1fr 1fr;gap:9px}.introTabs button{border:2px solid #123faa;background:#fff;color:#123faa;padding:12px;border-radius:12px;font-weight:900;cursor:pointer}.introTabs button.active{background:#123faa;color:#fff}.introPanel{margin-top:12px}.recordControls{display:flex;flex-wrap:wrap;gap:8px;margin:10px 0}.recordControls button{border:0;border-radius:10px;padding:11px 13px;font-weight:900;cursor:pointer;background:#7b2cbf;color:#fff}.recordControls button.stop{background:#c1121f}.recordControls button:disabled{opacity:.45;cursor:not-allowed}.recordTimer{font-weight:900;color:#c1121f;margin-top:8px}.audioPreview{width:100%;margin-top:9px}.hidden{display:none!important}.agreement{display:flex;align-items:flex-start;gap:10px;background:#fff7d6;border:2px solid #ffd21f;border-radius:13px;padding:13px;margin-top:16px}.agreement input{width:20px;height:20px;flex:0 0 auto;margin:2px 0 0}.agreement label{margin:0;font-weight:800;line-height:1.45}.agreement a{color:#123faa;font-weight:900}@media(max-width:620px){.grid,.payments{grid-template-columns:1fr}.full,.worker{grid-column:auto}.hero h1{font-size:28px}.introTabs{grid-template-columns:1fr}}
 </style></head><body><main class="wrap"><a class="back" href="/greetings?lang=${lang}">← ${t.back}</a><section class="hero"><h1>🌟 ${t.title}</h1><p>${t.intro}</p><span class="creditPrice">${creationPriceLabel}</span></section><section class="panel">
 <form id="premiumForm" enctype="multipart/form-data"><input type="hidden" name="language" value="${lang}"><input type="hidden" name="creationType" value="${normalizedCreationType}"><input type="hidden" id="customerId" name="customerId"><input type="hidden" id="premiumCustomerKey" name="customerKey">
-<div class="grid"><div><label>${t.recipient} *</label><input name="recipientName" maxlength="24" required></div><div><label>${t.sender} *</label><input name="senderName" maxlength="24" required></div><div><label>${t.phone} *</label><input id="premiumCustomerPhone" name="customerPhone" type="tel" inputmode="tel" autocomplete="tel" placeholder="${phoneGuide.placeholder}" required><div class="hint">${phoneGuide.hint}</div></div><div><label>${t.email}</label><input name="customerEmail" type="email"></div><div class="full"><label>${t.message} *</label><textarea name="personalMessage" maxlength="220" required></textarea></div><div><label>${t.songStyle}</label><select name="songStyle"><option value="">Worker will discuss with me</option><option>Afrobeat</option><option>Gospel</option><option>R&B / Soul</option><option>Pop</option><option>Highlife</option><option>Hip-Hop / Rap</option><option>Soft acoustic</option><option>Other</option></select></div><div><label>${t.notes}</label><textarea name="tributeNotes" maxlength="1000"></textarea></div><div><label>${t.photo} *</label>${photoInputHtml}</div><div class="introChoice"><div class="introChoiceTitle">${t.introType}</div><input id="introMediaType" name="introMediaType" type="hidden" value="video"><div class="introTabs"><button id="videoIntroTab" class="active" type="button">🎥 ${t.videoMode}</button><button id="audioIntroTab" type="button">🎙️ ${t.audioMode}</button></div><div id="videoIntroPanel" class="introPanel"><label>${t.videoMode} *</label><input id="introVideoInput" name="introVideo" type="file" accept="video/mp4,video/quicktime,video/webm,video/*"><div class="hint">${isMultiImage ? multiUi.videoHint : "Maximum 60 seconds and 100 MB. Large files are compressed automatically to a smaller 720p MP4 before permanent storage."}</div></div><div id="audioIntroPanel" class="introPanel hidden"><label>${t.audioMode} *</label><div class="hint">${t.audioHint}</div><div class="recordControls"><button id="startRecordBtn" type="button">🎙️ ${t.startRecording}</button><button id="stopRecordBtn" class="stop" type="button" disabled>⏹ ${t.stopRecording}</button><button id="playRecordBtn" type="button" class="hidden">▶ ${t.playRecording}</button><button id="recordAgainBtn" type="button" class="hidden">🔄 ${t.recordAgain}</button></div><div id="recordTimer" class="recordTimer"></div><audio id="recordedAudioPreview" class="audioPreview hidden" controls></audio><label style="margin-top:12px">${t.uploadAudio}</label><input id="introAudioInput" name="introAudio" type="file" accept="audio/mpeg,audio/mp4,audio/x-m4a,audio/wav,audio/x-wav,audio/aac,audio/ogg,audio/opus,audio/webm,.mp3,.m4a,.wav,.aac,.ogg,.opus,.webm,.flac"><div class="hint">${t.audioFormats}</div></div></div></div>
+<div class="grid"><div><label>${t.recipient} *</label><input name="recipientName" maxlength="24" required></div><div><label>${t.sender} *</label><input name="senderName" maxlength="24" required></div><div><label>${t.phone} *</label><input id="premiumCustomerPhone" name="customerPhone" type="tel" inputmode="tel" autocomplete="tel" placeholder="${phoneGuide.placeholder}" required><div class="hint">${phoneGuide.hint}</div></div><div><label>${t.email}</label><input name="customerEmail" type="email"></div><div class="full"><label>${t.message} *</label><textarea name="personalMessage" maxlength="220" required></textarea></div><div><label>${t.songStyle}</label><select name="songStyle"><option value="">Worker will discuss with me</option><option>Afrobeat</option><option>Gospel</option><option>R&B / Soul</option><option>Pop</option><option>Highlife</option><option>Hip-Hop / Rap</option><option>Soft acoustic</option><option>Other</option></select></div><div><label>${t.notes}</label><textarea name="tributeNotes" maxlength="1000"></textarea></div><div><label>${t.photo} *</label>${photoInputHtml}</div><div class="introChoice"><div class="introChoiceTitle">${t.introType}</div><input id="introMediaType" name="introMediaType" type="hidden" value="video"><div class="introTabs"><button id="videoIntroTab" class="active" type="button">🎥 ${t.videoMode}</button><button id="audioIntroTab" type="button">🎙️ ${t.audioMode}</button></div><div id="videoIntroPanel" class="introPanel"><label>${t.videoMode} *</label><input id="introVideoInput" name="introVideo" type="file" accept="video/mp4,video/quicktime,video/webm,video/*"><div class="hint">${isMultiImage ? multiUi.videoHint : "Maximum 60 seconds and 100 MB. Large files are compressed automatically to a smaller 720p MP4 before permanent storage."}</div></div><div id="audioIntroPanel" class="introPanel hidden"><label>${t.audioMode} *</label><div class="hint">${t.audioHint}</div><div class="recordControls"><button id="startRecordBtn" type="button">🎙️ ${t.startRecording}</button><button id="stopRecordBtn" class="stop" type="button" disabled>⏹ ${t.stopRecording}</button><button id="playRecordBtn" type="button" class="hidden">▶ ${t.playRecording}</button><button id="recordAgainBtn" type="button" class="hidden">🔄 ${t.recordAgain}</button></div><div id="recordTimer" class="recordTimer"></div><audio id="recordedAudioPreview" class="audioPreview hidden" controls playsinline preload="auto"></audio><div id="audioPreviewStatus" class="hint"></div><label style="margin-top:12px">${t.uploadAudio}</label><input id="introAudioInput" name="introAudio" type="file" accept="audio/mpeg,audio/mp4,audio/x-m4a,audio/wav,audio/x-wav,audio/aac,audio/ogg,audio/opus,audio/webm,.mp3,.m4a,.wav,.aac,.ogg,.opus,.webm,.flac"><div class="hint">${t.audioFormats}</div></div></div></div>
 <div class="agreement"><input id="premiumTermsAccepted" name="termsAccepted" type="checkbox" value="yes" required><label for="premiumTermsAccepted">I confirm that I own or have permission to use the recipient photo, introduction video or voice recording, names, music instructions and all other submitted content. I agree to the <a href="/greetings?lang=${lang}#terms" target="_blank" rel="noopener">Terms of Use, Privacy Policy and Refund Policy</a>.</label></div>
 <button id="submitBtn" class="submit" type="submit">✨ ${t.submit}</button><div id="status" class="status"></div></form><div id="result" class="result"><div>${t.success}</div><div id="orderId" class="orderId"></div><h3>${t.pay}</h3><div class="payments"><a id="shopifyPay" class="pay shopify" target="_blank" rel="noopener">🛒 ${t.shopify}</a><a id="africaPay" class="pay africa" target="_blank" rel="noopener">🌍 ${t.africa}</a><a id="workerLink" class="pay worker" target="_blank" rel="noopener">💬 ${t.worker}</a></div></div></section></main>
 <script>
@@ -18622,23 +18697,28 @@ const playRecordBtn=document.getElementById('playRecordBtn');
 const recordAgainBtn=document.getElementById('recordAgainBtn');
 const recordTimer=document.getElementById('recordTimer');
 const recordedAudioPreview=document.getElementById('recordedAudioPreview');
-let mediaRecorder=null,recordingStream=null,recordingChunks=[],recordedAudioBlob=null,recordingTimerId=null,recordingStartedAt=0,recordedAudioUrl='';
+const audioPreviewStatus=document.getElementById('audioPreviewStatus');
+let mediaRecorder=null,recordingStream=null,recordingChunks=[],recordedAudioBlob=null,recordingTimerId=null,recordingStartedAt=0,recordedAudioUrl='',audioPreviewConfirmed=false;
 function formatRecordingTime(seconds){const safe=Math.max(0,Math.min(60,Math.floor(seconds)));return String(Math.floor(safe/60)).padStart(2,'0')+':'+String(safe%60).padStart(2,'0')+' / 01:00';}
 function stopMicrophoneStream(){if(recordingStream){recordingStream.getTracks().forEach(track=>track.stop());recordingStream=null;}}
 function clearRecordingTimer(){if(recordingTimerId){clearInterval(recordingTimerId);recordingTimerId=null;}}
-function resetRecordedAudio(){clearRecordingTimer();stopMicrophoneStream();recordingChunks=[];recordedAudioBlob=null;if(recordedAudioUrl){URL.revokeObjectURL(recordedAudioUrl);recordedAudioUrl='';}recordedAudioPreview.removeAttribute('src');recordedAudioPreview.classList.add('hidden');playRecordBtn.classList.add('hidden');recordAgainBtn.classList.add('hidden');recordTimer.textContent='';startRecordBtn.disabled=false;stopRecordBtn.disabled=true;}
-function setIntroMode(mode){const isAudio=mode==='audio';introMediaTypeInput.value=isAudio?'audio':'video';videoIntroTab.classList.toggle('active',!isAudio);audioIntroTab.classList.toggle('active',isAudio);videoIntroPanel.classList.toggle('hidden',isAudio);audioIntroPanel.classList.toggle('hidden',!isAudio);if(isAudio){introVideoInput.value='';}else{introAudioInput.value='';resetRecordedAudio();}}
+function clearAudioPreviewUrl(){if(recordedAudioUrl){URL.revokeObjectURL(recordedAudioUrl);recordedAudioUrl='';}}
+function resetRecordedAudio(options={}){clearRecordingTimer();stopMicrophoneStream();recordingChunks=[];recordedAudioBlob=null;audioPreviewConfirmed=false;clearAudioPreviewUrl();recordedAudioPreview.pause();recordedAudioPreview.removeAttribute('src');recordedAudioPreview.load();recordedAudioPreview.classList.add('hidden');playRecordBtn.classList.add('hidden');recordAgainBtn.classList.add('hidden');audioPreviewStatus.textContent='';recordTimer.textContent='';startRecordBtn.disabled=false;stopRecordBtn.disabled=true;if(!options.keepUploadedFile)introAudioInput.value='';}
+function showAudioPreview(fileOrBlob,label){clearAudioPreviewUrl();audioPreviewConfirmed=false;recordedAudioUrl=URL.createObjectURL(fileOrBlob);recordedAudioPreview.pause();recordedAudioPreview.src=recordedAudioUrl;recordedAudioPreview.muted=false;recordedAudioPreview.volume=1;recordedAudioPreview.load();recordedAudioPreview.classList.remove('hidden');playRecordBtn.classList.remove('hidden');recordAgainBtn.classList.remove('hidden');audioPreviewStatus.textContent='🔊 '+label+' Tap Play Recording and make sure your voice is clear before saving the order.';}
+function setIntroMode(mode){const isAudio=mode==='audio';introMediaTypeInput.value=isAudio?'audio':'video';videoIntroTab.classList.toggle('active',!isAudio);audioIntroTab.classList.toggle('active',isAudio);videoIntroPanel.classList.toggle('hidden',isAudio);audioIntroPanel.classList.toggle('hidden',!isAudio);if(isAudio){introVideoInput.value='';}else{resetRecordedAudio();}}
 videoIntroTab.addEventListener('click',()=>setIntroMode('video'));
 audioIntroTab.addEventListener('click',()=>setIntroMode('audio'));
-function chooseRecorderMime(){const choices=['audio/mp4','audio/webm;codecs=opus','audio/webm','audio/ogg;codecs=opus'];return choices.find(type=>window.MediaRecorder&&MediaRecorder.isTypeSupported&&MediaRecorder.isTypeSupported(type))||'';}
-async function startVoiceRecording(){if(!navigator.mediaDevices?.getUserMedia||!window.MediaRecorder){alert(premiumIntroUi.recordingUnsupported);return;}resetRecordedAudio();try{recordingStream=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true,noiseSuppression:true,autoGainControl:true}});const mimeType=chooseRecorderMime();mediaRecorder=mimeType?new MediaRecorder(recordingStream,{mimeType}):new MediaRecorder(recordingStream);recordingChunks=[];mediaRecorder.ondataavailable=event=>{if(event.data&&event.data.size)recordingChunks.push(event.data);};mediaRecorder.onstop=()=>{clearRecordingTimer();stopMicrophoneStream();const finalType=mediaRecorder?.mimeType||mimeType||'audio/webm';recordedAudioBlob=new Blob(recordingChunks,{type:finalType});recordedAudioUrl=URL.createObjectURL(recordedAudioBlob);recordedAudioPreview.src=recordedAudioUrl;recordedAudioPreview.classList.remove('hidden');playRecordBtn.classList.remove('hidden');recordAgainBtn.classList.remove('hidden');startRecordBtn.disabled=false;stopRecordBtn.disabled=true;recordTimer.textContent='✅ '+formatRecordingTime((Date.now()-recordingStartedAt)/1000);};mediaRecorder.start(250);recordingStartedAt=Date.now();startRecordBtn.disabled=true;stopRecordBtn.disabled=false;recordTimer.textContent='🔴 '+formatRecordingTime(0);recordingTimerId=setInterval(()=>{const elapsed=(Date.now()-recordingStartedAt)/1000;recordTimer.textContent='🔴 '+formatRecordingTime(elapsed);if(elapsed>=60&&mediaRecorder?.state==='recording')mediaRecorder.stop();},250);}catch(error){resetRecordedAudio();alert(error?.message||premiumIntroUi.microphoneDenied);}}
-function stopVoiceRecording(){if(mediaRecorder?.state==='recording')mediaRecorder.stop();}
+function chooseRecorderMime(){const isIOS=/iPad|iPhone|iPod/.test(navigator.userAgent)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1);const choices=isIOS?['audio/mp4','audio/webm;codecs=opus','audio/webm']:['audio/webm;codecs=opus','audio/webm','audio/ogg;codecs=opus','audio/mp4'];return choices.find(type=>window.MediaRecorder&&MediaRecorder.isTypeSupported&&MediaRecorder.isTypeSupported(type))||'';}
+async function startVoiceRecording(){if(!navigator.mediaDevices?.getUserMedia||!window.MediaRecorder){alert(premiumIntroUi.recordingUnsupported);return;}resetRecordedAudio();try{recordingStream=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true,noiseSuppression:false,autoGainControl:true,channelCount:1}});const mimeType=chooseRecorderMime();mediaRecorder=mimeType?new MediaRecorder(recordingStream,{mimeType,audioBitsPerSecond:128000}):new MediaRecorder(recordingStream);recordingChunks=[];mediaRecorder.ondataavailable=event=>{if(event.data&&event.data.size)recordingChunks.push(event.data);};mediaRecorder.onerror=event=>{audioPreviewStatus.textContent='❌ '+(event?.error?.message||'Voice recording failed. Please record again or upload an audio file.');};mediaRecorder.onstop=()=>{clearRecordingTimer();stopMicrophoneStream();setTimeout(()=>{const finalType=mediaRecorder?.mimeType||mimeType||'audio/webm';recordedAudioBlob=new Blob(recordingChunks,{type:finalType});startRecordBtn.disabled=false;stopRecordBtn.disabled=true;if(!recordedAudioBlob.size||recordedAudioBlob.size<1500){recordedAudioBlob=null;audioPreviewStatus.textContent='❌ The recording is empty or silent. Please record again closer to the microphone.';return;}showAudioPreview(recordedAudioBlob,'Recording ready.');recordTimer.textContent='✅ '+formatRecordingTime((Date.now()-recordingStartedAt)/1000);},80);};if(String(mimeType).includes('mp4'))mediaRecorder.start();else mediaRecorder.start(1000);recordingStartedAt=Date.now();startRecordBtn.disabled=true;stopRecordBtn.disabled=false;recordTimer.textContent='🔴 '+formatRecordingTime(0);recordingTimerId=setInterval(()=>{const elapsed=(Date.now()-recordingStartedAt)/1000;recordTimer.textContent='🔴 '+formatRecordingTime(elapsed);if(elapsed>=60&&mediaRecorder?.state==='recording')mediaRecorder.stop();},250);}catch(error){resetRecordedAudio();alert(error?.message||premiumIntroUi.microphoneDenied);}}
+function stopVoiceRecording(){if(mediaRecorder?.state==='recording'){try{mediaRecorder.requestData();}catch(_error){}mediaRecorder.stop();}}
 startRecordBtn.addEventListener('click',startVoiceRecording);
 stopRecordBtn.addEventListener('click',stopVoiceRecording);
-playRecordBtn.addEventListener('click',()=>{if(recordedAudioPreview.src){recordedAudioPreview.currentTime=0;recordedAudioPreview.play().catch(()=>{});}});
+playRecordBtn.addEventListener('click',async()=>{if(!recordedAudioPreview.src)return;try{recordedAudioPreview.muted=false;recordedAudioPreview.volume=1;recordedAudioPreview.currentTime=0;await recordedAudioPreview.play();audioPreviewConfirmed=true;audioPreviewStatus.textContent='✅ Preview is playing. Confirm that you can hear your voice clearly.';}catch(error){audioPreviewConfirmed=false;audioPreviewStatus.textContent='❌ This recording could not play. Record again or upload an existing audio file.';}});
+recordedAudioPreview.addEventListener('playing',()=>{audioPreviewConfirmed=true;});
+recordedAudioPreview.addEventListener('error',()=>{audioPreviewConfirmed=false;audioPreviewStatus.textContent='❌ This audio cannot be played on this device. Record again or upload MP3, M4A or WAV.';});
 recordAgainBtn.addEventListener('click',startVoiceRecording);
-introAudioInput.addEventListener('change',()=>{if(introAudioInput.files?.[0])resetRecordedAudio();});
-window.addEventListener('beforeunload',()=>{clearRecordingTimer();stopMicrophoneStream();if(recordedAudioUrl)URL.revokeObjectURL(recordedAudioUrl);});
+introAudioInput.addEventListener('change',()=>{const selected=introAudioInput.files?.[0];if(!selected)return;clearRecordingTimer();stopMicrophoneStream();recordedAudioBlob=null;recordingChunks=[];showAudioPreview(selected,'Uploaded audio ready.');});
+window.addEventListener('beforeunload',()=>{clearRecordingTimer();stopMicrophoneStream();clearAudioPreviewUrl();});
 function syncPremiumButton(){button.disabled=false;}
 termsAccepted.addEventListener('change',syncPremiumButton);
 window.addEventListener('pageshow',syncPremiumButton);
@@ -18654,7 +18734,7 @@ if(premiumCustomerPhone&&savedVerifiedPhone&&!premiumCustomerPhone.value){
 }
 let customerId=localStorage.getItem('printoGreetingCustomerId')||localStorage.getItem('printoPremiumCustomerId');if(!customerId){customerId='premium_'+Date.now()+'_'+Math.random().toString(36).slice(2,11);localStorage.setItem('printoPremiumCustomerId',customerId)}document.getElementById('customerId').value=customerId;
 function readMediaDuration(file,isAudio=false){return new Promise((resolve,reject)=>{const url=URL.createObjectURL(file),media=document.createElement(isAudio?'audio':'video');media.preload='metadata';media.onloadedmetadata=()=>{const duration=Number(media.duration||0);URL.revokeObjectURL(url);resolve(Number.isFinite(duration)?duration:0)};media.onerror=()=>{URL.revokeObjectURL(url);reject(new Error(isAudio?premiumIntroUi.audioUnreadable:'The introduction video could not be read.'))};media.src=url;});}
-form.addEventListener('submit',async(e)=>{e.preventDefault();if(!termsAccepted.checked){statusBox.textContent='❌ '+(premiumIsMultiImage?premiumMultiUi.acceptTerms:'Please confirm permission and accept the Terms, Privacy and Refund Policy.');return;}button.disabled=true;button.textContent='⏳ ${t.saving}';statusBox.textContent='';result.style.display='none';try{const fd=new FormData(form);const introMode=introMediaTypeInput.value==='audio'?'audio':'video';const video=fd.get('introVideo');const uploadedAudio=fd.get('introAudio');const singlePhoto=fd.get('recipientPhoto');const multiPhotos=fd.getAll('recipientImages').filter(file=>file&&file.size);if(premiumIsMultiImage){if(multiPhotos.length<2||multiPhotos.length>8)throw new Error('${t.required}');for(const image of multiPhotos){if(image.size>10*1024*1024)throw new Error(premiumMultiUi.imageTooLarge);}}else{if(!singlePhoto||!singlePhoto.size)throw new Error('${t.required}');if(singlePhoto.size>10*1024*1024)throw new Error('Recipient photo must be 10 MB or smaller.');}let introFile=null;if(introMode==='audio'){if(recordedAudioBlob){const extension=recordedAudioBlob.type.includes('mp4')?'m4a':recordedAudioBlob.type.includes('ogg')?'ogg':'webm';introFile=new File([recordedAudioBlob],'printo-voice-introduction.'+extension,{type:recordedAudioBlob.type||'audio/webm'});fd.set('introAudio',introFile);}else if(uploadedAudio&&uploadedAudio.size){introFile=uploadedAudio;}if(!introFile)throw new Error(premiumIntroUi.audioRequired);if(introFile.size>30*1024*1024)throw new Error(premiumIntroUi.audioTooLarge);const audioDuration=await readMediaDuration(introFile,true);if(audioDuration>60.25)throw new Error(premiumIntroUi.audioTooLong);fd.delete('introVideo');}else{introFile=video;if(!introFile||!introFile.size)throw new Error('${t.required}');if(introFile.size>100*1024*1024)throw new Error(premiumIsMultiImage?premiumMultiUi.videoTooLarge:'Introduction video must be 100 MB or smaller.');const videoDuration=await readMediaDuration(introFile,false);if(videoDuration>60.25)throw new Error(premiumIsMultiImage?premiumMultiUi.videoTooLong:'Introduction video must be 60 seconds or shorter.');fd.delete('introAudio');}fd.set('introMediaType',introMode);statusBox.textContent='⏳ '+(introMode==='audio'?premiumIntroUi.audioUploading:(premiumIsMultiImage?premiumMultiUi.uploading:'Uploading and compressing your introduction video…'));fd.set('customerKey',accountKey);let response;try{response=await fetch('/api/greeting/premium/request',{method:'POST',headers:{'x-printo-customer-id':customerId,'x-printo-customer-key':accountKey},body:fd});}catch(networkError){throw new Error(premiumIntroUi.connectionInterrupted||'The upload connection was interrupted. Check My Videos or the worker dashboard before submitting again.');}const responseText=await response.text();let data={};try{data=responseText?JSON.parse(responseText):{};}catch(_parseError){throw new Error(response.ok?'The server returned an unreadable response. Please check My Videos before retrying.':('Server error '+response.status+'. Please check Render logs.'));}if(response.status===402&&data.paymentRequired){statusBox.textContent='💳 '+(premiumIsMultiImage?premiumMultiUi.paymentRequired:(data.error||'Payment is required.'));const creditsNeeded=String(data.access?.creditsNeeded||${creationCreditCost});orderIdBox.textContent=premiumIsMultiImage?premiumMultiUi.paymentSummary.replace('{credits}',creditsNeeded):'Premium payment required';shopifyPay.href=data.payment?.shopify||'/multi-image-checkout';africaPay.href=data.payment?.africa||'#';if(!data.payment?.shopify&&premiumIsMultiImage)shopifyPay.href='/multi-image-checkout';workerLink.classList.add('disabled');result.style.display='block';result.scrollIntoView({behavior:'smooth'});return;}if(!response.ok||!data.ok)throw new Error(data.error||'Could not save premium order.');statusBox.textContent='✅ ${t.success} '+(introMode==='audio'?premiumIntroUi.audioStored:(premiumIsMultiImage?premiumMultiUi.stored:'Introduction video compressed and stored safely.'));const chargeSummary=data.usedFreeMultiImageTrial?premiumMultiUi.freeTestUsed:String(data.chargedCredits??data.creditCost??${creationCreditCost})+' '+premiumMultiUi.creditsDeducted;orderIdBox.textContent=(premiumIsMultiImage?premiumMultiUi.order:'Order')+': '+data.orderId+' • '+chargeSummary;shopifyPay.href=data.payment?.shopify||'#';africaPay.href=data.payment?.africa||'#';if(!data.payment?.shopify)shopifyPay.classList.add('disabled');else shopifyPay.classList.remove('disabled');workerLink.href=data.whatsappUrl;result.style.display='block';result.scrollIntoView({behavior:'smooth'});}catch(error){statusBox.textContent='❌ '+error.message;}finally{button.textContent='✨ ${t.submit}';syncPremiumButton();}});
+form.addEventListener('submit',async(e)=>{e.preventDefault();if(!termsAccepted.checked){statusBox.textContent='❌ '+(premiumIsMultiImage?premiumMultiUi.acceptTerms:'Please confirm permission and accept the Terms, Privacy and Refund Policy.');return;}button.disabled=true;button.textContent='⏳ ${t.saving}';statusBox.textContent='';result.style.display='none';try{const fd=new FormData(form);const introMode=introMediaTypeInput.value==='audio'?'audio':'video';const video=fd.get('introVideo');const uploadedAudio=fd.get('introAudio');const singlePhoto=fd.get('recipientPhoto');const multiPhotos=fd.getAll('recipientImages').filter(file=>file&&file.size);if(premiumIsMultiImage){if(multiPhotos.length<2||multiPhotos.length>8)throw new Error('${t.required}');for(const image of multiPhotos){if(image.size>10*1024*1024)throw new Error(premiumMultiUi.imageTooLarge);}}else{if(!singlePhoto||!singlePhoto.size)throw new Error('${t.required}');if(singlePhoto.size>10*1024*1024)throw new Error('Recipient photo must be 10 MB or smaller.');}let introFile=null;if(introMode==='audio'){if(recordedAudioBlob){const extension=recordedAudioBlob.type.includes('mp4')?'m4a':recordedAudioBlob.type.includes('ogg')?'ogg':'webm';introFile=new File([recordedAudioBlob],'printo-voice-introduction.'+extension,{type:recordedAudioBlob.type||'audio/webm'});fd.set('introAudio',introFile);}else if(uploadedAudio&&uploadedAudio.size){introFile=uploadedAudio;}if(!introFile)throw new Error(premiumIntroUi.audioRequired);if(!audioPreviewConfirmed)throw new Error('Tap Play Recording and confirm that you can hear your voice before saving the order.');if(introFile.size>30*1024*1024)throw new Error(premiumIntroUi.audioTooLarge);const audioDuration=await readMediaDuration(introFile,true);if(audioDuration>60.25)throw new Error(premiumIntroUi.audioTooLong);fd.delete('introVideo');}else{introFile=video;if(!introFile||!introFile.size)throw new Error('${t.required}');if(introFile.size>100*1024*1024)throw new Error(premiumIsMultiImage?premiumMultiUi.videoTooLarge:'Introduction video must be 100 MB or smaller.');const videoDuration=await readMediaDuration(introFile,false);if(videoDuration>60.25)throw new Error(premiumIsMultiImage?premiumMultiUi.videoTooLong:'Introduction video must be 60 seconds or shorter.');fd.delete('introAudio');}fd.set('introMediaType',introMode);statusBox.textContent='⏳ '+(introMode==='audio'?premiumIntroUi.audioUploading:(premiumIsMultiImage?premiumMultiUi.uploading:'Uploading and compressing your introduction video…'));fd.set('customerKey',accountKey);let response;try{response=await fetch('/api/greeting/premium/request',{method:'POST',headers:{'x-printo-customer-id':customerId,'x-printo-customer-key':accountKey},body:fd});}catch(networkError){throw new Error(premiumIntroUi.connectionInterrupted||'The upload connection was interrupted. Check My Videos or the worker dashboard before submitting again.');}const responseText=await response.text();let data={};try{data=responseText?JSON.parse(responseText):{};}catch(_parseError){throw new Error(response.ok?'The server returned an unreadable response. Please check My Videos before retrying.':('Server error '+response.status+'. Please check Render logs.'));}if(response.status===402&&data.paymentRequired){statusBox.textContent='💳 '+(premiumIsMultiImage?premiumMultiUi.paymentRequired:(data.error||'Payment is required.'));const creditsNeeded=String(data.access?.creditsNeeded||${creationCreditCost});orderIdBox.textContent=premiumIsMultiImage?premiumMultiUi.paymentSummary.replace('{credits}',creditsNeeded):'Premium payment required';shopifyPay.href=data.payment?.shopify||'/multi-image-checkout';africaPay.href=data.payment?.africa||'#';if(!data.payment?.shopify&&premiumIsMultiImage)shopifyPay.href='/multi-image-checkout';workerLink.classList.add('disabled');result.style.display='block';result.scrollIntoView({behavior:'smooth'});return;}if(!response.ok||!data.ok)throw new Error(data.error||'Could not save premium order.');statusBox.textContent='✅ ${t.success} '+(introMode==='audio'?premiumIntroUi.audioStored:(premiumIsMultiImage?premiumMultiUi.stored:'Introduction video compressed and stored safely.'));const chargeSummary=data.usedFreeMultiImageTrial?premiumMultiUi.freeTestUsed:String(data.chargedCredits??data.creditCost??${creationCreditCost})+' '+premiumMultiUi.creditsDeducted;orderIdBox.textContent=(premiumIsMultiImage?premiumMultiUi.order:'Order')+': '+data.orderId+' • '+chargeSummary;shopifyPay.href=data.payment?.shopify||'#';africaPay.href=data.payment?.africa||'#';if(!data.payment?.shopify)shopifyPay.classList.add('disabled');else shopifyPay.classList.remove('disabled');workerLink.href=data.whatsappUrl;result.style.display='block';result.scrollIntoView({behavior:'smooth'});}catch(error){statusBox.textContent='❌ '+error.message;}finally{button.textContent='✨ ${t.submit}';syncPremiumButton();}});
 </script></body></html>`;
 }
 
@@ -20016,6 +20096,24 @@ async function renderPremiumOrderVideo({ orderId, req, publicBaseUrl = "" }) {
     );
 
     const introProbe = await probePremiumMedia(introPath);
+    const introAudioLevels = introProbe.hasAudio
+      ? await probePremiumAudioLevels(introPath)
+      : { meanDb: Number.NEGATIVE_INFINITY, maxDb: Number.NEGATIVE_INFINITY };
+
+    if (introMediaType === "audio") {
+      assertPremiumIntroductionIsAudible(
+        introAudioLevels,
+        "Stored voice introduction"
+      );
+    } else if (!introProbe.hasVideo) {
+      throw new Error("Stored personal introduction video has no video stream.");
+    } else {
+      assertPremiumIntroductionIsAudible(
+        introAudioLevels,
+        "Stored introduction-video voice"
+      );
+    }
+
     const musicProbe = await probePremiumMedia(selectedMusicPath);
     const introMediaDuration = Math.max(
       1,
@@ -20132,6 +20230,7 @@ async function renderPremiumOrderVideo({ orderId, req, publicBaseUrl = "" }) {
     // "Padded dimensions cannot be smaller than input dimensions".
     const introVideoFilter =
       `scale=${introInnerW}:${introInnerH}:force_original_aspect_ratio=decrease,` +
+      `fps=15,trim=duration=${introDuration},setpts=PTS-STARTPTS,` +
       `setsar=1,format=yuv420p`;
 
     // The recipient photograph replaces the sender video immediately after
@@ -20210,6 +20309,18 @@ async function renderPremiumOrderVideo({ orderId, req, publicBaseUrl = "" }) {
       ], { timeout: PREMIUM_RENDER_STAGE_TIMEOUT_MS, maxBuffer: 8 * 1024 * 1024 });
     }
 
+    const introSegmentProbe = await probePremiumStreamDurations(introSegmentPath);
+    if (
+      !Number.isFinite(introSegmentProbe.videoDuration) ||
+      introSegmentProbe.videoDuration < Math.max(0.75, introDuration - 0.75)
+    ) {
+      throw new Error(
+        introMediaType === "audio"
+          ? "The voice-introduction photo segment could not be created."
+          : "The personal introduction video segment was missing or too short."
+      );
+    }
+
     // Tribute section: as soon as the sender speech finishes, replace the
     // sender video with the recipient photograph and play the custom music to
     // the end. The sender video is never frozen or left talking under the song.
@@ -20234,7 +20345,7 @@ async function renderPremiumOrderVideo({ orderId, req, publicBaseUrl = "" }) {
       ];
       tributeImagePaths.forEach((_imagePath, index) => {
         slideshowFilters.push(
-          `[${index + 1}:v]${recipientPhotoFilter},fps=12,settb=AVTB,` +
+          `[${index + 1}:v]${recipientPhotoFilter},fps=15,settb=AVTB,` +
           `trim=duration=${imageClipDuration.toFixed(3)},setpts=PTS-STARTPTS[flip${index}]`
         );
       });
@@ -20268,7 +20379,7 @@ async function renderPremiumOrderVideo({ orderId, req, publicBaseUrl = "" }) {
         ...premiumSegmentVideoArgs({
           duration: tributeDuration,
           outputPath: tributePath,
-          fps: 12
+          fps: 15
         })
       ], {
         timeout: PREMIUM_RENDER_STAGE_TIMEOUT_MS,
@@ -20285,27 +20396,45 @@ async function renderPremiumOrderVideo({ orderId, req, publicBaseUrl = "" }) {
         `tpad=stop_mode=clone:stop_duration=${tributeDuration}[recipient];` +
         `[base][recipient]overlay=${introInnerX}:${introInnerY}:shortest=1[v]`,
         "-map", "[v]",
-        ...premiumSegmentVideoArgs({ duration: tributeDuration, outputPath: tributePath, fps: 12 })
+        ...premiumSegmentVideoArgs({ duration: tributeDuration, outputPath: tributePath, fps: 15 })
       ], { timeout: PREMIUM_RENDER_STAGE_TIMEOUT_MS, maxBuffer: 8 * 1024 * 1024 });
     }
 
-    const escapeConcatPath = (value) => String(value).replace(/'/g, "'\\''");
-    await fs.promises.writeFile(
-      concatListPath,
-      [introSegmentPath, tributePath]
-        .map((file) => `file '${escapeConcatPath(file)}'`)
-        .join("\n") + "\n",
-      "utf8"
-    );
-
-    console.log("Premium render stage 5/7 - joining branded segments:", orderId);
+    console.log("Premium render stage 5/7 - joining introduction and tribute segments:", orderId);
     await execFilePromise("ffmpeg", [
       "-y", "-nostdin", "-loglevel", "error",
-      "-f", "concat", "-safe", "0", "-i", concatListPath,
-      "-c", "copy",
+      "-i", introSegmentPath,
+      "-i", tributePath,
+      "-filter_complex",
+      `[0:v]fps=15,settb=AVTB,setpts=PTS-STARTPTS,format=yuv420p[intro_v];` +
+      `[1:v]fps=15,settb=AVTB,setpts=PTS-STARTPTS,format=yuv420p[tribute_v];` +
+      `[intro_v][tribute_v]concat=n=2:v=1:a=0[vout]`,
+      "-map", "[vout]",
+      "-t", String(totalDuration),
+      "-r", "15",
+      "-an",
+      "-c:v", "libx264",
+      "-preset", "ultrafast",
+      "-crf", "31",
+      "-threads", "1",
+      "-filter_threads", "1",
+      "-pix_fmt", "yuv420p",
       "-movflags", "+faststart",
       silentVideoPath
-    ], { timeout: PREMIUM_RENDER_STAGE_TIMEOUT_MS, maxBuffer: 8 * 1024 * 1024 });
+    ], {
+      timeout: PREMIUM_RENDER_STAGE_TIMEOUT_MS,
+      maxBuffer: 10 * 1024 * 1024
+    });
+
+    const joinedVideoProbe = await probePremiumStreamDurations(silentVideoPath);
+    if (
+      !Number.isFinite(joinedVideoProbe.videoDuration) ||
+      Math.abs(joinedVideoProbe.videoDuration - totalDuration) > 1.25
+    ) {
+      throw new Error(
+        `Premium video timeline is incomplete. Expected ${totalDuration.toFixed(2)} seconds but created ${Number(joinedVideoProbe.videoDuration || 0).toFixed(2)} seconds.`
+      );
+    }
 
     console.log("Premium render stage 6/7 - mixing intro audio and tribute music:", orderId);
     const audioInputArgs = [
@@ -20325,6 +20454,7 @@ async function renderPremiumOrderVideo({ orderId, req, publicBaseUrl = "" }) {
     // underneath the tribute song and keeps the recipient-photo switch exact.
     const audioFilters = [
       `[1:a]atrim=0:${tributeDuration},asetpts=PTS-STARTPTS,` +
+      `aresample=48000,aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=stereo,` +
       `afade=t=in:st=0:d=0.15,` +
       `afade=t=out:st=${Math.max(0, tributeDuration - 4)}:d=4,` +
       `volume=1.0,apad=pad_dur=${tributeDuration},atrim=0:${tributeDuration}[music_exact]`
@@ -20333,12 +20463,8 @@ async function renderPremiumOrderVideo({ orderId, req, publicBaseUrl = "" }) {
     if (introAudioIndex >= 0) {
       audioFilters.push(
         `[${introAudioIndex}:a]atrim=0:${introDuration},asetpts=PTS-STARTPTS,` +
-        `highpass=f=100,lowpass=f=7800,` +
-        `adeclick=w=20:o=75:a=2:t=2:b=2,` +
-        `anlmdn=s=0.00045:p=0.002:r=0.006:m=15,` +
-        `afftdn=nr=20:nf=-42:tn=1:tr=1:ad=0.4:gs=8,` +
-        `agate=threshold=0.01:ratio=2.5:range=0.14:attack=5:release=200,` +
-        `loudnorm=I=-16:TP=-1.5:LRA=7,volume=1.02,` +
+        `aresample=48000,aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=stereo,` +
+        `loudnorm=I=-16:TP=-1.5:LRA=9,volume=1.12,` +
         `afade=t=out:st=${Math.max(0, introDuration - 0.08)}:d=0.08,` +
         `apad=pad_dur=${introDuration},atrim=0:${introDuration}[intro_exact]`
       );
@@ -20359,6 +20485,8 @@ async function renderPremiumOrderVideo({ orderId, req, publicBaseUrl = "" }) {
       introMediaType,
       introMediaDuration,
       detectedIntroSpokenEnd,
+      introAudioMeanDb: introAudioLevels.meanDb,
+      introAudioMaxDb: introAudioLevels.maxDb,
       introDuration,
       stopsIntroductionAtFinalWord: true,
       recipientPhotoStartsAt: introEnd,
@@ -20385,6 +20513,17 @@ async function renderPremiumOrderVideo({ orderId, req, publicBaseUrl = "" }) {
       "-movflags", "+faststart",
       outputPath
     ], { timeout: PREMIUM_RENDER_STAGE_TIMEOUT_MS, maxBuffer: 8 * 1024 * 1024 });
+
+    const finalStreamDurations = await probePremiumStreamDurations(outputPath);
+    if (
+      !Number.isFinite(finalStreamDurations.videoDuration) ||
+      !Number.isFinite(finalStreamDurations.audioDuration) ||
+      Math.abs(finalStreamDurations.videoDuration - finalStreamDurations.audioDuration) > 1.25
+    ) {
+      throw new Error(
+        `Premium final video/audio timing mismatch. Video: ${Number(finalStreamDurations.videoDuration || 0).toFixed(2)} seconds; audio: ${Number(finalStreamDurations.audioDuration || 0).toFixed(2)} seconds.`
+      );
+    }
 
     const outputStat = await fs.promises.stat(outputPath);
     if (outputStat.size > PREMIUM_FINAL_VIDEO_MAX_BYTES) {
