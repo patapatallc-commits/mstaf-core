@@ -15689,6 +15689,41 @@ app.get("/worker-dashboard", requireDashboardKey, async (req, res) => {
     }
     a.fileLink{color:#8fd1ff;text-decoration:none;font-weight:700}
     a.fileLink:hover{text-decoration:underline}
+    .backToJobsButton{
+      position:fixed;
+      right:14px;
+      bottom:86px;
+      z-index:9999;
+      border:0;
+      border-radius:999px;
+      padding:13px 17px;
+      background:#ffd34f;
+      color:#071225;
+      font-weight:1000;
+      font-size:15px;
+      box-shadow:0 10px 30px rgba(0,0,0,.45);
+      cursor:pointer;
+      display:none;
+    }
+    .backToJobsButton.show{display:block}
+    .dashboardRefreshStatus{
+      position:fixed;
+      left:50%;
+      bottom:18px;
+      transform:translateX(-50%);
+      z-index:9998;
+      border-radius:999px;
+      padding:8px 13px;
+      background:rgba(7,18,37,.92);
+      color:#dbeafe;
+      border:1px solid rgba(143,209,255,.35);
+      font-size:12px;
+      font-weight:800;
+      pointer-events:none;
+      opacity:0;
+      transition:opacity .2s ease;
+    }
+    .dashboardRefreshStatus.show{opacity:1}
     @media (max-width: 1100px){
       .hero,.main,.jobBody,.toolbar{grid-template-columns:1fr}
     }
@@ -15756,7 +15791,7 @@ app.get("/worker-dashboard", requireDashboardKey, async (req, res) => {
         <option value="agent">Agent Queue</option>
         <option value="dispatch">Dispatch Queue</option>
       </select>
-      <button class="btn secondary" onclick="loadJobs()">Refresh</button>
+      <button class="btn secondary" onclick="loadJobs({preserveScroll:true})">Refresh</button>
       <button class="btn" onclick="toggleUpload()">Manual Upload</button>
     </div>
 
@@ -15821,9 +15856,14 @@ app.get("/worker-dashboard", requireDashboardKey, async (req, res) => {
       </div>
     </div>
   </div>
+  <button id="backToJobsButton" class="backToJobsButton" type="button">⬆ Back to Jobs</button>
+  <div id="dashboardRefreshStatus" class="dashboardRefreshStatus">Jobs updated</div>
 
 <script>
   const DASHBOARD_KEY = ${JSON.stringify(req.query.key || "")};
+  if ("scrollRestoration" in history) {
+    history.scrollRestoration = "manual";
+  }
   let currentQueue = "";
   let isPremiumFilePickerOpen = false;
   let isUploadingPremiumMusic = false;
@@ -15843,7 +15883,7 @@ app.get("/worker-dashboard", requireDashboardKey, async (req, res) => {
     document.querySelectorAll(".tab").forEach(t => t.classList.remove("active"));
     document.getElementById("tab_" + (queue || "all")).classList.add("active");
     document.getElementById("queue").value = queue;
-    loadJobs();
+    loadJobs({ preserveScroll: true });
   }
 
   async function api(path, options = {}) {
@@ -16518,10 +16558,22 @@ return parts.join("");
     \`;
   }
 
-  async function loadJobs() {
+  async function loadJobs(options = {}) {
     const grid = document.getElementById("jobGrid");
+    const silent = Boolean(options.silent);
+    const preserveScroll = options.preserveScroll !== false;
+    const previousScrollY = window.scrollY;
+    const previousGridHeight = grid ? grid.offsetHeight : 0;
+    const hadRenderedJobs = Boolean(
+      grid &&
+      grid.children.length &&
+      !grid.querySelector(".emptyState")
+    );
+
     try {
-      if (grid) {
+      // Keep existing cards visible during refresh. Replacing them with a
+      // tiny loading box caused mobile browsers to jump to Worker Notes.
+      if (grid && !silent && !hadRenderedJobs) {
         grid.innerHTML = '<div class="emptyState">Loading jobs...</div>';
       }
 
@@ -16563,6 +16615,12 @@ return parts.join("");
       if (!grid) return;
       if (!jobs.length) {
         grid.innerHTML = '<div class="emptyState">No jobs found for the selected filter.</div>';
+        if (preserveScroll) {
+          requestAnimationFrame(() => {
+            window.scrollTo({ top: previousScrollY, left: 0, behavior: "instant" });
+          });
+        }
+        updateBackToJobsButton();
         return;
       }
 
@@ -16580,15 +16638,40 @@ return parts.join("");
       });
 
       grid.innerHTML = cards.join("");
+
+      if (preserveScroll) {
+        requestAnimationFrame(() => {
+          const newGridHeight = grid ? grid.offsetHeight : 0;
+          const gridTop = grid ? grid.offsetTop : 0;
+          const heightDelta = newGridHeight - previousGridHeight;
+          const targetScroll = Math.max(
+            0,
+            previousScrollY + (previousScrollY > gridTop ? heightDelta : 0)
+          );
+          window.scrollTo({ top: targetScroll, left: 0, behavior: "instant" });
+        });
+      }
+
+      if (silent) showDashboardRefreshStatus("Jobs updated");
+      updateBackToJobsButton();
     } catch (err) {
       console.error("Worker dashboard load failed", err);
       document.getElementById("s_all").textContent = "0";
       document.getElementById("s_pending").textContent = "0";
       document.getElementById("s_completed").textContent = "0";
       document.getElementById("s_working").textContent = "0";
-      if (grid) {
+      if (grid && !grid.children.length) {
         grid.innerHTML = '<div class="emptyState">Dashboard load failed: ' + h(err.message || String(err)) + '</div>';
+      } else if (grid) {
+        showDashboardRefreshStatus("Refresh failed — existing jobs kept");
       }
+
+      if (preserveScroll) {
+        requestAnimationFrame(() => {
+          window.scrollTo({ top: previousScrollY, left: 0, behavior: "instant" });
+        });
+      }
+      updateBackToJobsButton();
     }
   }
 
@@ -16696,15 +16779,57 @@ return parts.join("");
     }
   }
 
+  let dashboardRefreshStatusTimer = null;
+
+  function showDashboardRefreshStatus(message) {
+    const node = document.getElementById("dashboardRefreshStatus");
+    if (!node) return;
+    node.textContent = message || "Jobs updated";
+    node.classList.add("show");
+    clearTimeout(dashboardRefreshStatusTimer);
+    dashboardRefreshStatusTimer = setTimeout(() => {
+      node.classList.remove("show");
+    }, 1600);
+  }
+
+  function scrollToJobs() {
+    const panel = document.getElementById("jobGrid");
+    if (!panel) return;
+    const top = Math.max(
+      0,
+      panel.getBoundingClientRect().top + window.scrollY - 105
+    );
+    window.scrollTo({ top, behavior: "smooth" });
+  }
+
+  function updateBackToJobsButton() {
+    const button = document.getElementById("backToJobsButton");
+    const panel = document.getElementById("jobGrid");
+    if (!button || !panel) return;
+    button.classList.toggle(
+      "show",
+      panel.getBoundingClientRect().bottom < 80
+    );
+  }
+
   function initializeWorkerDashboard() {
     const qInput = document.getElementById("q");
     const statusSelect = document.getElementById("status");
     const queueSelect = document.getElementById("queue");
     const manualUploadForm = document.getElementById("manualUploadForm");
+    const backToJobsButton = document.getElementById("backToJobsButton");
 
-    qInput?.addEventListener("input", () => loadJobs());
-    statusSelect?.addEventListener("change", () => loadJobs());
-    queueSelect?.addEventListener("change", () => loadJobs());
+    backToJobsButton?.addEventListener("click", scrollToJobs);
+    window.addEventListener("scroll", updateBackToJobsButton, { passive: true });
+    window.addEventListener("resize", updateBackToJobsButton);
+
+    // Always open a fresh dashboard visit at the jobs, not at the long
+    // printer registry restored from a previous mobile browsing session.
+    window.scrollTo({ top: 0, left: 0, behavior: "instant" });
+
+    qInput?.addEventListener("input", () => loadJobs({ preserveScroll: true }));
+    statusSelect?.addEventListener("change", () => loadJobs({ preserveScroll: true }));
+    queueSelect?.addEventListener("change", () => loadJobs({ preserveScroll: true }));
 
     manualUploadForm?.addEventListener("submit", async (e) => {
       e.preventDefault();
@@ -16719,7 +16844,7 @@ return parts.join("");
         if (!res.ok) throw new Error(data.error || "Upload failed");
         alert("Dashboard upload created successfully.");
         e.target.reset();
-        await loadJobs();
+        await loadJobs({ preserveScroll: true });
       } catch (err) {
         alert("Manual upload failed: " + err.message);
       }
@@ -16732,7 +16857,10 @@ return parts.join("");
       }
     });
 
-    loadJobs();
+    loadJobs({ preserveScroll: false }).then(() => {
+      window.scrollTo({ top: 0, left: 0, behavior: "instant" });
+      updateBackToJobsButton();
+    });
   }
 
   if (document.readyState === "loading") {
@@ -16770,7 +16898,7 @@ setInterval(() => {
   if (mediaIsPlaying()) return;
   if (isUserTyping) return;
   if (premiumWorkIsActive()) return;
-  loadJobs();
+  loadJobs({ silent: true, preserveScroll: true });
 }, WORKER_DASHBOARD_REFRESH_MS);
 </script>
 </body>
