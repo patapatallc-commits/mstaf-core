@@ -4767,51 +4767,277 @@ NEXT ACTION FOR WORKER:
 4. Prepare and deliver the finished premium Printo tribute video.`;
 
   try {
+    await ensurePrintJobsDashboardColumns();
+    const tableColumns = await getPrintJobsColumns();
     const primaryFileUrl = introMediaUrl || recipientPhotoUrl || "";
     const primaryMime = introMediaUrl
       ? introMediaMime || (introMediaType === "audio" ? "audio/mp4" : "video/mp4")
       : recipientPhotoMime || "image/jpeg";
 
-    const result = await pool.query(
-      `
-      INSERT INTO print_jobs (
-        printer_id,
-        queue_type,
-        status,
-        service_type,
-        customer_name,
-        customer_email,
-        customer_phone,
-        original_name,
-        file_url,
-        mime_type,
-        instructions,
-        copies,
-        pages,
-        total_cost,
-        created_at,
-        updated_at
-      )
-      VALUES ($1, 'AGENT', 'pending', $9, $2, $3, $4, $5, $6, $7, $8, 1, 1, 0, NOW(), NOW())
-      RETURNING *
-      `,
-      [
-        process.env.AGENT_QUEUE_ID || "AGENT",
+    const valuesByColumn = {
+      printer_id: process.env.AGENT_QUEUE_ID || "AGENT",
+      queue_type: "AGENT",
+      status: "pending",
+      service_type: isMultiImage
+        ? "GREETING_PREMIUM_MULTI_IMAGE"
+        : "GREETING_PREMIUM",
+      customer_name:
         senderName || recipientName || "Premium Greeting Customer",
-        customerEmail || "",
-        contactPhone || "",
+      customer_email: customerEmail || "",
+      customer_phone: contactPhone || "",
+      original_name:
         `${isMultiImage ? "Printo Premium Multi-Image Flip" : "Printo Premium Tribute"} - ${recipientName}`,
-        primaryFileUrl,
-        primaryMime,
-        instructions,
-        isMultiImage ? "GREETING_PREMIUM_MULTI_IMAGE" : "GREETING_PREMIUM"
-      ]
+      file_url: primaryFileUrl,
+      mime_type: primaryMime,
+      instruction_audio_url:
+        introMediaType === "audio" ? introMediaUrl || "" : "",
+      instructions,
+      copies: 1,
+      pages: 1,
+      total_cost: 0,
+      created_at: new Date(),
+      updated_at: new Date()
+    };
+
+    const preferredOrder = [
+      "printer_id", "queue_type", "status", "service_type",
+      "customer_name", "customer_email", "customer_phone",
+      "original_name", "file_url", "mime_type",
+      "instruction_audio_url", "instructions", "copies", "pages",
+      "total_cost", "created_at", "updated_at"
+    ];
+    const insertColumns = preferredOrder.filter((name) =>
+      tableColumns.has(name)
     );
 
-    return result.rows[0] || null;
+    if (!insertColumns.includes("status") || !insertColumns.includes("instructions")) {
+      throw new Error(
+        "print_jobs is missing the status or instructions column required for Premium jobs."
+      );
+    }
+
+    const parameters = insertColumns.map((name) => valuesByColumn[name]);
+    const placeholders = insertColumns.map((_name, index) => `$${index + 1}`);
+    const result = await pool.query(
+      `INSERT INTO print_jobs (${insertColumns.join(", ")})
+       VALUES (${placeholders.join(", ")})
+       RETURNING *`,
+      parameters
+    );
+
+    const savedJob = result.rows[0] || null;
+    console.log("Premium dashboard job created:", {
+      orderId,
+      jobId: savedJob?.id || null,
+      creationType: normalizedCreationType,
+      introMediaType,
+      columns: insertColumns
+    });
+    return savedJob;
   } catch (error) {
-    console.error("Premium greeting dashboard job insert failed:", error);
+    console.error("Premium greeting dashboard job insert failed:", {
+      orderId,
+      message: error?.message || error,
+      code: error?.code || "",
+      detail: error?.detail || ""
+    });
     return null;
+  }
+}
+
+let premiumDashboardRepairPromise = null;
+let premiumDashboardRepairLastAt = 0;
+
+function buildStoredPremiumMediaUrl(order, kind) {
+  const orderId = String(order?.order_id || "").trim();
+  const token = String(order?.media_token || "").trim();
+  if (!orderId || !token) return "";
+  return `${PRINTO_BRANDED_PUBLIC_ORIGIN}/premium-media/${encodeURIComponent(orderId)}/${encodeURIComponent(kind)}?token=${encodeURIComponent(token)}`;
+}
+
+async function syncMissingPremiumDashboardJobs({
+  limit = 50,
+  force = false,
+  reason = "automatic"
+} = {}) {
+  const now = Date.now();
+  if (!force && now - premiumDashboardRepairLastAt < 15000) {
+    return { ok: true, skipped: true, recovered: 0, linked: 0, failed: 0 };
+  }
+  if (premiumDashboardRepairPromise) return premiumDashboardRepairPromise;
+
+  premiumDashboardRepairPromise = (async () => {
+    premiumDashboardRepairLastAt = Date.now();
+    const tableReady = await ensurePrintJobsDashboardColumns();
+    if (!tableReady) {
+      return {
+        ok: false,
+        skipped: true,
+        recovered: 0,
+        linked: 0,
+        failed: 0,
+        error: "print_jobs table was not found"
+      };
+    }
+
+    const missing = await queryWithRetry(
+      `SELECT premium.*,
+              COALESCE((
+                SELECT COUNT(*)::integer
+                FROM premium_greeting_images AS image
+                WHERE image.order_id = premium.order_id
+              ), 0) AS stored_image_count
+       FROM premium_greeting_orders AS premium
+       WHERE LOWER(COALESCE(premium.status, '')) IN (
+               'paid', 'payment_required', 'approved'
+             )
+         AND (
+           COALESCE(premium.dashboard_job_id, '') = ''
+           OR NOT EXISTS (
+             SELECT 1
+             FROM print_jobs AS job
+             WHERE job.id::text = premium.dashboard_job_id
+           )
+         )
+       ORDER BY premium.created_at DESC
+       LIMIT $1`,
+      [Math.max(1, Math.min(200, Number(limit) || 50))]
+    );
+
+    let recovered = 0;
+    let linked = 0;
+    let failed = 0;
+
+    for (const order of missing.rows) {
+      try {
+        // Prevent duplicate cards when an older server inserted the job but
+        // failed before saving dashboard_job_id back to the Premium order.
+        const existing = await pool.query(
+          `SELECT id
+           FROM print_jobs
+           WHERE COALESCE(instructions, '') ILIKE $1
+              OR COALESCE(original_name, '') ILIKE $1
+           ORDER BY id DESC
+           LIMIT 1`,
+          [`%${String(order.order_id || "")}%`]
+        );
+
+        if (existing.rows[0]?.id) {
+          await queryWithRetry(
+            `UPDATE premium_greeting_orders
+             SET dashboard_job_id = $2,
+                 updated_at = NOW()
+             WHERE order_id = $1`,
+            [order.order_id, String(existing.rows[0].id)]
+          );
+          linked += 1;
+          continue;
+        }
+
+        const creationType = normalizePrintoCreationType(
+          order.creation_type || "premium_video"
+        );
+        const introMediaType =
+          String(order.intro_media_type || "video").toLowerCase() === "audio"
+            ? "audio"
+            : "video";
+        const photoUrl =
+          String(order.recipient_photo_url || "").trim() ||
+          buildStoredPremiumMediaUrl(order, "photo");
+        const introUrl =
+          String(order.intro_video_url || "").trim() ||
+          buildStoredPremiumMediaUrl(
+            order,
+            introMediaType === "audio" ? "audio" : "video"
+          );
+        const imageCount = Math.max(
+          1,
+          Number(order.stored_image_count || 0) || 1
+        );
+        const imageUrls = Array.from({ length: imageCount }, (_value, index) =>
+          `${PRINTO_BRANDED_PUBLIC_ORIGIN}/premium-media/${encodeURIComponent(order.order_id)}/image/${index + 1}?token=${encodeURIComponent(order.media_token || "")}`
+        );
+        const payment = buildPremiumPaymentLinks({
+          orderId: order.order_id,
+          customerKey: order.customer_key,
+          contactPhone: order.contact_phone
+        });
+
+        const job = await createPremiumGreetingDashboardJob({
+          orderId: order.order_id,
+          customerKey: order.customer_key,
+          contactPhone: order.contact_phone,
+          customerEmail: order.customer_email,
+          recipientName: order.recipient_name,
+          senderName: order.sender_name,
+          personalMessage: order.personal_message,
+          songStyle: order.song_style,
+          tributeNotes: order.tribute_notes,
+          recipientPhotoUrl: photoUrl,
+          introMediaUrl: introUrl,
+          introMediaMime:
+            order.intro_video_mime ||
+            (introMediaType === "audio" ? "audio/mp4" : "video/mp4"),
+          introMediaType,
+          recipientPhotoMime: order.recipient_photo_mime || "image/jpeg",
+          shopifyUrl: payment.shopify,
+          africaUrl: payment.africa,
+          language: "en",
+          introDuration: Number(order.intro_video_duration_seconds || 0),
+          originalVideoBytes: Number(order.intro_video_original_bytes || 0),
+          storedVideoBytes: Number(order.intro_video_stored_bytes || 0),
+          creationType,
+          imageCount,
+          imageUrls
+        });
+
+        if (!job?.id) {
+          failed += 1;
+          continue;
+        }
+
+        await queryWithRetry(
+          `UPDATE premium_greeting_orders
+           SET dashboard_job_id = $2,
+               updated_at = NOW()
+           WHERE order_id = $1`,
+          [order.order_id, String(job.id)]
+        );
+        recovered += 1;
+      } catch (error) {
+        failed += 1;
+        console.error("Premium dashboard job recovery failed:", {
+          orderId: order?.order_id || "",
+          reason,
+          message: error?.message || error,
+          code: error?.code || ""
+        });
+      }
+    }
+
+    if (recovered || linked || failed) {
+      console.log("Premium dashboard job recovery finished:", {
+        reason,
+        checked: missing.rows.length,
+        recovered,
+        linked,
+        failed
+      });
+    }
+
+    return {
+      ok: failed === 0,
+      checked: missing.rows.length,
+      recovered,
+      linked,
+      failed
+    };
+  })();
+
+  try {
+    return await premiumDashboardRepairPromise;
+  } finally {
+    premiumDashboardRepairPromise = null;
   }
 }
 
@@ -14937,6 +15163,48 @@ async function sendWhatsAppText(to, body) {
 /**
  * Optional safe column helper
  */
+let printJobsDashboardColumnsReady = false;
+
+async function ensurePrintJobsDashboardColumns() {
+  if (printJobsDashboardColumnsReady) return true;
+
+  const found = await pool.query(
+    `SELECT to_regclass('public.print_jobs') AS table_name`
+  );
+  if (!found.rows[0]?.table_name) return false;
+
+  const upgrades = [
+    ["printer_id", "TEXT NOT NULL DEFAULT 'AGENT'"],
+    ["queue_type", "TEXT NOT NULL DEFAULT 'WORKER'"],
+    ["status", "TEXT NOT NULL DEFAULT 'pending'"],
+    ["file_url", "TEXT NOT NULL DEFAULT ''"],
+    ["original_name", "TEXT NOT NULL DEFAULT ''"],
+    ["paper_size", "TEXT"],
+    ["color_mode", "TEXT"],
+    ["copies", "INTEGER NOT NULL DEFAULT 1"],
+    ["pages", "INTEGER NOT NULL DEFAULT 1"],
+    ["instructions", "TEXT NOT NULL DEFAULT ''"],
+    ["instruction_audio_url", "TEXT NOT NULL DEFAULT ''"],
+    ["service_type", "TEXT NOT NULL DEFAULT 'SERVICE'"],
+    ["customer_phone", "TEXT NOT NULL DEFAULT ''"],
+    ["customer_name", "TEXT NOT NULL DEFAULT ''"],
+    ["customer_email", "TEXT NOT NULL DEFAULT ''"],
+    ["mime_type", "TEXT NOT NULL DEFAULT ''"],
+    ["total_cost", "NUMERIC NOT NULL DEFAULT 0"],
+    ["created_at", "TIMESTAMPTZ NOT NULL DEFAULT NOW()"],
+    ["updated_at", "TIMESTAMPTZ NOT NULL DEFAULT NOW()"]
+  ];
+
+  for (const [columnName, definition] of upgrades) {
+    await pool.query(
+      `ALTER TABLE print_jobs ADD COLUMN IF NOT EXISTS ${columnName} ${definition}`
+    );
+  }
+
+  printJobsDashboardColumnsReady = true;
+  return true;
+}
+
 async function getPrintJobsColumns() {
   const q = await pool.query(`
     SELECT column_name
@@ -14944,6 +15212,12 @@ async function getPrintJobsColumns() {
     WHERE table_schema = 'public' AND table_name = 'print_jobs'
   `);
   return new Set(q.rows.map(r => r.column_name));
+}
+
+function dashboardColumnExpression(columns, name, fallbackSql) {
+  return columns.has(name)
+    ? name
+    : `${fallbackSql} AS ${name}`;
 }
 app.get("/dashboard", (req, res) => {
   const key = req.query.key;
@@ -14960,6 +15234,17 @@ app.get("/dashboard", (req, res) => {
  */
 app.get("/api/dashboard/jobs", requireDashboardKey, async (req, res) => {
   try {
+    await ensurePrintJobsDashboardColumns();
+    const recovery = await syncMissingPremiumDashboardJobs({
+      limit: 75,
+      reason: "dashboard_api"
+    });
+    const columns = await getPrintJobsColumns();
+
+    if (!columns.has("id")) {
+      throw new Error("print_jobs does not contain its required id column.");
+    }
+
     const {
       status = "",
       q = "",
@@ -14971,77 +15256,100 @@ app.get("/api/dashboard/jobs", requireDashboardKey, async (req, res) => {
     const params = [];
     const where = [];
 
-    if (status) {
+    if (status && columns.has("status")) {
       params.push(status);
       where.push(`status = $${params.length}`);
     }
 
     if (queue === "agent") {
-  where.push(`(queue_type = 'AGENT' OR printer_id = $${params.length + 1})`);
-  params.push(AGENT_QUEUE_ID);
+      const queueClauses = [];
+      if (columns.has("queue_type")) queueClauses.push(`queue_type = 'AGENT'`);
+      if (columns.has("printer_id")) {
+        params.push(AGENT_QUEUE_ID);
+        queueClauses.push(`printer_id = $${params.length}`);
+      }
+      if (queueClauses.length) where.push(`(${queueClauses.join(" OR ")})`);
+    } else if (queue === "dispatch") {
+      const queueClauses = [];
+      if (columns.has("queue_type")) queueClauses.push(`queue_type = 'DISPATCH'`);
+      if (columns.has("printer_id")) {
+        params.push(DISPATCH_QUEUE_ID);
+        queueClauses.push(`printer_id = $${params.length}`);
+      }
+      if (queueClauses.length) where.push(`(${queueClauses.join(" OR ")})`);
+    } else if (queue === "worker" && columns.has("queue_type")) {
+      where.push(`(
+        COALESCE(queue_type, '') <> 'AGENT'
+        AND COALESCE(queue_type, '') <> 'DISPATCH'
+      )`);
+    }
 
-} else if (queue === "dispatch") {
-  where.push(`(queue_type = 'DISPATCH' OR printer_id = $${params.length + 1})`);
-  params.push(DISPATCH_QUEUE_ID);
-
-} else if (queue === "worker") {
-  where.push(`(
-    COALESCE(queue_type, '') <> 'AGENT'
-    AND COALESCE(queue_type, '') <> 'DISPATCH'
-  )`);
-}
-
-    if (printer_id) {
+    if (printer_id && columns.has("printer_id")) {
       params.push(printer_id);
       where.push(`printer_id = $${params.length}`);
     }
 
     if (q) {
-      params.push(`%${q}%`);
-      where.push(`(
-        COALESCE(original_name, '') ILIKE $${params.length}
-        OR COALESCE(file_url, '') ILIKE $${params.length}
-        OR COALESCE(instructions, '') ILIKE $${params.length}
-        OR COALESCE(customer_phone, '') ILIKE $${params.length}
-        OR COALESCE(printer_id, '') ILIKE $${params.length}
-        OR COALESCE(service_type, '') ILIKE $${params.length}
-      )`);
+      const searchableColumns = [
+        "original_name", "file_url", "instructions", "customer_phone",
+        "customer_name", "customer_email", "printer_id", "service_type"
+      ].filter((name) => columns.has(name));
+
+      if (searchableColumns.length) {
+        params.push(`%${q}%`);
+        const placeholder = `$${params.length}`;
+        where.push(`(${searchableColumns
+          .map((name) => `COALESCE(${name}::text, '') ILIKE ${placeholder}`)
+          .join(" OR ")})`);
+      }
     }
 
     params.push(Math.min(parseInt(limit, 10) || 100, 300));
 
- const sql = `
-  SELECT
-    id,
-    printer_id,
-    queue_type,
-    status,
-    file_url,
-    original_name,
-    paper_size,
-    color_mode,
-    copies,
-    pages,
-    instructions,
-    instruction_audio_url,
-    service_type,
-    customer_phone,
-    customer_name,
-    customer_email,
-    mime_type,
-    created_at,
-    updated_at
-  FROM print_jobs
-  ${where.length ? `WHERE ${where.join(" AND ")}` : ""}
-  ORDER BY id DESC
-  LIMIT $${params.length}
-`;
+    const selectColumns = [
+      dashboardColumnExpression(columns, "id", "NULL::bigint"),
+      dashboardColumnExpression(columns, "printer_id", "''::text"),
+      dashboardColumnExpression(columns, "queue_type", "''::text"),
+      dashboardColumnExpression(columns, "status", "'pending'::text"),
+      dashboardColumnExpression(columns, "file_url", "''::text"),
+      dashboardColumnExpression(columns, "original_name", "''::text"),
+      dashboardColumnExpression(columns, "paper_size", "NULL::text"),
+      dashboardColumnExpression(columns, "color_mode", "NULL::text"),
+      dashboardColumnExpression(columns, "copies", "1::integer"),
+      dashboardColumnExpression(columns, "pages", "1::integer"),
+      dashboardColumnExpression(columns, "instructions", "''::text"),
+      dashboardColumnExpression(columns, "instruction_audio_url", "''::text"),
+      dashboardColumnExpression(columns, "service_type", "'SERVICE'::text"),
+      dashboardColumnExpression(columns, "customer_phone", "''::text"),
+      dashboardColumnExpression(columns, "customer_name", "''::text"),
+      dashboardColumnExpression(columns, "customer_email", "''::text"),
+      dashboardColumnExpression(columns, "mime_type", "''::text"),
+      dashboardColumnExpression(columns, "created_at", "NULL::timestamptz"),
+      dashboardColumnExpression(columns, "updated_at", "NULL::timestamptz")
+    ];
+
+    const sql = `
+      SELECT ${selectColumns.join(",\n             ")}
+      FROM print_jobs
+      ${where.length ? `WHERE ${where.join(" AND ")}` : ""}
+      ORDER BY id DESC
+      LIMIT $${params.length}
+    `;
 
     const result = await pool.query(sql, params);
-    res.json({ ok: true, jobs: result.rows, printers: getPrinterRegistry() });
+    return res.json({
+      ok: true,
+      jobs: result.rows,
+      printers: getPrinterRegistry(),
+      premiumRecovery: recovery
+    });
   } catch (err) {
-    console.error("Dashboard jobs error:", err);
-    res.status(500).json({ ok: false, error: err.message });
+    console.error("Dashboard jobs error:", {
+      message: err?.message || err,
+      code: err?.code || "",
+      detail: err?.detail || ""
+    });
+    return res.status(500).json({ ok: false, error: err.message });
   }
 });
 
@@ -16660,8 +16968,12 @@ return parts.join("");
       document.getElementById("s_pending").textContent = "0";
       document.getElementById("s_completed").textContent = "0";
       document.getElementById("s_working").textContent = "0";
-      if (grid && !grid.children.length) {
-        grid.innerHTML = '<div class="emptyState">Dashboard load failed: ' + h(err.message || String(err)) + '</div>';
+      const hasVisibleJobCard = Boolean(grid?.querySelector(".jobCard"));
+      if (grid && !hasVisibleJobCard) {
+        grid.innerHTML =
+          '<div class="emptyState"><b>Dashboard could not load jobs.</b><br><br>' +
+          h(err.message || String(err)) +
+          '<br><br>Open Render logs and search for <b>Dashboard jobs error</b> or <b>Premium dashboard job recovery failed</b>.</div>';
       } else if (grid) {
         showDashboardRefreshStatus("Refresh failed — existing jobs kept");
       }
@@ -22157,12 +22469,19 @@ function startServer() {
   setImmediate(async () => {
     try {
       await ensureGreetingAccessTables();
+      await ensurePrintJobsDashboardColumns();
+      const premiumDashboardRecovery = await syncMissingPremiumDashboardJobs({
+        limit: 100,
+        force: true,
+        reason: "startup"
+      });
       await refundInterruptedStandardGreetingGenerations();
       await syncPremiumDashboardProductionStatus();
       await releaseDuePrintoMembershipCredits();
 
       console.log(
-        "Greeting access tables, memberships, and Premium dashboard status are ready."
+        "Greeting access tables, memberships, and Premium dashboard status are ready.",
+        { premiumDashboardRecovery }
       );
     } catch (error) {
       console.error(
