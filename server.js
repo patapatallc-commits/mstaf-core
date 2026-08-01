@@ -16598,7 +16598,7 @@ app.get("/worker-dashboard", requireDashboardKey, async (req, res) => {
     const orderId = extractPremiumOrderId(job);
     const audioUrl = savedAudioUrl
       ? savedAudioUrl.replace(
-          /(\/premium-media\/[^/?]+)\/(?:photo|video)(\?)/i,
+          /(\\/premium-media\\/[^/?]+)\\/(?:photo|video)(\\?)/i,
           "$1/audio$2"
         )
       : "";
