@@ -4305,18 +4305,78 @@ async function probeSpokenAudioEndSeconds(filePath, totalDurationSeconds) {
   return safeTotal;
 }
 
+function parseFfmpegClockSeconds(value) {
+  const match = String(value || "").match(
+    /^(\d+):(\d+):(\d+(?:\.\d+)?)$/
+  );
+  if (!match) return 0;
+
+  const hours = Number(match[1] || 0);
+  const minutes = Number(match[2] || 0);
+  const seconds = Number(match[3] || 0);
+  const total = hours * 3600 + minutes * 60 + seconds;
+
+  return Number.isFinite(total) && total > 0 ? total : 0;
+}
+
+async function probeDecodedMediaDurationSeconds(filePath) {
+  let stderrText = "";
+
+  try {
+    const result = await execFilePromise("ffmpeg", [
+      "-hide_banner",
+      "-nostdin",
+      "-i", filePath,
+      "-map", "0:a:0?",
+      "-map", "0:v:0?",
+      "-f", "null",
+      "-"
+    ], {
+      timeout: 120000,
+      maxBuffer: 5 * 1024 * 1024
+    });
+    stderrText = String(result.stderr || "");
+  } catch (error) {
+    // FFmpeg may still provide a usable final timestamp in stderr even when
+    // a damaged trailing packet causes a non-zero exit code.
+    stderrText = String(error?.stderr || "");
+  }
+
+  const timestamps = [
+    ...stderrText.matchAll(/time=(\d+:\d+:\d+(?:\.\d+)?)/g)
+  ]
+    .map((match) => parseFfmpegClockSeconds(match[1]))
+    .filter((seconds) => Number.isFinite(seconds) && seconds > 0);
+
+  return timestamps.length ? Math.max(...timestamps) : 0;
+}
+
 async function probePremiumMedia(filePath) {
   const { stdout } = await execFilePromise("ffprobe", [
     "-v", "error",
-    "-show_entries", "format=duration,size:stream=codec_type",
+    "-show_entries",
+    "format=duration,size:stream=codec_type,duration",
     "-of", "json",
     filePath
   ], { timeout: 30000, maxBuffer: 2 * 1024 * 1024 });
 
   const parsed = JSON.parse(stdout || "{}");
   const streams = Array.isArray(parsed.streams) ? parsed.streams : [];
+  const durationCandidates = [
+    Number(parsed?.format?.duration || 0),
+    ...streams.map((stream) => Number(stream?.duration || 0))
+  ].filter((duration) => Number.isFinite(duration) && duration > 0);
+
+  let duration = durationCandidates.length
+    ? Math.max(...durationCandidates)
+    : 0;
+
+  if (!duration) {
+    duration = await probeDecodedMediaDurationSeconds(filePath);
+  }
+
   return {
-    duration: Number(parsed?.format?.duration || 0),
+    duration,
     size: Number(parsed?.format?.size || 0),
     hasAudio: streams.some((stream) => stream.codec_type === "audio"),
     hasVideo: streams.some((stream) => stream.codec_type === "video")
@@ -4521,7 +4581,7 @@ async function compressPremiumIntroductionAudio(inputPath, outputPath) {
     throw new Error("The voice introduction does not contain a valid audio stream.");
   }
   if (!Number.isFinite(source.duration) || source.duration <= 0) {
-    throw new Error("The voice introduction duration could not be read.");
+    throw new Error("The voice recording could not be decoded. Please record again or upload an MP3, M4A or WAV file.");
   }
   if (source.duration > PREMIUM_VIDEO_MAX_SECONDS + 0.25) {
     throw new Error(`Voice introduction must be ${PREMIUM_VIDEO_MAX_SECONDS} seconds or shorter.`);
@@ -18864,8 +18924,24 @@ if(premiumCustomerPhone&&savedVerifiedPhone&&!premiumCustomerPhone.value){
   premiumCustomerPhone.value=savedVerifiedPhone;
 }
 let customerId=localStorage.getItem('printoGreetingCustomerId')||localStorage.getItem('printoPremiumCustomerId');if(!customerId){customerId='premium_'+Date.now()+'_'+Math.random().toString(36).slice(2,11);localStorage.setItem('printoPremiumCustomerId',customerId)}document.getElementById('customerId').value=customerId;
-function readMediaDuration(file,isAudio=false){return new Promise((resolve,reject)=>{const url=URL.createObjectURL(file),media=document.createElement(isAudio?'audio':'video');media.preload='metadata';media.onloadedmetadata=()=>{const duration=Number(media.duration||0);URL.revokeObjectURL(url);resolve(Number.isFinite(duration)?duration:0)};media.onerror=()=>{URL.revokeObjectURL(url);reject(new Error(isAudio?premiumIntroUi.audioUnreadable:'The introduction video could not be read.'))};media.src=url;});}
-form.addEventListener('submit',async(e)=>{e.preventDefault();if(!termsAccepted.checked){statusBox.textContent='❌ '+(premiumIsMultiImage?premiumMultiUi.acceptTerms:'Please confirm permission and accept the Terms, Privacy and Refund Policy.');return;}button.disabled=true;button.textContent='⏳ ${t.saving}';statusBox.textContent='';result.style.display='none';try{const fd=new FormData(form);const introMode=introMediaTypeInput.value==='audio'?'audio':'video';const video=fd.get('introVideo');const uploadedAudio=fd.get('introAudio');const singlePhoto=fd.get('recipientPhoto');const multiPhotos=fd.getAll('recipientImages').filter(file=>file&&file.size);if(premiumIsMultiImage){if(multiPhotos.length<2||multiPhotos.length>8)throw new Error('${t.required}');for(const image of multiPhotos){if(image.size>10*1024*1024)throw new Error(premiumMultiUi.imageTooLarge);}}else{if(!singlePhoto||!singlePhoto.size)throw new Error('${t.required}');if(singlePhoto.size>10*1024*1024)throw new Error('Recipient photo must be 10 MB or smaller.');}let introFile=null;if(introMode==='audio'){if(recordedAudioBlob){const extension=recordedAudioBlob.type.includes('mp4')?'m4a':recordedAudioBlob.type.includes('ogg')?'ogg':'webm';introFile=new File([recordedAudioBlob],'printo-voice-introduction.'+extension,{type:recordedAudioBlob.type||'audio/webm'});fd.set('introAudio',introFile);}else if(uploadedAudio&&uploadedAudio.size){introFile=uploadedAudio;}if(!introFile)throw new Error(premiumIntroUi.audioRequired);if(!audioPreviewConfirmed)throw new Error('Tap Play Recording and confirm that you can hear your voice before saving the order.');if(introFile.size>30*1024*1024)throw new Error(premiumIntroUi.audioTooLarge);const audioDuration=await readMediaDuration(introFile,true);if(audioDuration>60.25)throw new Error(premiumIntroUi.audioTooLong);fd.delete('introVideo');}else{introFile=video;if(!introFile||!introFile.size)throw new Error('${t.required}');if(introFile.size>100*1024*1024)throw new Error(premiumIsMultiImage?premiumMultiUi.videoTooLarge:'Introduction video must be 100 MB or smaller.');const videoDuration=await readMediaDuration(introFile,false);if(videoDuration>60.25)throw new Error(premiumIsMultiImage?premiumMultiUi.videoTooLong:'Introduction video must be 60 seconds or shorter.');fd.delete('introAudio');}fd.set('introMediaType',introMode);statusBox.textContent='⏳ '+(introMode==='audio'?premiumIntroUi.audioUploading:(premiumIsMultiImage?premiumMultiUi.uploading:'Uploading and compressing your introduction video…'));fd.set('customerKey',accountKey);let response;try{response=await fetch('/api/greeting/premium/request',{method:'POST',headers:{'x-printo-customer-id':customerId,'x-printo-customer-key':accountKey},body:fd});}catch(networkError){throw new Error(premiumIntroUi.connectionInterrupted||'The upload connection was interrupted. Check My Videos or the worker dashboard before submitting again.');}const responseText=await response.text();let data={};try{data=responseText?JSON.parse(responseText):{};}catch(_parseError){throw new Error(response.ok?'The server returned an unreadable response. Please check My Videos before retrying.':('Server error '+response.status+'. Please check Render logs.'));}if(response.status===402&&data.paymentRequired){statusBox.textContent='💳 '+(premiumIsMultiImage?premiumMultiUi.paymentRequired:(data.error||'Payment is required.'));const creditsNeeded=String(data.access?.creditsNeeded||${creationCreditCost});orderIdBox.textContent=premiumIsMultiImage?premiumMultiUi.paymentSummary.replace('{credits}',creditsNeeded):'Premium payment required';shopifyPay.href=data.payment?.shopify||'/multi-image-checkout';africaPay.href=data.payment?.africa||'#';if(!data.payment?.shopify&&premiumIsMultiImage)shopifyPay.href='/multi-image-checkout';workerLink.classList.add('disabled');result.style.display='block';result.scrollIntoView({behavior:'smooth'});return;}if(!response.ok||!data.ok)throw new Error(data.error||'Could not save premium order.');statusBox.textContent='✅ ${t.success} '+(introMode==='audio'?premiumIntroUi.audioStored:(premiumIsMultiImage?premiumMultiUi.stored:'Introduction video compressed and stored safely.'));const chargeSummary=data.usedFreeMultiImageTrial?premiumMultiUi.freeTestUsed:String(data.chargedCredits??data.creditCost??${creationCreditCost})+' '+premiumMultiUi.creditsDeducted;orderIdBox.textContent=(premiumIsMultiImage?premiumMultiUi.order:'Order')+': '+data.orderId+' • '+chargeSummary;shopifyPay.href=data.payment?.shopify||'#';africaPay.href=data.payment?.africa||'#';if(!data.payment?.shopify)shopifyPay.classList.add('disabled');else shopifyPay.classList.remove('disabled');workerLink.href=data.whatsappUrl;result.style.display='block';result.scrollIntoView({behavior:'smooth'});}catch(error){statusBox.textContent='❌ '+error.message;}finally{button.textContent='✨ ${t.submit}';syncPremiumButton();}});
+function readMediaDuration(file,isAudio=false){return new Promise((resolve,reject)=>{const url=URL.createObjectURL(file),media=document.createElement(isAudio?'audio':'video');let finished=false;const cleanup=()=>{if(finished)return;finished=true;URL.revokeObjectURL(url);};const resolveDuration=()=>{const duration=Number(media.duration||0);cleanup();resolve(Number.isFinite(duration)&&duration>0?duration:0);};media.preload='metadata';media.onloadedmetadata=resolveDuration;media.ondurationchange=()=>{if(Number.isFinite(Number(media.duration))&&Number(media.duration)>0)resolveDuration();};media.onerror=()=>{cleanup();reject(new Error(isAudio?premiumIntroUi.audioUnreadable:'The introduction video could not be read.'));};media.src=url;setTimeout(()=>{if(!finished){cleanup();resolve(0);}},5000);});}
+async function readReliableAudioDuration(file){
+  const decodedDuration=Number(decodedPreviewBuffer?.duration||0);
+  if(Number.isFinite(decodedDuration)&&decodedDuration>0)return decodedDuration;
+  try{
+    const measured=await decodeAndMeasureAudio(file);
+    const duration=Number(measured?.buffer?.duration||0);
+    if(Number.isFinite(duration)&&duration>0)return duration;
+  }catch(_decodeError){}
+  try{
+    return await readMediaDuration(file,true);
+  }catch(_metadataError){
+    // The server performs a decode-based duration check, so metadata failure
+    // alone must not block a valid, audible recording.
+    return 0;
+  }
+}
+form.addEventListener('submit',async(e)=>{e.preventDefault();if(!termsAccepted.checked){statusBox.textContent='❌ '+(premiumIsMultiImage?premiumMultiUi.acceptTerms:'Please confirm permission and accept the Terms, Privacy and Refund Policy.');return;}button.disabled=true;button.textContent='⏳ ${t.saving}';statusBox.textContent='';result.style.display='none';try{const fd=new FormData(form);const introMode=introMediaTypeInput.value==='audio'?'audio':'video';const video=fd.get('introVideo');const uploadedAudio=fd.get('introAudio');const singlePhoto=fd.get('recipientPhoto');const multiPhotos=fd.getAll('recipientImages').filter(file=>file&&file.size);if(premiumIsMultiImage){if(multiPhotos.length<2||multiPhotos.length>8)throw new Error('${t.required}');for(const image of multiPhotos){if(image.size>10*1024*1024)throw new Error(premiumMultiUi.imageTooLarge);}}else{if(!singlePhoto||!singlePhoto.size)throw new Error('${t.required}');if(singlePhoto.size>10*1024*1024)throw new Error('Recipient photo must be 10 MB or smaller.');}let introFile=null;if(introMode==='audio'){if(recordedAudioBlob){const extension=recordedAudioBlob.type.includes('mp4')?'m4a':recordedAudioBlob.type.includes('ogg')?'ogg':'webm';introFile=new File([recordedAudioBlob],'printo-voice-introduction.'+extension,{type:recordedAudioBlob.type||'audio/webm'});fd.set('introAudio',introFile);}else if(uploadedAudio&&uploadedAudio.size){introFile=uploadedAudio;}if(!introFile)throw new Error(premiumIntroUi.audioRequired);if(!audioPreviewConfirmed)throw new Error('Tap Play Recording and confirm that you can hear your voice before saving the order.');if(introFile.size>30*1024*1024)throw new Error(premiumIntroUi.audioTooLarge);const audioDuration=await readReliableAudioDuration(introFile);if(audioDuration>60.25)throw new Error(premiumIntroUi.audioTooLong);fd.delete('introVideo');}else{introFile=video;if(!introFile||!introFile.size)throw new Error('${t.required}');if(introFile.size>100*1024*1024)throw new Error(premiumIsMultiImage?premiumMultiUi.videoTooLarge:'Introduction video must be 100 MB or smaller.');const videoDuration=await readMediaDuration(introFile,false);if(videoDuration>60.25)throw new Error(premiumIsMultiImage?premiumMultiUi.videoTooLong:'Introduction video must be 60 seconds or shorter.');fd.delete('introAudio');}fd.set('introMediaType',introMode);statusBox.textContent='⏳ '+(introMode==='audio'?premiumIntroUi.audioUploading:(premiumIsMultiImage?premiumMultiUi.uploading:'Uploading and compressing your introduction video…'));fd.set('customerKey',accountKey);let response;try{response=await fetch('/api/greeting/premium/request',{method:'POST',headers:{'x-printo-customer-id':customerId,'x-printo-customer-key':accountKey},body:fd});}catch(networkError){throw new Error(premiumIntroUi.connectionInterrupted||'The upload connection was interrupted. Check My Videos or the worker dashboard before submitting again.');}const responseText=await response.text();let data={};try{data=responseText?JSON.parse(responseText):{};}catch(_parseError){throw new Error(response.ok?'The server returned an unreadable response. Please check My Videos before retrying.':('Server error '+response.status+'. Please check Render logs.'));}if(response.status===402&&data.paymentRequired){statusBox.textContent='💳 '+(premiumIsMultiImage?premiumMultiUi.paymentRequired:(data.error||'Payment is required.'));const creditsNeeded=String(data.access?.creditsNeeded||${creationCreditCost});orderIdBox.textContent=premiumIsMultiImage?premiumMultiUi.paymentSummary.replace('{credits}',creditsNeeded):'Premium payment required';shopifyPay.href=data.payment?.shopify||'/multi-image-checkout';africaPay.href=data.payment?.africa||'#';if(!data.payment?.shopify&&premiumIsMultiImage)shopifyPay.href='/multi-image-checkout';workerLink.classList.add('disabled');result.style.display='block';result.scrollIntoView({behavior:'smooth'});return;}if(!response.ok||!data.ok)throw new Error(data.error||'Could not save premium order.');statusBox.textContent='✅ ${t.success} '+(introMode==='audio'?premiumIntroUi.audioStored:(premiumIsMultiImage?premiumMultiUi.stored:'Introduction video compressed and stored safely.'));const chargeSummary=data.usedFreeMultiImageTrial?premiumMultiUi.freeTestUsed:String(data.chargedCredits??data.creditCost??${creationCreditCost})+' '+premiumMultiUi.creditsDeducted;orderIdBox.textContent=(premiumIsMultiImage?premiumMultiUi.order:'Order')+': '+data.orderId+' • '+chargeSummary;shopifyPay.href=data.payment?.shopify||'#';africaPay.href=data.payment?.africa||'#';if(!data.payment?.shopify)shopifyPay.classList.add('disabled');else shopifyPay.classList.remove('disabled');workerLink.href=data.whatsappUrl;result.style.display='block';result.scrollIntoView({behavior:'smooth'});}catch(error){statusBox.textContent='❌ '+error.message;}finally{button.textContent='✨ ${t.submit}';syncPremiumButton();}});
 </script></body></html>`;
 }
 
