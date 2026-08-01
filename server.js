@@ -4149,7 +4149,7 @@ function getPublicBaseUrl(req) {
 }
 
 function buildPremiumMediaUrl(req, orderId, mediaToken, kind) {
-  const allowedKinds = new Set(["photo", "video", "music", "final", "preview"]);
+  const allowedKinds = new Set(["photo", "video", "audio", "music", "final", "preview"]);
   const safeKind = allowedKinds.has(String(kind || "").toLowerCase())
     ? String(kind).toLowerCase()
     : "photo";
@@ -4164,7 +4164,7 @@ function sendPremiumMediaBuffer(req, res, media) {
   const defaultName = mime.startsWith("video/")
     ? "premium-video.mp4"
     : mime.startsWith("audio/")
-      ? "tribute-music.mp3"
+      ? "voice-introduction.m4a"
       : "recipient-photo.jpg";
   const fileName = safeBaseName(media.name || defaultName);
 
@@ -4182,7 +4182,7 @@ function sendPremiumMediaBuffer(req, res, media) {
     media.cacheControl || "private, no-store, max-age=0"
   );
 
-  if (mime.startsWith("video/")) {
+  if (mime.startsWith("video/") || mime.startsWith("audio/")) {
     res.setHeader("Accept-Ranges", "bytes");
     const range = String(req.headers.range || "");
 
@@ -15617,6 +15617,32 @@ app.get("/worker-dashboard", requireDashboardKey, async (req, res) => {
     .premiumProductionActions .premiumMusicForm{
       display:block !important;
     }
+    .premiumAudioPlayer{
+      grid-column:1 / -1;
+      width:100%;
+      padding:12px;
+      border-radius:14px;
+      background:rgba(8,17,31,.72);
+      border:2px solid rgba(143,209,255,.35);
+    }
+    .premiumAudioPlayer strong{
+      display:block;
+      margin-bottom:8px;
+      color:#8fd1ff;
+      font-size:15px;
+    }
+    .premiumAudioPlayer audio{
+      display:block;
+      width:100%;
+      min-height:48px;
+    }
+    .premiumAudioPlayer .audioHelp{
+      display:block;
+      margin-top:7px;
+      color:var(--muted);
+      font-size:12px;
+      line-height:1.4;
+    }
     .premiumProductionStatus{
       grid-column:1 / -1;
       display:block;
@@ -16220,8 +16246,14 @@ app.get("/worker-dashboard", requireDashboardKey, async (req, res) => {
 
     const photoUrl = extractLabeledInstructionUrl(job, "Recipient photo");
     const videoUrl = extractLabeledInstructionUrl(job, "Personal introduction video");
-    const audioUrl = extractLabeledInstructionUrl(job, "Personal introduction audio");
+    const savedAudioUrl = extractLabeledInstructionUrl(job, "Personal introduction audio");
     const orderId = extractPremiumOrderId(job);
+    const audioUrl = savedAudioUrl
+      ? savedAudioUrl.replace(
+          /(\/premium-media\/[^/?]+)\/(?:photo|video)(\?)/i,
+          "$1/audio$2"
+        )
+      : "";
     const combined = [job.instructions || "", job.notes || "", job.error_message || ""].join("\\n");
     const urls = combined.match(/https?:\\/\\/[^\\s<]+/g) || [];
     const musicUrl = urls.find((url) => url.includes("/premium-media/") && url.includes("/music?")) || "";
@@ -16270,8 +16302,15 @@ app.get("/worker-dashboard", requireDashboardKey, async (req, res) => {
 
     if (audioUrl) {
       actions.push(
-        '<a class="fileLink premiumAction" href="' + h(audioUrl) +
-        '" target="_blank" rel="noopener noreferrer">🎙️ Play Voice Introduction</a>'
+        '<div class="premiumAudioPlayer">' +
+          '<strong>🎙️ Voice Introduction</strong>' +
+          '<audio controls playsinline preload="metadata" src="' + h(audioUrl) + '">' +
+            'Your browser cannot play this voice introduction.' +
+          '</audio>' +
+          '<span class="audioHelp">Press play here to review the customer’s recorded voice before rendering.</span>' +
+          '<a class="fileLink" href="' + h(audioUrl) +
+            '" target="_blank" rel="noopener noreferrer">Open voice file in a new tab</a>' +
+        '</div>'
       );
     }
 
