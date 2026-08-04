@@ -208,7 +208,9 @@ const PRINTO_MONTHLY_CREDIT_ALLOCATION = 100;
 const PRINTO_CREATION_CREDIT_COSTS = Object.freeze({
   standard: 20,
   premium_video: 25,
-  premium_multi_image: 50
+  premium_multi_image: 50,
+  // Watch & Buy reuses the Premium Multi-Image rendering engine.
+  watch_buy: 50
 });
 const PRINTO_CREATION_CREDIT_COST = PRINTO_CREATION_CREDIT_COSTS.standard;
 const PRINTO_MULTI_IMAGE_PRICE_USD = 14.99;
@@ -234,7 +236,19 @@ function normalizePrintoCreationType(value = "standard") {
   if (["multi_image", "premium_multi_image", "premium_multiimage"].includes(normalized)) {
     return "premium_multi_image";
   }
+  if (["watch_buy", "watchbuy", "watch_and_buy", "premium_watch_buy"].includes(normalized)) {
+    return "watch_buy";
+  }
   return "standard";
+}
+
+function isPrintoMultiImageCreationType(value = "") {
+  const normalized = normalizePrintoCreationType(value);
+  return normalized === "premium_multi_image" || normalized === "watch_buy";
+}
+
+function isPrintoWatchBuyCreationType(value = "") {
+  return normalizePrintoCreationType(value) === "watch_buy";
 }
 
 function getPrintoCreationCreditCost(value = "standard") {
@@ -380,6 +394,7 @@ function shouldInjectPrintoStudioLanguageTools(pathname = "") {
     "/greetings/create",
     "/greetings/premium",
     "/greetings/premium-multi-image",
+    "/greetings/watch-buy",
     "/premium-greeting",
     "/customer-login",
     "/subscriptions",
@@ -524,7 +539,7 @@ html[dir="rtl"] #printoLanguageDock{inset-inline-end:auto;inset-inline-start:12p
     return [
       "/greetings","/greeting","/birthday","/birthday-generator",
       "/generate-birthday","/greetings/create","/greetings/premium",
-      "/premium-greeting","/greetings/premium-multi-image","/customer-login","/subscriptions",
+      "/premium-greeting","/greetings/premium-multi-image","/greetings/watch-buy","/customer-login","/subscriptions",
       "/customer-dashboard","/greeting-result","/greeting-test"
     ].indexOf(pathname)>=0||pathname.indexOf("/g/")===0||pathname.indexOf("/premium-result/")===0||pathname.indexOf("/birthday-progress/")===0;
   }
@@ -3590,7 +3605,9 @@ async function listPremiumGreetingVideos(customerKey) {
       id: orderId,
       type: String(row.creation_type || "premium_video") === "premium_multi_image"
         ? "premium_multi_image"
-        : "premium",
+        : String(row.creation_type || "premium_video") === "watch_buy"
+          ? "watch_buy"
+          : "premium",
       toName: row.recipient_name || "",
       fromName: row.sender_name || "",
       message: row.personal_message || "",
@@ -4707,9 +4724,13 @@ async function createPremiumGreetingDashboardJob({
 }) {
   const normalizedCreationType = normalizePrintoCreationType(creationType);
   const isMultiImage = normalizedCreationType === "premium_multi_image";
-  const serviceLabel = isMultiImage
-    ? "PRINTO PREMIUM MULTI-IMAGE FLIP TRIBUTE"
-    : "PRINTO PREMIUM PERSONAL TRIBUTE";
+  const isWatchBuy = normalizedCreationType === "watch_buy";
+  const usesMultipleImages = isMultiImage || isWatchBuy;
+  const serviceLabel = isWatchBuy
+    ? "PRINTO WATCH & BUY — POWERED BY PATAPATA"
+    : isMultiImage
+      ? "PRINTO PREMIUM MULTI-IMAGE FLIP TRIBUTE"
+      : "PRINTO PREMIUM PERSONAL TRIBUTE";
   const creationCreditCost = getPrintoCreationCreditCost(normalizedCreationType);
   const extraImageList = Array.isArray(imageUrls) && imageUrls.length
     ? imageUrls.map((url, index) => `Image ${index + 1}: ${url}`).join("\n")
@@ -18620,6 +18641,8 @@ function buildGreetingStudioHomePage(language = "en") {
       </div>
     </div>
   </section>
+
+  <section class="premium"><span class="premium-badge">🛍️ WATCH & BUY • ${PRINTO_CREATION_CREDIT_COSTS.watch_buy} CREDITS</span><div class="premium-grid"><button class="premium-media" type="button" onclick="location.href='/greetings/watch-buy?lang=${encodeURIComponent(lang)}'"><img src="/greeting-assets/premium-tribute-sample.svg?lang=${encodeURIComponent(lang)}" alt="Watch & Buy product video card"><span class="play">▶</span></button><div><h2>Watch & Buy — Powered by PATAPATA</h2><p>Showcase a product with a seller intro, up to 8 product images, item name, price and specifications. Generate a finished product video to watch, buy and share on social media.</p><ul><li>✓ Product intro video or voice</li><li>✓ 2–8 product images with flip transitions</li><li>✓ Item name shown in the recipient-name area</li><li>✓ Price shown in the sender-name area</li><li>✓ Product specifications in the message area</li><li>✓ Share and download finished product video</li></ul><div class="premium-actions"><a class="create account-required" href="/greetings/watch-buy?lang=${encodeURIComponent(lang)}">🛍️ Create Watch & Buy</a><a class="worker" href="${premiumWhatsAppUrl}" target="_blank" rel="noopener">💬 ${t.help}</a></div></div></div></section>
   <h2 class="choose">${t.choose}</h2><section class="grid">${cards}</section>
   <section id="terms" class="legal">
     <h2>📜 Printto Studio Terms of Use, Privacy &amp; Refund Policy</h2>
@@ -19011,6 +19034,8 @@ function buildPremiumGreetingOrderPage(language = "en", creationType = "premium_
     "The upload connection was interrupted. Check My Videos or the worker dashboard before submitting again.";
   const normalizedCreationType = normalizePrintoCreationType(creationType);
   const isMultiImage = normalizedCreationType === "premium_multi_image";
+  const isWatchBuy = normalizedCreationType === "watch_buy";
+  const usesMultipleImages = isMultiImage || isWatchBuy;
   const multiCopy = {
     en: {
       title: "Premium Multi-Image Flip Tribute",
@@ -19169,12 +19194,33 @@ function buildPremiumGreetingOrderPage(language = "en", creationType = "premium_
   };
   const multiUi = multiCopy[lang] || multiCopy.en;
   if (isMultiImage) Object.assign(t, multiUi);
+  if (isWatchBuy) {
+    Object.assign(t, {
+      title: "Watch & Buy — Powered by PATAPATA",
+      intro: "Create a finished product showcase video with a seller introduction, 2–8 product images, item name, price and product specifications.",
+      recipient: "Item name",
+      sender: "Price",
+      message: "Item specifications",
+      songStyle: "Background music style",
+      notes: "Seller/store name, shipping, return policy, buy link or additional product details",
+      photo: "Product images (2–8)",
+      video: "Product intro video or voice",
+      introType: "Choose Product Video or Voice Introduction",
+      videoMode: "Product Video Introduction",
+      audioMode: "Product Voice Introduction",
+      submit: "Create Watch & Buy Product Video",
+      saving: "Saving product listing and uploads…",
+      required: "Enter the item name, price and specifications, then choose 2–8 product images and an introduction.",
+      success: "Watch & Buy product order saved successfully.",
+      worker: "Send product order to worker on WhatsApp"
+    });
+  }
   const creationCreditCost = getPrintoCreationCreditCost(normalizedCreationType);
-  const creationPriceLabel = isMultiImage
-    ? multiUi.priceLabel
+  const creationPriceLabel = usesMultipleImages
+    ? (isWatchBuy ? `${creationCreditCost} Printo credits per product video` : multiUi.priceLabel)
     : `${creationCreditCost} Printo credits per creation`;
-  const photoInputHtml = isMultiImage
-    ? `<input name="recipientImages" type="file" accept="image/*" multiple required><div class="hint">${multiUi.photoHint}</div>`
+  const photoInputHtml = usesMultipleImages
+    ? `<input name="recipientImages" type="file" accept="image/*" multiple required><div class="hint">${isWatchBuy ? "Choose 2–8 clear product images. Each image must be 10 MB or smaller." : multiUi.photoHint}</div>`
     : `<input name="recipientPhoto" type="file" accept="image/*" required><div class="hint">JPG, PNG or WebP. Clear portrait preferred. Price: ${creationCreditCost} credits.</div>`;
   const premiumPhoneGuidance = {
     en: {
@@ -19214,14 +19260,15 @@ function buildPremiumGreetingOrderPage(language = "en", creationType = "premium_
 *{box-sizing:border-box}body{margin:0;font-family:Arial,sans-serif;background:linear-gradient(150deg,#071b61,#0b63ce);color:#fff;min-height:100vh;padding:18px}.wrap{max-width:820px;margin:auto}.back{color:#ffd21f;font-weight:900;text-decoration:none}.hero{text-align:center;margin:12px 0 20px}.hero h1{font-size:34px;margin:8px}.hero p{line-height:1.55}.creditPrice{display:inline-block;background:#ffd21f;color:#082a8f;padding:9px 14px;border-radius:999px;font-weight:900;margin-top:8px}.panel{background:#fff;color:#172554;border:3px solid #ffd21f;border-radius:25px;padding:22px;box-shadow:0 18px 44px rgba(0,0,0,.35)}.grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}.full{grid-column:1/-1}label{display:block;font-weight:900;margin:5px 0 7px}input,textarea,select{width:100%;padding:13px;border:2px solid #cbd5e1;border-radius:13px;font-size:16px}textarea{min-height:110px}.hint{font-size:12px;color:#64748b;margin-top:5px}.submit{width:100%;border:0;border-radius:15px;padding:16px;background:linear-gradient(90deg,#7b2cbf,#d63384);color:#fff;font-size:19px;font-weight:900;margin-top:15px;cursor:pointer}.submit:disabled{opacity:.55}.status{text-align:center;font-weight:900;min-height:26px;margin-top:12px}.result{display:none;background:#f1f5f9;padding:16px;border-radius:16px;margin-top:15px}.orderId{font-size:20px;font-weight:900}.payments{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:12px}.pay{display:block;text-align:center;text-decoration:none;color:#fff;font-weight:900;padding:14px;border-radius:13px}.shopify{background:#4f772d}.africa{background:#008751}.worker{background:#25D366;grid-column:1/-1}.disabled{opacity:.45;pointer-events:none}.introChoice{grid-column:1/-1;border:2px solid #bfdbfe;background:#eff6ff;border-radius:14px;padding:14px}.introChoiceTitle{font-weight:900;margin-bottom:10px}.introTabs{display:grid;grid-template-columns:1fr 1fr;gap:9px}.introTabs button{border:2px solid #123faa;background:#fff;color:#123faa;padding:12px;border-radius:12px;font-weight:900;cursor:pointer}.introTabs button.active{background:#123faa;color:#fff}.introPanel{margin-top:12px}.recordControls{display:flex;flex-wrap:wrap;gap:8px;margin:10px 0}.recordControls button{border:0;border-radius:10px;padding:11px 13px;font-weight:900;cursor:pointer;background:#7b2cbf;color:#fff}.recordControls button.stop{background:#c1121f}.recordControls button:disabled{opacity:.45;cursor:not-allowed}.recordTimer{font-weight:900;color:#c1121f;margin-top:8px}.audioPreview{width:100%;margin-top:9px}.audioBoostRow{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:9px;padding:10px;border:2px solid #ffd21f;border-radius:12px;background:#fff8cf}.audioBoostRow button{border:0;border-radius:10px;padding:10px 13px;background:#0f766e;color:#fff;font-weight:900;cursor:pointer}.audioBoostRow label{margin:0;display:flex;align-items:center;gap:8px;flex:1;min-width:210px}.audioBoostRow input[type=range]{width:100%;padding:0;border:0}.audioBoostValue{font-weight:900;color:#c1121f;min-width:42px}.audioDiagnostic{display:grid;gap:8px;margin:9px 0;padding:10px;border:2px solid #bfdbfe;border-radius:12px;background:#f8fbff}.audioDiagnostic button{border:0;border-radius:10px;padding:10px 13px;background:#123faa;color:#fff;font-weight:900;cursor:pointer}.micMeter{height:18px;border-radius:999px;background:#dbeafe;overflow:hidden;border:1px solid #93c5fd}.micMeterFill{display:block;height:100%;width:0;background:linear-gradient(90deg,#22c55e,#facc15,#ef4444);transition:width .08s linear}.micMeterText{font-size:12px;color:#475569;font-weight:800}.hidden{display:none!important}.agreement{display:flex;align-items:flex-start;gap:10px;background:#fff7d6;border:2px solid #ffd21f;border-radius:13px;padding:13px;margin-top:16px}.agreement input{width:20px;height:20px;flex:0 0 auto;margin:2px 0 0}.agreement label{margin:0;font-weight:800;line-height:1.45}.agreement a{color:#123faa;font-weight:900}@media(max-width:620px){.grid,.payments{grid-template-columns:1fr}.full,.worker{grid-column:auto}.hero h1{font-size:28px}.introTabs{grid-template-columns:1fr}}
 </style></head><body><main class="wrap"><a class="back" href="/greetings?lang=${lang}">← ${t.back}</a><section class="hero"><h1>🌟 ${t.title}</h1><p>${t.intro}</p><span class="creditPrice">${creationPriceLabel}</span></section><section class="panel">
 <form id="premiumForm" enctype="multipart/form-data"><input type="hidden" name="language" value="${lang}"><input type="hidden" name="creationType" value="${normalizedCreationType}"><input type="hidden" id="customerId" name="customerId"><input type="hidden" id="premiumCustomerKey" name="customerKey">
-<div class="grid"><div><label>${t.recipient} *</label><input name="recipientName" maxlength="24" required></div><div><label>${t.sender} *</label><input name="senderName" maxlength="24" required></div><div><label>${t.phone} *</label><input id="premiumCustomerPhone" name="customerPhone" type="tel" inputmode="tel" autocomplete="tel" placeholder="${phoneGuide.placeholder}" required><div class="hint">${phoneGuide.hint}</div></div><div><label>${t.email}</label><input name="customerEmail" type="email"></div><div class="full"><label>${t.message} *</label><textarea name="personalMessage" maxlength="220" required></textarea></div><div><label>${t.songStyle}</label><select name="songStyle"><option value="">Worker will discuss with me</option><option>Afrobeat</option><option>Gospel</option><option>R&B / Soul</option><option>Pop</option><option>Highlife</option><option>Hip-Hop / Rap</option><option>Soft acoustic</option><option>Other</option></select></div><div><label>${t.notes}</label><textarea name="tributeNotes" maxlength="1000"></textarea></div><div><label>${t.photo} *</label>${photoInputHtml}</div><div class="introChoice"><div class="introChoiceTitle">${t.introType}</div><input id="introMediaType" name="introMediaType" type="hidden" value="video"><div class="introTabs"><button id="videoIntroTab" class="active" type="button">🎥 ${t.videoMode}</button><button id="audioIntroTab" type="button">🎙️ ${t.audioMode}</button></div><div id="videoIntroPanel" class="introPanel"><label>${t.videoMode} *</label><input id="introVideoInput" name="introVideo" type="file" accept="video/mp4,video/quicktime,video/webm,video/*"><div class="hint">${isMultiImage ? multiUi.videoHint : "Maximum 60 seconds and 100 MB. Large files are compressed automatically to a smaller 720p MP4 before permanent storage."}</div></div><div id="audioIntroPanel" class="introPanel hidden"><label>${t.audioMode} *</label><div class="hint">${t.audioHint}</div><div class="recordControls"><button id="startRecordBtn" type="button">🎙️ ${t.startRecording}</button><button id="stopRecordBtn" class="stop" type="button" disabled>⏹ ${t.stopRecording}</button><button id="playRecordBtn" type="button" class="hidden">▶ ${t.playRecording}</button><button id="recordAgainBtn" type="button" class="hidden">🔄 ${t.recordAgain}</button></div><div class="audioDiagnostic"><button id="testSpeakerBtn" type="button">🔔 Test Phone Speaker</button><div class="micMeter"><span id="micMeterFill" class="micMeterFill"></span></div><div id="micMeterText" class="micMeterText">Microphone level will move while you record.</div></div><div id="recordTimer" class="recordTimer"></div><audio id="recordedAudioPreview" class="audioPreview hidden" controls playsinline preload="auto"></audio><div id="audioBoostRow" class="audioBoostRow hidden"><button id="audioBoostBtn" type="button">🔊 Boost & Replay</button><label><span id="audioBoostLabel">Preview volume</span><input id="audioBoostRange" type="range" min="1" max="4" step="0.25" value="3"></label><span id="audioBoostValue" class="audioBoostValue">3×</span></div><div id="audioPreviewStatus" class="hint"></div><label style="margin-top:12px">${t.uploadAudio}</label><input id="introAudioInput" name="introAudio" type="file" accept="audio/mpeg,audio/mp4,audio/x-m4a,audio/wav,audio/x-wav,audio/aac,audio/ogg,audio/opus,audio/webm,.mp3,.m4a,.wav,.aac,.ogg,.opus,.webm,.flac"><div class="hint">${t.audioFormats}</div></div></div></div>
+<div class="grid"><div><label>${t.recipient} *</label><input name="recipientName" maxlength="24" required></div><div><label>${t.sender} *</label><input name="senderName" maxlength="24" required></div><div><label>${t.phone} *</label><input id="premiumCustomerPhone" name="customerPhone" type="tel" inputmode="tel" autocomplete="tel" placeholder="${phoneGuide.placeholder}" required><div class="hint">${phoneGuide.hint}</div></div><div><label>${t.email}</label><input name="customerEmail" type="email"></div><div class="full"><label>${t.message} *</label><textarea name="personalMessage" maxlength="220" required></textarea></div><div><label>${t.songStyle}</label><select name="songStyle"><option value="">Worker will discuss with me</option><option>Afrobeat</option><option>Gospel</option><option>R&B / Soul</option><option>Pop</option><option>Highlife</option><option>Hip-Hop / Rap</option><option>Soft acoustic</option><option>Other</option></select></div><div><label>${t.notes}</label><textarea name="tributeNotes" maxlength="1000"></textarea></div><div><label>${t.photo} *</label>${photoInputHtml}</div><div class="introChoice"><div class="introChoiceTitle">${t.introType}</div><input id="introMediaType" name="introMediaType" type="hidden" value="video"><div class="introTabs"><button id="videoIntroTab" class="active" type="button">🎥 ${t.videoMode}</button><button id="audioIntroTab" type="button">🎙️ ${t.audioMode}</button></div><div id="videoIntroPanel" class="introPanel"><label>${t.videoMode} *</label><input id="introVideoInput" name="introVideo" type="file" accept="video/mp4,video/quicktime,video/webm,video/*"><div class="hint">${usesMultipleImages ? multiUi.videoHint : "Maximum 60 seconds and 100 MB. Large files are compressed automatically to a smaller 720p MP4 before permanent storage."}</div></div><div id="audioIntroPanel" class="introPanel hidden"><label>${t.audioMode} *</label><div class="hint">${t.audioHint}</div><div class="recordControls"><button id="startRecordBtn" type="button">🎙️ ${t.startRecording}</button><button id="stopRecordBtn" class="stop" type="button" disabled>⏹ ${t.stopRecording}</button><button id="playRecordBtn" type="button" class="hidden">▶ ${t.playRecording}</button><button id="recordAgainBtn" type="button" class="hidden">🔄 ${t.recordAgain}</button></div><div class="audioDiagnostic"><button id="testSpeakerBtn" type="button">🔔 Test Phone Speaker</button><div class="micMeter"><span id="micMeterFill" class="micMeterFill"></span></div><div id="micMeterText" class="micMeterText">Microphone level will move while you record.</div></div><div id="recordTimer" class="recordTimer"></div><audio id="recordedAudioPreview" class="audioPreview hidden" controls playsinline preload="auto"></audio><div id="audioBoostRow" class="audioBoostRow hidden"><button id="audioBoostBtn" type="button">🔊 Boost & Replay</button><label><span id="audioBoostLabel">Preview volume</span><input id="audioBoostRange" type="range" min="1" max="4" step="0.25" value="3"></label><span id="audioBoostValue" class="audioBoostValue">3×</span></div><div id="audioPreviewStatus" class="hint"></div><label style="margin-top:12px">${t.uploadAudio}</label><input id="introAudioInput" name="introAudio" type="file" accept="audio/mpeg,audio/mp4,audio/x-m4a,audio/wav,audio/x-wav,audio/aac,audio/ogg,audio/opus,audio/webm,.mp3,.m4a,.wav,.aac,.ogg,.opus,.webm,.flac"><div class="hint">${t.audioFormats}</div></div></div></div>
 <div class="agreement"><input id="premiumTermsAccepted" name="termsAccepted" type="checkbox" value="yes" required><label for="premiumTermsAccepted">I confirm that I own or have permission to use the recipient photo, introduction video or voice recording, names, music instructions and all other submitted content. I agree to the <a href="/greetings?lang=${lang}#terms" target="_blank" rel="noopener">Terms of Use, Privacy Policy and Refund Policy</a>.</label></div>
 <button id="submitBtn" class="submit" type="submit">✨ ${t.submit}</button><div id="status" class="status"></div></form><div id="result" class="result"><div>${t.success}</div><div id="orderId" class="orderId"></div><h3>${t.pay}</h3><div class="payments"><a id="shopifyPay" class="pay shopify" target="_blank" rel="noopener">🛒 ${t.shopify}</a><a id="africaPay" class="pay africa" target="_blank" rel="noopener">🌍 ${t.africa}</a><a id="workerLink" class="pay worker" target="_blank" rel="noopener">💬 ${t.worker}</a></div></div></section></main>
 <script>
 const form=document.getElementById('premiumForm'),button=document.getElementById('submitBtn'),termsAccepted=document.getElementById('premiumTermsAccepted'),statusBox=document.getElementById('status'),result=document.getElementById('result'),orderIdBox=document.getElementById('orderId'),shopifyPay=document.getElementById('shopifyPay'),africaPay=document.getElementById('africaPay'),workerLink=document.getElementById('workerLink');
 const premiumCreationType=${JSON.stringify(normalizedCreationType)};
 const premiumLanguage=${JSON.stringify(lang)};
-const premiumIsMultiImage=premiumCreationType==='premium_multi_image';
+const premiumIsMultiImage=premiumCreationType==='premium_multi_image'||premiumCreationType==='watch_buy';
+const premiumIsWatchBuy=premiumCreationType==='watch_buy';
 const premiumMultiUi=${JSON.stringify(multiUi)};
 const premiumIntroUi=${JSON.stringify(t)};
 const introMediaTypeInput=document.getElementById('introMediaType');
@@ -19574,6 +19621,11 @@ app.get("/greetings/premium-multi-image", requirePrintoAccountPage, (req, res) =
   res.type("html").send(buildPremiumGreetingOrderPage(language, "premium_multi_image"));
 });
 
+app.get("/greetings/watch-buy", requirePrintoAccountPage, (req, res) => {
+  const language = String(req.query.lang || "en").toLowerCase();
+  res.type("html").send(buildPremiumGreetingOrderPage(language, "watch_buy"));
+});
+
 app.get(
   ["/premium-media/:orderId/:kind", "/api/greeting/premium/media/:orderId/:kind"],
   async (req, res) => {
@@ -19755,11 +19807,14 @@ app.get("/premium-result/:orderId", async (req, res) => {
     const sender = String(order.sender_name || "With Love").trim();
     const message = String(order.personal_message || "").trim();
     const creationType = normalizePrintoCreationType(order.creation_type || "premium_video");
-    const title = creationType === "premium_multi_image"
-      ? `Printo Premium Multi-Image Tribute for ${recipient}`
-      : `Printo Premium Tribute for ${recipient}`;
-    const shareText =
-      `🎉 ${title}\nFrom ${sender}\n\nWatch this personalized Printo video and create yours too.`;
+    const title = creationType === "watch_buy"
+      ? `${recipient} — ${sender} | Watch & Buy`
+      : creationType === "premium_multi_image"
+        ? `Printo Premium Multi-Image Tribute for ${recipient}`
+        : `Printo Premium Tribute for ${recipient}`;
+    const shareText = creationType === "watch_buy"
+      ? `🛍️ ${recipient}\nPrice: ${sender}\n\n${message}\n\nWatch this product and contact the seller through Printo Watch & Buy — Powered by PATAPATA.`
+      : `🎉 ${title}\nFrom ${sender}\n\nWatch this personalized Printo video and create yours too.`;
 
     res.setHeader("Cache-Control", "public, max-age=300, must-revalidate");
     return res.type("html").send(`<!doctype html>
@@ -19955,7 +20010,7 @@ app.post(
     const requestedCreationType = normalizePrintoCreationType(req.body?.creationType || "premium_video");
     const singlePhoto = req.files?.recipientPhoto?.[0];
     const multiPhotos = Array.isArray(req.files?.recipientImages) ? req.files.recipientImages : [];
-    const premiumPhotos = requestedCreationType === "premium_multi_image"
+    const premiumPhotos = isPrintoMultiImageCreationType(requestedCreationType)
       ? multiPhotos
       : (singlePhoto ? [singlePhoto] : []);
     const photo = premiumPhotos[0];
@@ -19994,11 +20049,13 @@ app.post(
         });
       }
 
-      if (creationType === "premium_multi_image") {
+      if (isPrintoMultiImageCreationType(creationType)) {
         if (premiumPhotos.length < PREMIUM_MULTI_IMAGE_MIN_COUNT || premiumPhotos.length > PREMIUM_MULTI_IMAGE_MAX_COUNT) {
           return res.status(400).json({
             ok: false,
-            error: `Choose ${PREMIUM_MULTI_IMAGE_MIN_COUNT}–${PREMIUM_MULTI_IMAGE_MAX_COUNT} recipient photos for the Multi-Image Flip.`
+            error: isPrintoWatchBuyCreationType(creationType)
+              ? `Choose ${PREMIUM_MULTI_IMAGE_MIN_COUNT}–${PREMIUM_MULTI_IMAGE_MAX_COUNT} product images for Watch & Buy.`
+              : `Choose ${PREMIUM_MULTI_IMAGE_MIN_COUNT}–${PREMIUM_MULTI_IMAGE_MAX_COUNT} recipient photos for the Multi-Image Flip.`
           });
         }
       } else if (!photo || !photo.path || !String(photo.mimetype || "").startsWith("image/")) {
@@ -20087,7 +20144,9 @@ app.post(
         `You need ${creationCreditCost} credits to create this ` +
         `${creationType === "premium_multi_image"
           ? "Premium Multi-Image Flip"
-          : "Premium Tribute"}.`;
+          : creationType === "watch_buy"
+            ? "Watch & Buy product video"
+            : "Premium Tribute"}.`;
 
       // Important: an unpaid Premium order must still be compressed, stored,
       // and sent to the worker dashboard. Payment is confirmed afterward.
@@ -20293,15 +20352,17 @@ app.post(
       }
 
       const workerMessage = [
-        creationType === "premium_multi_image"
-          ? "Printo Premium Multi-Image Flip order saved"
-          : "Printo Premium Tribute order saved",
+        creationType === "watch_buy"
+          ? "Printo Watch & Buy product order saved"
+          : creationType === "premium_multi_image"
+            ? "Printo Premium Multi-Image Flip order saved"
+            : "Printo Premium Tribute order saved",
         `Premium order ID: ${orderId}`,
-        `Recipient: ${recipientName}`,
-        `Sender: ${senderName}`,
+        `${creationType === "watch_buy" ? "Item name" : "Recipient"}: ${recipientName}`,
+        `${creationType === "watch_buy" ? "Price" : "Sender"}: ${senderName}`,
         `Customer phone: ${customerPhone}`,
         `Creation price: ${getPrintoCreationCreditCost(creationType)} Printo credits.`,
-        `Recipient images: ${premiumImageBuffers.length}.`,
+        `${creationType === "watch_buy" ? "Product images" : "Recipient images"}: ${premiumImageBuffers.length}.`,
         `Prepared image storage: ${Math.round(
           premiumImageBuffers.reduce(
             (sum, image) => sum + Number(image.storedBytes || 0),
@@ -20310,8 +20371,12 @@ app.post(
         )} KB total.`,
         `Introduction type: ${introMediaType}.`,
         `Introduction: ${compression.duration.toFixed(1)} seconds; cleaned from ${Math.round(originalIntroBytes / 1024 / 1024)} MB to ${Math.round(compression.storedBytes / 1024 / 1024)} MB.`,
-        `I submitted the photo, ${introMediaType === "audio" ? "voice recording" : "introduction video"}, message, and tribute-song details on Printo Studio.`,
-        "Please confirm payment and help complete this premium order."
+        creationType === "watch_buy"
+          ? `I submitted the product images, ${introMediaType === "audio" ? "seller voice recording" : "product introduction video"}, price and item specifications on Printo Studio.`
+          : `I submitted the photo, ${introMediaType === "audio" ? "voice recording" : "introduction video"}, message, and tribute-song details on Printo Studio.`,
+        creationType === "watch_buy"
+          ? "Please confirm payment and help complete this Watch & Buy product video."
+          : "Please confirm payment and help complete this premium order."
       ].join("\n");
       const whatsappUrl = `https://wa.me/${SUPPORT_PHONE}?text=${encodeURIComponent(workerMessage)}`;
 
@@ -20687,7 +20752,8 @@ async function renderPremiumOrderVideo({ orderId, req, publicBaseUrl = "" }) {
   }
 
   const creationType = normalizePrintoCreationType(order.creation_type || "premium_video");
-  const isMultiImage = creationType === "premium_multi_image";
+  const isWatchBuy = creationType === "watch_buy";
+  const isMultiImage = isPrintoMultiImageCreationType(creationType);
   const storedImageResult = isMultiImage
     ? await queryWithRetry(
         `SELECT image_position, image_data, image_mime, image_name
@@ -20749,7 +20815,11 @@ async function renderPremiumOrderVideo({ orderId, req, publicBaseUrl = "" }) {
     let tributeImagePaths = [];
     if (isMultiImage) {
       if (storedImages.length < PREMIUM_MULTI_IMAGE_MIN_COUNT) {
-        throw new Error("Premium Multi-Image Flip needs at least two stored recipient photos.");
+        throw new Error(
+          isWatchBuy
+            ? "Watch & Buy needs at least two stored product images."
+            : "Premium Multi-Image Flip needs at least two stored recipient photos."
+        );
       }
       for (let index = 0; index < storedImages.length; index += 1) {
         const image = storedImages[index];
@@ -20847,10 +20917,18 @@ async function renderPremiumOrderVideo({ orderId, req, publicBaseUrl = "" }) {
     const totalDuration = introDuration + tributeDuration;
     const introEnd = introDuration;
 
-    const recipientName = String(order.recipient_name || "Special Recipient").trim().slice(0, 24);
-    const senderName = String(order.sender_name || "With Love").trim().slice(0, 24);
+    // In Watch & Buy mode these existing database columns are intentionally reused:
+    // recipient_name = item name, sender_name = price, personal_message = specifications.
+    const recipientName = String(
+      order.recipient_name || (isWatchBuy ? "Featured Item" : "Special Recipient")
+    ).trim().slice(0, 24);
+    const senderName = String(
+      order.sender_name || (isWatchBuy ? "See Price" : "With Love")
+    ).trim().slice(0, 24);
     const fullPersonalMessage = String(
-      order.personal_message || "A special tribute created with love."
+      order.personal_message || (isWatchBuy
+        ? "Product specifications and purchasing details."
+        : "A special tribute created with love.")
     ).trim().slice(0, 220);
 
     // Auto-fit the complete customer message inside the Premium panel.
@@ -22113,7 +22191,7 @@ a{color:#082a8f;font-weight:900}
 </html>`);
 });
 
-app.get("/subscriptions", (req,res)=>res.type('html').send(`<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><title>Printo Plans</title><style>*{box-sizing:border-box}body{margin:0;font-family:Arial;background:linear-gradient(150deg,#071b61,#0b63ce);color:#fff;padding:24px}.wrap{max-width:1180px;margin:auto;text-align:center}.topbar{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}.close-link{background:#fff;color:#082a8f;text-decoration:none;padding:11px 16px;border-radius:999px;font-weight:900}.section{margin:28px 0 38px}.section-title{font-size:30px;margin:0 0 8px}.section-sub{margin:0 0 18px}.plans{display:grid;grid-template-columns:repeat(4,1fr);gap:16px}.plan{background:#fff;color:#082a8f;border:3px solid #ffd21f;border-radius:22px;padding:22px;position:relative}.plan.premium{border-color:#c13cff;box-shadow:0 10px 28px rgba(0,0,0,.18)}.badge{display:inline-block;background:#123faa;color:#fff;border-radius:999px;padding:7px 12px;font-size:13px;font-weight:900;margin-bottom:8px}.premium .badge{background:#7b2cbf}.price{font-size:34px;font-weight:900}.plan a{display:block;background:#7b2cbf;color:#fff;text-decoration:none;padding:14px;border-radius:12px;font-weight:900;margin-top:16px}.standard a{background:#123faa}.best{transform:scale(1.03)}.note{background:#fff4b8;color:#082a8f;border:3px solid #ffd21f;border-radius:18px;padding:16px;margin:0 auto 20px;max-width:820px;font-weight:900}@media(max-width:950px){.plans{grid-template-columns:1fr 1fr}}@media(max-width:560px){body{padding:16px}.plans{grid-template-columns:1fr}.best{transform:none}.topbar{justify-content:center}.section-title{font-size:25px}}</style></head><body><main class="wrap"><div class="topbar"><h1>⭐ Printo Credits & Subscriptions</h1><a class="close-link" href="/greetings">✕ Close / Return to Studio</a></div><div class="note">🎁 Each verified phone number receives 100 FREE universal credits once, plus one FREE Multi-Image Flip test worth 50 credits. After the free Multi-Image test, each Multi-Image creation costs 50 credits or $14.99.</div><p>Use one universal Printo credit wallet for Standard, Premium Video, and Premium Multi-Image creations.</p><section class="section"><h2 class="section-title">🎁 Standard Greeting Plans</h2><p class="section-sub">For personalized standard greeting video cards with names, messages, Printo music and voice.</p><div class="plans"><article class="plan standard"><span class="badge">STANDARD</span><h2>Single Creation</h2><div class="price">$4.99</div><p>20 credits • 1 standard creation</p><a href="/standard-checkout">Buy One</a></article><article class="plan standard"><span class="badge">STANDARD</span><h2>Monthly</h2><div class="price">$${PRINTO_STANDARD_SUBSCRIPTION_PRICES.monthly.toFixed(2)}</div><p>100 credits monthly • 5 standard creations</p><a href="${PRINTO_STANDARD_MONTHLY_SUBSCRIPTION_URL}">Choose Standard Monthly</a></article><article class="plan standard"><span class="badge">STANDARD</span><h2>6 Months</h2><div class="price">$${PRINTO_STANDARD_SUBSCRIPTION_PRICES.six_months.toFixed(2)}</div><p>600 credits • 30 standard creations</p><a href="${PRINTO_STANDARD_SIX_MONTH_SUBSCRIPTION_URL}">Choose Standard 6 Months</a></article><article class="plan standard best"><span class="badge">BEST STANDARD VALUE</span><h2>1 Year</h2><div class="price">$${PRINTO_STANDARD_SUBSCRIPTION_PRICES.yearly.toFixed(2)}</div><p>1,200 credits • 60 standard creations</p><a href="${PRINTO_STANDARD_YEARLY_SUBSCRIPTION_URL}">Choose Standard Annual</a></article></div></section><section class="section"><h2 class="section-title">🌟 Premium Creation Prices & Subscription Plans</h2><p class="section-sub">Each Premium service has its own separate creation price in the universal Printo credit wallet.</p><div class="plans"><article class="plan premium"><span class="badge">PREMIUM VIDEO</span><h2>Personal Tribute Video</h2><div class="price">${PRINTO_CREATION_CREDIT_COSTS.premium_video} Credits</div><p>1 recipient photo • introduction video • custom music</p><a href="/greetings/premium">Create Premium Video</a></article><article class="plan premium"><span class="badge">MULTI-IMAGE FLIP</span><h2>Premium Multi-Image</h2><div class="price">$${PRINTO_MULTI_IMAGE_PRICE_USD.toFixed(2)}</div><p>First verified-account test FREE • then ${PRINTO_CREATION_CREDIT_COSTS.premium_multi_image} credits • 2–8 photos • flip transitions • introduction • custom music</p><a href="/greetings/premium-multi-image">Use Free Test / Create</a><a href="/multi-image-checkout">Buy 50 Credits</a></article><article class="plan premium"><span class="badge">PREMIUM</span><h2>Monthly</h2><div class="price">$${PRINTO_SUBSCRIPTION_PRICES.monthly.toFixed(2)}</div><p>100 credits now, then 100 credits each active month</p><a href="${PRINTO_MONTHLY_SUBSCRIPTION_URL}">Choose Premium Monthly</a></article><article class="plan premium"><span class="badge">PREMIUM</span><h2>6 Months</h2><div class="price">$${PRINTO_SUBSCRIPTION_PRICES.six_months.toFixed(2)}</div><p>100 credits monthly for 6 months</p><a href="${PRINTO_SIX_MONTH_SUBSCRIPTION_URL}">Choose Premium 6 Months</a></article><article class="plan premium best"><span class="badge">BEST PREMIUM VALUE</span><h2>1 Year</h2><div class="price">$${PRINTO_SUBSCRIPTION_PRICES.yearly.toFixed(2)}</div><p>100 credits monthly for 12 months</p><a href="${PRINTO_YEARLY_SUBSCRIPTION_URL}">Choose Premium Annual</a></article></div></section><p><a class="close-link" href="/greetings">← Return to Printo Greeting Studio</a></p></main></body></html>`));
+app.get("/subscriptions", (req,res)=>res.type('html').send(`<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><title>Printo Plans</title><style>*{box-sizing:border-box}body{margin:0;font-family:Arial;background:linear-gradient(150deg,#071b61,#0b63ce);color:#fff;padding:24px}.wrap{max-width:1180px;margin:auto;text-align:center}.topbar{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}.close-link{background:#fff;color:#082a8f;text-decoration:none;padding:11px 16px;border-radius:999px;font-weight:900}.section{margin:28px 0 38px}.section-title{font-size:30px;margin:0 0 8px}.section-sub{margin:0 0 18px}.plans{display:grid;grid-template-columns:repeat(4,1fr);gap:16px}.plan{background:#fff;color:#082a8f;border:3px solid #ffd21f;border-radius:22px;padding:22px;position:relative}.plan.premium{border-color:#c13cff;box-shadow:0 10px 28px rgba(0,0,0,.18)}.badge{display:inline-block;background:#123faa;color:#fff;border-radius:999px;padding:7px 12px;font-size:13px;font-weight:900;margin-bottom:8px}.premium .badge{background:#7b2cbf}.price{font-size:34px;font-weight:900}.plan a{display:block;background:#7b2cbf;color:#fff;text-decoration:none;padding:14px;border-radius:12px;font-weight:900;margin-top:16px}.standard a{background:#123faa}.best{transform:scale(1.03)}.note{background:#fff4b8;color:#082a8f;border:3px solid #ffd21f;border-radius:18px;padding:16px;margin:0 auto 20px;max-width:820px;font-weight:900}@media(max-width:950px){.plans{grid-template-columns:1fr 1fr}}@media(max-width:560px){body{padding:16px}.plans{grid-template-columns:1fr}.best{transform:none}.topbar{justify-content:center}.section-title{font-size:25px}}</style></head><body><main class="wrap"><div class="topbar"><h1>⭐ Printo Credits & Subscriptions</h1><a class="close-link" href="/greetings">✕ Close / Return to Studio</a></div><div class="note">🎁 Each verified phone number receives 100 FREE universal credits once, plus one FREE Multi-Image Flip test worth 50 credits. After the free Multi-Image test, each Multi-Image creation costs 50 credits or $14.99.</div><p>Use one universal Printo credit wallet for Standard, Premium Video, and Premium Multi-Image creations.</p><section class="section"><h2 class="section-title">🎁 Standard Greeting Plans</h2><p class="section-sub">For personalized standard greeting video cards with names, messages, Printo music and voice.</p><div class="plans"><article class="plan standard"><span class="badge">STANDARD</span><h2>Single Creation</h2><div class="price">$4.99</div><p>20 credits • 1 standard creation</p><a href="/standard-checkout">Buy One</a></article><article class="plan standard"><span class="badge">STANDARD</span><h2>Monthly</h2><div class="price">$${PRINTO_STANDARD_SUBSCRIPTION_PRICES.monthly.toFixed(2)}</div><p>100 credits monthly • 5 standard creations</p><a href="${PRINTO_STANDARD_MONTHLY_SUBSCRIPTION_URL}">Choose Standard Monthly</a></article><article class="plan standard"><span class="badge">STANDARD</span><h2>6 Months</h2><div class="price">$${PRINTO_STANDARD_SUBSCRIPTION_PRICES.six_months.toFixed(2)}</div><p>600 credits • 30 standard creations</p><a href="${PRINTO_STANDARD_SIX_MONTH_SUBSCRIPTION_URL}">Choose Standard 6 Months</a></article><article class="plan standard best"><span class="badge">BEST STANDARD VALUE</span><h2>1 Year</h2><div class="price">$${PRINTO_STANDARD_SUBSCRIPTION_PRICES.yearly.toFixed(2)}</div><p>1,200 credits • 60 standard creations</p><a href="${PRINTO_STANDARD_YEARLY_SUBSCRIPTION_URL}">Choose Standard Annual</a></article></div></section><section class="section"><h2 class="section-title">🌟 Premium Creation Prices & Subscription Plans</h2><p class="section-sub">Each Premium service has its own separate creation price in the universal Printo credit wallet.</p><div class="plans"><article class="plan premium"><span class="badge">PREMIUM VIDEO</span><h2>Personal Tribute Video</h2><div class="price">${PRINTO_CREATION_CREDIT_COSTS.premium_video} Credits</div><p>1 recipient photo • introduction video • custom music</p><a href="/greetings/premium">Create Premium Video</a></article><article class="plan premium"><span class="badge">MULTI-IMAGE FLIP</span><h2>Premium Multi-Image</h2><div class="price">$${PRINTO_MULTI_IMAGE_PRICE_USD.toFixed(2)}</div><p>First verified-account test FREE • then ${PRINTO_CREATION_CREDIT_COSTS.premium_multi_image} credits • 2–8 photos • flip transitions • introduction • custom music</p><a href="/greetings/premium-multi-image">Use Free Test / Create</a><a href="/multi-image-checkout">Buy 50 Credits</a></article><article class="plan premium"><span class="badge">WATCH & BUY</span><h2>Product Showcase Video</h2><div class="price">${PRINTO_CREATION_CREDIT_COSTS.watch_buy} Credits</div><p>2–8 product images • seller intro • item name • price • specifications • social sharing</p><a href="/greetings/watch-buy">Create Watch & Buy</a></article><article class="plan premium"><span class="badge">PREMIUM</span><h2>Monthly</h2><div class="price">$${PRINTO_SUBSCRIPTION_PRICES.monthly.toFixed(2)}</div><p>100 credits now, then 100 credits each active month</p><a href="${PRINTO_MONTHLY_SUBSCRIPTION_URL}">Choose Premium Monthly</a></article><article class="plan premium"><span class="badge">PREMIUM</span><h2>6 Months</h2><div class="price">$${PRINTO_SUBSCRIPTION_PRICES.six_months.toFixed(2)}</div><p>100 credits monthly for 6 months</p><a href="${PRINTO_SIX_MONTH_SUBSCRIPTION_URL}">Choose Premium 6 Months</a></article><article class="plan premium best"><span class="badge">BEST PREMIUM VALUE</span><h2>1 Year</h2><div class="price">$${PRINTO_SUBSCRIPTION_PRICES.yearly.toFixed(2)}</div><p>100 credits monthly for 12 months</p><a href="${PRINTO_YEARLY_SUBSCRIPTION_URL}">Choose Premium Annual</a></article></div></section><p><a class="close-link" href="/greetings">← Return to Printo Greeting Studio</a></p></main></body></html>`));
 
 app.get("/customer-dashboard", (req, res) => {
   const language = normalizePrintoStudioLanguage(req.query.lang || "en");
@@ -22248,9 +22326,11 @@ function safeDashboardUrl(value){
 
 function renderFinishedVideo(video){
   const videoType=String(video.type||'standard');
-  const isPremium=videoType==='premium'||videoType==='premium_multi_image';
-  const label=videoType==='premium_multi_image'
-    ? '🌟 Premium Multi-Image Flip Video'
+  const isPremium=videoType==='premium'||videoType==='premium_multi_image'||videoType==='watch_buy';
+  const label=videoType==='watch_buy'
+    ? '🛍️ Watch & Buy Product Video'
+    : videoType==='premium_multi_image'
+      ? '🌟 Premium Multi-Image Flip Video'
     : (isPremium?'🌟 Premium Tribute Video':'🎁 Standard Greeting Video');
   const typeClass=isPremium?'videoType premium':'videoType';
   const recipient=escapeDashboardHtml(video.toName||'Recipient');
