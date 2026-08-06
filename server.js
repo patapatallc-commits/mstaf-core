@@ -19424,125 +19424,151 @@ function buildPremiumGreetingOrderPage(language = "en", creationType = "premium_
 <button id="submitBtn" class="submit" type="submit">✨ ${t.submit}</button><div id="status" class="status"></div></form><div id="result" class="result"><div>${t.success}</div><div id="orderId" class="orderId"></div><h3>${t.pay}</h3><div class="payments"><a id="shopifyPay" class="pay shopify" target="_blank" rel="noopener">🛒 ${t.shopify}</a><a id="africaPay" class="pay africa" target="_blank" rel="noopener">🌍 ${t.africa}</a><a id="workerLink" class="pay worker" target="_blank" rel="noopener">💬 ${t.worker}</a></div></div></section></main>
 <script>
 (function(){
-  const isWatchBuy=${JSON.stringify(isWatchBuy)};
-  if(!isWatchBuy)return;
+  var isWatchBuy=${JSON.stringify(isWatchBuy)};
+  if(!isWatchBuy){return;}
 
-  const byId=(id)=>document.getElementById(id);
-  const text=(value)=>String(value||'').trim();
+  function byId(id){return document.getElementById(id);}
+  function clean(value){return String(value || '').replace(/^\s+|\s+$/g,'');}
+  function setStatus(id,message){var el=byId(id);if(el){el.textContent=message;}}
 
   window.watchBuySetIntroSafe=function(mode,event){
     if(event){event.preventDefault();event.stopPropagation();}
-    const audio=mode==='audio';
-    const hidden=byId('introMediaType');
-    const videoTab=byId('videoIntroTab');
-    const audioTab=byId('audioIntroTab');
-    const videoPanel=byId('videoIntroPanel');
-    const audioPanel=byId('audioIntroPanel');
-    if(hidden)hidden.value=audio?'audio':'video';
-    videoTab?.classList.toggle('active',!audio);
-    audioTab?.classList.toggle('active',audio);
-    videoPanel?.classList.toggle('hidden',audio);
-    audioPanel?.classList.toggle('hidden',!audio);
+    var audio=mode==='audio';
+    var hidden=byId('introMediaType');
+    var videoTab=byId('videoIntroTab');
+    var audioTab=byId('audioIntroTab');
+    var videoPanel=byId('videoIntroPanel');
+    var audioPanel=byId('audioIntroPanel');
+    if(hidden){hidden.value=audio?'audio':'video';}
+    if(videoTab){if(audio){videoTab.classList.remove('active');}else{videoTab.classList.add('active');}}
+    if(audioTab){if(audio){audioTab.classList.add('active');}else{audioTab.classList.remove('active');}}
+    if(videoPanel){if(audio){videoPanel.classList.add('hidden');}else{videoPanel.classList.remove('hidden');}}
+    if(audioPanel){if(audio){audioPanel.classList.remove('hidden');}else{audioPanel.classList.add('hidden');}}
     return false;
   };
 
   window.watchBuyGenerateSpecsSafe=async function(event){
     if(event){event.preventDefault();event.stopPropagation();}
-    const button=byId('generateWatchBuySpecs');
-    const status=byId('watchBuyAiStatus');
-    const imageInput=document.querySelector('#premiumForm input[name="recipientImages"]');
-    const image=imageInput?.files?.[0];
-    if(!image){if(status)status.textContent='❌ Choose at least one clear product image first.';return false;}
-    if(button?.dataset.running==='1')return false;
+    var button=byId('generateWatchBuySpecs');
+    var status=byId('watchBuyAiStatus');
+    var form=byId('premiumForm');
+    var imageInput=form?form.querySelector('input[name="recipientImages"]'):null;
+    var image=imageInput&&imageInput.files&&imageInput.files.length?imageInput.files[0]:null;
+    if(!image){setStatus('watchBuyAiStatus','❌ Choose at least one clear product image first.');return false;}
+    if(button&&button.getAttribute('data-running')==='1'){return false;}
     try{
-      if(button){button.dataset.running='1';button.disabled=true;button.textContent='⏳ Analyzing product image…';}
-      if(status)status.textContent='⏳ AI is analyzing the first image. Keep this page open.';
-      const body=new FormData();
+      if(button){button.setAttribute('data-running','1');button.disabled=true;button.textContent='⏳ Analyzing product image…';}
+      setStatus('watchBuyAiStatus','⏳ AI is analyzing the first image. Keep this page open.');
+      var body=new FormData();
       body.append('productImage',image,image.name||'product-image.jpg');
-      body.append('sellerHint',text(byId('watchBuyItemName')?.value));
-      const response=await fetch('/api/watch-buy/generate-specifications',{method:'POST',body,credentials:'same-origin'});
-      const raw=await response.text();
-      let data={};
-      try{data=raw?JSON.parse(raw):{};}catch(_error){throw new Error('The server returned an unreadable AI response.');}
-      if(!response.ok||!data.ok)throw new Error(data.error||('AI request failed with status '+response.status+'.'));
-      const details=data.details||{};
-      const item=byId('watchBuyItemName');
-      const specs=byId('watchBuySpecifications');
-      const notes=byId('watchBuyNotes');
-      if(item&&!text(item.value)&&details.productNameSuggestion)item.value=details.productNameSuggestion;
-      if(specs)specs.value=text(details.shortSpecification).slice(0,220);
+      var itemName=byId('watchBuyItemName');
+      body.append('sellerHint',clean(itemName?itemName.value:''));
+      var response=await fetch('/api/watch-buy/generate-specifications',{method:'POST',body:body,credentials:'same-origin'});
+      var raw=await response.text();
+      var data={};
+      try{data=raw?JSON.parse(raw):{};}catch(parseError){throw new Error('The server returned an unreadable AI response.');}
+      if(!response.ok||!data.ok){throw new Error(data.error||('AI request failed with status '+response.status+'.'));}
+      var details=data.details||{};
+      var specs=byId('watchBuySpecifications');
+      var notes=byId('watchBuyNotes');
+      if(itemName&&!clean(itemName.value)&&details.productNameSuggestion){itemName.value=details.productNameSuggestion;}
+      if(specs){specs.value=clean(details.shortSpecification).slice(0,220);}
       if(notes){
-        const features=Array.isArray(details.visibleFeatures)?details.visibleFeatures.join(', '):'';
-        const confirms=Array.isArray(details.sellerConfirmationRequired)?details.sellerConfirmationRequired.join(', '):'';
-        notes.value=[details.category?('Category: '+details.category):'',features?('Visible features: '+features):'',confirms?('Seller must confirm: '+confirms):'',details.socialCaption?('Social caption: '+details.socialCaption):'',Array.isArray(details.hashtags)&&details.hashtags.length?('Hashtags: '+details.hashtags.join(' ')):''].filter(Boolean).join('\n').slice(0,1800);
+        var features=Array.isArray(details.visibleFeatures)?details.visibleFeatures.join(', '):'';
+        var confirms=Array.isArray(details.sellerConfirmationRequired)?details.sellerConfirmationRequired.join(', '):'';
+        var parts=[];
+        if(details.category){parts.push('Category: '+details.category);}
+        if(features){parts.push('Visible features: '+features);}
+        if(confirms){parts.push('Seller must confirm: '+confirms);}
+        if(details.socialCaption){parts.push('Social caption: '+details.socialCaption);}
+        if(Array.isArray(details.hashtags)&&details.hashtags.length){parts.push('Hashtags: '+details.hashtags.join(' '));}
+        notes.value=parts.join('\n').slice(0,1800);
       }
-      if(status)status.textContent='✅ Product details generated. Review and correct them before submitting.';
-      specs?.scrollIntoView({behavior:'smooth',block:'center'});
-    }catch(error){if(status)status.textContent='❌ '+(error?.message||'Could not generate product details.');}
-    finally{if(button){button.dataset.running='0';button.disabled=false;button.textContent='✨ Generate Product Details from First Image';}}
+      setStatus('watchBuyAiStatus','✅ Product details generated. Review and correct them before submitting.');
+      if(specs&&specs.scrollIntoView){specs.scrollIntoView({behavior:'smooth',block:'center'});}
+    }catch(error){
+      setStatus('watchBuyAiStatus','❌ '+(error&&error.message?error.message:'Could not generate product details.'));
+    }finally{
+      if(button){button.setAttribute('data-running','0');button.disabled=false;button.textContent='✨ Generate Product Details from First Image';}
+    }
     return false;
   };
 
-  const form=byId('premiumForm');
-  if(!form)return;
-  form.addEventListener('submit',async function(event){
-    event.preventDefault();
-    event.stopImmediatePropagation();
-    const status=byId('status');
-    const submit=byId('submitBtn');
-    const result=byId('result');
-    try{
-      if(!byId('premiumTermsAccepted')?.checked)throw new Error('Confirm permission and accept the policies first.');
-      const itemName=text(byId('watchBuyItemName')?.value);
-      const usd=text(byId('watchBuyPriceUsd')?.value);
-      const eur=text(byId('watchBuyPriceEur')?.value);
-      const ngn=text(byId('watchBuyPriceNgn')?.value);
-      const phone=text(byId('premiumCustomerPhone')?.value);
-      const specs=text(byId('watchBuySpecifications')?.value);
-      if(!itemName)throw new Error('Enter the item name.');
-      if(!usd&&!eur&&!ngn)throw new Error('Enter at least one price: Dollar, Euro or Naira.');
-      if(!phone)throw new Error('Enter the verified WhatsApp phone number.');
-      if(!specs)throw new Error('Generate or enter the product specifications.');
-      const images=[...(form.querySelector('input[name="recipientImages"]')?.files||[])];
-      if(images.length<2||images.length>8)throw new Error('Choose 2–8 product images.');
-      const mode=byId('introMediaType')?.value==='audio'?'audio':'video';
-      const video=byId('introVideoInput')?.files?.[0];
-      const audio=byId('introAudioInput')?.files?.[0];
-      if(mode==='video'&&!video)throw new Error('Choose a product introduction video.');
-      if(mode==='audio'&&!audio)throw new Error('Upload a product voice introduction audio file.');
+  function attachWatchBuySubmit(){
+    var form=byId('premiumForm');
+    if(!form||form.getAttribute('data-watchbuy-submit-bound')==='1'){return;}
+    form.setAttribute('data-watchbuy-submit-bound','1');
+    form.addEventListener('submit',async function(event){
+      event.preventDefault();
+      event.stopPropagation();
+      if(event.stopImmediatePropagation){event.stopImmediatePropagation();}
+      var submit=byId('submitBtn');
+      var result=byId('result');
+      try{
+        var terms=byId('premiumTermsAccepted');
+        if(!terms||!terms.checked){throw new Error('Confirm permission and accept the policies first.');}
+        var itemName=clean(byId('watchBuyItemName')?byId('watchBuyItemName').value:'');
+        var usd=clean(byId('watchBuyPriceUsd')?byId('watchBuyPriceUsd').value:'');
+        var eur=clean(byId('watchBuyPriceEur')?byId('watchBuyPriceEur').value:'');
+        var ngn=clean(byId('watchBuyPriceNgn')?byId('watchBuyPriceNgn').value:'');
+        var phone=clean(byId('premiumCustomerPhone')?byId('premiumCustomerPhone').value:'');
+        var specs=clean(byId('watchBuySpecifications')?byId('watchBuySpecifications').value:'');
+        if(!itemName){throw new Error('Enter the item name.');}
+        if(!usd&&!eur&&!ngn){throw new Error('Enter at least one price: Dollar, Euro or Naira.');}
+        if(!phone){throw new Error('Enter the verified WhatsApp phone number.');}
+        if(!specs){throw new Error('Generate or enter the product specifications.');}
+        var imageInput=form.querySelector('input[name="recipientImages"]');
+        var images=imageInput&&imageInput.files?Array.prototype.slice.call(imageInput.files):[];
+        if(images.length<2||images.length>8){throw new Error('Choose 2–8 product images.');}
+        var mode=byId('introMediaType')&&byId('introMediaType').value==='audio'?'audio':'video';
+        var videoInput=byId('introVideoInput');
+        var audioInput=byId('introAudioInput');
+        var video=videoInput&&videoInput.files&&videoInput.files.length?videoInput.files[0]:null;
+        var audio=audioInput&&audioInput.files&&audioInput.files.length?audioInput.files[0]:null;
+        if(mode==='video'&&!video){throw new Error('Choose a product introduction video.');}
+        if(mode==='audio'&&!audio){throw new Error('Upload a product voice introduction audio file.');}
 
-      const prices=[usd?('$ '+usd.replace(/^\$\s*/,'')):'',eur?('€ '+eur.replace(/^€\s*/,'')):'',ngn?('₦ '+ngn.replace(/^₦\s*/,'')):''].filter(Boolean);
-      const fd=new FormData(form);
-      fd.set('senderName',prices.join(' | ').slice(0,80));
-      fd.set('priceUsd',usd);
-      fd.set('priceEur',eur);
-      fd.set('priceNgn',ngn);
-      fd.set('introMediaType',mode);
-      if(mode==='audio')fd.delete('introVideo');else fd.delete('introAudio');
-      const existingNotes=text(fd.get('tributeNotes'));
-      fd.set('tributeNotes',[existingNotes,usd?('USD Price: '+usd):'',eur?('EUR Price: '+eur):'',ngn?('NGN Price: '+ngn):''].filter(Boolean).join('\n').slice(0,1800));
-      const accountKey=localStorage.getItem('printoGreetingCustomerKey')||'';
-      let customerId=localStorage.getItem('printoGreetingCustomerId')||localStorage.getItem('printoPremiumCustomerId')||'';
-      if(!customerId){customerId='premium_'+Date.now()+'_'+Math.random().toString(36).slice(2,11);localStorage.setItem('printoPremiumCustomerId',customerId);}
-      fd.set('customerKey',accountKey);fd.set('customerId',customerId);
-      if(submit){submit.disabled=true;submit.textContent='⏳ Saving Watch & Buy product…';}
-      if(status)status.textContent='⏳ Uploading product information and media. Do not close this page.';
-      if(result)result.style.display='none';
-      const response=await fetch('/api/greeting/premium/request',{method:'POST',headers:{'x-printo-customer-id':customerId,'x-printo-customer-key':accountKey},body:fd});
-      const raw=await response.text();let data={};
-      try{data=raw?JSON.parse(raw):{};}catch(_error){throw new Error('The server returned an unreadable response. Check Render logs.');}
-      if(!response.ok||!data.ok)throw new Error(data.error||('Submission failed with status '+response.status+'.'));
-      if(status)status.textContent='✅ Watch & Buy product order saved successfully.';
-      const order=byId('orderId');if(order)order.textContent='Order: '+(data.orderId||'saved');
-      const shop=byId('shopifyPay');const africa=byId('africaPay');const worker=byId('workerLink');
-      if(shop&&data.payment?.shopify)shop.href=data.payment.shopify;
-      if(africa&&data.payment?.africa)africa.href=data.payment.africa;
-      if(worker&&data.whatsappUrl)worker.href=data.whatsappUrl;
-      if(result){result.style.display='block';result.scrollIntoView({behavior:'smooth'});}
-    }catch(error){if(status)status.textContent='❌ '+(error?.message||'Could not submit the product.');}
-    finally{if(submit){submit.disabled=false;submit.textContent='✨ Create Watch & Buy Product Video';}}
-    return false;
-  },true);
+        var prices=[];
+        if(usd){prices.push('$ '+usd.replace(/^\$\s*/,''));}
+        if(eur){prices.push('€ '+eur.replace(/^€\s*/,''));}
+        if(ngn){prices.push('₦ '+ngn.replace(/^₦\s*/,''));}
+        var fd=new FormData(form);
+        fd.set('senderName',prices.join(' | ').slice(0,80));
+        fd.set('introMediaType',mode);
+        if(mode==='audio'){fd.delete('introVideo');}else{fd.delete('introAudio');}
+        var accountKey=localStorage.getItem('printoGreetingCustomerKey')||'';
+        var customerId=localStorage.getItem('printoGreetingCustomerId')||localStorage.getItem('printoPremiumCustomerId')||'';
+        if(!customerId){customerId='premium_'+Date.now()+'_'+Math.random().toString(36).slice(2,11);localStorage.setItem('printoPremiumCustomerId',customerId);}
+        fd.set('customerKey',accountKey);fd.set('customerId',customerId);
+        if(submit){submit.disabled=true;submit.textContent='⏳ Saving Watch & Buy product…';}
+        setStatus('status','⏳ Uploading product information and media. Do not close this page.');
+        if(result){result.style.display='none';}
+        var response=await fetch('/api/greeting/premium/request',{method:'POST',headers:{'x-printo-customer-id':customerId,'x-printo-customer-key':accountKey},body:fd});
+        var raw=await response.text();
+        var data={};
+        try{data=raw?JSON.parse(raw):{};}catch(parseError){throw new Error('The server returned an unreadable response. Check Render logs.');}
+        if(!response.ok||!data.ok){throw new Error(data.error||('Submission failed with status '+response.status+'.'));}
+        setStatus('status','✅ Watch & Buy product order saved successfully.');
+        var order=byId('orderId');if(order){order.textContent='Order: '+(data.orderId||'saved');}
+        var shop=byId('shopifyPay');var africa=byId('africaPay');var worker=byId('workerLink');
+        if(shop&&data.payment&&data.payment.shopify){shop.href=data.payment.shopify;}
+        if(africa&&data.payment&&data.payment.africa){africa.href=data.payment.africa;}
+        if(worker&&data.whatsappUrl){worker.href=data.whatsappUrl;}
+        if(result){result.style.display='block';if(result.scrollIntoView){result.scrollIntoView({behavior:'smooth'});}}
+      }catch(error){
+        setStatus('status','❌ '+(error&&error.message?error.message:'Could not submit the product.'));
+      }finally{
+        if(submit){submit.disabled=false;submit.textContent='✨ Create Watch & Buy Product Video';}
+      }
+      return false;
+    },true);
+  }
+
+  if(document.readyState==='loading'){
+    document.addEventListener('DOMContentLoaded',attachWatchBuySubmit);
+  }else{
+    attachWatchBuySubmit();
+  }
 })();
 </script>
 <script>
