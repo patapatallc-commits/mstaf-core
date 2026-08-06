@@ -19419,7 +19419,7 @@ function buildPremiumGreetingOrderPage(language = "en", creationType = "premium_
 *{box-sizing:border-box}body{margin:0;font-family:Arial,sans-serif;background:linear-gradient(150deg,#071b61,#0b63ce);color:#fff;min-height:100vh;padding:18px}.wrap{max-width:820px;margin:auto}.back{color:#ffd21f;font-weight:900;text-decoration:none}.hero{text-align:center;margin:12px 0 20px}.hero h1{font-size:34px;margin:8px}.hero p{line-height:1.55}.creditPrice{display:inline-block;background:#ffd21f;color:#082a8f;padding:9px 14px;border-radius:999px;font-weight:900;margin-top:8px}.panel{background:#fff;color:#172554;border:3px solid #ffd21f;border-radius:25px;padding:22px;box-shadow:0 18px 44px rgba(0,0,0,.35)}.grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}.full{grid-column:1/-1}label{display:block;font-weight:900;margin:5px 0 7px}input,textarea,select{width:100%;padding:13px;border:2px solid #cbd5e1;border-radius:13px;font-size:16px}textarea{min-height:110px}.hint{font-size:12px;color:#64748b;margin-top:5px}.submit{width:100%;border:0;border-radius:15px;padding:16px;background:linear-gradient(90deg,#7b2cbf,#d63384);color:#fff;font-size:19px;font-weight:900;margin-top:15px;cursor:pointer}.submit:disabled{opacity:.55}.status{text-align:center;font-weight:900;min-height:26px;margin-top:12px}.result{display:none;background:#f1f5f9;padding:16px;border-radius:16px;margin-top:15px}.orderId{font-size:20px;font-weight:900}.payments{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:12px}.pay{display:block;text-align:center;text-decoration:none;color:#fff;font-weight:900;padding:14px;border-radius:13px}.shopify{background:#4f772d}.africa{background:#008751}.worker{background:#25D366;grid-column:1/-1}.disabled{opacity:.45;pointer-events:none}.introChoice{grid-column:1/-1;border:2px solid #bfdbfe;background:#eff6ff;border-radius:14px;padding:14px}.introChoiceTitle{font-weight:900;margin-bottom:10px}.introTabs{display:grid;grid-template-columns:1fr 1fr;gap:9px}.introTabs button{border:2px solid #123faa;background:#fff;color:#123faa;padding:12px;border-radius:12px;font-weight:900;cursor:pointer}.introTabs button.active{background:#123faa;color:#fff}.introPanel{margin-top:12px}.recordControls{display:flex;flex-wrap:wrap;gap:8px;margin:10px 0}.recordControls button{border:0;border-radius:10px;padding:11px 13px;font-weight:900;cursor:pointer;background:#7b2cbf;color:#fff}.recordControls button.stop{background:#c1121f}.recordControls button:disabled{opacity:.45;cursor:not-allowed}.recordTimer{font-weight:900;color:#c1121f;margin-top:8px}.audioPreview{width:100%;margin-top:9px}.audioBoostRow{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:9px;padding:10px;border:2px solid #ffd21f;border-radius:12px;background:#fff8cf}.audioBoostRow button{border:0;border-radius:10px;padding:10px 13px;background:#0f766e;color:#fff;font-weight:900;cursor:pointer}.audioBoostRow label{margin:0;display:flex;align-items:center;gap:8px;flex:1;min-width:210px}.audioBoostRow input[type=range]{width:100%;padding:0;border:0}.audioBoostValue{font-weight:900;color:#c1121f;min-width:42px}.audioDiagnostic{display:grid;gap:8px;margin:9px 0;padding:10px;border:2px solid #bfdbfe;border-radius:12px;background:#f8fbff}.audioDiagnostic button{border:0;border-radius:10px;padding:10px 13px;background:#123faa;color:#fff;font-weight:900;cursor:pointer}.micMeter{height:18px;border-radius:999px;background:#dbeafe;overflow:hidden;border:1px solid #93c5fd}.micMeterFill{display:block;height:100%;width:0;background:linear-gradient(90deg,#22c55e,#facc15,#ef4444);transition:width .08s linear}.micMeterText{font-size:12px;color:#475569;font-weight:800}.hidden{display:none!important}.agreement{display:flex;align-items:flex-start;gap:10px;background:#fff7d6;border:2px solid #ffd21f;border-radius:13px;padding:13px;margin-top:16px}.agreement input{width:20px;height:20px;flex:0 0 auto;margin:2px 0 0}.agreement label{margin:0;font-weight:800;line-height:1.45}.agreement a{color:#123faa;font-weight:900}@media(max-width:620px){.grid,.payments{grid-template-columns:1fr}.full,.worker{grid-column:auto}.hero h1{font-size:28px}.introTabs{grid-template-columns:1fr}}
 </style></head><body><main class="wrap"><a class="back" href="/greetings?lang=${lang}">← ${t.back}</a><section class="hero"><h1>🌟 ${t.title}</h1><p>${t.intro}</p><span class="creditPrice">${creationPriceLabel}</span></section><section class="panel">
 <form id="premiumForm" enctype="multipart/form-data"><input type="hidden" name="language" value="${lang}"><input type="hidden" name="creationType" value="${normalizedCreationType}"><input type="hidden" id="customerId" name="customerId"><input type="hidden" id="premiumCustomerKey" name="customerKey">
-<div class="grid"><div><label>${t.recipient} *</label><input id="watchBuyItemName" name="recipientName" maxlength="${isWatchBuy ? 80 : 24}" required></div><div><label>${t.sender} *</label><input id="watchBuyDisplayPrice" name="senderName" maxlength="${isWatchBuy ? 40 : 24}" required></div><div><label>${t.phone} *</label><input id="premiumCustomerPhone" name="customerPhone" type="tel" inputmode="tel" autocomplete="tel" placeholder="${phoneGuide.placeholder}" required><div class="hint">${phoneGuide.hint}</div></div><div><label>${t.email}</label><input name="customerEmail" type="email"></div>${isWatchBuy ? `<div class="priceBox"><label>Shopify listing price</label><input id="shopifyListingPrice" name="shopifyListingPrice" maxlength="40" placeholder="$24.99"></div><div class="priceBox"><label>Africa payment price</label><input id="africaListingPrice" name="africaListingPrice" maxlength="40" placeholder="₦38,000"></div><div><label>Shopify product link</label><input id="shopifyProductLink" name="shopifyProductLink" type="url" placeholder="https://patapata.us/products/..."></div><div><label>Africa payment link or instructions</label><input id="africaPaymentLink" name="africaPaymentLink" maxlength="300" placeholder="Payment link or bank-transfer instructions"></div><div class="aiBox"><h3>✨ AI Product Details</h3><div class="hint">Choose product images below, then tap this button. AI will describe visible features only. Review and edit the result before creating the video.</div><button id="generateWatchBuySpecs" class="aiButton" type="button">✨ Generate Product Details from First Image</button><div id="watchBuyAiStatus" class="aiStatus"></div></div>` : ""}<div class="full"><label>${t.message} ${isWatchBuy ? "(AI-generated; review before submitting)" : "*"}</label><textarea id="watchBuySpecifications" name="personalMessage" maxlength="220" ${isWatchBuy ? "" : "required"}></textarea></div><div><label>${t.songStyle}</label><select name="songStyle"><option value="">Worker will discuss with me</option><option>Afrobeat</option><option>Gospel</option><option>R&B / Soul</option><option>Pop</option><option>Highlife</option><option>Hip-Hop / Rap</option><option>Soft acoustic</option><option>Other</option></select></div><div><label>${t.notes}</label><textarea id="watchBuyNotes" name="tributeNotes" maxlength="1800"></textarea></div><div><label>${t.photo} *</label>${photoInputHtml}</div><div class="introChoice"><div class="introChoiceTitle">${t.introType}</div><input id="introMediaType" name="introMediaType" type="hidden" value="video"><div class="introTabs"><button id="videoIntroTab" class="active" type="button">🎥 ${t.videoMode}</button><button id="audioIntroTab" type="button">🎙️ ${t.audioMode}</button></div><div id="videoIntroPanel" class="introPanel"><label>${t.videoMode} *</label><input id="introVideoInput" name="introVideo" type="file" accept="video/mp4,video/quicktime,video/webm,video/*"><div class="hint">${usesMultipleImages ? multiUi.videoHint : "Maximum 60 seconds and 100 MB. Large files are compressed automatically to a smaller 720p MP4 before permanent storage."}</div></div><div id="audioIntroPanel" class="introPanel hidden"><label>${t.audioMode} *</label><div class="hint">${t.audioHint}</div><div class="recordControls"><button id="startRecordBtn" type="button">🎙️ ${t.startRecording}</button><button id="stopRecordBtn" class="stop" type="button" disabled>⏹ ${t.stopRecording}</button><button id="playRecordBtn" type="button" class="hidden">▶ ${t.playRecording}</button><button id="recordAgainBtn" type="button" class="hidden">🔄 ${t.recordAgain}</button></div><div class="audioDiagnostic"><button id="testSpeakerBtn" type="button">🔔 Test Phone Speaker</button><div class="micMeter"><span id="micMeterFill" class="micMeterFill"></span></div><div id="micMeterText" class="micMeterText">Microphone level will move while you record.</div></div><div id="recordTimer" class="recordTimer"></div><audio id="recordedAudioPreview" class="audioPreview hidden" controls playsinline preload="auto"></audio><div id="audioBoostRow" class="audioBoostRow hidden"><button id="audioBoostBtn" type="button">🔊 Boost & Replay</button><label><span id="audioBoostLabel">Preview volume</span><input id="audioBoostRange" type="range" min="1" max="4" step="0.25" value="3"></label><span id="audioBoostValue" class="audioBoostValue">3×</span></div><div id="audioPreviewStatus" class="hint"></div><label style="margin-top:12px">${t.uploadAudio}</label><input id="introAudioInput" name="introAudio" type="file" accept="audio/mpeg,audio/mp4,audio/x-m4a,audio/wav,audio/x-wav,audio/aac,audio/ogg,audio/opus,audio/webm,.mp3,.m4a,.wav,.aac,.ogg,.opus,.webm,.flac"><div class="hint">${t.audioFormats}</div></div></div></div>
+<div class="grid"><div><label>${t.recipient} *</label><input id="watchBuyItemName" name="recipientName" maxlength="${isWatchBuy ? 80 : 24}" required></div><div><label>${t.sender} *</label><input id="watchBuyDisplayPrice" name="senderName" maxlength="${isWatchBuy ? 40 : 24}" required></div><div><label>${t.phone} *</label><input id="premiumCustomerPhone" name="customerPhone" type="tel" inputmode="tel" autocomplete="tel" placeholder="${phoneGuide.placeholder}" required><div class="hint">${phoneGuide.hint}</div></div><div><label>${t.email}</label><input name="customerEmail" type="email"></div>${isWatchBuy ? `<div class="priceBox"><label>Shopify listing price</label><input id="shopifyListingPrice" name="shopifyListingPrice" maxlength="40" placeholder="$24.99"></div><div class="priceBox"><label>Africa payment price</label><input id="africaListingPrice" name="africaListingPrice" maxlength="40" placeholder="₦38,000"></div><div><label>Shopify product link</label><input id="shopifyProductLink" name="shopifyProductLink" type="url" placeholder="https://patapata.us/products/..."></div><div><label>Africa payment link or instructions</label><input id="africaPaymentLink" name="africaPaymentLink" maxlength="300" placeholder="Payment link or bank-transfer instructions"></div><div class="aiBox"><h3>✨ AI Product Details</h3><div class="hint">Choose product images below, then tap this button. AI will describe visible features only. Review and edit the result before creating the video.</div><button id="generateWatchBuySpecs" class="aiButton" type="button" onclick="return window.generateWatchBuyProductDetails(event)">✨ Generate Product Details from First Image</button><div id="watchBuyAiStatus" class="aiStatus"></div></div>` : ""}<div class="full"><label>${t.message} ${isWatchBuy ? "(AI-generated; review before submitting)" : "*"}</label><textarea id="watchBuySpecifications" name="personalMessage" maxlength="220" ${isWatchBuy ? "" : "required"}></textarea></div><div><label>${t.songStyle}</label><select name="songStyle"><option value="">Worker will discuss with me</option><option>Afrobeat</option><option>Gospel</option><option>R&B / Soul</option><option>Pop</option><option>Highlife</option><option>Hip-Hop / Rap</option><option>Soft acoustic</option><option>Other</option></select></div><div><label>${t.notes}</label><textarea id="watchBuyNotes" name="tributeNotes" maxlength="1800"></textarea></div><div><label>${t.photo} *</label>${photoInputHtml}</div><div class="introChoice"><div class="introChoiceTitle">${t.introType}</div><input id="introMediaType" name="introMediaType" type="hidden" value="video"><div class="introTabs"><button id="videoIntroTab" class="active" type="button">🎥 ${t.videoMode}</button><button id="audioIntroTab" type="button">🎙️ ${t.audioMode}</button></div><div id="videoIntroPanel" class="introPanel"><label>${t.videoMode} *</label><input id="introVideoInput" name="introVideo" type="file" accept="video/mp4,video/quicktime,video/webm,video/*"><div class="hint">${usesMultipleImages ? multiUi.videoHint : "Maximum 60 seconds and 100 MB. Large files are compressed automatically to a smaller 720p MP4 before permanent storage."}</div></div><div id="audioIntroPanel" class="introPanel hidden"><label>${t.audioMode} *</label><div class="hint">${t.audioHint}</div><div class="recordControls"><button id="startRecordBtn" type="button">🎙️ ${t.startRecording}</button><button id="stopRecordBtn" class="stop" type="button" disabled>⏹ ${t.stopRecording}</button><button id="playRecordBtn" type="button" class="hidden">▶ ${t.playRecording}</button><button id="recordAgainBtn" type="button" class="hidden">🔄 ${t.recordAgain}</button></div><div class="audioDiagnostic"><button id="testSpeakerBtn" type="button">🔔 Test Phone Speaker</button><div class="micMeter"><span id="micMeterFill" class="micMeterFill"></span></div><div id="micMeterText" class="micMeterText">Microphone level will move while you record.</div></div><div id="recordTimer" class="recordTimer"></div><audio id="recordedAudioPreview" class="audioPreview hidden" controls playsinline preload="auto"></audio><div id="audioBoostRow" class="audioBoostRow hidden"><button id="audioBoostBtn" type="button">🔊 Boost & Replay</button><label><span id="audioBoostLabel">Preview volume</span><input id="audioBoostRange" type="range" min="1" max="4" step="0.25" value="3"></label><span id="audioBoostValue" class="audioBoostValue">3×</span></div><div id="audioPreviewStatus" class="hint"></div><label style="margin-top:12px">${t.uploadAudio}</label><input id="introAudioInput" name="introAudio" type="file" accept="audio/mpeg,audio/mp4,audio/x-m4a,audio/wav,audio/x-wav,audio/aac,audio/ogg,audio/opus,audio/webm,.mp3,.m4a,.wav,.aac,.ogg,.opus,.webm,.flac"><div class="hint">${t.audioFormats}</div></div></div></div>
 <div class="agreement ${isWatchBuy ? "watchAgreement" : ""}"><input id="premiumTermsAccepted" name="termsAccepted" type="checkbox" value="yes" required><label for="premiumTermsAccepted">${isWatchBuy ? "I confirm that I own or have permission to use the product images, product introduction, item information, prices, links, music and all submitted content. I will review and correct AI-generated details before publishing." : "I confirm that I own or have permission to use the recipient photo, introduction video or voice recording, names, music instructions and all other submitted content."} I agree to the <a href="/greetings?lang=${lang}#terms" target="_blank" rel="noopener">Terms of Use, Privacy Policy and Refund Policy</a>.</label></div>
 <button id="submitBtn" class="submit" type="submit">✨ ${t.submit}</button><div id="status" class="status"></div></form><div id="result" class="result"><div>${t.success}</div><div id="orderId" class="orderId"></div><h3>${t.pay}</h3><div class="payments"><a id="shopifyPay" class="pay shopify" target="_blank" rel="noopener">🛒 ${t.shopify}</a><a id="africaPay" class="pay africa" target="_blank" rel="noopener">🌍 ${t.africa}</a><a id="workerLink" class="pay worker" target="_blank" rel="noopener">💬 ${t.worker}</a></div></div></section></main>
 <script>
@@ -19597,42 +19597,78 @@ introAudioInput.addEventListener('change',async()=>{const selected=introAudioInp
 window.addEventListener('beforeunload',()=>{clearRecordingTimer();stopMicrophoneMeter();stopMicrophoneStream();clearAudioPreviewUrl();if(previewAudioContext)previewAudioContext.close().catch(()=>{});});
 const watchBuySpecsButton=document.getElementById('generateWatchBuySpecs');
 const watchBuyAiStatus=document.getElementById('watchBuyAiStatus');
-if(premiumIsWatchBuy&&watchBuySpecsButton){
-  watchBuySpecsButton.addEventListener('click',async()=>{
-    const imageInput=form.querySelector('input[name="recipientImages"]');
+let watchBuyAiRequestRunning=false;
+window.generateWatchBuyProductDetails=async function(event){
+  if(event){event.preventDefault();event.stopPropagation();}
+  if(watchBuyAiRequestRunning)return false;
+  const status=watchBuyAiStatus||document.getElementById('watchBuyAiStatus');
+  const specsButton=watchBuySpecsButton||document.getElementById('generateWatchBuySpecs');
+  try{
+    const imageInput=form.querySelector('input[name="recipientImages"]')||form.querySelector('input[name="recipientPhoto"]')||form.querySelector('input[type="file"][accept*="image"]');
     const firstImage=imageInput?.files?.[0];
-    if(!firstImage){watchBuyAiStatus.textContent='❌ Choose at least one clear product image first.';return;}
-    watchBuySpecsButton.disabled=true;
-    watchBuySpecsButton.textContent='⏳ Analyzing product image…';
-    watchBuyAiStatus.textContent='AI is checking visible product features. Do not close this page.';
+    if(!firstImage){
+      if(status)status.textContent='❌ Choose at least one clear product image first.';
+      else alert('Choose at least one clear product image first.');
+      return false;
+    }
+    if(!String(firstImage.type||'').startsWith('image/')){
+      if(status)status.textContent='❌ The selected first file is not a supported product image.';
+      return false;
+    }
+    watchBuyAiRequestRunning=true;
+    if(specsButton){specsButton.disabled=true;specsButton.textContent='⏳ Analyzing product image…';}
+    if(status)status.textContent='⏳ AI is checking visible product features. Keep this page open.';
+    const aiForm=new FormData();
+    aiForm.append('productImage',firstImage,firstImage.name||'product-image.jpg');
+    aiForm.append('sellerHint',document.getElementById('watchBuyItemName')?.value||'');
+    const controller=new AbortController();
+    const timeoutId=setTimeout(()=>controller.abort(),95000);
+    let response;
     try{
-      const aiForm=new FormData();
-      aiForm.append('productImage',firstImage);
-      aiForm.append('sellerHint',document.getElementById('watchBuyItemName')?.value||'');
-      const response=await fetch('/api/watch-buy/generate-specifications',{method:'POST',body:aiForm});
-      const data=await response.json().catch(()=>({}));
-      if(!response.ok||!data.ok)throw new Error(data.error||'Could not generate product details.');
-      const details=data.details||{};
-      const itemName=document.getElementById('watchBuyItemName');
-      const specifications=document.getElementById('watchBuySpecifications');
-      const notes=document.getElementById('watchBuyNotes');
-      if(itemName&&!itemName.value.trim()&&details.productNameSuggestion)itemName.value=details.productNameSuggestion;
-      if(specifications)specifications.value=String(details.shortSpecification||'').slice(0,220);
-      if(notes){
-        const featureText=(details.visibleFeatures||[]).join(', ');
-        const confirmText=(details.sellerConfirmationRequired||[]).join(', ');
-        notes.value=[
-          details.category?('Category: '+details.category):'',
-          featureText?('Visible features: '+featureText):'',
-          confirmText?('Seller must confirm: '+confirmText):'',
-          details.socialCaption?('Social caption: '+details.socialCaption):'',
-          Array.isArray(details.hashtags)&&details.hashtags.length?('Hashtags: '+details.hashtags.join(' ')):''
-        ].filter(Boolean).join('\n').slice(0,1800);
-      }
-      watchBuyAiStatus.textContent='✅ Product details generated. Please review and correct anything uncertain before creating the video.';
-    }catch(error){watchBuyAiStatus.textContent='❌ '+error.message;}
-    finally{watchBuySpecsButton.disabled=false;watchBuySpecsButton.textContent='✨ Generate Product Details from First Image';}
-  });
+      response=await fetch('/api/watch-buy/generate-specifications',{
+        method:'POST',
+        body:aiForm,
+        credentials:'same-origin',
+        signal:controller.signal
+      });
+    }finally{clearTimeout(timeoutId);}
+    const responseText=await response.text();
+    let data={};
+    try{data=responseText?JSON.parse(responseText):{};}catch(_error){
+      throw new Error(response.ok?'The AI server returned an unreadable response.':'Server error '+response.status+'. Check Render logs.');
+    }
+    if(!response.ok||!data.ok)throw new Error(data.error||('Could not generate product details. Server status '+response.status+'.'));
+    const details=data.details||{};
+    const itemName=document.getElementById('watchBuyItemName');
+    const specifications=document.getElementById('watchBuySpecifications');
+    const notes=document.getElementById('watchBuyNotes');
+    if(itemName&&!itemName.value.trim()&&details.productNameSuggestion)itemName.value=details.productNameSuggestion;
+    if(specifications)specifications.value=String(details.shortSpecification||'').slice(0,220);
+    if(notes){
+      const featureText=(details.visibleFeatures||[]).join(', ');
+      const confirmText=(details.sellerConfirmationRequired||[]).join(', ');
+      notes.value=[
+        details.category?('Category: '+details.category):'',
+        featureText?('Visible features: '+featureText):'',
+        confirmText?('Seller must confirm: '+confirmText):'',
+        details.socialCaption?('Social caption: '+details.socialCaption):'',
+        Array.isArray(details.hashtags)&&details.hashtags.length?('Hashtags: '+details.hashtags.join(' ')):''
+      ].filter(Boolean).join('\n').slice(0,1800);
+    }
+    if(status)status.textContent='✅ Product details generated. Review and correct anything uncertain before creating the video.';
+    specifications?.scrollIntoView({behavior:'smooth',block:'center'});
+  }catch(error){
+    const message=error?.name==='AbortError'?'AI analysis timed out. Please try again with a smaller, clear image.':(error?.message||'Could not generate product details.');
+    if(status)status.textContent='❌ '+message;
+    else alert(message);
+  }finally{
+    watchBuyAiRequestRunning=false;
+    if(specsButton){specsButton.disabled=false;specsButton.textContent='✨ Generate Product Details from First Image';}
+  }
+  return false;
+};
+if(premiumIsWatchBuy&&watchBuySpecsButton){
+  watchBuySpecsButton.addEventListener('click',window.generateWatchBuyProductDetails);
 }
 function syncPremiumButton(){button.disabled=false;}
 termsAccepted.addEventListener('change',syncPremiumButton);
