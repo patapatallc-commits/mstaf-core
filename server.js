@@ -337,6 +337,20 @@ const premiumMusicUpload = multer({
     return cb(null, true);
   }
 });
+
+// Watch & Buy AI analysis uses an in-memory copy of one clear product image.
+// Nothing is written permanently by this helper endpoint.
+const watchBuyAiUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: PREMIUM_PHOTO_MAX_BYTES, files: 1, fields: 10 },
+  fileFilter: (_req, file, cb) => {
+    const mime = String(file.mimetype || "").toLowerCase();
+    if (!mime.startsWith("image/")) {
+      return cb(new Error("Choose a JPG, PNG, or WebP product image."));
+    }
+    return cb(null, true);
+  }
+});
 const express = require("express");
 const axios = require("axios");
 const { execFile } = require("child_process");
@@ -716,6 +730,151 @@ app.use((req, res, next) => {
 });
 // Accept normal HTML form submissions as a reliable fallback when browser JavaScript is blocked or cached.
 app.use(express.urlencoded({ extended: true, limit: "2mb" }));
+
+
+function cleanAiProductText(value = "", maxLength = 220) {
+  return String(value || "")
+    .replace(/[<>]/g, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, maxLength);
+}
+
+function extractOpenAiOutputText(payload = {}) {
+  if (typeof payload.output_text === "string" && payload.output_text.trim()) {
+    return payload.output_text.trim();
+  }
+  const output = Array.isArray(payload.output) ? payload.output : [];
+  for (const item of output) {
+    const content = Array.isArray(item?.content) ? item.content : [];
+    for (const part of content) {
+      if (typeof part?.text === "string" && part.text.trim()) return part.text.trim();
+    }
+  }
+  return "";
+}
+
+function parseStrictJsonText(text = "") {
+  const cleaned = String(text || "")
+    .replace(/^```(?:json)?\s*/i, "")
+    .replace(/\s*```$/i, "")
+    .trim();
+  return JSON.parse(cleaned);
+}
+
+async function generateWatchBuyAiDetails({ imageBuffer, mimeType, sellerHint = "" }) {
+  const apiKey = String(process.env.OPENAI_API_KEY || "").trim();
+  if (!apiKey) {
+    const error = new Error("OPENAI_API_KEY is not configured on Render.");
+    error.statusCode = 503;
+    throw error;
+  }
+
+  const imageDataUrl = `data:${mimeType || "image/jpeg"};base64,${imageBuffer.toString("base64")}`;
+  const prompt = [
+    "Analyze this product image for a truthful Watch & Buy listing.",
+    "Return JSON only with these exact keys:",
+    "productNameSuggestion, category, shortSpecification, visibleFeatures, sellerConfirmationRequired, socialCaption, hashtags.",
+    "Rules:",
+    "- Describe only what is visible in the supplied image.",
+    "- Never invent brand, exact model, authenticity, storage, dimensions, material, condition, age, performance, warranty, or included accessories.",
+    "- When uncertain, add the detail to sellerConfirmationRequired.",
+    "- shortSpecification must be a natural sales description of no more than 220 characters.",
+    "- visibleFeatures and sellerConfirmationRequired must be arrays of short strings.",
+    "- hashtags must be an array of 4 to 8 hashtags.",
+    sellerHint ? `Seller hint: ${cleanAiProductText(sellerHint, 300)}` : ""
+  ].filter(Boolean).join("\n");
+
+  const response = await axios.post(
+    "https://api.openai.com/v1/responses",
+    {
+      model: process.env.OPENAI_WATCH_BUY_MODEL || "gpt-5-mini",
+      input: [{
+        role: "user",
+        content: [
+          { type: "input_text", text: prompt },
+          { type: "input_image", image_url: imageDataUrl, detail: "high" }
+        ]
+      }],
+      text: {
+        format: {
+          type: "json_schema",
+          name: "watch_buy_product_details",
+          strict: true,
+          schema: {
+            type: "object",
+            additionalProperties: false,
+            properties: {
+              productNameSuggestion: { type: "string" },
+              category: { type: "string" },
+              shortSpecification: { type: "string" },
+              visibleFeatures: { type: "array", items: { type: "string" } },
+              sellerConfirmationRequired: { type: "array", items: { type: "string" } },
+              socialCaption: { type: "string" },
+              hashtags: { type: "array", items: { type: "string" } }
+            },
+            required: [
+              "productNameSuggestion",
+              "category",
+              "shortSpecification",
+              "visibleFeatures",
+              "sellerConfirmationRequired",
+              "socialCaption",
+              "hashtags"
+            ]
+          }
+        }
+      },
+      max_output_tokens: 900
+    },
+    {
+      timeout: 90_000,
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json"
+      }
+    }
+  );
+
+  const parsed = parseStrictJsonText(extractOpenAiOutputText(response.data));
+  return {
+    productNameSuggestion: cleanAiProductText(parsed.productNameSuggestion, 80),
+    category: cleanAiProductText(parsed.category, 80),
+    shortSpecification: cleanAiProductText(parsed.shortSpecification, 220),
+    visibleFeatures: (Array.isArray(parsed.visibleFeatures) ? parsed.visibleFeatures : [])
+      .map((value) => cleanAiProductText(value, 80)).filter(Boolean).slice(0, 10),
+    sellerConfirmationRequired: (Array.isArray(parsed.sellerConfirmationRequired) ? parsed.sellerConfirmationRequired : [])
+      .map((value) => cleanAiProductText(value, 100)).filter(Boolean).slice(0, 10),
+    socialCaption: cleanAiProductText(parsed.socialCaption, 500),
+    hashtags: (Array.isArray(parsed.hashtags) ? parsed.hashtags : [])
+      .map((value) => cleanAiProductText(value, 40)).filter(Boolean).slice(0, 8)
+  };
+}
+
+app.post(
+  "/api/watch-buy/generate-specifications",
+  watchBuyAiUpload.single("productImage"),
+  async (req, res) => {
+    try {
+      if (!req.file?.buffer?.length) {
+        return res.status(400).json({ ok: false, error: "Choose at least one clear product image first." });
+      }
+      const details = await generateWatchBuyAiDetails({
+        imageBuffer: req.file.buffer,
+        mimeType: req.file.mimetype,
+        sellerHint: req.body?.sellerHint || ""
+      });
+      return res.json({ ok: true, details });
+    } catch (error) {
+      console.error("Watch & Buy AI specification error:", error?.response?.data || error);
+      const status = Number(error?.statusCode || error?.response?.status || 500);
+      return res.status(status >= 400 && status < 600 ? status : 500).json({
+        ok: false,
+        error: error?.response?.data?.error?.message || error.message || "Could not generate product specifications."
+      });
+    }
+  }
+);
 const cors = require("cors");
 
 app.use(cors({
@@ -18805,7 +18964,7 @@ function buildBirthdayGeneratorPage(language = "en", templateId = "birthday") {
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>${t.title}</title>
   <style>
-    *{box-sizing:border-box}body{margin:0;font-family:Arial,sans-serif;background:linear-gradient(180deg,#071b61,#0b63ce);color:#fff;min-height:100vh;padding:20px}.wrap{max-width:760px;margin:auto}.top{text-align:center;margin-bottom:18px}.top h1{font-size:34px;margin:7px 0}.top p{opacity:.92;line-height:23px}.panel{background:#fff;color:#172554;border-radius:22px;padding:22px;box-shadow:0 14px 38px rgba(0,0,0,.32)}label{display:block;font-weight:900;margin:13px 0 7px}.row{display:grid;grid-template-columns:1fr 1fr;gap:14px}.field{position:relative}input,textarea{width:100%;border:2px solid #cbd5e1;border-radius:13px;padding:13px 15px;font-size:17px;outline:none;text-align:start}input:focus,textarea:focus{border-color:#7b2cbf;box-shadow:0 0 0 3px rgba(123,44,191,.14)}textarea{min-height:120px;resize:vertical}.counter{text-align:end;font-size:13px;font-weight:800;color:#64748b;margin-top:5px}.counter.warn{color:#dc2626}.generate{width:100%;border:0;border-radius:15px;padding:16px;background:linear-gradient(90deg,#7b2cbf,#d63384);color:#fff;font-size:19px;font-weight:900;cursor:pointer;margin-top:18px}.generate:disabled{opacity:.55;cursor:not-allowed}.status{text-align:center;min-height:28px;margin-top:13px;font-weight:800;color:#7b2cbf}.payments{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:15px}.pay{display:block;text-align:center;text-decoration:none;color:#fff;font-weight:900;padding:13px;border-radius:13px}.shopify{background:#4f772d}.nigeria{background:#008751}.back{display:inline-block;color:#ffd21f;text-decoration:none;font-weight:900;margin-bottom:10px}.note{font-size:13px;line-height:19px;color:#475569;background:#f1f5f9;padding:12px;border-radius:12px;margin-top:14px}.agreement{display:flex;align-items:flex-start;gap:10px;background:#fff7d6;border:2px solid #ffd21f;border-radius:13px;padding:13px;margin-top:16px}.agreement input{width:20px;height:20px;flex:0 0 auto;margin:2px 0 0}.agreement label{margin:0;font-weight:800;line-height:1.45}.agreement a{color:#123faa;font-weight:900}@media(max-width:580px){body{padding:12px}.row,.payments{grid-template-columns:1fr}.top h1{font-size:29px}}
+    *{box-sizing:border-box}body{margin:0;font-family:Arial,sans-serif;background:linear-gradient(180deg,#071b61,#0b63ce);color:#fff;min-height:100vh;padding:20px}.wrap{max-width:760px;margin:auto}.top{text-align:center;margin-bottom:18px}.top h1{font-size:34px;margin:7px 0}.top p{opacity:.92;line-height:23px}.panel{background:#fff;color:#172554;border-radius:22px;padding:22px;box-shadow:0 14px 38px rgba(0,0,0,.32)}label{display:block;font-weight:900;margin:13px 0 7px}.row{display:grid;grid-template-columns:1fr 1fr;gap:14px}.field{position:relative}input,textarea{width:100%;border:2px solid #cbd5e1;border-radius:13px;padding:13px 15px;font-size:17px;outline:none;text-align:start}input:focus,textarea:focus{border-color:#7b2cbf;box-shadow:0 0 0 3px rgba(123,44,191,.14)}textarea{min-height:120px;resize:vertical}.counter{text-align:end;font-size:13px;font-weight:800;color:#64748b;margin-top:5px}.counter.warn{color:#dc2626}.generate{width:100%;border:0;border-radius:15px;padding:16px;background:linear-gradient(90deg,#7b2cbf,#d63384);color:#fff;font-size:19px;font-weight:900;cursor:pointer;margin-top:18px}.generate:disabled{opacity:.55;cursor:not-allowed}.status{text-align:center;min-height:28px;margin-top:13px;font-weight:800;color:#7b2cbf}.payments{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:15px}.pay{display:block;text-align:center;text-decoration:none;color:#fff;font-weight:900;padding:13px;border-radius:13px}.shopify{background:#4f772d}.nigeria{background:#008751}.back{display:inline-block;color:#ffd21f;text-decoration:none;font-weight:900;margin-bottom:10px}.note{font-size:13px;line-height:19px;color:#475569;background:#f1f5f9;padding:12px;border-radius:12px;margin-top:14px}.agreement{display:flex;align-items:flex-start;gap:10px;background:#fff7d6;border:2px solid #ffd21f;border-radius:13px;padding:13px;margin-top:16px}.agreement input{width:20px;height:20px;flex:0 0 auto;margin:2px 0 0}.agreement label{margin:0;font-weight:800;line-height:1.45}.agreement a{color:#123faa;font-weight:900}.aiBox{grid-column:1/-1;background:linear-gradient(135deg,#ecfeff,#eef2ff);border:2px solid #06b6d4;border-radius:16px;padding:14px}.aiBox h3{margin:0 0 6px;color:#0f3d8f}.aiButton{width:100%;border:0;border-radius:13px;padding:14px;background:linear-gradient(90deg,#0ea5e9,#7c3aed);color:#fff;font-weight:900;font-size:16px;cursor:pointer}.aiButton:disabled{opacity:.55}.aiStatus{font-size:13px;font-weight:800;color:#334155;margin-top:8px;line-height:1.45}.priceBox{background:#fff8cf;border:2px solid #f4c430;border-radius:14px;padding:12px}.priceBox label{color:#7c2d12}.watchAgreement label{line-height:1.42}@media(max-width:580px){body{padding:12px}.row,.payments{grid-template-columns:1fr}.top h1{font-size:29px}}
   </style>
 </head>
 <body>
@@ -19260,8 +19419,8 @@ function buildPremiumGreetingOrderPage(language = "en", creationType = "premium_
 *{box-sizing:border-box}body{margin:0;font-family:Arial,sans-serif;background:linear-gradient(150deg,#071b61,#0b63ce);color:#fff;min-height:100vh;padding:18px}.wrap{max-width:820px;margin:auto}.back{color:#ffd21f;font-weight:900;text-decoration:none}.hero{text-align:center;margin:12px 0 20px}.hero h1{font-size:34px;margin:8px}.hero p{line-height:1.55}.creditPrice{display:inline-block;background:#ffd21f;color:#082a8f;padding:9px 14px;border-radius:999px;font-weight:900;margin-top:8px}.panel{background:#fff;color:#172554;border:3px solid #ffd21f;border-radius:25px;padding:22px;box-shadow:0 18px 44px rgba(0,0,0,.35)}.grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}.full{grid-column:1/-1}label{display:block;font-weight:900;margin:5px 0 7px}input,textarea,select{width:100%;padding:13px;border:2px solid #cbd5e1;border-radius:13px;font-size:16px}textarea{min-height:110px}.hint{font-size:12px;color:#64748b;margin-top:5px}.submit{width:100%;border:0;border-radius:15px;padding:16px;background:linear-gradient(90deg,#7b2cbf,#d63384);color:#fff;font-size:19px;font-weight:900;margin-top:15px;cursor:pointer}.submit:disabled{opacity:.55}.status{text-align:center;font-weight:900;min-height:26px;margin-top:12px}.result{display:none;background:#f1f5f9;padding:16px;border-radius:16px;margin-top:15px}.orderId{font-size:20px;font-weight:900}.payments{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:12px}.pay{display:block;text-align:center;text-decoration:none;color:#fff;font-weight:900;padding:14px;border-radius:13px}.shopify{background:#4f772d}.africa{background:#008751}.worker{background:#25D366;grid-column:1/-1}.disabled{opacity:.45;pointer-events:none}.introChoice{grid-column:1/-1;border:2px solid #bfdbfe;background:#eff6ff;border-radius:14px;padding:14px}.introChoiceTitle{font-weight:900;margin-bottom:10px}.introTabs{display:grid;grid-template-columns:1fr 1fr;gap:9px}.introTabs button{border:2px solid #123faa;background:#fff;color:#123faa;padding:12px;border-radius:12px;font-weight:900;cursor:pointer}.introTabs button.active{background:#123faa;color:#fff}.introPanel{margin-top:12px}.recordControls{display:flex;flex-wrap:wrap;gap:8px;margin:10px 0}.recordControls button{border:0;border-radius:10px;padding:11px 13px;font-weight:900;cursor:pointer;background:#7b2cbf;color:#fff}.recordControls button.stop{background:#c1121f}.recordControls button:disabled{opacity:.45;cursor:not-allowed}.recordTimer{font-weight:900;color:#c1121f;margin-top:8px}.audioPreview{width:100%;margin-top:9px}.audioBoostRow{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:9px;padding:10px;border:2px solid #ffd21f;border-radius:12px;background:#fff8cf}.audioBoostRow button{border:0;border-radius:10px;padding:10px 13px;background:#0f766e;color:#fff;font-weight:900;cursor:pointer}.audioBoostRow label{margin:0;display:flex;align-items:center;gap:8px;flex:1;min-width:210px}.audioBoostRow input[type=range]{width:100%;padding:0;border:0}.audioBoostValue{font-weight:900;color:#c1121f;min-width:42px}.audioDiagnostic{display:grid;gap:8px;margin:9px 0;padding:10px;border:2px solid #bfdbfe;border-radius:12px;background:#f8fbff}.audioDiagnostic button{border:0;border-radius:10px;padding:10px 13px;background:#123faa;color:#fff;font-weight:900;cursor:pointer}.micMeter{height:18px;border-radius:999px;background:#dbeafe;overflow:hidden;border:1px solid #93c5fd}.micMeterFill{display:block;height:100%;width:0;background:linear-gradient(90deg,#22c55e,#facc15,#ef4444);transition:width .08s linear}.micMeterText{font-size:12px;color:#475569;font-weight:800}.hidden{display:none!important}.agreement{display:flex;align-items:flex-start;gap:10px;background:#fff7d6;border:2px solid #ffd21f;border-radius:13px;padding:13px;margin-top:16px}.agreement input{width:20px;height:20px;flex:0 0 auto;margin:2px 0 0}.agreement label{margin:0;font-weight:800;line-height:1.45}.agreement a{color:#123faa;font-weight:900}@media(max-width:620px){.grid,.payments{grid-template-columns:1fr}.full,.worker{grid-column:auto}.hero h1{font-size:28px}.introTabs{grid-template-columns:1fr}}
 </style></head><body><main class="wrap"><a class="back" href="/greetings?lang=${lang}">← ${t.back}</a><section class="hero"><h1>🌟 ${t.title}</h1><p>${t.intro}</p><span class="creditPrice">${creationPriceLabel}</span></section><section class="panel">
 <form id="premiumForm" enctype="multipart/form-data"><input type="hidden" name="language" value="${lang}"><input type="hidden" name="creationType" value="${normalizedCreationType}"><input type="hidden" id="customerId" name="customerId"><input type="hidden" id="premiumCustomerKey" name="customerKey">
-<div class="grid"><div><label>${t.recipient} *</label><input name="recipientName" maxlength="24" required></div><div><label>${t.sender} *</label><input name="senderName" maxlength="24" required></div><div><label>${t.phone} *</label><input id="premiumCustomerPhone" name="customerPhone" type="tel" inputmode="tel" autocomplete="tel" placeholder="${phoneGuide.placeholder}" required><div class="hint">${phoneGuide.hint}</div></div><div><label>${t.email}</label><input name="customerEmail" type="email"></div><div class="full"><label>${t.message} *</label><textarea name="personalMessage" maxlength="220" required></textarea></div><div><label>${t.songStyle}</label><select name="songStyle"><option value="">Worker will discuss with me</option><option>Afrobeat</option><option>Gospel</option><option>R&B / Soul</option><option>Pop</option><option>Highlife</option><option>Hip-Hop / Rap</option><option>Soft acoustic</option><option>Other</option></select></div><div><label>${t.notes}</label><textarea name="tributeNotes" maxlength="1000"></textarea></div><div><label>${t.photo} *</label>${photoInputHtml}</div><div class="introChoice"><div class="introChoiceTitle">${t.introType}</div><input id="introMediaType" name="introMediaType" type="hidden" value="video"><div class="introTabs"><button id="videoIntroTab" class="active" type="button">🎥 ${t.videoMode}</button><button id="audioIntroTab" type="button">🎙️ ${t.audioMode}</button></div><div id="videoIntroPanel" class="introPanel"><label>${t.videoMode} *</label><input id="introVideoInput" name="introVideo" type="file" accept="video/mp4,video/quicktime,video/webm,video/*"><div class="hint">${usesMultipleImages ? multiUi.videoHint : "Maximum 60 seconds and 100 MB. Large files are compressed automatically to a smaller 720p MP4 before permanent storage."}</div></div><div id="audioIntroPanel" class="introPanel hidden"><label>${t.audioMode} *</label><div class="hint">${t.audioHint}</div><div class="recordControls"><button id="startRecordBtn" type="button">🎙️ ${t.startRecording}</button><button id="stopRecordBtn" class="stop" type="button" disabled>⏹ ${t.stopRecording}</button><button id="playRecordBtn" type="button" class="hidden">▶ ${t.playRecording}</button><button id="recordAgainBtn" type="button" class="hidden">🔄 ${t.recordAgain}</button></div><div class="audioDiagnostic"><button id="testSpeakerBtn" type="button">🔔 Test Phone Speaker</button><div class="micMeter"><span id="micMeterFill" class="micMeterFill"></span></div><div id="micMeterText" class="micMeterText">Microphone level will move while you record.</div></div><div id="recordTimer" class="recordTimer"></div><audio id="recordedAudioPreview" class="audioPreview hidden" controls playsinline preload="auto"></audio><div id="audioBoostRow" class="audioBoostRow hidden"><button id="audioBoostBtn" type="button">🔊 Boost & Replay</button><label><span id="audioBoostLabel">Preview volume</span><input id="audioBoostRange" type="range" min="1" max="4" step="0.25" value="3"></label><span id="audioBoostValue" class="audioBoostValue">3×</span></div><div id="audioPreviewStatus" class="hint"></div><label style="margin-top:12px">${t.uploadAudio}</label><input id="introAudioInput" name="introAudio" type="file" accept="audio/mpeg,audio/mp4,audio/x-m4a,audio/wav,audio/x-wav,audio/aac,audio/ogg,audio/opus,audio/webm,.mp3,.m4a,.wav,.aac,.ogg,.opus,.webm,.flac"><div class="hint">${t.audioFormats}</div></div></div></div>
-<div class="agreement"><input id="premiumTermsAccepted" name="termsAccepted" type="checkbox" value="yes" required><label for="premiumTermsAccepted">I confirm that I own or have permission to use the recipient photo, introduction video or voice recording, names, music instructions and all other submitted content. I agree to the <a href="/greetings?lang=${lang}#terms" target="_blank" rel="noopener">Terms of Use, Privacy Policy and Refund Policy</a>.</label></div>
+<div class="grid"><div><label>${t.recipient} *</label><input id="watchBuyItemName" name="recipientName" maxlength="${isWatchBuy ? 80 : 24}" required></div><div><label>${t.sender} *</label><input id="watchBuyDisplayPrice" name="senderName" maxlength="${isWatchBuy ? 40 : 24}" required></div><div><label>${t.phone} *</label><input id="premiumCustomerPhone" name="customerPhone" type="tel" inputmode="tel" autocomplete="tel" placeholder="${phoneGuide.placeholder}" required><div class="hint">${phoneGuide.hint}</div></div><div><label>${t.email}</label><input name="customerEmail" type="email"></div>${isWatchBuy ? `<div class="priceBox"><label>Shopify listing price</label><input id="shopifyListingPrice" name="shopifyListingPrice" maxlength="40" placeholder="$24.99"></div><div class="priceBox"><label>Africa payment price</label><input id="africaListingPrice" name="africaListingPrice" maxlength="40" placeholder="₦38,000"></div><div><label>Shopify product link</label><input id="shopifyProductLink" name="shopifyProductLink" type="url" placeholder="https://patapata.us/products/..."></div><div><label>Africa payment link or instructions</label><input id="africaPaymentLink" name="africaPaymentLink" maxlength="300" placeholder="Payment link or bank-transfer instructions"></div><div class="aiBox"><h3>✨ AI Product Details</h3><div class="hint">Choose product images below, then tap this button. AI will describe visible features only. Review and edit the result before creating the video.</div><button id="generateWatchBuySpecs" class="aiButton" type="button">✨ Generate Product Details from First Image</button><div id="watchBuyAiStatus" class="aiStatus"></div></div>` : ""}<div class="full"><label>${t.message} ${isWatchBuy ? "(AI-generated; review before submitting)" : "*"}</label><textarea id="watchBuySpecifications" name="personalMessage" maxlength="220" ${isWatchBuy ? "" : "required"}></textarea></div><div><label>${t.songStyle}</label><select name="songStyle"><option value="">Worker will discuss with me</option><option>Afrobeat</option><option>Gospel</option><option>R&B / Soul</option><option>Pop</option><option>Highlife</option><option>Hip-Hop / Rap</option><option>Soft acoustic</option><option>Other</option></select></div><div><label>${t.notes}</label><textarea id="watchBuyNotes" name="tributeNotes" maxlength="1800"></textarea></div><div><label>${t.photo} *</label>${photoInputHtml}</div><div class="introChoice"><div class="introChoiceTitle">${t.introType}</div><input id="introMediaType" name="introMediaType" type="hidden" value="video"><div class="introTabs"><button id="videoIntroTab" class="active" type="button">🎥 ${t.videoMode}</button><button id="audioIntroTab" type="button">🎙️ ${t.audioMode}</button></div><div id="videoIntroPanel" class="introPanel"><label>${t.videoMode} *</label><input id="introVideoInput" name="introVideo" type="file" accept="video/mp4,video/quicktime,video/webm,video/*"><div class="hint">${usesMultipleImages ? multiUi.videoHint : "Maximum 60 seconds and 100 MB. Large files are compressed automatically to a smaller 720p MP4 before permanent storage."}</div></div><div id="audioIntroPanel" class="introPanel hidden"><label>${t.audioMode} *</label><div class="hint">${t.audioHint}</div><div class="recordControls"><button id="startRecordBtn" type="button">🎙️ ${t.startRecording}</button><button id="stopRecordBtn" class="stop" type="button" disabled>⏹ ${t.stopRecording}</button><button id="playRecordBtn" type="button" class="hidden">▶ ${t.playRecording}</button><button id="recordAgainBtn" type="button" class="hidden">🔄 ${t.recordAgain}</button></div><div class="audioDiagnostic"><button id="testSpeakerBtn" type="button">🔔 Test Phone Speaker</button><div class="micMeter"><span id="micMeterFill" class="micMeterFill"></span></div><div id="micMeterText" class="micMeterText">Microphone level will move while you record.</div></div><div id="recordTimer" class="recordTimer"></div><audio id="recordedAudioPreview" class="audioPreview hidden" controls playsinline preload="auto"></audio><div id="audioBoostRow" class="audioBoostRow hidden"><button id="audioBoostBtn" type="button">🔊 Boost & Replay</button><label><span id="audioBoostLabel">Preview volume</span><input id="audioBoostRange" type="range" min="1" max="4" step="0.25" value="3"></label><span id="audioBoostValue" class="audioBoostValue">3×</span></div><div id="audioPreviewStatus" class="hint"></div><label style="margin-top:12px">${t.uploadAudio}</label><input id="introAudioInput" name="introAudio" type="file" accept="audio/mpeg,audio/mp4,audio/x-m4a,audio/wav,audio/x-wav,audio/aac,audio/ogg,audio/opus,audio/webm,.mp3,.m4a,.wav,.aac,.ogg,.opus,.webm,.flac"><div class="hint">${t.audioFormats}</div></div></div></div>
+<div class="agreement ${isWatchBuy ? "watchAgreement" : ""}"><input id="premiumTermsAccepted" name="termsAccepted" type="checkbox" value="yes" required><label for="premiumTermsAccepted">${isWatchBuy ? "I confirm that I own or have permission to use the product images, product introduction, item information, prices, links, music and all submitted content. I will review and correct AI-generated details before publishing." : "I confirm that I own or have permission to use the recipient photo, introduction video or voice recording, names, music instructions and all other submitted content."} I agree to the <a href="/greetings?lang=${lang}#terms" target="_blank" rel="noopener">Terms of Use, Privacy Policy and Refund Policy</a>.</label></div>
 <button id="submitBtn" class="submit" type="submit">✨ ${t.submit}</button><div id="status" class="status"></div></form><div id="result" class="result"><div>${t.success}</div><div id="orderId" class="orderId"></div><h3>${t.pay}</h3><div class="payments"><a id="shopifyPay" class="pay shopify" target="_blank" rel="noopener">🛒 ${t.shopify}</a><a id="africaPay" class="pay africa" target="_blank" rel="noopener">🌍 ${t.africa}</a><a id="workerLink" class="pay worker" target="_blank" rel="noopener">💬 ${t.worker}</a></div></div></section></main>
 <script>
 const form=document.getElementById('premiumForm'),button=document.getElementById('submitBtn'),termsAccepted=document.getElementById('premiumTermsAccepted'),statusBox=document.getElementById('status'),result=document.getElementById('result'),orderIdBox=document.getElementById('orderId'),shopifyPay=document.getElementById('shopifyPay'),africaPay=document.getElementById('africaPay'),workerLink=document.getElementById('workerLink');
@@ -19436,6 +19595,45 @@ recordedAudioPreview.addEventListener('error',()=>{audioPreviewConfirmed=false;a
 recordAgainBtn.addEventListener('click',startVoiceRecording);
 introAudioInput.addEventListener('change',async()=>{const selected=introAudioInput.files?.[0];if(!selected)return;clearRecordingTimer();stopMicrophoneMeter();stopMicrophoneStream();recordedAudioBlob=null;recordingChunks=[];await showAudioPreview(selected,'Uploaded audio ready.');});
 window.addEventListener('beforeunload',()=>{clearRecordingTimer();stopMicrophoneMeter();stopMicrophoneStream();clearAudioPreviewUrl();if(previewAudioContext)previewAudioContext.close().catch(()=>{});});
+const watchBuySpecsButton=document.getElementById('generateWatchBuySpecs');
+const watchBuyAiStatus=document.getElementById('watchBuyAiStatus');
+if(premiumIsWatchBuy&&watchBuySpecsButton){
+  watchBuySpecsButton.addEventListener('click',async()=>{
+    const imageInput=form.querySelector('input[name="recipientImages"]');
+    const firstImage=imageInput?.files?.[0];
+    if(!firstImage){watchBuyAiStatus.textContent='❌ Choose at least one clear product image first.';return;}
+    watchBuySpecsButton.disabled=true;
+    watchBuySpecsButton.textContent='⏳ Analyzing product image…';
+    watchBuyAiStatus.textContent='AI is checking visible product features. Do not close this page.';
+    try{
+      const aiForm=new FormData();
+      aiForm.append('productImage',firstImage);
+      aiForm.append('sellerHint',document.getElementById('watchBuyItemName')?.value||'');
+      const response=await fetch('/api/watch-buy/generate-specifications',{method:'POST',body:aiForm});
+      const data=await response.json().catch(()=>({}));
+      if(!response.ok||!data.ok)throw new Error(data.error||'Could not generate product details.');
+      const details=data.details||{};
+      const itemName=document.getElementById('watchBuyItemName');
+      const specifications=document.getElementById('watchBuySpecifications');
+      const notes=document.getElementById('watchBuyNotes');
+      if(itemName&&!itemName.value.trim()&&details.productNameSuggestion)itemName.value=details.productNameSuggestion;
+      if(specifications)specifications.value=String(details.shortSpecification||'').slice(0,220);
+      if(notes){
+        const featureText=(details.visibleFeatures||[]).join(', ');
+        const confirmText=(details.sellerConfirmationRequired||[]).join(', ');
+        notes.value=[
+          details.category?('Category: '+details.category):'',
+          featureText?('Visible features: '+featureText):'',
+          confirmText?('Seller must confirm: '+confirmText):'',
+          details.socialCaption?('Social caption: '+details.socialCaption):'',
+          Array.isArray(details.hashtags)&&details.hashtags.length?('Hashtags: '+details.hashtags.join(' ')):''
+        ].filter(Boolean).join('\n').slice(0,1800);
+      }
+      watchBuyAiStatus.textContent='✅ Product details generated. Please review and correct anything uncertain before creating the video.';
+    }catch(error){watchBuyAiStatus.textContent='❌ '+error.message;}
+    finally{watchBuySpecsButton.disabled=false;watchBuySpecsButton.textContent='✨ Generate Product Details from First Image';}
+  });
+}
 function syncPremiumButton(){button.disabled=false;}
 termsAccepted.addEventListener('change',syncPremiumButton);
 window.addEventListener('pageshow',syncPremiumButton);
@@ -19467,7 +19665,7 @@ async function readReliableAudioDuration(file){
     return 0;
   }
 }
-form.addEventListener('submit',async(e)=>{e.preventDefault();if(!termsAccepted.checked){statusBox.textContent='❌ '+(premiumIsMultiImage?premiumMultiUi.acceptTerms:'Please confirm permission and accept the Terms, Privacy and Refund Policy.');return;}button.disabled=true;button.textContent='⏳ ${t.saving}';statusBox.textContent='';result.style.display='none';try{const fd=new FormData(form);const introMode=introMediaTypeInput.value==='audio'?'audio':'video';const video=fd.get('introVideo');const uploadedAudio=fd.get('introAudio');const singlePhoto=fd.get('recipientPhoto');const multiPhotos=fd.getAll('recipientImages').filter(file=>file&&file.size);if(premiumIsMultiImage){if(multiPhotos.length<2||multiPhotos.length>8)throw new Error('${t.required}');for(const image of multiPhotos){if(image.size>10*1024*1024)throw new Error(premiumMultiUi.imageTooLarge);}}else{if(!singlePhoto||!singlePhoto.size)throw new Error('${t.required}');if(singlePhoto.size>10*1024*1024)throw new Error('Recipient photo must be 10 MB or smaller.');}let introFile=null;if(introMode==='audio'){if(recordedAudioBlob){const extension=recordedAudioBlob.type.includes('mp4')?'m4a':recordedAudioBlob.type.includes('ogg')?'ogg':'webm';introFile=new File([recordedAudioBlob],'printo-voice-introduction.'+extension,{type:recordedAudioBlob.type||'audio/webm'});fd.set('introAudio',introFile);}else if(uploadedAudio&&uploadedAudio.size){introFile=uploadedAudio;}if(!introFile)throw new Error(premiumIntroUi.audioRequired);if(!audioPreviewConfirmed)throw new Error('Tap Play Recording and confirm that you can hear your voice before saving the order.');if(introFile.size>30*1024*1024)throw new Error(premiumIntroUi.audioTooLarge);const audioDuration=await readReliableAudioDuration(introFile);if(audioDuration>60.25)throw new Error(premiumIntroUi.audioTooLong);fd.delete('introVideo');}else{introFile=video;if(!introFile||!introFile.size)throw new Error('${t.required}');if(introFile.size>100*1024*1024)throw new Error(premiumIsMultiImage?premiumMultiUi.videoTooLarge:'Introduction video must be 100 MB or smaller.');const videoDuration=await readMediaDuration(introFile,false);if(videoDuration>60.25)throw new Error(premiumIsMultiImage?premiumMultiUi.videoTooLong:'Introduction video must be 60 seconds or shorter.');fd.delete('introAudio');}fd.set('introMediaType',introMode);statusBox.textContent='⏳ '+(introMode==='audio'?premiumIntroUi.audioUploading:(premiumIsMultiImage?premiumMultiUi.uploading:'Uploading and compressing your introduction video…'));fd.set('customerKey',accountKey);let response;try{response=await fetch('/api/greeting/premium/request',{method:'POST',headers:{'x-printo-customer-id':customerId,'x-printo-customer-key':accountKey},body:fd});}catch(networkError){throw new Error(premiumIntroUi.connectionInterrupted||'The upload connection was interrupted. Check My Videos or the worker dashboard before submitting again.');}const responseText=await response.text();let data={};try{data=responseText?JSON.parse(responseText):{};}catch(_parseError){throw new Error(response.ok?'The server returned an unreadable response. Please check My Videos before retrying.':('Server error '+response.status+'. Please check Render logs.'));}if(response.status===402&&data.paymentRequired){statusBox.textContent=(data.saved?'✅ ${t.success} ':'')+'💳 '+(premiumIsMultiImage?premiumMultiUi.paymentRequired:(data.error||'Payment is required.'));const creditsNeeded=String(data.access?.creditsNeeded||${creationCreditCost});orderIdBox.textContent=data.orderId?((premiumIsMultiImage?premiumMultiUi.order:'Order')+': '+data.orderId+' • Payment required'):(premiumIsMultiImage?premiumMultiUi.paymentSummary.replace('{credits}',creditsNeeded):'Premium payment required');shopifyPay.href=data.payment?.shopify||'/multi-image-checkout';africaPay.href=data.payment?.africa||'#';if(!data.payment?.shopify&&premiumIsMultiImage)shopifyPay.href='/multi-image-checkout';if(data.whatsappUrl){workerLink.href=data.whatsappUrl;workerLink.classList.remove('disabled');}else{workerLink.classList.add('disabled');}result.style.display='block';result.scrollIntoView({behavior:'smooth'});return;}if(!response.ok||!data.ok)throw new Error(data.error||'Could not save premium order.');statusBox.textContent='✅ ${t.success} '+(introMode==='audio'?premiumIntroUi.audioStored:(premiumIsMultiImage?premiumMultiUi.stored:'Introduction video compressed and stored safely.'));const chargeSummary=data.usedFreeMultiImageTrial?premiumMultiUi.freeTestUsed:String(data.chargedCredits??data.creditCost??${creationCreditCost})+' '+premiumMultiUi.creditsDeducted;orderIdBox.textContent=(premiumIsMultiImage?premiumMultiUi.order:'Order')+': '+data.orderId+' • '+chargeSummary;shopifyPay.href=data.payment?.shopify||'#';africaPay.href=data.payment?.africa||'#';if(!data.payment?.shopify)shopifyPay.classList.add('disabled');else shopifyPay.classList.remove('disabled');workerLink.href=data.whatsappUrl;result.style.display='block';result.scrollIntoView({behavior:'smooth'});}catch(error){statusBox.textContent='❌ '+error.message;}finally{button.textContent='✨ ${t.submit}';syncPremiumButton();}});
+form.addEventListener('submit',async(e)=>{e.preventDefault();if(!termsAccepted.checked){statusBox.textContent='❌ '+(premiumIsMultiImage?premiumMultiUi.acceptTerms:'Please confirm permission and accept the Terms, Privacy and Refund Policy.');return;}button.disabled=true;button.textContent='⏳ ${t.saving}';statusBox.textContent='';result.style.display='none';try{const fd=new FormData(form);const introMode=introMediaTypeInput.value==='audio'?'audio':'video';const video=fd.get('introVideo');const uploadedAudio=fd.get('introAudio');const singlePhoto=fd.get('recipientPhoto');const multiPhotos=fd.getAll('recipientImages').filter(file=>file&&file.size);if(premiumIsWatchBuy){const specs=String(fd.get('personalMessage')||'').trim();if(!specs)throw new Error('Generate or enter the product specifications before creating the video.');const extraNotes=String(fd.get('tributeNotes')||'').trim();const shopifyPrice=String(fd.get('shopifyListingPrice')||'').trim();const africaPrice=String(fd.get('africaListingPrice')||'').trim();const shopifyLink=String(fd.get('shopifyProductLink')||'').trim();const africaLink=String(fd.get('africaPaymentLink')||'').trim();fd.set('tributeNotes',[extraNotes,shopifyPrice?('Shopify Price: '+shopifyPrice):'',africaPrice?('Africa Price: '+africaPrice):'',shopifyLink?('Shopify Link: '+shopifyLink):'',africaLink?('Africa Payment: '+africaLink):''].filter(Boolean).join('\n').slice(0,1800));}if(premiumIsMultiImage){if(multiPhotos.length<2||multiPhotos.length>8)throw new Error('${t.required}');for(const image of multiPhotos){if(image.size>10*1024*1024)throw new Error(premiumMultiUi.imageTooLarge);}}else{if(!singlePhoto||!singlePhoto.size)throw new Error('${t.required}');if(singlePhoto.size>10*1024*1024)throw new Error('Recipient photo must be 10 MB or smaller.');}let introFile=null;if(introMode==='audio'){if(recordedAudioBlob){const extension=recordedAudioBlob.type.includes('mp4')?'m4a':recordedAudioBlob.type.includes('ogg')?'ogg':'webm';introFile=new File([recordedAudioBlob],'printo-voice-introduction.'+extension,{type:recordedAudioBlob.type||'audio/webm'});fd.set('introAudio',introFile);}else if(uploadedAudio&&uploadedAudio.size){introFile=uploadedAudio;}if(!introFile)throw new Error(premiumIntroUi.audioRequired);if(!audioPreviewConfirmed)throw new Error('Tap Play Recording and confirm that you can hear your voice before saving the order.');if(introFile.size>30*1024*1024)throw new Error(premiumIntroUi.audioTooLarge);const audioDuration=await readReliableAudioDuration(introFile);if(audioDuration>60.25)throw new Error(premiumIntroUi.audioTooLong);fd.delete('introVideo');}else{introFile=video;if(!introFile||!introFile.size)throw new Error('${t.required}');if(introFile.size>100*1024*1024)throw new Error(premiumIsMultiImage?premiumMultiUi.videoTooLarge:'Introduction video must be 100 MB or smaller.');const videoDuration=await readMediaDuration(introFile,false);if(videoDuration>60.25)throw new Error(premiumIsMultiImage?premiumMultiUi.videoTooLong:'Introduction video must be 60 seconds or shorter.');fd.delete('introAudio');}fd.set('introMediaType',introMode);statusBox.textContent='⏳ '+(introMode==='audio'?premiumIntroUi.audioUploading:(premiumIsMultiImage?premiumMultiUi.uploading:'Uploading and compressing your introduction video…'));fd.set('customerKey',accountKey);let response;try{response=await fetch('/api/greeting/premium/request',{method:'POST',headers:{'x-printo-customer-id':customerId,'x-printo-customer-key':accountKey},body:fd});}catch(networkError){throw new Error(premiumIntroUi.connectionInterrupted||'The upload connection was interrupted. Check My Videos or the worker dashboard before submitting again.');}const responseText=await response.text();let data={};try{data=responseText?JSON.parse(responseText):{};}catch(_parseError){throw new Error(response.ok?'The server returned an unreadable response. Please check My Videos before retrying.':('Server error '+response.status+'. Please check Render logs.'));}if(response.status===402&&data.paymentRequired){statusBox.textContent=(data.saved?'✅ ${t.success} ':'')+'💳 '+(premiumIsMultiImage?premiumMultiUi.paymentRequired:(data.error||'Payment is required.'));const creditsNeeded=String(data.access?.creditsNeeded||${creationCreditCost});orderIdBox.textContent=data.orderId?((premiumIsMultiImage?premiumMultiUi.order:'Order')+': '+data.orderId+' • Payment required'):(premiumIsMultiImage?premiumMultiUi.paymentSummary.replace('{credits}',creditsNeeded):'Premium payment required');shopifyPay.href=data.payment?.shopify||'/multi-image-checkout';africaPay.href=data.payment?.africa||'#';if(!data.payment?.shopify&&premiumIsMultiImage)shopifyPay.href='/multi-image-checkout';if(data.whatsappUrl){workerLink.href=data.whatsappUrl;workerLink.classList.remove('disabled');}else{workerLink.classList.add('disabled');}result.style.display='block';result.scrollIntoView({behavior:'smooth'});return;}if(!response.ok||!data.ok)throw new Error(data.error||'Could not save premium order.');statusBox.textContent='✅ ${t.success} '+(introMode==='audio'?premiumIntroUi.audioStored:(premiumIsMultiImage?premiumMultiUi.stored:'Introduction video compressed and stored safely.'));const chargeSummary=data.usedFreeMultiImageTrial?premiumMultiUi.freeTestUsed:String(data.chargedCredits??data.creditCost??${creationCreditCost})+' '+premiumMultiUi.creditsDeducted;orderIdBox.textContent=(premiumIsMultiImage?premiumMultiUi.order:'Order')+': '+data.orderId+' • '+chargeSummary;shopifyPay.href=data.payment?.shopify||'#';africaPay.href=data.payment?.africa||'#';if(!data.payment?.shopify)shopifyPay.classList.add('disabled');else shopifyPay.classList.remove('disabled');workerLink.href=data.whatsappUrl;result.style.display='block';result.scrollIntoView({behavior:'smooth'});}catch(error){statusBox.textContent='❌ '+error.message;}finally{button.textContent='✨ ${t.submit}';syncPremiumButton();}});
 </script></body></html>`;
 }
 
@@ -19597,7 +19795,7 @@ async function ensurePremiumSharePreview(orderId, token) {
         orderId,
         token,
         previewData,
-        `Printo-Premium-Preview-Play-${orderId}.jpg`
+        isWatchBuy ? `Watch-and-Buy-Preview-${orderId}.jpg` : `Printo-Premium-Preview-Play-${orderId}.jpg`
       ]
     );
 
@@ -19913,7 +20111,7 @@ const pageUrl=${JSON.stringify(pageUrl)};
 const videoUrl=${JSON.stringify(videoUrl)};
 const downloadUrl=${JSON.stringify(downloadUrl)};
 const shareText=${JSON.stringify(shareText)};
-const fileName=${JSON.stringify(`Printo-Premium-${orderId}.mp4`)};
+const fileName=${JSON.stringify(isWatchBuy ? `Watch-and-Buy-${orderId}.mp4` : `Printo-Premium-${orderId}.mp4`)};
 const premiumVideo=document.getElementById('premiumVideo');
 const bigPlayButton=document.getElementById('bigPlayButton');
 
@@ -20744,15 +20942,14 @@ async function renderPremiumOrderVideo({ orderId, req, publicBaseUrl = "" }) {
   const order = found.rows[0];
   if (!order) throw new Error("Premium order was not found.");
 
+  const creationType = normalizePrintoCreationType(order.creation_type || "premium_video");
+  const isWatchBuy = creationType === "watch_buy";
   const premiumFramePath = findPremiumTributeFrame();
-  if (!premiumFramePath) {
+  if (!premiumFramePath && !isWatchBuy) {
     throw new Error(
       "Premium tribute frame is missing. Add templates/premium/premium_tribute_frame.png to the repository."
     );
   }
-
-  const creationType = normalizePrintoCreationType(order.creation_type || "premium_video");
-  const isWatchBuy = creationType === "watch_buy";
   const isMultiImage = isPrintoMultiImageCreationType(creationType);
   const storedImageResult = isMultiImage
     ? await queryWithRetry(
@@ -20854,7 +21051,9 @@ async function renderPremiumOrderVideo({ orderId, req, publicBaseUrl = "" }) {
     // Never fall back to the demo or intro music for a paid Premium order.
     if (!order.has_custom_music) {
       throw new Error(
-        "Custom tribute music is required. Upload the completed Suno song before rendering."
+        isWatchBuy
+          ? "Background music is required before rendering the Watch & Buy product video."
+          : "Custom tribute music is required. Upload the completed Suno song before rendering."
       );
     }
 
@@ -20921,10 +21120,10 @@ async function renderPremiumOrderVideo({ orderId, req, publicBaseUrl = "" }) {
     // recipient_name = item name, sender_name = price, personal_message = specifications.
     const recipientName = String(
       order.recipient_name || (isWatchBuy ? "Featured Item" : "Special Recipient")
-    ).trim().slice(0, 24);
+    ).trim().slice(0, isWatchBuy ? 48 : 24);
     const senderName = String(
       order.sender_name || (isWatchBuy ? "See Price" : "With Love")
-    ).trim().slice(0, 24);
+    ).trim().slice(0, isWatchBuy ? 40 : 24);
     const fullPersonalMessage = String(
       order.personal_message || (isWatchBuy
         ? "Product specifications and purchasing details."
@@ -21003,10 +21202,10 @@ async function renderPremiumOrderVideo({ orderId, req, publicBaseUrl = "" }) {
     const introWindowY = 150;
     const introWindowW = 262;
     const introWindowH = 371;
-    const introInnerX = 166;
-    const introInnerY = 160;
-    const introInnerW = 244;
-    const introInnerH = 347;
+    const introInnerX = isWatchBuy ? 57 : 166;
+    const introInnerY = isWatchBuy ? 134 : 160;
+    const introInnerW = isWatchBuy ? 462 : 244;
+    const introInnerH = isWatchBuy ? 406 : 347;
 
     // Fit the complete sender vertically without cutting off the cap, head,
     // face, or shoulders. Any unused space stays a clean warm cream color.
@@ -21028,9 +21227,40 @@ async function renderPremiumOrderVideo({ orderId, req, publicBaseUrl = "" }) {
 
     // Coordinates are based on the approved 1024 x 1536 artwork scaled exactly
     // to 576 x 864.
-    const baseFrame = `scale=${outputW}:${outputH},setsar=1,format=yuv420p`;
+    const watchBuyNotes = String(order.tribute_notes || "");
+    const extractListingLine = (label) => {
+      const match = watchBuyNotes.match(new RegExp(`(?:^|\\n)${label}:\\s*([^\\n]+)`, "i"));
+      return match ? String(match[1] || "").trim().slice(0, 48) : "";
+    };
+    const shopifyListingPrice = extractListingLine("Shopify Price");
+    const africaListingPrice = extractListingLine("Africa Price");
 
-    const commonTextOverlay = [
+    const baseFrame = isWatchBuy
+      ? `color=c=#06173b:s=${outputW}x${outputH}:d=${Math.max(introDuration, tributeDuration)},format=yuv420p`
+      : `scale=${outputW}:${outputH},setsar=1,format=yuv420p`;
+
+    const watchBuyTextOverlay = [
+      "drawbox=x=0:y=0:w=576:h=864:color=#06173b@1:t=fill",
+      "drawbox=x=18:y=18:w=540:h=828:color=#071f4f@1:t=fill",
+      "drawbox=x=18:y=18:w=540:h=88:color=#0b4fb3@1:t=fill",
+      `drawtext=${fontOption}text='WATCH & BUY':x=(w-text_w)/2:y=31:fontsize=34:fontcolor=#ffffff`,
+      `drawtext=${fontOption}text='Powered by PATAPATA':x=(w-text_w)/2:y=72:fontsize=15:fontcolor=#67e8f9`,
+      "drawbox=x=45:y=122:w=486:h=430:color=#eef6ff@1:t=fill",
+      "drawbox=x=45:y=122:w=486:h=430:color=#38bdf8@1:t=5",
+      "drawbox=x=40:y=570:w=496:h=88:color=#ffffff@1:t=fill",
+      `drawtext=${fontOption}text=${q(recipientName)}:x=(w-text_w)/2:y=583:fontsize=26:fontcolor=#082b6a`,
+      `drawtext=${fontOption}text=${q(senderName)}:x=(w-text_w)/2:y=620:fontsize=27:fontcolor=#d97706`,
+      "drawbox=x=40:y=675:w=496:h=115:color=#eaf2ff@1:t=fill",
+      `drawtext=${fontOption}text='PRODUCT DETAILS':x=(w-text_w)/2:y=687:fontsize=16:fontcolor=#0b4fb3`,
+      `drawtext=${fontOption}text=${q(messageLines[0] || "")}:x=(w-text_w)/2:y=716:fontsize=${Math.max(12,messageFontSize)}:fontcolor=#102a56`,
+      `drawtext=${fontOption}text=${q(messageLines[1] || "")}:x=(w-text_w)/2:y=${716 + messageLineGap}:fontsize=${Math.max(12,messageFontSize)}:fontcolor=#102a56`,
+      `drawtext=${fontOption}text=${q(messageLines[2] || "")}:x=(w-text_w)/2:y=${716 + messageLineGap*2}:fontsize=${Math.max(12,messageFontSize)}:fontcolor=#102a56`,
+      `drawtext=${fontOption}text=${q(messageLines[3] || "")}:x=(w-text_w)/2:y=${716 + messageLineGap*3}:fontsize=${Math.max(12,messageFontSize)}:fontcolor=#102a56`,
+      shopifyListingPrice ? `drawtext=${fontOption}text=${q('SHOPIFY '+shopifyListingPrice)}:x=54:y=808:fontsize=14:fontcolor=#ffffff:box=1:boxcolor=#2f6b2f@1:boxborderw=8` : "null",
+      africaListingPrice ? `drawtext=${fontOption}text=${q('AFRICA '+africaListingPrice)}:x=310:y=808:fontsize=14:fontcolor=#ffffff:box=1:boxcolor=#008751@1:boxborderw=8` : "null"
+    ].filter((value) => value !== "null").join(",");
+
+    const commonTextOverlay = isWatchBuy ? watchBuyTextOverlay : [
       // Keep all customer fields blank in the master artwork, then write the
       // current order's data into the dedicated panels at render time.
       "drawbox=x=53:y=574:w=199:h=48:color=#fff7e6@0.99:t=fill",
@@ -21052,6 +21282,10 @@ async function renderPremiumOrderVideo({ orderId, req, publicBaseUrl = "" }) {
       `drawtext=${fontOption}text=${q(messageLines[7] || "")}:x=(w-text_w)/2:y=${699 + messageLineGap * 7}:fontsize=${messageFontSize}:fontcolor=#082b6a:borderw=1:bordercolor=#fff7e6`
     ].join(",");
 
+    const premiumBaseInputArgs = isWatchBuy
+      ? ["-f", "lavfi", "-i", `color=c=#06173b:s=${outputW}x${outputH}:r=15`]
+      : ["-loop", "1", "-i", premiumFramePath];
+
     console.log("Premium render stage 4/7 - creating final vertical Printo segments:", orderId);
     console.log("Premium Stage 4 media window:", { orderId, introInnerW, introInnerH, introDuration, tributeDuration });
 
@@ -21062,7 +21296,7 @@ async function renderPremiumOrderVideo({ orderId, req, publicBaseUrl = "" }) {
     if (introMediaType === "audio" || !introProbe.hasVideo) {
       await execFilePromise("ffmpeg", [
         "-y", "-nostdin", "-loglevel", "error",
-        "-loop", "1", "-i", premiumFramePath,
+        ...premiumBaseInputArgs,
         "-loop", "1", "-i", tributeImagePaths[0],
         "-filter_complex",
         `[0:v]${baseFrame},${commonTextOverlay}[base];` +
@@ -21082,7 +21316,7 @@ async function renderPremiumOrderVideo({ orderId, req, publicBaseUrl = "" }) {
     } else {
       await execFilePromise("ffmpeg", [
         "-y", "-nostdin", "-loglevel", "error",
-        "-loop", "1", "-i", premiumFramePath,
+        ...premiumBaseInputArgs,
         "-i", introPath,
         "-filter_complex",
         `[0:v]${baseFrame},${commonTextOverlay}[base];` +
@@ -21115,9 +21349,7 @@ async function renderPremiumOrderVideo({ orderId, req, publicBaseUrl = "" }) {
       const imageClipDuration =
         (tributeDuration + (tributeImagePaths.length - 1) * flipDuration) /
         tributeImagePaths.length;
-      const slideshowInputArgs = [
-        "-loop", "1", "-i", premiumFramePath
-      ];
+      const slideshowInputArgs = [...premiumBaseInputArgs];
       tributeImagePaths.forEach((imagePath) => {
         slideshowInputArgs.push(
           "-loop", "1",
@@ -21174,7 +21406,7 @@ async function renderPremiumOrderVideo({ orderId, req, publicBaseUrl = "" }) {
     } else {
       await execFilePromise("ffmpeg", [
         "-y", "-nostdin", "-loglevel", "error",
-        "-loop", "1", "-i", premiumFramePath,
+        ...premiumBaseInputArgs,
         "-loop", "1", "-i", tributeImagePaths[0],
         "-filter_complex",
         `[0:v]${baseFrame},${commonTextOverlay}[base];` +
@@ -21355,7 +21587,9 @@ async function renderPremiumOrderVideo({ orderId, req, publicBaseUrl = "" }) {
         finalBytes,
         `Printo-Premium-${orderId}.mp4`,
         premiumResultUrl,
-        `${introMediaType === "audio" ? "Voice introduction" : "Video introduction"} by ${senderName}, followed by a tribute song for ${recipientName}.`,
+        isWatchBuy
+          ? `${introMediaType === "audio" ? "Voice introduction" : "Video introduction"} for ${recipientName}, followed by a product image showcase.`
+          : `${introMediaType === "audio" ? "Voice introduction" : "Video introduction"} by ${senderName}, followed by a tribute song for ${recipientName}.`,
         sharePreviewBytes,
         `Printo-Premium-Preview-Play-${orderId}.jpg`
       ]
