@@ -773,8 +773,7 @@ async function generateWatchBuyAiDetails({ imageBuffer, mimeType, sellerHint = "
   const imageDataUrl = `data:${mimeType || "image/jpeg"};base64,${imageBuffer.toString("base64")}`;
   const prompt = [
     "Analyze this product image for a truthful Watch & Buy listing.",
-    "Return JSON only with these exact keys:",
-    "productNameSuggestion, category, shortSpecification, visibleFeatures, sellerConfirmationRequired, socialCaption, hashtags.",
+    "Return the requested structured product details.",
     "Rules:",
     "- Describe only what is visible in the supplied image.",
     "- Never invent brand, exact model, authenticity, storage, dimensions, material, condition, age, performance, warranty, or included accessories.",
@@ -785,70 +784,105 @@ async function generateWatchBuyAiDetails({ imageBuffer, mimeType, sellerHint = "
     sellerHint ? `Seller hint: ${cleanAiProductText(sellerHint, 300)}` : ""
   ].filter(Boolean).join("\n");
 
-  const response = await axios.post(
-    "https://api.openai.com/v1/responses",
-    {
-      model: process.env.OPENAI_WATCH_BUY_MODEL || "gpt-5-mini",
-      input: [{
-        role: "user",
-        content: [
-          { type: "input_text", text: prompt },
-          { type: "input_image", image_url: imageDataUrl, detail: "high" }
-        ]
-      }],
-      text: {
-        format: {
-          type: "json_schema",
-          name: "watch_buy_product_details",
-          strict: true,
-          schema: {
-            type: "object",
-            additionalProperties: false,
-            properties: {
-              productNameSuggestion: { type: "string" },
-              category: { type: "string" },
-              shortSpecification: { type: "string" },
-              visibleFeatures: { type: "array", items: { type: "string" } },
-              sellerConfirmationRequired: { type: "array", items: { type: "string" } },
-              socialCaption: { type: "string" },
-              hashtags: { type: "array", items: { type: "string" } }
-            },
-            required: [
-              "productNameSuggestion",
-              "category",
-              "shortSpecification",
-              "visibleFeatures",
-              "sellerConfirmationRequired",
-              "socialCaption",
-              "hashtags"
+  const schema = {
+    type: "object",
+    additionalProperties: false,
+    properties: {
+      productNameSuggestion: { type: "string" },
+      category: { type: "string" },
+      shortSpecification: { type: "string" },
+      visibleFeatures: { type: "array", items: { type: "string" } },
+      sellerConfirmationRequired: { type: "array", items: { type: "string" } },
+      socialCaption: { type: "string" },
+      hashtags: { type: "array", items: { type: "string" } }
+    },
+    required: [
+      "productNameSuggestion",
+      "category",
+      "shortSpecification",
+      "visibleFeatures",
+      "sellerConfirmationRequired",
+      "socialCaption",
+      "hashtags"
+    ]
+  };
+
+  let lastError = null;
+  const models = [
+    String(process.env.OPENAI_WATCH_BUY_MODEL || "gpt-4.1-mini").trim(),
+    "gpt-4.1-mini"
+  ].filter((value, index, values) => value && values.indexOf(value) === index);
+
+  for (const model of models) {
+    try {
+      const response = await axios.post(
+        "https://api.openai.com/v1/responses",
+        {
+          model,
+          input: [{
+            role: "user",
+            content: [
+              { type: "input_text", text: prompt },
+              { type: "input_image", image_url: imageDataUrl, detail: "high" }
             ]
+          }],
+          text: {
+            format: {
+              type: "json_schema",
+              name: "watch_buy_product_details",
+              strict: true,
+              schema
+            }
+          },
+          max_output_tokens: 1800
+        },
+        {
+          timeout: 90_000,
+          headers: {
+            Authorization: `Bearer ${apiKey}`,
+            "Content-Type": "application/json"
           }
         }
-      },
-      max_output_tokens: 900
-    },
-    {
-      timeout: 90_000,
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        "Content-Type": "application/json"
-      }
-    }
-  );
+      );
 
-  const parsed = parseStrictJsonText(extractOpenAiOutputText(response.data));
-  return {
-    productNameSuggestion: cleanAiProductText(parsed.productNameSuggestion, 80),
-    category: cleanAiProductText(parsed.category, 80),
-    shortSpecification: cleanAiProductText(parsed.shortSpecification, 220),
-    visibleFeatures: (Array.isArray(parsed.visibleFeatures) ? parsed.visibleFeatures : [])
-      .map((value) => cleanAiProductText(value, 80)).filter(Boolean).slice(0, 10),
-    sellerConfirmationRequired: (Array.isArray(parsed.sellerConfirmationRequired) ? parsed.sellerConfirmationRequired : [])
-      .map((value) => cleanAiProductText(value, 100)).filter(Boolean).slice(0, 10),
-    socialCaption: cleanAiProductText(parsed.socialCaption, 500),
-    hashtags: (Array.isArray(parsed.hashtags) ? parsed.hashtags : [])
-      .map((value) => cleanAiProductText(value, 40)).filter(Boolean).slice(0, 8)
-  };
+      const outputText = extractOpenAiOutputText(response.data);
+      if (!outputText) {
+        const incompleteReason = response.data?.incomplete_details?.reason || response.data?.status || "empty_output";
+        throw new Error(`OpenAI returned no product details (${incompleteReason}).`);
+      }
+
+      let parsed;
+      try {
+        parsed = parseStrictJsonText(outputText);
+      } catch (parseError) {
+        const preview = outputText.slice(0, 180).replace(/\s+/g, " ");
+        throw new Error(`OpenAI returned incomplete product details. Please try again. Response preview: ${preview}`);
+      }
+
+      return {
+        productNameSuggestion: cleanAiProductText(parsed.productNameSuggestion, 80),
+        category: cleanAiProductText(parsed.category, 80),
+        shortSpecification: cleanAiProductText(parsed.shortSpecification, 220),
+        visibleFeatures: (Array.isArray(parsed.visibleFeatures) ? parsed.visibleFeatures : [])
+          .map((value) => cleanAiProductText(value, 80)).filter(Boolean).slice(0, 10),
+        sellerConfirmationRequired: (Array.isArray(parsed.sellerConfirmationRequired) ? parsed.sellerConfirmationRequired : [])
+          .map((value) => cleanAiProductText(value, 100)).filter(Boolean).slice(0, 10),
+        socialCaption: cleanAiProductText(parsed.socialCaption, 500),
+        hashtags: (Array.isArray(parsed.hashtags) ? parsed.hashtags : [])
+          .map((value) => cleanAiProductText(value, 40)).filter(Boolean).slice(0, 8)
+      };
+    } catch (error) {
+      lastError = error;
+      console.error("Watch & Buy AI model attempt failed:", {
+        model,
+        message: error?.response?.data?.error?.message || error?.message || String(error),
+        status: error?.response?.status || ""
+      });
+      if (error?.response?.status === 401 || error?.response?.status === 429) break;
+    }
+  }
+
+  throw lastError || new Error("Could not generate product specifications.");
 }
 
 app.post(
