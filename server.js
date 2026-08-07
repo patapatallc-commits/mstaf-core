@@ -21417,10 +21417,13 @@ async function renderPremiumOrderVideo({ orderId, req, publicBaseUrl = "" }) {
 
     // The recipient photograph replaces the sender video immediately after
     // the speech ends. A very gentle zoom keeps the music section alive.
-    const recipientPhotoFilter =
-      `scale=${introInnerW + 34}:${introInnerH + 48}:force_original_aspect_ratio=increase,` +
-      `crop=${introInnerW}:${introInnerH}:(iw-${introInnerW})/2:(ih-${introInnerH})/2,` +
-      `setsar=1,format=yuv420p`;
+    const recipientPhotoFilter = isWatchBuy
+      ? `scale=${introInnerW}:${introInnerH}:force_original_aspect_ratio=decrease,` +
+        `pad=${introInnerW}:${introInnerH}:(ow-iw)/2:(oh-ih)/2:color=#eef6ff,` +
+        `setsar=1,format=yuv420p`
+      : `scale=${introInnerW + 34}:${introInnerH + 48}:force_original_aspect_ratio=increase,` +
+        `crop=${introInnerW}:${introInnerH}:(iw-${introInnerW})/2:(ih-${introInnerH})/2,` +
+        `setsar=1,format=yuv420p`;
 
     // Coordinates are based on the approved 1024 x 1536 artwork scaled exactly
     // to 576 x 864.
@@ -21437,26 +21440,57 @@ async function renderPremiumOrderVideo({ orderId, req, publicBaseUrl = "" }) {
     // [0:v] filter chain, because the color source accepts no video input.
     const baseFrame = `scale=${outputW}:${outputH},setsar=1,format=yuv420p`;
 
+    // Phone-readable Watch & Buy typography. Product titles use up to two
+    // centered lines; long prices and descriptions reduce slightly rather than
+    // touching the card edges.
+    const watchBuyTitleLines = wrapGreetingMessage(recipientName, 30, 2).split("\\n");
+    while (watchBuyTitleLines.length < 2) watchBuyTitleLines.push("");
+    const watchBuyTitleFontSize = recipientName.length > 42 ? 20 : recipientName.length > 30 ? 22 : 25;
+    const primaryPriceFontSize = senderName.length > 24 ? 18 : senderName.length > 15 ? 21 : 24;
+    const watchBuyDetailFontSize = Math.max(13, Math.min(17, messageFontSize + 2));
+    const watchBuyDetailGap = Math.max(16, messageLineGap + 1);
+
     const watchBuyTextOverlay = [
-      "drawbox=x=0:y=0:w=576:h=864:color=#06173b@1:t=fill",
-      "drawbox=x=18:y=18:w=540:h=828:color=#071f4f@1:t=fill",
-      "drawbox=x=18:y=18:w=540:h=88:color=#0b4fb3@1:t=fill",
-      `drawtext=${fontOption}text='WATCH & BUY':x=(w-text_w)/2:y=31:fontsize=34:fontcolor=#ffffff`,
-      `drawtext=${fontOption}text='Powered by PATAPATA':x=(w-text_w)/2:y=72:fontsize=15:fontcolor=#67e8f9`,
-      "drawbox=x=45:y=122:w=486:h=430:color=#eef6ff@1:t=fill",
-      "drawbox=x=45:y=122:w=486:h=430:color=#38bdf8@1:t=5",
-      "drawbox=x=40:y=570:w=496:h=88:color=#ffffff@1:t=fill",
-      `drawtext=${fontOption}text=${q(recipientName)}:x=(w-text_w)/2:y=583:fontsize=26:fontcolor=#082b6a`,
-      `drawtext=${fontOption}text=${q(senderName)}:x=(w-text_w)/2:y=620:fontsize=27:fontcolor=#d97706`,
-      "drawbox=x=40:y=675:w=496:h=115:color=#eaf2ff@1:t=fill",
-      `drawtext=${fontOption}text='PRODUCT DETAILS':x=(w-text_w)/2:y=687:fontsize=16:fontcolor=#0b4fb3`,
-      `drawtext=${fontOption}text=${q(messageLines[0] || "")}:x=(w-text_w)/2:y=716:fontsize=${Math.max(12,messageFontSize)}:fontcolor=#102a56`,
-      `drawtext=${fontOption}text=${q(messageLines[1] || "")}:x=(w-text_w)/2:y=${716 + messageLineGap}:fontsize=${Math.max(12,messageFontSize)}:fontcolor=#102a56`,
-      `drawtext=${fontOption}text=${q(messageLines[2] || "")}:x=(w-text_w)/2:y=${716 + messageLineGap*2}:fontsize=${Math.max(12,messageFontSize)}:fontcolor=#102a56`,
-      `drawtext=${fontOption}text=${q(messageLines[3] || "")}:x=(w-text_w)/2:y=${716 + messageLineGap*3}:fontsize=${Math.max(12,messageFontSize)}:fontcolor=#102a56`,
-      shopifyListingPrice ? `drawtext=${fontOption}text=${q('SHOPIFY '+shopifyListingPrice)}:x=54:y=808:fontsize=14:fontcolor=#ffffff:box=1:boxcolor=#2f6b2f@1:boxborderw=8` : "null",
-      africaListingPrice ? `drawtext=${fontOption}text=${q('AFRICA '+africaListingPrice)}:x=310:y=808:fontsize=14:fontcolor=#ffffff:box=1:boxcolor=#008751@1:boxborderw=8` : "null"
+      // Outer card and branded header.
+      "drawbox=x=0:y=0:w=576:h=864:color=#05132f@1:t=fill",
+      "drawbox=x=14:y=14:w=548:h=836:color=#08265e@1:t=fill",
+      "drawbox=x=14:y=14:w=548:h=92:color=#0b4fb3@1:t=fill",
+      `drawtext=${fontOption}text='PRINTO':x=34:y=29:fontsize=18:fontcolor=#67e8f9`,
+      `drawtext=${fontOption}text='WATCH & BUY':x=(w-text_w)/2:y=27:fontsize=31:fontcolor=#ffffff`,
+      `drawtext=${fontOption}text='Powered by PATAPATA':x=(w-text_w)/2:y=68:fontsize=14:fontcolor=#d9f7ff`,
+
+      // Large consistent seller-video / product-image window.
+      "drawbox=x=43:y=120:w=490:h=424:color=#eaf4ff@1:t=fill",
+      "drawbox=x=43:y=120:w=490:h=424:color=#38bdf8@1:t=5",
+      "drawtext=text='SELLER VIDEO • PRODUCT PHOTOS':x=(w-text_w)/2:y=128:fontsize=12:fontcolor=#0b4fb3",
+
+      // Product identity panel: two-line title and immediately visible price.
+      "drawbox=x=34:y=558:w=508:h=112:color=#ffffff@1:t=fill",
+      `drawtext=${fontOption}text=${q(watchBuyTitleLines[0] || "")}:x=(w-text_w)/2:y=570:fontsize=${watchBuyTitleFontSize}:fontcolor=#082b6a`,
+      `drawtext=${fontOption}text=${q(watchBuyTitleLines[1] || "")}:x=(w-text_w)/2:y=599:fontsize=${watchBuyTitleFontSize}:fontcolor=#082b6a`,
+      `drawtext=${fontOption}text=${q(senderName)}:x=(w-text_w)/2:y=632:fontsize=${primaryPriceFontSize}:fontcolor=#d97706`,
+
+      // Readable specifications panel.
+      "drawbox=x=34:y=680:w=508:h=112:color=#edf5ff@1:t=fill",
+      `drawtext=${fontOption}text='PRODUCT DETAILS':x=52:y=690:fontsize=15:fontcolor=#0b4fb3`,
+      `drawtext=${fontOption}text=${q(messageLines[0] || "")}:x=52:y=716:fontsize=${watchBuyDetailFontSize}:fontcolor=#102a56`,
+      `drawtext=${fontOption}text=${q(messageLines[1] || "")}:x=52:y=${716 + watchBuyDetailGap}:fontsize=${watchBuyDetailFontSize}:fontcolor=#102a56`,
+      `drawtext=${fontOption}text=${q(messageLines[2] || "")}:x=52:y=${716 + watchBuyDetailGap * 2}:fontsize=${watchBuyDetailFontSize}:fontcolor=#102a56`,
+      `drawtext=${fontOption}text=${q(messageLines[3] || "")}:x=52:y=${716 + watchBuyDetailGap * 3}:fontsize=${watchBuyDetailFontSize}:fontcolor=#102a56`,
+
+      // Buying actions occupy the former empty footer space.
+      "drawbox=x=34:y=804:w=164:h=38:color=#f59e0b@1:t=fill",
+      `drawtext=${fontOption}text='BUY NOW':x=116-text_w/2:y=815:fontsize=16:fontcolor=#ffffff`,
+      "drawbox=x=206:y=804:w=164:h=38:color=#16803b@1:t=fill",
+      `drawtext=${fontOption}text='AFRICA PAY':x=288-text_w/2:y=815:fontsize=15:fontcolor=#ffffff`,
+      "drawbox=x=378:y=804:w=164:h=38:color=#0b4fb3@1:t=fill",
+      `drawtext=${fontOption}text='CONTACT SELLER':x=460-text_w/2:y=815:fontsize=13:fontcolor=#ffffff`,
+
+      // Optional channel-specific prices remain visible without crowding.
+      shopifyListingPrice ? `drawtext=${fontOption}text=${q('Shopify '+shopifyListingPrice)}:x=44:y=777:fontsize=12:fontcolor=#0b4fb3` : "null",
+      africaListingPrice ? `drawtext=${fontOption}text=${q('Africa '+africaListingPrice)}:x=330:y=777:fontsize=12:fontcolor=#16803b` : "null"
     ].filter((value) => value !== "null").join(",");
+
 
     const commonTextOverlay = isWatchBuy ? watchBuyTextOverlay : [
       // Keep all customer fields blank in the master artwork, then write the
