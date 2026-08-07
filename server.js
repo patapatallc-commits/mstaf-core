@@ -19510,7 +19510,7 @@ function buildPremiumGreetingOrderPage(language = "en", creationType = "premium_
           text(details.shortSpecification),
           features?('Visible features: '+features):'',
           confirms?('Seller confirmation required: '+confirms):''
-        ].filter(Boolean).join('\\n').slice(0,220);
+        ].filter(Boolean).join('\n').slice(0,220);
       }
       if(status)status.textContent='✅ Product details generated. Review and correct them before submitting.';
       specs?.scrollIntoView({behavior:'smooth',block:'center'});
@@ -19808,7 +19808,7 @@ window.generateWatchBuyProductDetails=async function(event){
         String(details.shortSpecification||'').trim(),
         featureText?('Visible features: '+featureText):'',
         confirmText?('Seller confirmation required: '+confirmText):''
-      ].filter(Boolean).join('\\n').slice(0,220);
+      ].filter(Boolean).join('\n').slice(0,220);
     }
     if(status)status.textContent='✅ Product details generated. Review and correct anything uncertain before creating the video.';
     specifications?.scrollIntoView({behavior:'smooth',block:'center'});
@@ -21432,9 +21432,10 @@ async function renderPremiumOrderVideo({ orderId, req, publicBaseUrl = "" }) {
     const shopifyListingPrice = extractListingLine("Shopify Price");
     const africaListingPrice = extractListingLine("Africa Price");
 
-    const baseFrame = isWatchBuy
-      ? `color=c=#06173b:s=${outputW}x${outputH}:d=${Math.max(introDuration, tributeDuration)},format=yuv420p`
-      : `scale=${outputW}:${outputH},setsar=1,format=yuv420p`;
+    // The Watch & Buy background is already supplied as FFmpeg input 0 by
+    // premiumBaseInputArgs. Do not add another color source inside the
+    // [0:v] filter chain, because the color source accepts no video input.
+    const baseFrame = `scale=${outputW}:${outputH},setsar=1,format=yuv420p`;
 
     const watchBuyTextOverlay = [
       "drawbox=x=0:y=0:w=576:h=864:color=#06173b@1:t=fill",
