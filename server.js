@@ -19997,6 +19997,70 @@ async function generatePremiumSharePreviewFile(videoPath, previewPath) {
   };
 }
 
+
+async function generateWatchBuyProductSharePreviewFile(imagePath, previewPath) {
+  // Social preview for Watch & Buy should lead with the merchandise itself,
+  // not a frame from the seller-introduction video.
+  const filter =
+    "[0:v]split=2[background][foreground];" +
+    "[background]scale=1200:630:force_original_aspect_ratio=increase," +
+      "crop=1200:630,gblur=sigma=30[blurred];" +
+    "[foreground]scale=1120:590:force_original_aspect_ratio=decrease[product];" +
+    "[blurred][product]overlay=(W-w)/2:(H-h)/2," +
+      "drawbox=x=0:y=0:w=iw:h=ih:color=black@0.05:t=fill," +
+      "drawtext=fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf:" +
+        "text='▶':fontsize=160:fontcolor=white:" +
+        "x=(w-text_w)/2+7:y=(h-text_h)/2-5:" +
+        "box=1:boxcolor=black@0.58:boxborderw=38," +
+      "format=yuvj420p[preview]";
+
+  await execFilePromise("ffmpeg", [
+    "-y", "-nostdin", "-loglevel", "error",
+    "-i", imagePath,
+    "-filter_complex", filter,
+    "-map", "[preview]",
+    "-frames:v", "1",
+    "-q:v", "7",
+    "-map_metadata", "-1",
+    previewPath
+  ], {
+    timeout: 120000,
+    maxBuffer: 6 * 1024 * 1024
+  });
+
+  let stat = await fs.promises.stat(previewPath);
+  if (stat.size > 700 * 1024) {
+    const smallerPath = `${previewPath}.smaller.jpg`;
+    await execFilePromise("ffmpeg", [
+      "-y", "-nostdin", "-loglevel", "error",
+      "-i", imagePath,
+      "-filter_complex", filter,
+      "-map", "[preview]",
+      "-frames:v", "1",
+      "-q:v", "11",
+      "-map_metadata", "-1",
+      smallerPath
+    ], {
+      timeout: 120000,
+      maxBuffer: 6 * 1024 * 1024
+    });
+    safeUnlink(previewPath);
+    fs.renameSync(smallerPath, previewPath);
+    stat = await fs.promises.stat(previewPath);
+  }
+
+  if (!Number.isFinite(stat.size) || stat.size <= 0) {
+    throw new Error("Watch & Buy product share preview could not be generated.");
+  }
+
+  return {
+    bytes: stat.size,
+    width: 1200,
+    height: 630,
+    mime: "image/jpeg"
+  };
+}
+
 async function ensurePremiumSharePreview(orderId, token) {
   const found = await queryWithRetry(
     `SELECT share_preview_data,
@@ -20014,12 +20078,17 @@ async function ensurePremiumSharePreview(orderId, token) {
 
   const row = found.rows[0];
   if (!row) return null;
-  const isWatchBuy = normalizePrintoCreationType(row.creation_type || "premium_video") === "watch_buy";
 
+  const isWatchBuy =
+    normalizePrintoCreationType(row.creation_type || "premium_video") === "watch_buy";
+
+  // Watch & Buy now has its own preview version marker. This intentionally
+  // invalidates older seller-video-frame previews after deployment.
+  const expectedMarker = isWatchBuy ? "-Product-Play-" : "-Play-";
   const hasCurrentPlayPreview =
     Buffer.isBuffer(row.share_preview_data) &&
     row.share_preview_data.length > 0 &&
-    String(row.share_preview_name || "").includes("-Play-");
+    String(row.share_preview_name || "").includes(expectedMarker);
 
   if (hasCurrentPlayPreview) {
     return {
@@ -20028,22 +20097,43 @@ async function ensurePremiumSharePreview(orderId, token) {
     };
   }
 
-  if (
-    !Buffer.isBuffer(row.final_video_data) ||
-    row.final_video_data.length === 0
-  ) {
-    return null;
-  }
-
   const runId = `${Date.now()}_${crypto.randomBytes(5).toString("hex")}`;
-  const videoPath =
-    path.join(premiumTempDir, `${runId}_preview_source.mp4`);
-  const previewPath =
-    path.join(premiumTempDir, `${runId}_share_preview.jpg`);
+  const previewPath = path.join(premiumTempDir, `${runId}_share_preview.jpg`);
+  let sourcePath = "";
 
   try {
-    await fs.promises.writeFile(videoPath, row.final_video_data);
-    await generatePremiumSharePreviewFile(videoPath, previewPath);
+    if (isWatchBuy) {
+      // Use the first listing image as the WhatsApp/Facebook preview.
+      const firstImage = await queryWithRetry(
+        `SELECT image_data, image_mime, image_name
+         FROM premium_greeting_images
+         WHERE order_id = $1
+         ORDER BY image_position ASC
+         LIMIT 1`,
+        [orderId],
+        { attempts: 5, baseDelayMs: 350 }
+      );
+
+      const product = firstImage.rows[0];
+      if (product && Buffer.isBuffer(product.image_data) && product.image_data.length > 0) {
+        const productExt = getExtFromMime(product.image_mime) || ".jpg";
+        sourcePath = path.join(premiumTempDir, `${runId}_product${productExt}`);
+        await fs.promises.writeFile(sourcePath, product.image_data);
+        await generateWatchBuyProductSharePreviewFile(sourcePath, previewPath);
+      }
+    }
+
+    // Premium Tribute / Multi-Image, or a legacy Watch & Buy order without
+    // stored listing images, falls back to the existing video-frame preview.
+    if (!fs.existsSync(previewPath)) {
+      if (!Buffer.isBuffer(row.final_video_data) || row.final_video_data.length === 0) {
+        return null;
+      }
+      sourcePath = path.join(premiumTempDir, `${runId}_preview_source.mp4`);
+      await fs.promises.writeFile(sourcePath, row.final_video_data);
+      await generatePremiumSharePreviewFile(sourcePath, previewPath);
+    }
+
     const previewData = await fs.promises.readFile(previewPath);
 
     const saved = await queryWithRetry(
@@ -20059,7 +20149,9 @@ async function ensurePremiumSharePreview(orderId, token) {
         orderId,
         token,
         previewData,
-        isWatchBuy ? `Watch-and-Buy-Preview-Play-${orderId}.jpg` : `Printo-Premium-Preview-Play-${orderId}.jpg`
+        isWatchBuy
+          ? `Watch-and-Buy-Product-Play-${orderId}.jpg`
+          : `Printo-Premium-Preview-Play-${orderId}.jpg`
       ]
     );
 
@@ -20068,7 +20160,7 @@ async function ensurePremiumSharePreview(orderId, token) {
       updatedAt: saved.rows[0]?.updated_at || new Date()
     };
   } finally {
-    safeUnlink(videoPath);
+    safeUnlink(sourcePath);
     safeUnlink(previewPath);
   }
 }
@@ -20405,12 +20497,13 @@ video{display:block;width:100%;max-height:72vh;border-radius:13px;background:#00
 }
 .bigPlayButton:hover{transform:translate(-50%,-50%) scale(1.06)}
 .bigPlayButton.hidden{display:none}
+.directVideoFallback{display:block;margin:10px 0 4px;text-align:center;color:#fff;background:#123faa;padding:11px 14px;border-radius:12px;text-decoration:none;font-weight:900}
 .actions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-top:16px}
 .btn{border:0;border-radius:13px;padding:13px 10px;color:#fff;font-weight:900;font-size:15px;cursor:pointer;text-decoration:none;display:flex;align-items:center;justify-content:center;min-height:48px}
 .download{background:#7b2cbf}.whatsapp{background:#25D366;color:#082a24}.facebook{background:#1877F2}.xshare{background:#111}.instagram{background:#d63384}.youtube{background:#ef0000}.tiktok{background:#111}.email{background:#0f766e}.copy{background:#475569}.videos{background:#123faa}.credits{background:#4f772d}.full{grid-column:1/-1}
 .note{margin-top:15px;padding:13px;background:rgba(255,255,255,.1);border-radius:14px;line-height:1.5}
 .watchBuyActions{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin:16px 0 4px}
-.wbLink{padding:14px 10px;border-radius:13px;text-decoration:none;font-weight:900;display:flex;align-items:center;justify-content:center;min-height:50px;color:#fff;cursor:pointer;touch-action:manipulation;position:relative;z-index:20}
+.wbLink{padding:14px 10px;border-radius:13px;text-decoration:none;font-weight:900;display:flex;align-items:center;justify-content:center;min-height:50px;color:#fff;cursor:pointer;touch-action:manipulation;position:relative;z-index:20;border:0;width:100%;font:inherit;-webkit-appearance:none;appearance:none}
 .shopActionNote{margin:7px 0 12px;font-size:13px;line-height:1.4;color:#dbeafe;text-align:center}
 .wbBuy{background:#f59e0b}.wbAfrica{background:#15803d}.wbContact{background:#075985}.wbPolicy{background:#334155}.wbTerms{background:#6d28d9}.wbPrivacy{background:#0f766e}
 .policyPanel{margin-top:12px;padding:14px;border-radius:14px;background:rgba(255,255,255,.1);text-align:left}.policyPanel h2{font-size:18px;margin:0 0 10px}.policyLinks{display:flex;flex-wrap:wrap;gap:8px}.policyLinks a{color:#fff;background:rgba(255,255,255,.13);padding:9px 11px;border-radius:10px;text-decoration:underline;font-weight:700}
@@ -20423,13 +20516,14 @@ video{display:block;width:100%;max-height:72vh;border-radius:13px;background:#00
 <h1>🌟 ${escapeHtml(title)}</h1>
 <p class="subtitle">Created for <strong>${escapeHtml(recipient)}</strong> from <strong>${escapeHtml(sender)}</strong></p>
 <div class="videoShell">
-<video id="premiumVideo" controls playsinline preload="metadata" poster="${escapeHtml(videoPosterUrl)}"><source src="${escapeHtml(videoUrl)}" type="video/mp4"></video>
+<video id="premiumVideo" controls playsinline webkit-playsinline preload="auto" poster="${escapeHtml(videoPosterUrl)}"><source id="premiumVideoSource" src="${escapeHtml(videoUrl)}" type="video/mp4"></video>
 <button id="bigPlayButton" class="bigPlayButton" type="button" aria-label="Play Premium video">▶</button>
 </div>
+<a class="directVideoFallback" href="${escapeHtml(videoUrl)}" target="_blank" rel="noopener">▶ Open Video Directly</a>
 ${isWatchBuy ? `<div class="watchBuyActions">
-${shopifyProductUrl ? `<a class="wbLink wbBuy" href="${escapeHtml(shopifyProductUrl)}" target="_blank" rel="noopener noreferrer">🛒 BUY NOW</a>` : ""}
-${africaPaymentUrl ? `<a class="wbLink wbAfrica" href="${escapeHtml(africaPaymentUrl)}" target="_blank" rel="noopener noreferrer">🌍 AFRICA PAY</a>` : ""}
-${contactSellerUrl ? `<a class="wbLink wbContact" href="${escapeHtml(contactSellerUrl)}" target="_blank" rel="noopener noreferrer">💬 CONTACT SELLER</a>` : ""}
+${shopifyProductUrl ? `<button class="wbLink wbBuy" type="button" onclick="openWatchBuyLink(${JSON.stringify(shopifyProductUrl)})">🛒 BUY NOW</button>` : ""}
+${africaPaymentUrl ? `<button class="wbLink wbAfrica" type="button" onclick="openWatchBuyLink(${JSON.stringify(africaPaymentUrl)})">🌍 AFRICA PAY</button>` : ""}
+${contactSellerUrl ? `<button class="wbLink wbContact" type="button" onclick="openWatchBuyLink(${JSON.stringify(contactSellerUrl)})">💬 CONTACT SELLER</button>` : ""}
 </div>
 <div class="shopActionNote">Tap a button above to open the real shopping, payment or seller-contact link. Buttons drawn inside the MP4 are visual only.</div>
 <div class="policyPanel"><h2>Product, Shipping & Policy Links</h2><div class="policyLinks">
@@ -20460,6 +20554,7 @@ const downloadUrl=${JSON.stringify(downloadUrl)};
 const shareText=${JSON.stringify(shareText)};
 const fileName=${JSON.stringify(isWatchBuy ? `Watch-and-Buy-${orderId}.mp4` : `Printo-Premium-${orderId}.mp4`)};
 const premiumVideo=document.getElementById('premiumVideo');
+const premiumVideoSource=document.getElementById('premiumVideoSource');
 const bigPlayButton=document.getElementById('bigPlayButton');
 
 function syncBigPlayButton(){
@@ -20471,12 +20566,46 @@ function syncBigPlayButton(){
   }
 }
 
+function openWatchBuyLink(url){
+  const target=String(url||'').trim();
+  if(!target)return false;
+  try{
+    const opened=window.open(target,'_blank');
+    if(opened) return false;
+  }catch(_error){}
+  window.location.href=target;
+  return false;
+}
+
 async function playPremiumVideo(){
   if(!premiumVideo)return;
   try{
+    premiumVideo.controls=true;
+    premiumVideo.playsInline=true;
+    premiumVideo.setAttribute('playsinline','');
+    premiumVideo.setAttribute('webkit-playsinline','');
+
+    // WhatsApp/iOS in-app browsers can leave an MP4 element in a black
+    // metadata-only state. Explicitly reload the source before the first play.
+    if(premiumVideo.readyState < 2){
+      premiumVideo.load();
+      await new Promise((resolve)=>{
+        let done=false;
+        const finish=()=>{if(done)return;done=true;resolve();};
+        premiumVideo.addEventListener('loadeddata',finish,{once:true});
+        premiumVideo.addEventListener('canplay',finish,{once:true});
+        setTimeout(finish,2500);
+      });
+    }
+
+    // Seeking a tiny amount from zero forces iOS to decode/show the first frame.
+    if(Number(premiumVideo.currentTime||0)===0){
+      try{ premiumVideo.currentTime=0.01; }catch(_seekError){}
+    }
     await premiumVideo.play();
   }catch(_error){
-    premiumVideo.controls=true;
+    // Direct MP4 navigation is the fallback for restrictive in-app browsers.
+    try{ window.location.href=videoUrl; }catch(_navError){}
   }
   syncBigPlayButton();
 }
@@ -20489,6 +20618,9 @@ if(premiumVideo){
   premiumVideo.addEventListener('pause',syncBigPlayButton);
   premiumVideo.addEventListener('ended',syncBigPlayButton);
   premiumVideo.addEventListener('loadeddata',syncBigPlayButton);
+  premiumVideo.addEventListener('error',()=>{bigPlayButton&&bigPlayButton.classList.remove('hidden');});
+  // Ask Safari to begin buffering immediately.
+  try{ premiumVideo.load(); }catch(_loadError){}
 }
 syncBigPlayButton();
 
@@ -21958,10 +22090,15 @@ async function renderPremiumOrderVideo({ orderId, req, publicBaseUrl = "" }) {
     }
 
     console.log("Premium render stage 7/7 - preparing share preview:", orderId);
-    const sharePreviewInfo = await generatePremiumSharePreviewFile(
-      outputPath,
-      sharePreviewPath
-    );
+    const sharePreviewInfo = isWatchBuy && tributeImagePaths.length > 0
+      ? await generateWatchBuyProductSharePreviewFile(
+          tributeImagePaths[0],
+          sharePreviewPath
+        )
+      : await generatePremiumSharePreviewFile(
+          outputPath,
+          sharePreviewPath
+        );
 
     console.log("Premium render stage 7/7 - saving finished video:", {
       orderId,
