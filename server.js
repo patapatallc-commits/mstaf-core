@@ -16524,6 +16524,7 @@ app.get("/worker-dashboard", requireDashboardKey, async (req, res) => {
   async function waitForPremiumRender(orderId, button, oldText) {
     const startedAt = Date.now();
     let consecutiveStatusErrors = 0;
+    let lastKnownState = "queued";
 
     while (true) {
       await delay(10000);
@@ -16535,23 +16536,27 @@ app.get("/worker-dashboard", requireDashboardKey, async (req, res) => {
         consecutiveStatusErrors = 0;
 
         const state = String(status.renderStatus || status.status || "").toLowerCase();
+        if (state) lastKnownState = state;
+
         const elapsedSeconds = Math.max(
           0,
           Math.round((Date.now() - startedAt) / 1000)
         );
 
         if (button) {
-          button.textContent = state === "queued"
-            ? "⏳ Render queued..."
-            : "🎬 Rendering... " + elapsedSeconds + "s";
+          if (state === "queued") {
+            button.textContent = "⏳ Render queued — waiting for renderer...";
+          } else if (state === "rendering") {
+            button.textContent = "🎬 Rendering video... " + elapsedSeconds + "s";
+          } else if (state === "completed") {
+            button.textContent = "✅ Render complete";
+          } else {
+            button.textContent = "⏳ Render queued — waiting for renderer...";
+          }
         }
 
         if (state === "completed") {
-          alert(
-            "✅ Premium video completed. Duration: " +
-            Number(status.totalDuration || 0).toFixed(0) +
-            " seconds."
-          );
+          alert("✅ Premium video completed.");
           if (status.finalVideoUrl) {
             window.open(status.finalVideoUrl, "_blank", "noopener");
           }
@@ -16571,15 +16576,16 @@ app.get("/worker-dashboard", requireDashboardKey, async (req, res) => {
           throw error;
         }
 
-        // Temporary 502/503/network interruptions must not turn an active render
-        // into a false failure message. Keep monitoring and let the server recover.
+        // FFmpeg can temporarily make a small Render instance slow to answer
+        // status requests. Preserve the last real database state rather than
+        // replacing it with the misleading "checking status" message.
         consecutiveStatusErrors += 1;
         if (button) {
-          button.textContent = consecutiveStatusErrors >= 3
-            ? "⏳ Server reconnecting — render continues..."
-            : "🎬 Rendering — checking status...";
+          button.textContent = lastKnownState === "rendering"
+            ? "🎬 Rendering video — server busy..."
+            : "⏳ Render queued — server busy...";
         }
-        await delay(Math.min(30000, consecutiveStatusErrors * 5000));
+        await delay(Math.min(30000, Math.max(5000, consecutiveStatusErrors * 5000)));
       }
     }
   }
@@ -16609,8 +16615,8 @@ app.get("/worker-dashboard", requireDashboardKey, async (req, res) => {
 
       if (button) {
         button.textContent = data.status === "queued"
-          ? "⏳ Render queued..."
-          : "🎬 Rendering in progress...";
+          ? "⏳ Render queued — waiting for renderer..."
+          : "🎬 Rendering video...";
       }
 
       await waitForPremiumRender(orderId, button, oldText);
