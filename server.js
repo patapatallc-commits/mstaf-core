@@ -20503,7 +20503,7 @@ video{display:block;width:100%;max-height:72vh;border-radius:13px;background:#00
 .download{background:#7b2cbf}.whatsapp{background:#25D366;color:#082a24}.facebook{background:#1877F2}.xshare{background:#111}.instagram{background:#d63384}.youtube{background:#ef0000}.tiktok{background:#111}.email{background:#0f766e}.copy{background:#475569}.videos{background:#123faa}.credits{background:#4f772d}.full{grid-column:1/-1}
 .note{margin-top:15px;padding:13px;background:rgba(255,255,255,.1);border-radius:14px;line-height:1.5}
 .watchBuyActions{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin:16px 0 4px}
-.wbLink{padding:14px 10px;border-radius:13px;text-decoration:none;font-weight:900;display:flex;align-items:center;justify-content:center;min-height:50px;color:#fff;cursor:pointer;touch-action:manipulation;position:relative;z-index:20;border:0;width:100%;font:inherit;-webkit-appearance:none;appearance:none}
+.wbLink{padding:14px 10px;border-radius:13px;text-decoration:none;font-weight:900;display:flex;align-items:center;justify-content:center;min-height:50px;color:#fff;cursor:pointer;touch-action:manipulation;position:relative;z-index:50;border:0;width:100%;font:inherit;-webkit-appearance:none;appearance:none;pointer-events:auto}
 .shopActionNote{margin:7px 0 12px;font-size:13px;line-height:1.4;color:#dbeafe;text-align:center}
 .wbBuy{background:#f59e0b}.wbAfrica{background:#15803d}.wbContact{background:#075985}.wbPolicy{background:#334155}.wbTerms{background:#6d28d9}.wbPrivacy{background:#0f766e}
 .policyPanel{margin-top:12px;padding:14px;border-radius:14px;background:rgba(255,255,255,.1);text-align:left}.policyPanel h2{font-size:18px;margin:0 0 10px}.policyLinks{display:flex;flex-wrap:wrap;gap:8px}.policyLinks a{color:#fff;background:rgba(255,255,255,.13);padding:9px 11px;border-radius:10px;text-decoration:underline;font-weight:700}
@@ -20521,9 +20521,9 @@ video{display:block;width:100%;max-height:72vh;border-radius:13px;background:#00
 </div>
 <a class="directVideoFallback" href="${escapeHtml(videoUrl)}" target="_blank" rel="noopener">▶ Open Video Directly</a>
 ${isWatchBuy ? `<div class="watchBuyActions">
-${shopifyProductUrl ? `<button class="wbLink wbBuy" type="button" onclick="openWatchBuyLink(${JSON.stringify(shopifyProductUrl)})">🛒 BUY NOW</button>` : ""}
-${africaPaymentUrl ? `<button class="wbLink wbAfrica" type="button" onclick="openWatchBuyLink(${JSON.stringify(africaPaymentUrl)})">🌍 AFRICA PAY</button>` : ""}
-${contactSellerUrl ? `<button class="wbLink wbContact" type="button" onclick="openWatchBuyLink(${JSON.stringify(contactSellerUrl)})">💬 CONTACT SELLER</button>` : ""}
+${shopifyProductUrl ? `<button class="wbLink wbBuy watchBuyActionButton" type="button" data-url="${escapeHtml(shopifyProductUrl)}">🛒 BUY NOW</button>` : ""}
+${africaPaymentUrl ? `<button class="wbLink wbAfrica watchBuyActionButton" type="button" data-url="${escapeHtml(africaPaymentUrl)}">🌍 AFRICA PAY</button>` : ""}
+${contactSellerUrl ? `<button class="wbLink wbContact watchBuyActionButton" type="button" data-url="${escapeHtml(contactSellerUrl)}">💬 CONTACT SELLER</button>` : ""}
 </div>
 <div class="shopActionNote">Tap a button above to open the real shopping, payment or seller-contact link. Buttons drawn inside the MP4 are visual only.</div>
 <div class="policyPanel"><h2>Product, Shipping & Policy Links</h2><div class="policyLinks">
@@ -20576,6 +20576,16 @@ function openWatchBuyLink(url){
   window.location.href=target;
   return false;
 }
+
+document.addEventListener('click',function(event){
+  const button=event.target.closest&&event.target.closest('.watchBuyActionButton');
+  if(!button)return;
+  event.preventDefault();
+  event.stopPropagation();
+  const target=String(button.dataset.url||'').trim();
+  if(!target)return;
+  openWatchBuyLink(target);
+});
 
 async function playPremiumVideo(){
   if(!premiumVideo)return;
