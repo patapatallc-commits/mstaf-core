@@ -19585,7 +19585,8 @@ function buildPremiumGreetingOrderPage(language = "en", creationType = "premium_
 
   const form=byId('premiumForm');
   if(!form)return;
-  form.addEventListener('submit',async function(event){
+  // Older emergency submit handler disabled; the complete handler below preserves all Watch & Buy fields.
+  if(false) form.addEventListener('submit',async function(event){
     event.preventDefault();
     event.stopImmediatePropagation();
     const status=byId('status');
@@ -20052,7 +20053,7 @@ async function ensurePremiumSharePreview(orderId, token) {
         orderId,
         token,
         previewData,
-        isWatchBuy ? `Watch-and-Buy-Preview-${orderId}.jpg` : `Printo-Premium-Preview-Play-${orderId}.jpg`
+        isWatchBuy ? `Watch-and-Buy-Preview-Play-${orderId}.jpg` : `Printo-Premium-Preview-Play-${orderId}.jpg`
       ]
     );
 
@@ -20210,6 +20211,33 @@ app.get(
 );
 
 
+// Clean public social-preview route for WhatsApp/Facebook/X crawlers.
+app.get("/premium-share-preview/:orderId/:token/play.jpg", async (req, res) => {
+  try {
+    const orderId = String(req.params.orderId || "").trim();
+    const token = String(req.params.token || "").trim();
+    if (!orderId || !token) return res.status(404).send("Preview not found.");
+    await ensurePremiumSharePreview(orderId, token);
+    const result = await queryWithRetry(
+      `SELECT share_preview_data AS media_data, share_preview_mime AS media_mime, share_preview_name AS media_name
+       FROM premium_greeting_orders WHERE order_id = $1 AND media_token = $2 LIMIT 1`,
+      [orderId, token],
+      { attempts: 5, baseDelayMs: 300 }
+    );
+    const row = result.rows[0];
+    if (!row || !Buffer.isBuffer(row.media_data) || !row.media_data.length) return res.status(404).send("Preview not found.");
+    return sendPremiumMediaBuffer(req, res, {
+      data: row.media_data,
+      mime: row.media_mime || "image/jpeg",
+      name: row.media_name || `Printo-Shop-Preview-${orderId}.jpg`,
+      cacheControl: "public, max-age=86400"
+    });
+  } catch (error) {
+    console.error("Premium social preview error:", error);
+    return res.status(500).send("Preview unavailable.");
+  }
+});
+
 app.get("/premium-result/:orderId", async (req, res) => {
   try {
     const orderId = String(req.params.orderId || "").trim();
@@ -20255,8 +20283,8 @@ app.get("/premium-result/:orderId", async (req, res) => {
       String(previewState?.updatedAt || order.updated_at || orderId)
     );
     const sharePreviewUrl =
-      `${publicBase}/premium-media/${encodeURIComponent(orderId)}/preview` +
-      `?token=${encodeURIComponent(token)}&v=${previewVersion}`;
+      `${publicBase}/premium-share-preview/${encodeURIComponent(orderId)}/${encodeURIComponent(token)}/play.jpg` +
+      `?v=${previewVersion}`;
     const videoPosterUrl =
       `${publicBase}/premium-media/${encodeURIComponent(orderId)}/photo` +
       `?token=${encodeURIComponent(token)}`;
@@ -20282,8 +20310,15 @@ app.get("/premium-result/:orderId", async (req, res) => {
       }
       return "";
     }
-    const shopifyProductUrl = labeledUrl(tributeNotes, ["shopify link", "shopify product", "buy link", "product link"]);
-    const africaPaymentUrl = labeledUrl(tributeNotes, ["africa payment", "africa pay"]);
+    function normalizeExternalUrl(value = "") {
+      const raw = String(value || "").trim();
+      if (!raw) return "";
+      if (/^https?:\/\//i.test(raw)) return raw;
+      if (/^www\./i.test(raw)) return `https://${raw}`;
+      return "";
+    }
+    const shopifyProductUrl = normalizeExternalUrl(labeledUrl(tributeNotes, ["shopify link", "shopify product", "buy link", "product link"]));
+    const africaPaymentUrl = normalizeExternalUrl(labeledUrl(tributeNotes, ["africa payment", "africa pay"]));
     const returnPolicyUrl = labeledUrl(tributeNotes, ["return policy", "refund policy", "returns"]);
     const shippingPolicyUrl = labeledUrl(tributeNotes, ["shipping policy", "shipping"]);
     const sellerTermsUrl = labeledUrl(tributeNotes, ["terms of service", "terms of use", "terms"]);
@@ -20291,7 +20326,7 @@ app.get("/premium-result/:orderId", async (req, res) => {
     const printoTermsUrl = `${publicBase}/greetings?lang=${encodeURIComponent(language)}#terms`;
     const contactSellerUrl = contactPhone ? `https://wa.me/${contactPhone}` : "";
     const title = isWatchBuy
-      ? `${recipient} — ${sender} | Watch & Buy`
+      ? `Printo Shop — ${recipient} | Watch & Buy`
       : creationType === "premium_multi_image"
         ? `Printo Premium Multi-Image Tribute for ${recipient}`
         : `Printo Premium Tribute for ${recipient}`;
@@ -20306,7 +20341,7 @@ app.get("/premium-result/:orderId", async (req, res) => {
         ].filter(Boolean).join("\n")
       : "";
     const shareText = isWatchBuy
-      ? `🛍️ ${recipient}\nPrice: ${sender}\n\n${message}\n\nWatch & Buy — Powered by PATAPATA.\n${watchBuyShareLinks}`
+      ? `🛍️ ${recipient}\nPrice: ${sender}\n\n${message}\n\nPrinto Shop • Watch & Buy — Powered by PATAPATA.\n${watchBuyShareLinks}`
       : `🎉 ${title}\nFrom ${sender}\n\nWatch this personalized Printo video and create yours too.`;
 
     res.setHeader("Cache-Control", "public, max-age=300, must-revalidate");
@@ -20322,6 +20357,7 @@ app.get("/premium-result/:orderId", async (req, res) => {
 <meta property="og:url" content="${escapeHtml(pageUrl)}">
 <meta property="og:site_name" content="Printo Studio">
 <meta property="og:image" content="${escapeHtml(sharePreviewUrl)}">
+<meta property="og:image:url" content="${escapeHtml(sharePreviewUrl)}">
 <meta property="og:image:secure_url" content="${escapeHtml(sharePreviewUrl)}">
 <meta property="og:image:type" content="image/jpeg">
 <meta property="og:image:width" content="1200">
@@ -20391,9 +20427,9 @@ video{display:block;width:100%;max-height:72vh;border-radius:13px;background:#00
 <button id="bigPlayButton" class="bigPlayButton" type="button" aria-label="Play Premium video">▶</button>
 </div>
 ${isWatchBuy ? `<div class="watchBuyActions">
-${shopifyProductUrl ? `<a class="wbLink wbBuy" href="${escapeHtml(shopifyProductUrl)}" target="_blank" rel="noopener">🛒 BUY NOW</a>` : ""}
-${africaPaymentUrl ? `<a class="wbLink wbAfrica" href="${escapeHtml(africaPaymentUrl)}" target="_blank" rel="noopener">🌍 AFRICA PAY</a>` : ""}
-${contactSellerUrl ? `<a class="wbLink wbContact" href="${escapeHtml(contactSellerUrl)}" target="_blank" rel="noopener">💬 CONTACT SELLER</a>` : ""}
+${shopifyProductUrl ? `<a class="wbLink wbBuy" href="${escapeHtml(shopifyProductUrl)}" >🛒 BUY NOW</a>` : ""}
+${africaPaymentUrl ? `<a class="wbLink wbAfrica" href="${escapeHtml(africaPaymentUrl)}" >🌍 AFRICA PAY</a>` : ""}
+${contactSellerUrl ? `<a class="wbLink wbContact" href="${escapeHtml(contactSellerUrl)}" >💬 CONTACT SELLER</a>` : ""}
 </div>
 <div class="policyPanel"><h2>Product, Shipping & Policy Links</h2><div class="policyLinks">
 ${returnPolicyUrl ? `<a href="${escapeHtml(returnPolicyUrl)}" target="_blank" rel="noopener">↩ Return Policy</a>` : ""}
@@ -21571,7 +21607,8 @@ async function renderPremiumOrderVideo({ orderId, req, publicBaseUrl = "" }) {
       "drawbox=x=0:y=0:w=576:h=864:color=#05132f@1:t=fill",
       "drawbox=x=14:y=14:w=548:h=836:color=#08265e@1:t=fill",
       "drawbox=x=14:y=14:w=548:h=92:color=#0b4fb3@1:t=fill",
-      `drawtext=${fontOption}text='PRINTO':x=34:y=29:fontsize=18:fontcolor=#67e8f9`,
+      `drawtext=${fontOption}text='PRINTO':x=34:y=22:fontsize=18:fontcolor=#67e8f9`,
+      `drawtext=${fontOption}text='SHOP':x=34:y=48:fontsize=14:fontcolor=#ffffff`,
       `drawtext=${fontOption}text='WATCH & BUY':x=(w-text_w)/2:y=27:fontsize=31:fontcolor=#ffffff`,
       `drawtext=${fontOption}text='Powered by PATAPATA':x=(w-text_w)/2:y=68:fontsize=14:fontcolor=#d9f7ff`,
 
@@ -21805,7 +21842,7 @@ async function renderPremiumOrderVideo({ orderId, req, publicBaseUrl = "" }) {
     console.log("Premium render stage 6/7 - mixing intro audio and tribute music:", orderId);
     const audioInputArgs = [
       "-i", silentVideoPath,
-      "-i", selectedMusicPath
+      "-stream_loop", "-1", "-i", selectedMusicPath
     ];
     let introAudioIndex = -1;
     if (introProbe.hasAudio) {
@@ -21821,9 +21858,10 @@ async function renderPremiumOrderVideo({ orderId, req, publicBaseUrl = "" }) {
     const audioFilters = [
       `[1:a]atrim=0:${tributeDuration},asetpts=PTS-STARTPTS,` +
       `aresample=48000,aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=stereo,` +
+      `loudnorm=I=-16:TP=-1.0:LRA=10,volume=1.12,` +
       `afade=t=in:st=0:d=0.15,` +
-      `afade=t=out:st=${Math.max(0, tributeDuration - 4)}:d=4,` +
-      `volume=1.0,apad=pad_dur=${tributeDuration},atrim=0:${tributeDuration}[music_exact]`
+      `afade=t=out:st=${Math.max(0, tributeDuration - 2)}:d=2,` +
+      `apad=pad_dur=${tributeDuration},atrim=0:${tributeDuration}[music_exact]`
     ];
 
     if (introAudioIndex >= 0) {
