@@ -20330,18 +20330,11 @@ app.get("/premium-result/:orderId", async (req, res) => {
       : creationType === "premium_multi_image"
         ? `Printo Premium Multi-Image Tribute for ${recipient}`
         : `Printo Premium Tribute for ${recipient}`;
-    const watchBuyShareLinks = isWatchBuy
-      ? [
-          shopifyProductUrl ? `🛒 Buy Now: ${shopifyProductUrl}` : "",
-          africaPaymentUrl ? `🌍 Africa Pay: ${africaPaymentUrl}` : "",
-          contactSellerUrl ? `💬 Contact Seller: ${contactSellerUrl}` : "",
-          returnPolicyUrl ? `↩ Return Policy: ${returnPolicyUrl}` : "",
-          shippingPolicyUrl ? `🚚 Shipping Policy: ${shippingPolicyUrl}` : "",
-          `📜 Terms / Privacy / Refund: ${sellerTermsUrl || sellerPrivacyUrl || printoTermsUrl}`
-        ].filter(Boolean).join("\n")
-      : "";
+    // Keep social shares clean. The single public result-page URL provides the
+    // preview image/play button and contains Buy Now, Africa Pay, Contact Seller
+    // and all policy links. Do not crowd WhatsApp with every destination URL.
     const shareText = isWatchBuy
-      ? `🛍️ ${recipient}\nPrice: ${sender}\n\n${message}\n\nPrinto Shop • Watch & Buy — Powered by PATAPATA.\n${watchBuyShareLinks}`
+      ? `🛍️ ${recipient}\nPrice: ${sender}\n\n${message}\n\n▶ Watch & shop securely with Printo Shop — Powered by PATAPATA.`
       : `🎉 ${title}\nFrom ${sender}\n\nWatch this personalized Printo video and create yours too.`;
 
     res.setHeader("Cache-Control", "public, max-age=300, must-revalidate");
@@ -20411,7 +20404,8 @@ video{display:block;width:100%;max-height:72vh;border-radius:13px;background:#00
 .download{background:#7b2cbf}.whatsapp{background:#25D366;color:#082a24}.facebook{background:#1877F2}.xshare{background:#111}.instagram{background:#d63384}.youtube{background:#ef0000}.tiktok{background:#111}.email{background:#0f766e}.copy{background:#475569}.videos{background:#123faa}.credits{background:#4f772d}.full{grid-column:1/-1}
 .note{margin-top:15px;padding:13px;background:rgba(255,255,255,.1);border-radius:14px;line-height:1.5}
 .watchBuyActions{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin:16px 0 4px}
-.wbLink{padding:14px 10px;border-radius:13px;text-decoration:none;font-weight:900;display:flex;align-items:center;justify-content:center;min-height:50px;color:#fff}
+.wbLink{padding:14px 10px;border-radius:13px;text-decoration:none;font-weight:900;display:flex;align-items:center;justify-content:center;min-height:50px;color:#fff;cursor:pointer;touch-action:manipulation;position:relative;z-index:20}
+.shopActionNote{margin:7px 0 12px;font-size:13px;line-height:1.4;color:#dbeafe;text-align:center}
 .wbBuy{background:#f59e0b}.wbAfrica{background:#15803d}.wbContact{background:#075985}.wbPolicy{background:#334155}.wbTerms{background:#6d28d9}.wbPrivacy{background:#0f766e}
 .policyPanel{margin-top:12px;padding:14px;border-radius:14px;background:rgba(255,255,255,.1);text-align:left}.policyPanel h2{font-size:18px;margin:0 0 10px}.policyLinks{display:flex;flex-wrap:wrap;gap:8px}.policyLinks a{color:#fff;background:rgba(255,255,255,.13);padding:9px 11px;border-radius:10px;text-decoration:underline;font-weight:700}
 @media(max-width:560px){body{padding:12px}.actions,.watchBuyActions{grid-template-columns:1fr}h1{font-size:25px}.full{grid-column:auto}}
@@ -20427,10 +20421,11 @@ video{display:block;width:100%;max-height:72vh;border-radius:13px;background:#00
 <button id="bigPlayButton" class="bigPlayButton" type="button" aria-label="Play Premium video">▶</button>
 </div>
 ${isWatchBuy ? `<div class="watchBuyActions">
-${shopifyProductUrl ? `<a class="wbLink wbBuy" href="${escapeHtml(shopifyProductUrl)}" >🛒 BUY NOW</a>` : ""}
-${africaPaymentUrl ? `<a class="wbLink wbAfrica" href="${escapeHtml(africaPaymentUrl)}" >🌍 AFRICA PAY</a>` : ""}
-${contactSellerUrl ? `<a class="wbLink wbContact" href="${escapeHtml(contactSellerUrl)}" >💬 CONTACT SELLER</a>` : ""}
+${shopifyProductUrl ? `<a class="wbLink wbBuy" href="${escapeHtml(shopifyProductUrl)}" target="_blank" rel="noopener noreferrer">🛒 BUY NOW</a>` : ""}
+${africaPaymentUrl ? `<a class="wbLink wbAfrica" href="${escapeHtml(africaPaymentUrl)}" target="_blank" rel="noopener noreferrer">🌍 AFRICA PAY</a>` : ""}
+${contactSellerUrl ? `<a class="wbLink wbContact" href="${escapeHtml(contactSellerUrl)}" target="_blank" rel="noopener noreferrer">💬 CONTACT SELLER</a>` : ""}
 </div>
+<div class="shopActionNote">Tap a button above to open the real shopping, payment or seller-contact link. Buttons drawn inside the MP4 are visual only.</div>
 <div class="policyPanel"><h2>Product, Shipping & Policy Links</h2><div class="policyLinks">
 ${returnPolicyUrl ? `<a href="${escapeHtml(returnPolicyUrl)}" target="_blank" rel="noopener">↩ Return Policy</a>` : ""}
 ${shippingPolicyUrl ? `<a href="${escapeHtml(shippingPolicyUrl)}" target="_blank" rel="noopener">🚚 Shipping Policy</a>` : ""}
@@ -21441,6 +21436,20 @@ async function renderPremiumOrderVideo({ orderId, req, publicBaseUrl = "" }) {
     }
 
     const musicProbe = await probePremiumMedia(selectedMusicPath);
+    if (!musicProbe.hasAudio) {
+      throw new Error("The uploaded Watch & Buy music file has no playable audio stream. Upload an MP3, M4A or WAV file and render again.");
+    }
+    const musicAudioLevels = await probePremiumAudioLevels(selectedMusicPath);
+    assertPremiumIntroductionIsAudible(
+      musicAudioLevels,
+      "Uploaded Watch & Buy background music"
+    );
+    console.log("Watch & Buy music verified audible:", {
+      orderId,
+      meanDb: musicAudioLevels.meanDb,
+      maxDb: musicAudioLevels.maxDb,
+      duration: Number(musicProbe.duration || 0)
+    });
     const introMediaDuration = Math.max(
       1,
       Math.min(PREMIUM_VIDEO_MAX_SECONDS, Number(introProbe.duration || 1))
@@ -21858,9 +21867,9 @@ async function renderPremiumOrderVideo({ orderId, req, publicBaseUrl = "" }) {
     const audioFilters = [
       `[1:a]atrim=0:${tributeDuration},asetpts=PTS-STARTPTS,` +
       `aresample=48000,aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=stereo,` +
-      `loudnorm=I=-16:TP=-1.0:LRA=10,volume=1.12,` +
-      `afade=t=in:st=0:d=0.15,` +
-      `afade=t=out:st=${Math.max(0, tributeDuration - 2)}:d=2,` +
+      `loudnorm=I=-13:TP=-1.0:LRA=9,volume=1.45,` +
+      `afade=t=in:st=0:d=0.05,` +
+      `afade=t=out:st=${Math.max(0, tributeDuration - 1.2)}:d=1.2,` +
       `apad=pad_dur=${tributeDuration},atrim=0:${tributeDuration}[music_exact]`
     ];
 
@@ -21919,6 +21928,14 @@ async function renderPremiumOrderVideo({ orderId, req, publicBaseUrl = "" }) {
     ], { timeout: PREMIUM_RENDER_STAGE_TIMEOUT_MS, maxBuffer: 8 * 1024 * 1024 });
 
     const finalStreamDurations = await probePremiumStreamDurations(outputPath);
+    const finalAudioLevels = await probePremiumAudioLevels(outputPath);
+    console.log("Finished Watch & Buy audio verification:", {
+      orderId,
+      meanDb: finalAudioLevels.meanDb,
+      maxDb: finalAudioLevels.maxDb,
+      audioDuration: finalStreamDurations.audioDuration,
+      videoDuration: finalStreamDurations.videoDuration
+    });
     if (
       !Number.isFinite(finalStreamDurations.videoDuration) ||
       !Number.isFinite(finalStreamDurations.audioDuration) ||
