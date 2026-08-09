@@ -22199,7 +22199,7 @@ async function renderPremiumOrderVideo({ orderId, req, publicBaseUrl = "" }) {
       audioFilters.push(
         `[${introAudioIndex}:a]atrim=0:${introDuration},asetpts=PTS-STARTPTS,` +
         `aresample=48000,aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=stereo,` +
-        `volume=1.35,alimiter=limit=0.97,` +
+        `volume=1.70,alimiter=limit=0.97,` +
         `afade=t=out:st=${Math.max(0, introDuration - 0.08)}:d=0.08,` +
         `apad=pad_dur=${introDuration},atrim=0:${introDuration}[intro_exact]`
       );
