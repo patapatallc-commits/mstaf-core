@@ -20712,7 +20712,7 @@ function openShareUrl(url){
 }
 
 function getShareMessage(){
-  return shareText+'\\n\\n🎬 Watch video:\\n'+pageUrl+(specificationsUrl!==pageUrl?'\\n\\n📋 Full specifications:\\n'+specificationsUrl:'');
+  return shareText+'\\n\\n🎬 Watch video:\\n'+pageUrl;
 }
 
 async function nativeShareLink(title){
