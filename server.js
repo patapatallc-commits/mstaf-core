@@ -19550,7 +19550,7 @@ function buildPremiumGreetingOrderPage(language = "en", creationType = "premium_
 *{box-sizing:border-box}body{margin:0;font-family:Arial,sans-serif;background:linear-gradient(150deg,#071b61,#0b63ce);color:#fff;min-height:100vh;padding:18px}.wrap{max-width:820px;margin:auto}.back{color:#ffd21f;font-weight:900;text-decoration:none}.hero{text-align:center;margin:12px 0 20px}.hero h1{font-size:34px;margin:8px}.hero p{line-height:1.55}.creditPrice{display:inline-block;background:#ffd21f;color:#082a8f;padding:9px 14px;border-radius:999px;font-weight:900;margin-top:8px}.panel{background:#fff;color:#172554;border:3px solid #ffd21f;border-radius:25px;padding:22px;box-shadow:0 18px 44px rgba(0,0,0,.35)}.grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}.full{grid-column:1/-1}label{display:block;font-weight:900;margin:5px 0 7px}input,textarea,select{width:100%;padding:13px;border:2px solid #cbd5e1;border-radius:13px;font-size:16px}textarea{min-height:110px}.hint{font-size:12px;color:#64748b;margin-top:5px}.submit{width:100%;border:0;border-radius:15px;padding:16px;background:linear-gradient(90deg,#7b2cbf,#d63384);color:#fff;font-size:19px;font-weight:900;margin-top:15px;cursor:pointer}.submit:disabled{opacity:.55}.status{text-align:center;font-weight:900;min-height:26px;margin-top:12px}.result{display:none;background:#f1f5f9;padding:16px;border-radius:16px;margin-top:15px}.orderId{font-size:20px;font-weight:900}.payments{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:12px}.pay{display:block;text-align:center;text-decoration:none;color:#fff;font-weight:900;padding:14px;border-radius:13px}.shopify{background:#4f772d}.africa{background:#008751}.worker{background:#25D366;grid-column:1/-1}.disabled{opacity:.45;pointer-events:none}.introChoice{grid-column:1/-1;border:2px solid #bfdbfe;background:#eff6ff;border-radius:14px;padding:14px}.introChoiceTitle{font-weight:900;margin-bottom:10px}.introTabs{display:grid;grid-template-columns:1fr 1fr;gap:9px}.introTabs button{border:2px solid #123faa;background:#fff;color:#123faa;padding:12px;border-radius:12px;font-weight:900;cursor:pointer}.introTabs button.active{background:#123faa;color:#fff}.introPanel{margin-top:12px}.recordControls{display:flex;flex-wrap:wrap;gap:8px;margin:10px 0}.recordControls button{border:0;border-radius:10px;padding:11px 13px;font-weight:900;cursor:pointer;background:#7b2cbf;color:#fff}.recordControls button.stop{background:#c1121f}.recordControls button:disabled{opacity:.45;cursor:not-allowed}.recordTimer{font-weight:900;color:#c1121f;margin-top:8px}.audioPreview{width:100%;margin-top:9px}.audioBoostRow{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:9px;padding:10px;border:2px solid #ffd21f;border-radius:12px;background:#fff8cf}.audioBoostRow button{border:0;border-radius:10px;padding:10px 13px;background:#0f766e;color:#fff;font-weight:900;cursor:pointer}.audioBoostRow label{margin:0;display:flex;align-items:center;gap:8px;flex:1;min-width:210px}.audioBoostRow input[type=range]{width:100%;padding:0;border:0}.audioBoostValue{font-weight:900;color:#c1121f;min-width:42px}.audioDiagnostic{display:grid;gap:8px;margin:9px 0;padding:10px;border:2px solid #bfdbfe;border-radius:12px;background:#f8fbff}.audioDiagnostic button{border:0;border-radius:10px;padding:10px 13px;background:#123faa;color:#fff;font-weight:900;cursor:pointer}.micMeter{height:18px;border-radius:999px;background:#dbeafe;overflow:hidden;border:1px solid #93c5fd}.micMeterFill{display:block;height:100%;width:0;background:linear-gradient(90deg,#22c55e,#facc15,#ef4444);transition:width .08s linear}.micMeterText{font-size:12px;color:#475569;font-weight:800}.hidden{display:none!important}.frameChooser{grid-column:1/-1;margin-top:12px;padding:14px;border:2px solid #bfdbfe;border-radius:14px;background:#f8fbff}.frameChooserTitle{font-weight:900;margin-bottom:10px}.frameOptions{display:grid;grid-template-columns:repeat(5,1fr);gap:9px}.frameOption{position:relative}.frameOption input{position:absolute;opacity:0;pointer-events:none}.frameSwatch{display:flex;align-items:center;justify-content:center;min-height:58px;border:4px solid var(--frame);border-radius:12px;background:#fff;font-weight:900;color:#172554;cursor:pointer;box-shadow:0 4px 12px rgba(0,0,0,.08)}.frameOption input:checked+.frameSwatch{outline:3px solid #7b2cbf;outline-offset:2px}.agreement{display:flex;align-items:flex-start;gap:10px;background:#fff7d6;border:2px solid #ffd21f;border-radius:13px;padding:13px;margin-top:16px}.agreement input{width:20px;height:20px;flex:0 0 auto;margin:2px 0 0}.agreement label{margin:0;font-weight:800;line-height:1.45}.agreement a{color:#123faa;font-weight:900}@media(max-width:620px){.grid,.payments{grid-template-columns:1fr}.full,.worker{grid-column:auto}.hero h1{font-size:28px}.introTabs{grid-template-columns:1fr}.frameOptions{grid-template-columns:1fr 1fr}}
 </style></head><body><main class="wrap"><a class="back" href="/greetings?lang=${lang}">← ${t.back}</a><section class="hero"><h1>🌟 ${t.title}</h1><p>${t.intro}</p><span class="creditPrice">${creationPriceLabel}</span></section><section class="panel">
 <form id="premiumForm" enctype="multipart/form-data" onsubmit="event.preventDefault();return false;"><input type="hidden" name="language" value="${lang}"><input type="hidden" name="creationType" value="${normalizedCreationType}"><input type="hidden" id="customerId" name="customerId"><input type="hidden" id="premiumCustomerKey" name="customerKey">
-<div class="grid"><div><label>${t.recipient} *</label><input id="watchBuyItemName" name="recipientName" maxlength="${isWatchBuy ? 80 : 24}" required></div>${isWatchBuy ? `<input id="watchBuyDisplayPrice" name="senderName" type="hidden"><div class="priceBox"><label>Price in US Dollars ($)</label><input id="watchBuyPriceUsd" name="priceUsd" inputmode="decimal" maxlength="30" placeholder="Example: 24.99"><div class="hint">Enter the amount only. The $ sign will be added automatically.</div></div><div class="priceBox"><label>Price in Euros (€)</label><input id="watchBuyPriceEur" name="priceEur" inputmode="decimal" maxlength="30" placeholder="Example: 22.99"><div class="hint">Leave blank when the item is not sold in euros.</div></div><div class="priceBox"><label>Price in Nigerian Naira (₦)</label><input id="watchBuyPriceNgn" name="priceNgn" inputmode="decimal" maxlength="30" placeholder="Example: 38000"><div class="hint">Enter the Nigeria/Africa payment amount. The ₦ sign will be added automatically.</div></div><div class="full hint"><strong>Enter at least one currency price.</strong> These are the item-selling prices shown to buyers. Shopify and Africa payment links below tell buyers where to pay.</div>` : `<div><label>${t.sender} *</label><input id="watchBuyDisplayPrice" name="senderName" maxlength="24" required></div>`}<div><label>${t.phone} *</label><input id="premiumCustomerPhone" name="customerPhone" type="tel" inputmode="tel" autocomplete="tel" placeholder="${phoneGuide.placeholder}" required><div class="hint">${phoneGuide.hint}</div></div><div><label>${t.email}</label><input name="customerEmail" type="email"></div>${isWatchBuy ? `<div><label>Shopify product link</label><input id="shopifyProductLink" name="shopifyProductLink" type="url" placeholder="https://patapata.us/products/..."></div><div><label>Africa payment link or instructions</label><input id="africaPaymentLink" name="africaPaymentLink" maxlength="300" placeholder="Payment link or bank-transfer instructions"></div>` : ""}<div class="full"><label>${t.message} ${isWatchBuy ? "(AI-generated; review before submitting)" : "*"}</label><textarea id="watchBuySpecifications" name="personalMessage" maxlength="600" ${isWatchBuy ? "" : "required"}></textarea></div><div><label>${t.songStyle}</label><select name="songStyle"><option value="">Worker will discuss with me</option><option>Afrobeat</option><option>Gospel</option><option>R&B / Soul</option><option>Pop</option><option>Highlife</option><option>Hip-Hop / Rap</option><option>Soft acoustic</option><option>Other</option></select></div><div><label>${t.notes}</label><textarea id="watchBuyNotes" name="tributeNotes" maxlength="1800"></textarea></div><div><label>${t.photo} *</label>${photoInputHtml}</div>${isWatchBuy ? `<div class="full aiBox" id="watchBuyAiBox"><h3>✨ AI Product Details</h3><div class="hint">Choose your product images above, then tap the blue button below. AI will analyze the first image and fill the Item specifications field. Review and edit the result before creating the video.</div><button id="generateWatchBuySpecs" class="aiButton" type="button" onclick="return window.watchBuyGenerateSpecsSafe(event)">✨ Generate Product Details from First Image</button><div id="watchBuyAiStatus" class="aiStatus" aria-live="polite"></div></div>` : ""}${isWatchBuy ? `<div class="frameChooser"><div class="frameChooserTitle">🎨 Choose intro video / product-photo window frame</div><div class="frameOptions"><label class="frameOption"><input type="radio" name="watchBuyFrameStyle" value="blue" checked><span class="frameSwatch" style="--frame:#38bdf8">Blue & White</span></label><label class="frameOption"><input type="radio" name="watchBuyFrameStyle" value="pink"><span class="frameSwatch" style="--frame:#ec4899">Pink</span></label><label class="frameOption"><input type="radio" name="watchBuyFrameStyle" value="red"><span class="frameSwatch" style="--frame:#dc2626">Red</span></label><label class="frameOption"><input type="radio" name="watchBuyFrameStyle" value="gold"><span class="frameSwatch" style="--frame:#d4af37">Gold</span></label><label class="frameOption"><input type="radio" name="watchBuyFrameStyle" value="black"><span class="frameSwatch" style="--frame:#111827">Black</span></label></div><div class="hint">This color will frame the seller intro video and product-photo window in the finished Watch & Buy video.</div></div>` : ""}<div class="introChoice"><div class="introChoiceTitle">${t.introType}</div><input id="introMediaType" name="introMediaType" type="hidden" value="video"><div class="introTabs"><button id="videoIntroTab" class="active" type="button" onclick="return window.watchBuySetIntroSafe('video',event)">🎥 ${t.videoMode}</button><button id="audioIntroTab" type="button" onclick="return window.watchBuySetIntroSafe('audio',event)">🎙️ ${t.audioMode}</button></div><div id="videoIntroPanel" class="introPanel"><label>${t.videoMode} *</label><input id="introVideoInput" name="introVideo" type="file" accept="video/mp4,video/quicktime,video/webm,video/*"><div class="hint">${usesMultipleImages ? multiUi.videoHint : "Maximum 60 seconds and 100 MB. Large files are compressed automatically to a smaller 720p MP4 before permanent storage."}</div></div><div id="audioIntroPanel" class="introPanel hidden"><label>${t.audioMode} *</label><div class="hint">${t.audioHint}</div><div class="recordControls"><button id="startRecordBtn" type="button">🎙️ ${t.startRecording}</button><button id="stopRecordBtn" class="stop" type="button" disabled>⏹ ${t.stopRecording}</button><button id="playRecordBtn" type="button" class="hidden">▶ ${t.playRecording}</button><button id="recordAgainBtn" type="button" class="hidden">🔄 ${t.recordAgain}</button></div><div class="audioDiagnostic"><button id="testSpeakerBtn" type="button">🔔 Test Phone Speaker</button><div class="micMeter"><span id="micMeterFill" class="micMeterFill"></span></div><div id="micMeterText" class="micMeterText">Microphone level will move while you record.</div></div><div id="recordTimer" class="recordTimer"></div><audio id="recordedAudioPreview" class="audioPreview hidden" controls playsinline preload="auto"></audio><div id="audioBoostRow" class="audioBoostRow hidden"><button id="audioBoostBtn" type="button">🔊 Boost & Replay</button><label><span id="audioBoostLabel">Preview volume</span><input id="audioBoostRange" type="range" min="1" max="4" step="0.25" value="3"></label><span id="audioBoostValue" class="audioBoostValue">3×</span></div><div id="audioPreviewStatus" class="hint"></div><label style="margin-top:12px">${t.uploadAudio}</label><input id="introAudioInput" name="introAudio" type="file" accept="audio/mpeg,audio/mp4,audio/x-m4a,audio/wav,audio/x-wav,audio/aac,audio/ogg,audio/opus,audio/webm,.mp3,.m4a,.wav,.aac,.ogg,.opus,.webm,.flac"><div class="hint">${t.audioFormats}</div></div></div></div>
+<div class="grid"><div><label>${t.recipient} *</label><input id="watchBuyItemName" name="recipientName" maxlength="${isWatchBuy ? 80 : 24}" required></div>${isWatchBuy ? `<input id="watchBuyDisplayPrice" name="senderName" type="hidden"><div class="priceBox"><label>Price in US Dollars ($)</label><input id="watchBuyPriceUsd" name="priceUsd" inputmode="decimal" maxlength="30" placeholder="Example: 24.99"><div class="hint">Enter the amount only. The $ sign will be added automatically.</div></div><div class="priceBox"><label>Price in Euros (€)</label><input id="watchBuyPriceEur" name="priceEur" inputmode="decimal" maxlength="30" placeholder="Example: 22.99"><div class="hint">Leave blank when the item is not sold in euros.</div></div><div class="priceBox"><label>Price in Nigerian Naira (₦)</label><input id="watchBuyPriceNgn" name="priceNgn" inputmode="decimal" maxlength="30" placeholder="Example: 38000"><div class="hint">Enter the Nigeria/Africa payment amount. The ₦ sign will be added automatically.</div></div><div class="full hint"><strong>Enter at least one currency price.</strong> These are the item-selling prices shown to buyers. Shopify and Africa payment links below tell buyers where to pay.</div>` : `<div><label>${t.sender} *</label><input id="watchBuyDisplayPrice" name="senderName" maxlength="24" required></div>`}<div><label>${t.phone} *</label><input id="premiumCustomerPhone" name="customerPhone" type="tel" inputmode="tel" autocomplete="tel" placeholder="${phoneGuide.placeholder}" required><div class="hint">${phoneGuide.hint}</div></div><div><label>${t.email}</label><input name="customerEmail" type="email"></div>${isWatchBuy ? `<div><label>Shopify product link</label><input id="shopifyProductLink" name="shopifyProductLink" type="url" placeholder="https://patapata.us/products/..."></div><div><label>Africa payment link or instructions</label><input id="africaPaymentLink" name="africaPaymentLink" maxlength="300" placeholder="Payment link or bank-transfer instructions"></div>` : ""}<div class="full"><label>${t.message} ${isWatchBuy ? "(AI-generated; review before submitting)" : "*"}</label><textarea id="watchBuySpecifications" name="personalMessage" maxlength="1800" ${isWatchBuy ? "" : "required"}></textarea></div><div><label>${t.songStyle}</label><select name="songStyle"><option value="">Worker will discuss with me</option><option>Afrobeat</option><option>Gospel</option><option>R&B / Soul</option><option>Pop</option><option>Highlife</option><option>Hip-Hop / Rap</option><option>Soft acoustic</option><option>Other</option></select></div><div><label>${t.notes}</label><textarea id="watchBuyNotes" name="tributeNotes" maxlength="1800"></textarea></div><div><label>${t.photo} *</label>${photoInputHtml}</div>${isWatchBuy ? `<div class="full aiBox" id="watchBuyAiBox"><h3>✨ AI Product Details</h3><div class="hint">Choose your product images above, then tap the blue button below. AI will analyze the first image and fill the Item specifications field. Review and edit the result before creating the video.</div><button id="generateWatchBuySpecs" class="aiButton" type="button" onclick="return window.watchBuyGenerateSpecsSafe(event)">✨ Generate Product Details from First Image</button><div id="watchBuyAiStatus" class="aiStatus" aria-live="polite"></div></div>` : ""}${isWatchBuy ? `<div class="frameChooser"><div class="frameChooserTitle">🎨 Choose intro video / product-photo window frame</div><div class="frameOptions"><label class="frameOption"><input type="radio" name="watchBuyFrameStyle" value="blue" checked><span class="frameSwatch" style="--frame:#38bdf8">Blue & White</span></label><label class="frameOption"><input type="radio" name="watchBuyFrameStyle" value="pink"><span class="frameSwatch" style="--frame:#ec4899">Pink</span></label><label class="frameOption"><input type="radio" name="watchBuyFrameStyle" value="red"><span class="frameSwatch" style="--frame:#dc2626">Red</span></label><label class="frameOption"><input type="radio" name="watchBuyFrameStyle" value="gold"><span class="frameSwatch" style="--frame:#d4af37">Gold</span></label><label class="frameOption"><input type="radio" name="watchBuyFrameStyle" value="black"><span class="frameSwatch" style="--frame:#111827">Black</span></label></div><div class="hint">This color will frame the seller intro video and product-photo window in the finished Watch & Buy video.</div></div>` : ""}<div class="introChoice"><div class="introChoiceTitle">${t.introType}</div><input id="introMediaType" name="introMediaType" type="hidden" value="video"><div class="introTabs"><button id="videoIntroTab" class="active" type="button" onclick="return window.watchBuySetIntroSafe('video',event)">🎥 ${t.videoMode}</button><button id="audioIntroTab" type="button" onclick="return window.watchBuySetIntroSafe('audio',event)">🎙️ ${t.audioMode}</button></div><div id="videoIntroPanel" class="introPanel"><label>${t.videoMode} *</label><input id="introVideoInput" name="introVideo" type="file" accept="video/mp4,video/quicktime,video/webm,video/*"><div class="hint">${usesMultipleImages ? multiUi.videoHint : "Maximum 60 seconds and 100 MB. Large files are compressed automatically to a smaller 720p MP4 before permanent storage."}</div></div><div id="audioIntroPanel" class="introPanel hidden"><label>${t.audioMode} *</label><div class="hint">${t.audioHint}</div><div class="recordControls"><button id="startRecordBtn" type="button">🎙️ ${t.startRecording}</button><button id="stopRecordBtn" class="stop" type="button" disabled>⏹ ${t.stopRecording}</button><button id="playRecordBtn" type="button" class="hidden">▶ ${t.playRecording}</button><button id="recordAgainBtn" type="button" class="hidden">🔄 ${t.recordAgain}</button></div><div class="audioDiagnostic"><button id="testSpeakerBtn" type="button">🔔 Test Phone Speaker</button><div class="micMeter"><span id="micMeterFill" class="micMeterFill"></span></div><div id="micMeterText" class="micMeterText">Microphone level will move while you record.</div></div><div id="recordTimer" class="recordTimer"></div><audio id="recordedAudioPreview" class="audioPreview hidden" controls playsinline preload="auto"></audio><div id="audioBoostRow" class="audioBoostRow hidden"><button id="audioBoostBtn" type="button">🔊 Boost & Replay</button><label><span id="audioBoostLabel">Preview volume</span><input id="audioBoostRange" type="range" min="1" max="4" step="0.25" value="3"></label><span id="audioBoostValue" class="audioBoostValue">3×</span></div><div id="audioPreviewStatus" class="hint"></div><label style="margin-top:12px">${t.uploadAudio}</label><input id="introAudioInput" name="introAudio" type="file" accept="audio/mpeg,audio/mp4,audio/x-m4a,audio/wav,audio/x-wav,audio/aac,audio/ogg,audio/opus,audio/webm,.mp3,.m4a,.wav,.aac,.ogg,.opus,.webm,.flac"><div class="hint">${t.audioFormats}</div></div></div></div>
 <div class="agreement ${isWatchBuy ? "watchAgreement" : ""}"><input id="premiumTermsAccepted" name="termsAccepted" type="checkbox" value="yes" required><label for="premiumTermsAccepted">${isWatchBuy ? "I confirm that I own or have permission to use the product images, product introduction, item information, prices, links, music and all submitted content. I will review and correct AI-generated details before publishing." : "I confirm that I own or have permission to use the recipient photo, introduction video or voice recording, names, music instructions and all other submitted content."} I agree to the <a href="/greetings?lang=${lang}#terms" target="_blank" rel="noopener">Terms of Use, Privacy Policy and Refund Policy</a>.</label></div>
 <button id="submitBtn" class="submit" type="submit">✨ ${t.submit}</button><div id="status" class="status"></div></form><div id="result" class="result"><div>${t.success}</div><div id="orderId" class="orderId"></div><h3>${t.pay}</h3><div class="payments"><a id="shopifyPay" class="pay shopify" target="_blank" rel="noopener">🛒 ${t.shopify}</a><a id="africaPay" class="pay africa" target="_blank" rel="noopener">🌍 ${t.africa}</a><a id="workerLink" class="pay worker" target="_blank" rel="noopener">💬 ${t.worker}</a></div></div></section></main>
 <script>
@@ -20455,12 +20455,19 @@ app.get("/premium-result/:orderId", async (req, res) => {
       : creationType === "premium_multi_image"
         ? `Printo Premium Multi-Image Tribute for ${recipient}`
         : `Printo Premium Tribute for ${recipient}`;
-    // Keep social shares clean. The single public result-page URL provides the
-    // preview image/play button and contains Buy Now, Africa Pay, Contact Seller
-    // and all policy links. Do not crowd WhatsApp with every destination URL.
+    const specificationsUrl = isWatchBuy ? `${pageUrl}#full-specifications` : pageUrl;
+    const shareSpecificationPreview = isWatchBuy && message.length > 260
+      ? `${message.slice(0, 255).trim()}…`
+      : message;
+    // Keep social shares readable while preserving a direct link to complete specs.
     const shareText = isWatchBuy
-      ? `🛍️ ${recipient}\nPrice: ${sender}\n\n${message}\n\n▶ Watch & shop securely with Printo Shop — Powered by PATAPATA.`
+      ? `🛍️ ${recipient}\nPrice: ${sender}\n\n${shareSpecificationPreview}\n\n📋 Full specifications available on the product page.\n▶ Watch & shop securely with Printo Shop — Powered by PATAPATA.`
       : `🎉 ${title}\nFrom ${sender}\n\nWatch this personalized Printo video and create yours too.`;
+    const staticShareMessage = `${shareText}\n\n🎬 Watch video:\n${pageUrl}${isWatchBuy ? `\n\n📋 Full specifications:\n${specificationsUrl}` : ""}`;
+    const staticWhatsAppUrl = `https://api.whatsapp.com/send?text=${encodeURIComponent(staticShareMessage)}`;
+    const staticFacebookUrl = `https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(pageUrl)}`;
+    const staticXUrl = `https://twitter.com/intent/tweet?text=${encodeURIComponent(staticShareMessage)}`;
+    const staticEmailUrl = `mailto:?subject=${encodeURIComponent(isWatchBuy ? "Printo Watch & Buy" : "Printo Premium Tribute")}&body=${encodeURIComponent(staticShareMessage)}`;
 
     res.setHeader("Cache-Control", "public, max-age=300, must-revalidate");
     return res.type("html").send(`<!doctype html>
@@ -20529,6 +20536,10 @@ video{display:block;width:100%;max-height:72vh;border-radius:13px;background:#00
 .btn{border:0;border-radius:13px;padding:13px 10px;color:#fff;font-weight:900;font-size:15px;cursor:pointer;text-decoration:none;display:flex;align-items:center;justify-content:center;min-height:48px}
 .download{background:#7b2cbf}.whatsapp{background:#25D366;color:#082a24}.facebook{background:#1877F2}.xshare{background:#111}.instagram{background:#d63384}.youtube{background:#ef0000}.tiktok{background:#111}.email{background:#0f766e}.copy{background:#475569}.videos{background:#123faa}.credits{background:#4f772d}.full{grid-column:1/-1}
 .note{margin-top:15px;padding:13px;background:rgba(255,255,255,.1);border-radius:14px;line-height:1.5}
+.specButton{display:flex;margin:14px 0 4px;padding:14px 16px;border-radius:14px;background:#ffd21f;color:#082a8f;text-decoration:none;font-weight:900;align-items:center;justify-content:center;min-height:52px}
+.specPanel{margin:12px 0 16px;padding:16px;border-radius:16px;background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.22);text-align:left;scroll-margin-top:18px}
+.specPanel h2{margin:0 0 10px;font-size:21px;color:#ffd21f}
+.specText{white-space:pre-wrap;overflow-wrap:anywhere;margin:0;line-height:1.55;font:600 15px/1.55 Arial,sans-serif;color:#fff}
 .watchBuyActions{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin:16px 0 4px}
 .wbLink{padding:14px 10px;border-radius:13px;text-decoration:none;font-weight:900;display:flex;align-items:center;justify-content:center;min-height:50px;color:#fff;cursor:pointer;touch-action:manipulation;position:relative;z-index:50;border:0;width:100%;font:inherit;-webkit-appearance:none;appearance:none;pointer-events:auto}
 .shopActionNote{margin:7px 0 12px;font-size:13px;line-height:1.4;color:#dbeafe;text-align:center}
@@ -20547,10 +20558,12 @@ video{display:block;width:100%;max-height:72vh;border-radius:13px;background:#00
 <button id="bigPlayButton" class="bigPlayButton" type="button" aria-label="Play Premium video">▶</button>
 </div>
 <a class="directVideoFallback" href="${escapeHtml(videoUrl)}" target="_blank" rel="noopener">▶ Open Video Directly</a>
-${isWatchBuy ? `<div class="watchBuyActions">
-${shopifyProductUrl ? `<button class="wbLink wbBuy watchBuyActionButton" type="button" data-url="${escapeHtml(shopifyProductUrl)}">🛒 BUY NOW</button>` : ""}
-${africaPaymentUrl ? `<button class="wbLink wbAfrica watchBuyActionButton" type="button" data-url="${escapeHtml(africaPaymentUrl)}">🌍 AFRICA PAY</button>` : ""}
-${contactSellerUrl ? `<button class="wbLink wbContact watchBuyActionButton" type="button" data-url="${escapeHtml(contactSellerUrl)}">💬 CONTACT SELLER</button>` : ""}
+${isWatchBuy ? `<a class="specButton" href="#full-specifications">📋 View Full Product Specifications</a>
+<section id="full-specifications" class="specPanel"><h2>Full Product Specifications</h2><div class="specText">${escapeHtml(message || "Product specifications were not provided.")}</div></section>
+<div class="watchBuyActions">
+${shopifyProductUrl ? `<a class="wbLink wbBuy" href="${escapeHtml(shopifyProductUrl)}" target="_blank" rel="noopener">🛒 BUY NOW</a>` : ""}
+${africaPaymentUrl ? `<a class="wbLink wbAfrica" href="${escapeHtml(africaPaymentUrl)}" target="_blank" rel="noopener">🌍 AFRICA PAY</a>` : ""}
+${contactSellerUrl ? `<a class="wbLink wbContact" href="${escapeHtml(contactSellerUrl)}" target="_blank" rel="noopener">💬 CONTACT SELLER</a>` : ""}
 </div>
 <div class="shopActionNote">Tap a button above to open the real shopping, payment or seller-contact link. Buttons drawn inside the MP4 are visual only.</div>
 <div class="policyPanel"><h2>Product, Shipping & Policy Links</h2><div class="policyLinks">
@@ -20560,15 +20573,15 @@ ${shippingPolicyUrl ? `<a href="${escapeHtml(shippingPolicyUrl)}" target="_blank
 <a href="${escapeHtml(sellerPrivacyUrl || printoTermsUrl)}" target="_blank" rel="noopener">🔒 Privacy / Refund Policy</a>
 </div></div>` : ""}
 <div class="actions">
-<a class="btn download full" href="${escapeHtml(downloadUrl)}">⬇ Download Video</a>
-<button class="btn whatsapp" type="button" onclick="shareWhatsApp()">📱 WhatsApp</button>
-<button class="btn facebook" type="button" onclick="shareFacebook()">📘 Facebook</button>
-<button class="btn xshare" type="button" onclick="shareX()">𝕏 X / Twitter</button>
-<button class="btn instagram" type="button" onclick="shareVideoFile('Instagram')">📸 Instagram</button>
-<button class="btn youtube" type="button" onclick="shareVideoFile('YouTube')">▶ YouTube</button>
-<button class="btn tiktok" type="button" onclick="shareVideoFile('TikTok')">🎵 TikTok</button>
-<button class="btn email" type="button" onclick="shareEmail()">📧 Email</button>
-<button class="btn copy" type="button" onclick="copyLink()">🔗 Copy Link</button>
+<a class="btn download full" href="${escapeHtml(downloadUrl)}" download>⬇ Download Video</a>
+<a class="btn whatsapp" href="${escapeHtml(staticWhatsAppUrl)}" target="_blank" rel="noopener">📱 WhatsApp</a>
+<a class="btn facebook" href="${escapeHtml(staticFacebookUrl)}" target="_blank" rel="noopener">📘 Facebook</a>
+<a class="btn xshare" href="${escapeHtml(staticXUrl)}" target="_blank" rel="noopener">𝕏 X / Twitter</a>
+<a class="btn instagram" href="https://www.instagram.com/" target="_blank" rel="noopener" onclick="if(window.shareVideoFile){shareVideoFile('Instagram');return false}">📸 Instagram</a>
+<a class="btn youtube" href="https://www.youtube.com/upload" target="_blank" rel="noopener" onclick="if(window.shareVideoFile){shareVideoFile('YouTube');return false}">▶ YouTube</a>
+<a class="btn tiktok" href="https://www.tiktok.com/upload" target="_blank" rel="noopener" onclick="if(window.shareVideoFile){shareVideoFile('TikTok');return false}">🎵 TikTok</a>
+<a class="btn email" href="${escapeHtml(staticEmailUrl)}">📧 Email</a>
+<a class="btn copy" href="${escapeHtml(pageUrl)}" target="_blank" rel="noopener" onclick="if(window.copyLink){copyLink();return false}">🔗 Copy Link</a>
 <a class="btn videos" href="/customer-dashboard?lang=${encodeURIComponent(language)}">🎬 My Videos & Credits</a>
 <a class="btn credits" href="/subscriptions?lang=${encodeURIComponent(language)}">➕ Buy Credits / Subscribe</a>
 </div>
@@ -20579,6 +20592,7 @@ const pageUrl=${JSON.stringify(pageUrl)};
 const videoUrl=${JSON.stringify(videoUrl)};
 const downloadUrl=${JSON.stringify(downloadUrl)};
 const shareText=${JSON.stringify(shareText)};
+const specificationsUrl=${JSON.stringify(isWatchBuy ? specificationsUrl : pageUrl)};
 const fileName=${JSON.stringify(isWatchBuy ? `Watch-and-Buy-${orderId}.mp4` : `Printo-Premium-${orderId}.mp4`)};
 const premiumVideo=document.getElementById('premiumVideo');
 const premiumVideoSource=document.getElementById('premiumVideoSource');
@@ -20651,40 +20665,145 @@ if(bigPlayButton){
   bigPlayButton.addEventListener('click',playPremiumVideo);
 }
 if(premiumVideo){
-  premiumVideo.addEventListener('play',syncBigPlayButton);
-  premiumVideo.addEventListener('pause',syncBigPlayButton);
-  premiumVideo.addEventListener('ended',syncBigPlayButton);
-  premiumVideo.addEventListener('loadeddata',syncBigPlayButton);
-  premiumVideo.addEventListener('error',()=>{bigPlayButton&&bigPlayButton.classList.remove('hidden');});
+  const hidePremiumPlay=()=>{
+    if(!bigPlayButton)return;
+    bigPlayButton.classList.add('hidden');
+    bigPlayButton.style.display='none';
+  };
+  const showPremiumPlay=()=>{
+    if(!bigPlayButton)return;
+    bigPlayButton.classList.remove('hidden');
+    bigPlayButton.style.display='block';
+  };
+  premiumVideo.addEventListener('play',hidePremiumPlay);
+  premiumVideo.addEventListener('playing',hidePremiumPlay);
+  premiumVideo.addEventListener('pause',()=>{if(!premiumVideo.ended)showPremiumPlay();});
+  premiumVideo.addEventListener('ended',showPremiumPlay);
+  premiumVideo.addEventListener('loadeddata',()=>{if(premiumVideo.paused)showPremiumPlay();});
+  premiumVideo.addEventListener('error',showPremiumPlay);
   // Ask Safari to begin buffering immediately.
   try{ premiumVideo.load(); }catch(_loadError){}
 }
 syncBigPlayButton();
 
-function openShareUrl(url){try{const opened=window.open(url,'_blank','noopener,noreferrer');if(!opened){window.location.href=url;}}catch(_error){window.location.href=url;}}
-function shareWhatsApp(){const text=shareText+'\\n\\n🎬 Watch video:\n'+pageUrl;openShareUrl('https://api.whatsapp.com/send?text='+encodeURIComponent(text))}
-function shareFacebook(){openShareUrl('https://www.facebook.com/sharer/sharer.php?u='+encodeURIComponent(pageUrl))}
-function shareX(){openShareUrl('https://twitter.com/intent/tweet?text='+encodeURIComponent(shareText+'\n\n'+pageUrl))}
-async function shareEmail(){const to=prompt('Enter the email address to send this Printo video to:');if(!to)return;try{const response=await fetch('/api/share/email',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({to,subject:${JSON.stringify(isWatchBuy ? 'Printo Watch & Buy' : 'Printo Premium Tribute')},text:shareText+'\n\n🎬 Watch video:\n'+pageUrl})});const data=await response.json().catch(()=>({}));if(!response.ok)throw new Error(data.error||'Email send failed');alert('✅ Printo video link sent by email.');}catch(error){alert('Email failed: '+error.message);}}
-async function copyLink(){try{await navigator.clipboard.writeText(pageUrl);alert(${JSON.stringify(isWatchBuy ? 'Watch & Buy link copied.' : 'Premium video link copied.')})}catch(_error){prompt('Copy this link:',pageUrl)}}
-async function shareVideoFile(platform){
+function openShareUrl(url){
   try{
-    const response=await fetch(videoUrl);
+    const opened=window.open(url,'_blank','noopener,noreferrer');
+    if(!opened)window.location.assign(url);
+  }catch(_error){
+    window.location.assign(url);
+  }
+}
+
+function getShareMessage(){
+  return shareText+'\\n\\n🎬 Watch video:\\n'+pageUrl+(specificationsUrl!==pageUrl?'\\n\\n📋 Full specifications:\\n'+specificationsUrl:'');
+}
+
+async function nativeShareLink(title){
+  if(!navigator.share)return false;
+  try{
+    await navigator.share({title:title||'Printo Watch & Buy',text:shareText,url:pageUrl});
+    return true;
+  }catch(error){
+    if(error&&error.name==='AbortError')return true;
+    return false;
+  }
+}
+
+function shareWhatsApp(){
+  const message=getShareMessage();
+  const webUrl='https://api.whatsapp.com/send?text='+encodeURIComponent(message);
+  const appUrl='whatsapp://send?text='+encodeURIComponent(message);
+  const isMobile=/Android|iPhone|iPad|iPod/i.test(navigator.userAgent||'');
+  if(isMobile){
+    let leftPage=false;
+    const markLeft=()=>{leftPage=true;};
+    document.addEventListener('visibilitychange',()=>{if(document.hidden)markLeft();},{once:true});
+    window.location.href=appUrl;
+    setTimeout(()=>{if(!leftPage)window.location.href=webUrl;},900);
+  }else{
+    openShareUrl(webUrl);
+  }
+}
+
+async function shareFacebook(){
+  if(await nativeShareLink('Printo Watch & Buy'))return;
+  openShareUrl('https://www.facebook.com/sharer/sharer.php?u='+encodeURIComponent(pageUrl));
+}
+
+async function shareX(){
+  if(await nativeShareLink('Printo Watch & Buy'))return;
+  openShareUrl('https://twitter.com/intent/tweet?text='+encodeURIComponent(shareText+'\\n\\n'+pageUrl));
+}
+
+async function shareEmail(){
+  const to=prompt('Enter the email address to send this Printo video to:');
+  if(!to)return;
+  try{
+    const response=await fetch('/api/share/email',{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({
+        to,
+        subject:${JSON.stringify(isWatchBuy ? 'Printo Watch & Buy' : 'Printo Premium Tribute')},
+        text:getShareMessage()
+      })
+    });
+    const data=await response.json().catch(()=>({}));
+    if(!response.ok)throw new Error(data.error||'Email send failed');
+    alert('✅ Printo video link sent by email.');
+  }catch(error){
+    const subject='Printo Watch & Buy';
+    window.location.href='mailto:'+encodeURIComponent(to)+'?subject='+encodeURIComponent(subject)+'&body='+encodeURIComponent(getShareMessage());
+  }
+}
+
+window.copyLink=async function copyLink(){
+  try{
+    await navigator.clipboard.writeText(pageUrl);
+    alert('Watch & Buy link copied.');
+  }catch(_error){
+    prompt('Copy this link:',pageUrl);
+  }
+}
+
+window.shareVideoFile=async function shareVideoFile(platform){
+  const platformUrls={
+    Instagram:'https://www.instagram.com/',
+    YouTube:'https://www.youtube.com/upload',
+    TikTok:'https://www.tiktok.com/upload'
+  };
+  try{
+    const response=await fetch(videoUrl,{cache:'no-store'});
     if(!response.ok)throw new Error('Video download failed');
     const blob=await response.blob();
-    const file=new File([blob],fileName,{type:'video/mp4'});
+    const file=new File([blob],fileName,{type:blob.type||'video/mp4'});
     if(navigator.share&&(!navigator.canShare||navigator.canShare({files:[file]}))){
-      await navigator.share({title:'Printo Premium Tribute',text:shareText,files:[file]});
+      await navigator.share({
+        title:'Printo Watch & Buy',
+        text:getShareMessage(),
+        files:[file]
+      });
       return;
     }
-  }catch(_error){}
-  const link=document.createElement('a');
-  link.href=downloadUrl;
-  link.download=fileName;
-  document.body.appendChild(link);
-  link.click();
-  link.remove();
-  const destinations={Instagram:'https://www.instagram.com/',YouTube:'https://www.youtube.com/upload',TikTok:'https://www.tiktok.com/upload'};alert('The Printo MP4 has downloaded. Upload it to '+platform+'.');const dest=destinations[platform];if(dest)setTimeout(()=>openShareUrl(dest),350);
+    const objectUrl=URL.createObjectURL(blob);
+    const link=document.createElement('a');
+    link.href=objectUrl;
+    link.download=fileName;
+    link.rel='noopener';
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    setTimeout(()=>URL.revokeObjectURL(objectUrl),4000);
+    alert('The Watch & Buy MP4 has downloaded. Upload it to '+platform+'.');
+    const dest=platformUrls[platform];
+    if(dest)setTimeout(()=>openShareUrl(dest),450);
+  }catch(error){
+    if(error&&error.name==='AbortError')return;
+    const dest=platformUrls[platform];
+    if(dest)openShareUrl(dest);
+    else openShareUrl(videoUrl);
+  }
 }
 </script>
 </body>
@@ -20747,7 +20866,7 @@ app.post(
       const isWatchBuyRequest = isPrintoWatchBuyCreationType(creationType);
       const recipientName = String(body.recipientName || "").trim().slice(0, isWatchBuyRequest ? 80 : 24);
       const senderName = String(body.senderName || "").trim().slice(0, isWatchBuyRequest ? 80 : 24);
-      const personalMessage = String(body.personalMessage || "").trim().slice(0, isWatchBuyRequest ? 600 : 220);
+      const personalMessage = String(body.personalMessage || "").trim().slice(0, isWatchBuyRequest ? 1800 : 220);
       const customerPhone = String(body.customerPhone || "").replace(/\D+/g, "");
       const customerEmail = String(body.customerEmail || "").trim().slice(0, 200);
       const songStyle = String(body.songStyle || "").trim().slice(0, 100);
@@ -21661,47 +21780,53 @@ async function renderPremiumOrderVideo({ orderId, req, publicBaseUrl = "" }) {
       order.personal_message || (isWatchBuy
         ? "Product specifications and purchasing details."
         : "A special tribute created with love.")
-    ).trim().slice(0, isWatchBuy ? 600 : 220);
+    ).trim().slice(0, isWatchBuy ? 1800 : 220);
 
-    // Auto-fit the complete customer message inside the Premium panel.
-    // The final production layout uses larger, phone-readable text while
-    // still supporting the full 220-character customer message.
+    // Keep the complete Watch & Buy specifications in the order/result page.
+    // The MP4 itself is not interactive, so show a readable summary in the
+    // video and direct buyers to the clickable full-specifications section
+    // beneath the generated video.
+    const videoPersonalMessage = isWatchBuy && videoPersonalMessage.length > 560
+      ? `${fullPersonalMessage.slice(0, 500).trim()} … View full specifications below the video.`
+      : fullPersonalMessage;
+
+    // Auto-fit the readable video summary inside the Premium panel.
     let messageFontSize = 16;
     let messageMaxCharsPerLine = 29;
     let messageMaxLines = 5;
     let messageLineGap = 18;
 
-    if (isWatchBuy && fullPersonalMessage.length > 420) {
+    if (isWatchBuy && videoPersonalMessage.length > 420) {
       messageFontSize = 8;
       messageMaxCharsPerLine = 62;
       messageMaxLines = 10;
       messageLineGap = 9;
-    } else if (isWatchBuy && fullPersonalMessage.length > 300) {
+    } else if (isWatchBuy && videoPersonalMessage.length > 300) {
       messageFontSize = 9;
       messageMaxCharsPerLine = 52;
       messageMaxLines = 9;
       messageLineGap = 10;
-    } else if (isWatchBuy && fullPersonalMessage.length > 220) {
+    } else if (isWatchBuy && videoPersonalMessage.length > 220) {
       messageFontSize = 10;
       messageMaxCharsPerLine = 46;
       messageMaxLines = 8;
       messageLineGap = 11;
-    } else if (fullPersonalMessage.length > 180) {
+    } else if (videoPersonalMessage.length > 180) {
       messageFontSize = 11;
       messageMaxCharsPerLine = 37;
       messageMaxLines = 7;
       messageLineGap = 12;
-    } else if (fullPersonalMessage.length > 140) {
+    } else if (videoPersonalMessage.length > 140) {
       messageFontSize = 12;
       messageMaxCharsPerLine = 35;
       messageMaxLines = 7;
       messageLineGap = 13;
-    } else if (fullPersonalMessage.length > 100) {
+    } else if (videoPersonalMessage.length > 100) {
       messageFontSize = 13;
       messageMaxCharsPerLine = 33;
       messageMaxLines = 6;
       messageLineGap = 14;
-    } else if (fullPersonalMessage.length > 60) {
+    } else if (videoPersonalMessage.length > 60) {
       messageFontSize = 14;
       messageMaxCharsPerLine = 31;
       messageMaxLines = 6;
@@ -21709,7 +21834,7 @@ async function renderPremiumOrderVideo({ orderId, req, publicBaseUrl = "" }) {
     }
 
     const messageLines = wrapGreetingMessage(
-      fullPersonalMessage,
+      videoPersonalMessage,
       messageMaxCharsPerLine,
       messageMaxLines
     ).split("\\n");
@@ -22639,6 +22764,8 @@ function renderGreetingResult(req, res) {
     }
   });
 
+  video.addEventListener('play',()=>{play.style.display='none';});
+  video.addEventListener('playing',()=>{play.style.display='none';});
   video.addEventListener('ended',()=>{
     play.textContent='↻';
     play.style.display='block';
@@ -22649,14 +22776,14 @@ function renderGreetingResult(req, res) {
       shareText +
       '\\n\\n🎬 Watch this finished greeting:\\n' + pageUrl +
       '\\n\\n🏠 Create your own: Open the PATAPATA Store and tap Printo Studio:\\n' + createYourOwnUrl;
-    openShareUrl('https://api.whatsapp.com/send?text='+encodeURIComponent(whatsappMessage));
+    window.location.href='https://wa.me/?text='+encodeURIComponent(whatsappMessage);
   }
   function shareFacebook(){
     openShareUrl('https://www.facebook.com/sharer/sharer.php?u='+encodeURIComponent(pageUrl));
   }
 
   function shareX(){
-    openShareUrl('https://twitter.com/intent/tweet?text='+encodeURIComponent(shareText+'\n\n'+pageUrl));
+    openShareUrl('https://twitter.com/intent/tweet?text='+encodeURIComponent(shareText+'\\n\\n'+pageUrl));
   }
 
   async function downloadThenOpen(platform){
