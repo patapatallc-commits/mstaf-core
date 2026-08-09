@@ -20065,8 +20065,8 @@ async function generateWatchBuyProductSharePreviewFile(imagePath, previewPath) {
         "crop=1200:630,gblur=sigma=30[blurred];" +
       "[foreground]scale=1120:590:force_original_aspect_ratio=decrease[product];" +
       "[blurred][product]overlay=(W-w)/2:(H-h)/2[base];" +
-      "[1:v]scale=210:210:force_original_aspect_ratio=decrease[badge];" +
-      "[base][badge]overlay=W-w-24:24," +
+      "[1:v]scale=125:125:force_original_aspect_ratio=decrease[badge];" +
+      "[base][badge]overlay=W-w-18:18," +
         "drawbox=x=0:y=0:w=iw:h=ih:color=black@0.03:t=fill," +
         "drawtext=fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf:" +
           "text='▶':fontsize=160:fontcolor=white:" +
@@ -20140,7 +20140,7 @@ async function ensurePremiumSharePreview(orderId, token) {
 
   // Watch & Buy now has its own preview version marker. This intentionally
   // invalidates older seller-video-frame previews after deployment.
-  const expectedMarker = isWatchBuy ? "-Price-Slash-Play-" : "-Play-";
+  const expectedMarker = isWatchBuy ? "-Price-Slash-Small-Play-" : "-Play-";
   const hasCurrentPlayPreview =
     Buffer.isBuffer(row.share_preview_data) &&
     row.share_preview_data.length > 0 &&
@@ -20206,7 +20206,7 @@ async function ensurePremiumSharePreview(orderId, token) {
         token,
         previewData,
         isWatchBuy
-          ? `Watch-and-Buy-Price-Slash-Play-${orderId}.jpg`
+          ? `Watch-and-Buy-Price-Slash-Small-Play-${orderId}.jpg`
           : `Printo-Premium-Preview-Play-${orderId}.jpg`
       ]
     );
