@@ -22203,7 +22203,7 @@ async function renderPremiumOrderVideo({ orderId, req, publicBaseUrl = "" }) {
       audioFilters.push(
         `[${introAudioIndex}:a]atrim=0:${introDuration},asetpts=PTS-STARTPTS,` +
         `aresample=48000,aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=stereo,` +
-        `volume=1.0,alimiter=limit=0.95,` +
+        `volume=2.0,alimiter=limit=0.98:attack=3:release=70,` +
         `afade=t=out:st=${Math.max(0, introDuration - 0.08)}:d=0.08,` +
         `apad=pad_dur=${introDuration},atrim=0:${introDuration}[intro_exact]`
       );
@@ -22215,7 +22215,7 @@ async function renderPremiumOrderVideo({ orderId, req, publicBaseUrl = "" }) {
 
     audioFilters.push(
       `[intro_exact][music_exact]concat=n=2:v=0:a=1,` +
-      `aresample=48000,alimiter=limit=0.88:attack=5:release=80,atrim=0:${totalDuration}[aout]`
+      `aresample=48000,alimiter=limit=0.98:attack=3:release=70,atrim=0:${totalDuration}[aout]`
     );
 
     console.log("Premium exact switch timing:", {
