@@ -20528,7 +20528,7 @@ video{display:block;width:100%;max-height:72vh;border-radius:13px;background:#00
 .bigPlayButton.hidden{display:none}
 .directVideoFallback{display:block;margin:10px 0 4px;text-align:center;color:#fff;background:#123faa;padding:11px 14px;border-radius:12px;text-decoration:none;font-weight:900}
 .actions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-top:16px}
-.btn{border:0;border-radius:13px;padding:13px 10px;color:#fff;font-weight:900;font-size:15px;cursor:pointer;text-decoration:none;display:flex;align-items:center;justify-content:center;min-height:48px}
+.btn{border:0;border-radius:13px;padding:13px 10px;color:#fff;font-weight:900;font-size:15px;cursor:pointer;text-decoration:none;display:flex;align-items:center;justify-content:center;min-height:48px;position:relative;z-index:60;pointer-events:auto;touch-action:manipulation}
 .download{background:#7b2cbf}.whatsapp{background:#25D366;color:#082a24}.facebook{background:#1877F2}.xshare{background:#111}.instagram{background:#d63384}.youtube{background:#ef0000}.tiktok{background:#111}.email{background:#0f766e}.copy{background:#475569}.videos{background:#123faa}.credits{background:#4f772d}.full{grid-column:1/-1}
 .note{margin-top:15px;padding:13px;background:rgba(255,255,255,.1);border-radius:14px;line-height:1.5}
 .specButton{display:flex;margin:14px 0 4px;padding:14px 16px;border-radius:14px;background:#ffd21f;color:#082a8f;text-decoration:none;font-weight:900;align-items:center;justify-content:center;min-height:52px}
@@ -20625,6 +20625,11 @@ document.addEventListener('click',function(event){
 
 async function playPremiumVideo(){
   if(!premiumVideo)return;
+  if(bigPlayButton){
+    bigPlayButton.classList.add('hidden');
+    bigPlayButton.style.display='none';
+    bigPlayButton.style.pointerEvents='none';
+  }
   try{
     premiumVideo.controls=true;
     premiumVideo.playsInline=true;
@@ -20664,11 +20669,13 @@ if(premiumVideo){
     if(!bigPlayButton)return;
     bigPlayButton.classList.add('hidden');
     bigPlayButton.style.display='none';
+    bigPlayButton.style.pointerEvents='none';
   };
   const showPremiumPlay=()=>{
     if(!bigPlayButton)return;
     bigPlayButton.classList.remove('hidden');
-    bigPlayButton.style.display='block';
+    bigPlayButton.style.display='flex';
+    bigPlayButton.style.pointerEvents='auto';
   };
   premiumVideo.addEventListener('play',hidePremiumPlay);
   premiumVideo.addEventListener('playing',hidePremiumPlay);
@@ -20767,7 +20774,7 @@ async function copyLink(){
 
 async function shareVideoFile(platform){
   const u=String(pageUrl||window.location.href||'').trim();
-  const copyText=String(shareText||'').trim()+'\n\n'+u;
+  const copyText=String(shareText||'').trim()+'\\n\\n'+u;
   try{
     await navigator.clipboard.writeText(copyText);
   }catch(_error){
@@ -22771,7 +22778,7 @@ function renderGreetingResult(req, res) {
 
   async function downloadThenOpen(platform){
     const u=String(pageUrl||window.location.href||'').trim();
-    const copyText=String(shareText||'').trim()+'\n\n'+u;
+    const copyText=String(shareText||'').trim()+'\\n\\n'+u;
     try{
       await navigator.clipboard.writeText(copyText);
     }catch(_error){
