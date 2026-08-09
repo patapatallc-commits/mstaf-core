@@ -20462,7 +20462,7 @@ app.get("/premium-result/:orderId", async (req, res) => {
     const shareText = isWatchBuy
       ? `🛍️ ${recipient}\nPrice: ${sender}\n\n${shareSpecificationPreview}\n\n📋 Full specifications available on the product page.\n▶ Watch & shop securely with Printo Shop — Powered by PATAPATA.`
       : `🎉 ${title}\nFrom ${sender}\n\nWatch this personalized Printo video and create yours too.`;
-    const staticShareMessage = `${shareText}\n\n🎬 Watch video:\n${pageUrl}${isWatchBuy ? `\n\n📋 Full specifications:\n${specificationsUrl}` : ""}`;
+    const staticShareMessage = `${shareText}\n\n🎬 Watch video:\n${pageUrl}`;
     const staticWhatsAppUrl = `https://api.whatsapp.com/send?text=${encodeURIComponent(staticShareMessage)}`;
     const staticFacebookUrl = `https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(pageUrl)}`;
     const staticXUrl = `https://twitter.com/intent/tweet?text=${encodeURIComponent(staticShareMessage)}`;
@@ -20695,7 +20695,7 @@ function openShareUrl(url){
 }
 
 function getShareMessage(){
-  return shareText+'\\n\\n🎬 Watch video:\\n'+pageUrl+(specificationsUrl!==pageUrl?'\\n\\n📋 Full specifications:\\n'+specificationsUrl:'');
+  return shareText+'\\n\\n🎬 Watch video:\\n'+pageUrl;
 }
 
 async function nativeShareLink(title){
