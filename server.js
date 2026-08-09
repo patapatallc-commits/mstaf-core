@@ -6065,7 +6065,60 @@ function createGreetingDownloadRecord(req, {
     </section>
 
     <div class="footer">Powered by Patapata LLC • Printo Greeting Studio</div>
-  </main>
+  
+
+<section class="termsSection">
+  <h2>Physical Item Return Policy</h2>
+  <p>
+    This section applies only to eligible physical products purchased through Printo Shop / WATCH &amp; BUY.
+    It does not replace the separate final-sale policy for personalized, digital, custom-made, rendered, or downloadable Printo services.
+  </p>
+
+  <h3>Return Eligibility</h3>
+  <p>
+    Eligible physical items may be returned within 14 days after confirmed delivery, provided the item is unused,
+    unworn, unwashed, unopened where applicable, and returned in substantially the same condition in which it was received,
+    together with its original packaging, tags, accessories, and proof of purchase.
+  </p>
+
+  <h3>Damaged, Defective, or Incorrect Items</h3>
+  <p>
+    If a physical item arrives damaged, defective, or materially different from the item ordered, the buyer should contact
+    Printo / PATAPATA promptly after delivery and provide the order information plus clear photos or video showing the issue.
+    After review, an eligible claim may be approved for replacement, return, store credit, or refund as appropriate.
+  </p>
+
+  <h3>Non-Returnable Physical Items</h3>
+  <p>
+    The following physical items are generally not returnable unless they arrive damaged, defective, or incorrect:
+    personalized or custom-made items, clearance or final-sale items, opened personal-care or hygiene products,
+    perishable goods, gift cards, and any item that cannot be resold for health, safety, or sanitary reasons.
+  </p>
+
+  <h3>Return Shipping</h3>
+  <p>
+    If a return is approved because Printo / PATAPATA or the seller shipped a damaged, defective, or incorrect item,
+    the responsible seller may provide return instructions and may cover reasonable return-shipping costs.
+    For an approved discretionary return where the item is not defective or incorrect, the buyer may be responsible
+    for return-shipping costs unless the seller's listing states otherwise.
+  </p>
+
+  <h3>Refund Timing</h3>
+  <p>
+    Approved refunds for physical items are issued after the returned item is received and inspected.
+    Processing time may vary by payment method, bank, card issuer, Shopify, or local payment provider.
+    Original shipping charges are generally non-refundable unless the return resulted from a seller or fulfillment error.
+  </p>
+
+  <h3>Seller-Specific Terms</h3>
+  <p>
+    Some WATCH &amp; BUY physical-product listings may include seller-specific shipping, return, warranty, or refund terms.
+    Where lawful, those listing-specific terms may supplement this policy. They may not remove any mandatory consumer rights
+    that apply under governing law.
+  </p>
+</section>
+
+</main>
 </body>
 </html>`;
 
