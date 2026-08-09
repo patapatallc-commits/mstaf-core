@@ -21645,6 +21645,8 @@ async function renderPremiumOrderVideo({ orderId, req, publicBaseUrl = "" }) {
   const concatListPath = path.join(premiumTempDir, `${runId}_concat.txt`);
   const silentVideoPath = path.join(premiumTempDir, `${runId}_silent.mp4`);
   const outputPath = path.join(premiumTempDir, `${runId}_final.mp4`);
+  const priceSlashVideoBadgePath = path.join(premiumTempDir, `${runId}_price_slash_badge.jpg`);
+  const priceSlashBrandedOutputPath = path.join(premiumTempDir, `${runId}_price_slash_final.mp4`);
   const sharePreviewPath =
     path.join(premiumTempDir, `${runId}_share_preview.jpg`);
   const multiImagePaths = storedImages.map((image, index) =>
@@ -21664,6 +21666,8 @@ async function renderPremiumOrderVideo({ orderId, req, publicBaseUrl = "" }) {
     concatListPath,
     silentVideoPath,
     outputPath,
+    priceSlashVideoBadgePath,
+    priceSlashBrandedOutputPath,
     sharePreviewPath
   ];
 
@@ -22278,6 +22282,47 @@ async function renderPremiumOrderVideo({ orderId, req, publicBaseUrl = "" }) {
       "-movflags", "+faststart",
       outputPath
     ], { timeout: PREMIUM_RENDER_STAGE_TIMEOUT_MS, maxBuffer: 8 * 1024 * 1024 });
+
+    // Watch & Buy promotional finish: bake a small blinking PRICE SLASH badge
+    // into the final MP4 without changing the existing audio mix or timing.
+    // The badge is visible for about 0.72 seconds, then hidden for 0.48 seconds.
+    if (isWatchBuy) {
+      await writePrintoPriceSlashBadge(priceSlashVideoBadgePath);
+
+      await execFilePromise("ffmpeg", [
+        "-y", "-nostdin", "-loglevel", "error",
+        "-i", outputPath,
+        "-loop", "1", "-i", priceSlashVideoBadgePath,
+        "-filter_complex",
+        "[1:v]scale=92:92:force_original_aspect_ratio=decrease[price_slash];" +
+        "[0:v][price_slash]overlay=W-w-14:14:" +
+        "enable='lt(mod(t,1.20),0.72)'[vout]",
+        "-map", "[vout]",
+        "-map", "0:a?",
+        "-t", String(totalDuration),
+        "-r", "15",
+        "-c:v", "libx264",
+        "-preset", "ultrafast",
+        "-crf", "30",
+        "-threads", "1",
+        "-filter_threads", "1",
+        "-c:a", "copy",
+        "-movflags", "+faststart",
+        priceSlashBrandedOutputPath
+      ], {
+        timeout: PREMIUM_RENDER_STAGE_TIMEOUT_MS,
+        maxBuffer: 8 * 1024 * 1024
+      });
+
+      const brandedStat = await fs.promises.stat(priceSlashBrandedOutputPath);
+      if (!Number.isFinite(brandedStat.size) || brandedStat.size <= 0) {
+        throw new Error("PRICE SLASH video branding could not be created.");
+      }
+
+      safeUnlink(outputPath);
+      fs.renameSync(priceSlashBrandedOutputPath, outputPath);
+      console.log("Watch & Buy PRICE SLASH blinking badge added:", orderId);
+    }
 
     const finalStreamDurations = await probePremiumStreamDurations(outputPath);
     const finalAudioLevels = await probePremiumAudioLevels(outputPath);
