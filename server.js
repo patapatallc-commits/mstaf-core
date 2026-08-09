@@ -20747,7 +20747,7 @@ app.post(
       const isWatchBuyRequest = isPrintoWatchBuyCreationType(creationType);
       const recipientName = String(body.recipientName || "").trim().slice(0, isWatchBuyRequest ? 80 : 24);
       const senderName = String(body.senderName || "").trim().slice(0, isWatchBuyRequest ? 80 : 24);
-      const personalMessage = String(body.personalMessage || "").trim().slice(0, isWatchBuy ? 600 : 220);
+      const personalMessage = String(body.personalMessage || "").trim().slice(0, isWatchBuyRequest ? 600 : 220);
       const customerPhone = String(body.customerPhone || "").replace(/\D+/g, "");
       const customerEmail = String(body.customerEmail || "").trim().slice(0, 200);
       const songStyle = String(body.songStyle || "").trim().slice(0, 100);
