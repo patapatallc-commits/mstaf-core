@@ -16554,7 +16554,7 @@ app.get("/worker-dashboard", requireDashboardKey, async (req, res) => {
     let lastKnownState = "queued";
 
     while (true) {
-      await delay(10000);
+      await delay(12000);
 
       try {
         const status = await api(
@@ -16565,54 +16565,53 @@ app.get("/worker-dashboard", requireDashboardKey, async (req, res) => {
         const state = String(status.renderStatus || status.status || "").toLowerCase();
         if (state) lastKnownState = state;
 
-        const elapsedSeconds = Math.max(
-          0,
-          Math.round((Date.now() - startedAt) / 1000)
-        );
+        const elapsedSeconds = Math.max(0, Math.round((Date.now() - startedAt) / 1000));
 
         if (button) {
           if (state === "queued") {
-            button.textContent = "⏳ Render queued — waiting for renderer...";
+            button.textContent = "⏳ Render queued — preparing renderer...";
           } else if (state === "rendering") {
             button.textContent = "🎬 Rendering video... " + elapsedSeconds + "s";
           } else if (state === "completed") {
             button.textContent = "✅ Render complete";
+          } else if (state === "failed") {
+            button.textContent = "🔄 Render stopped — tap to retry";
           } else {
-            button.textContent = "⏳ Render queued — waiting for renderer...";
+            button.textContent = "⏳ Checking render status...";
           }
         }
 
         if (state === "completed") {
           alert("✅ Premium video completed.");
-          if (status.finalVideoUrl) {
-            window.open(status.finalVideoUrl, "_blank", "noopener");
-          }
+          if (status.finalVideoUrl) window.open(status.finalVideoUrl, "_blank", "noopener");
           await loadJobs();
           return;
         }
 
         if (state === "failed") {
-          throw new Error(status.renderError || "Premium video rendering failed.");
+          throw new Error(status.renderError || "Premium video rendering stopped. Please tap Render again.");
         }
       } catch (error) {
         const message = String(error?.message || error || "");
-        if (
-          message.toLowerCase().includes("rendering failed") ||
-          message.toLowerCase().includes("premium video rendering failed")
-        ) {
-          throw error;
-        }
+        const lower = message.toLowerCase();
+        if (lower.includes("rendering failed") || lower.includes("rendering stopped")) throw error;
 
-        // FFmpeg can temporarily make a small Render instance slow to answer
-        // status requests. Preserve the last real database state rather than
-        // replacing it with the misleading "checking status" message.
         consecutiveStatusErrors += 1;
         if (button) {
-          button.textContent = lastKnownState === "rendering"
-            ? "🎬 Rendering video — server busy..."
-            : "⏳ Render queued — server busy...";
+          button.textContent = consecutiveStatusErrors >= 6
+            ? "🔄 Server did not respond — tap Render to retry"
+            : (lastKnownState === "rendering"
+                ? "🎬 Rendering — reconnecting to server..."
+                : "⏳ Queue — reconnecting to server...");
         }
-        await delay(Math.min(30000, Math.max(5000, consecutiveStatusErrors * 5000)));
+
+        // Do not leave the worker dashboard disabled forever when the Render
+        // service is unreachable. The backend stale-job recovery decides whether
+        // the old render is still active or may safely be retried.
+        if (consecutiveStatusErrors >= 6) {
+          throw new Error("Render status could not be reached for several minutes. Tap Render again; the server will safely reject a duplicate if the old render is still active.");
+        }
+        await delay(Math.min(30000, consecutiveStatusErrors * 5000));
       }
     }
   }
@@ -22450,6 +22449,16 @@ app.post("/api/greeting/premium/render", requireDashboardKey, express.json(), as
             orderId,
             error?.stderr || error?.message || error
           );
+          try {
+            await queryWithRetry(
+              `UPDATE premium_greeting_orders
+               SET render_status = 'failed', render_error = $2, updated_at = NOW()
+               WHERE order_id = $1 AND render_status <> 'completed'`,
+              [orderId, String(error?.message || "Premium background render stopped unexpectedly.").slice(0, 1500)]
+            );
+          } catch (statusError) {
+            console.error("Could not persist Premium background render failure:", statusError);
+          }
         } finally {
           activePremiumRenders.delete(orderId);
         }
@@ -22479,20 +22488,36 @@ app.get("/api/greeting/premium/render-status", requireDashboardKey, async (req, 
       return res.status(400).json({ ok: false, error: "Premium order ID is required." });
     }
 
-    const found = await queryWithRetry(
-      `SELECT order_id,
-              render_status,
-              render_error,
-              final_video_url,
-              updated_at
-       FROM premium_greeting_orders
-       WHERE order_id = $1
-       LIMIT 1`,
+    let found = await queryWithRetry(
+      `SELECT order_id, render_status, render_error, final_video_url, updated_at
+       FROM premium_greeting_orders WHERE order_id = $1 LIMIT 1`,
       [orderId]
     );
-    const order = found.rows[0];
+    let order = found.rows[0];
     if (!order) {
       return res.status(404).json({ ok: false, error: "Premium order was not found." });
+    }
+
+    // Self-heal jobs left behind by an interrupted Render instance. If this
+    // process still owns the order in activePremiumRenders, it is genuinely active.
+    // Otherwise, an old queued/rendering row should not trap the dashboard forever.
+    const state = String(order.render_status || "not_started").toLowerCase();
+    const updatedMs = order.updated_at ? new Date(order.updated_at).getTime() : 0;
+    const ageMs = updatedMs ? Math.max(0, Date.now() - updatedMs) : 0;
+    const locallyActive = activePremiumRenders.has(orderId);
+    const staleQueued = state === "queued" && !locallyActive && ageMs > 2 * 60 * 1000;
+    const staleRendering = state === "rendering" && !locallyActive && ageMs > 12 * 60 * 1000;
+
+    if (staleQueued || staleRendering) {
+      const recoveryMessage = "Previous render was interrupted before completion. Tap Render again to retry.";
+      await queryWithRetry(
+        `UPDATE premium_greeting_orders
+         SET render_status = 'failed', render_error = $2, updated_at = NOW()
+         WHERE order_id = $1`,
+        [orderId, recoveryMessage]
+      );
+      order = { ...order, render_status: "failed", render_error: recoveryMessage, updated_at: new Date() };
+      console.warn("Recovered stale Premium render:", orderId, state, Math.round(ageMs / 1000) + "s");
     }
 
     return res.json({
@@ -22501,7 +22526,8 @@ app.get("/api/greeting/premium/render-status", requireDashboardKey, async (req, 
       renderStatus: String(order.render_status || "not_started").toLowerCase(),
       renderError: order.render_error || "",
       finalVideoUrl: order.final_video_url || "",
-      updatedAt: order.updated_at || null
+      updatedAt: order.updated_at || null,
+      active: activePremiumRenders.has(orderId)
     });
   } catch (error) {
     console.error("Premium render status error:", error);
