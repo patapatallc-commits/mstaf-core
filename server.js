@@ -21785,7 +21785,7 @@ async function renderPremiumOrderVideo({ orderId, req, publicBaseUrl = "" }) {
     // The MP4 itself is not interactive, so show a readable summary in the
     // video and direct buyers to the clickable full-specifications section
     // beneath the generated video.
-    const videoPersonalMessage = isWatchBuy && videoPersonalMessage.length > 560
+    const videoPersonalMessage = isWatchBuy && fullPersonalMessage.length > 560
       ? `${fullPersonalMessage.slice(0, 500).trim()} … View full specifications below the video.`
       : fullPersonalMessage;
 
