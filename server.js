@@ -7029,7 +7029,7 @@ app.post("/api/customer/account/phone/start", async (req, res) => {
       [challengeHash, phone, ipHash]
     );
 
-    const verificationMessage = `PRINTO VERIFY ${challengeToken}`;
+    const verificationMessage = `Hallo Printo\nPRINTO VERIFY ${challengeToken}`;
     const whatsappUrl =
       `https://wa.me/${encodeURIComponent(String(SUPPORT_PHONE).replace(/\D+/g, ""))}` +
       `?text=${encodeURIComponent(verificationMessage)}`;
@@ -7448,7 +7448,7 @@ app.get("/customer-login", (req, res) => {
     phoneLogin: tx("Use phone-number login instead"),
     loginToAccount: tx("Log In to My Account"),
     preparing: tx("Preparing WhatsApp verification..."),
-    openingWhatsApp: tx("WhatsApp is opening. Send the prepared PRINTO VERIFY message, then return to this page."),
+    openingWhatsApp: tx("WhatsApp is opening. Send the prepared Hallo Printo + PRINTO VERIFY message, then return to this page."),
     verified: tx("Phone number verified. Choose your PIN and create the account."),
     expired: tx("Verification expired. Tap Verify Number with WhatsApp again."),
     verifyFirst: tx("Verify your WhatsApp phone number first."),
@@ -8274,7 +8274,7 @@ app.post("/webhook", async (req, res) => {
 
     const phoneVerificationMatch = String(text || "")
       .trim()
-      .match(/^PRINTO\s+VERIFY\s+([A-Za-z0-9_-]{20,80})$/i);
+      .match(/^(?:Hallo(?:\s+Printo)?\s*[\r\n]+)?PRINTO\s+VERIFY\s+([A-Za-z0-9_-]{20,80})$/i);
 
     if (type === "text" && phoneVerificationMatch) {
       const metaSignatureVerified =
