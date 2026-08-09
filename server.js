@@ -15342,35 +15342,48 @@ function getPrinterRegistry() {
 
 async function sendWhatsAppText(to, body) {
   try {
-    const token = process.env.WHATSAPP_ACCESS_TOKEN;
-    const phoneNumberId = process.env.WHATSAPP_PHONE_NUMBER_ID;
-    if (!token || !phoneNumberId || !to || !body) {
-      return { ok: false, error: "Missing WhatsApp credentials or parameters" };
+    const token = String(process.env.WHATSAPP_ACCESS_TOKEN || "").trim();
+    const phoneNumberId = String(process.env.WHATSAPP_PHONE_NUMBER_ID || "").trim();
+    let destination = String(to || "").replace(/\D/g, "");
+    const textBody = String(body || "").trim();
+
+    // WhatsApp Cloud API expects the recipient in international digits-only format.
+    // Preserve already-international numbers; add the US country code to plain 10-digit US numbers.
+    if (destination.length === 10) destination = `1${destination}`;
+
+    if (!token || !phoneNumberId || !destination || !textBody) {
+      return { ok: false, error: "Missing WhatsApp credentials, recipient, or message" };
     }
 
-    const url = `https://graph.facebook.com/v23.0/${phoneNumberId}/messages`;
-
+    // Use the same Graph API version/path style as Printo's working WhatsApp bot sender.
+    const url = `https://graph.facebook.com/v18.0/${phoneNumberId}/messages`;
     const r = await fetch(url, {
       method: "POST",
       headers: {
-        "Authorization": `Bearer ${token}`,
+        Authorization: `Bearer ${token}`,
         "Content-Type": "application/json"
       },
       body: JSON.stringify({
         messaging_product: "whatsapp",
-        to,
+        recipient_type: "individual",
+        to: destination,
         type: "text",
-        text: { body }
+        text: { preview_url: false, body: textBody }
       })
     });
 
     const data = await r.json().catch(() => ({}));
-    if (!r.ok) {
-      return { ok: false, error: data };
+    if (!r.ok || data?.error) {
+      console.error("Worker dashboard WhatsApp API rejected message:", data);
+      return { ok: false, error: data?.error?.message || data?.error || data || `HTTP ${r.status}` };
     }
-    return { ok: true, data };
+
+    const messageId = data?.messages?.[0]?.id || null;
+    console.log("Worker dashboard WhatsApp reply accepted:", { to: destination, messageId });
+    return { ok: true, data, to: destination, messageId };
   } catch (err) {
-    return { ok: false, error: err.message };
+    console.error("Worker dashboard WhatsApp send exception:", err);
+    return { ok: false, error: err.message || "WhatsApp send failed" };
   }
 }
 
@@ -15690,12 +15703,13 @@ app.post("/api/dashboard/jobs/:id/reply", requireDashboardKey, express.json(), a
       return res.status(502).json({ ok: false, error: detail || "WhatsApp send failed" });
     }
 
-    const customerSession = getSession(normalizedPhone);
+    const deliveredPhone = sendResult.to || normalizedPhone;
+    const customerSession = getSession(deliveredPhone);
     customerSession.selectedService = job.service_type || "SERVICE";
     customerSession.lastServiceJobId = job.id;
     customerSession.pendingFile = null;
     customerSession.stage = "SERVICE_WAITING_EXTRA_NOTES";
-    return res.json({ ok: true, sent: true });
+    return res.json({ ok: true, sent: true, messageId: sendResult.messageId || null, to: sendResult.to || normalizedPhone });
   } catch (err) {
     console.error("Dashboard reply error:", err);
     return res.status(500).json({ ok: false, error: err.message });
