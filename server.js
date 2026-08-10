@@ -6065,60 +6065,7 @@ function createGreetingDownloadRecord(req, {
     </section>
 
     <div class="footer">Powered by Patapata LLC • Printo Greeting Studio</div>
-  
-
-<section class="termsSection">
-  <h2>Physical Item Return Policy</h2>
-  <p>
-    This section applies only to eligible physical products purchased through Printo Shop / WATCH &amp; BUY.
-    It does not replace the separate final-sale policy for personalized, digital, custom-made, rendered, or downloadable Printo services.
-  </p>
-
-  <h3>Return Eligibility</h3>
-  <p>
-    Eligible physical items may be returned within 14 days after confirmed delivery, provided the item is unused,
-    unworn, unwashed, unopened where applicable, and returned in substantially the same condition in which it was received,
-    together with its original packaging, tags, accessories, and proof of purchase.
-  </p>
-
-  <h3>Damaged, Defective, or Incorrect Items</h3>
-  <p>
-    If a physical item arrives damaged, defective, or materially different from the item ordered, the buyer should contact
-    Printo / PATAPATA promptly after delivery and provide the order information plus clear photos or video showing the issue.
-    After review, an eligible claim may be approved for replacement, return, store credit, or refund as appropriate.
-  </p>
-
-  <h3>Non-Returnable Physical Items</h3>
-  <p>
-    The following physical items are generally not returnable unless they arrive damaged, defective, or incorrect:
-    personalized or custom-made items, clearance or final-sale items, opened personal-care or hygiene products,
-    perishable goods, gift cards, and any item that cannot be resold for health, safety, or sanitary reasons.
-  </p>
-
-  <h3>Return Shipping</h3>
-  <p>
-    If a return is approved because Printo / PATAPATA or the seller shipped a damaged, defective, or incorrect item,
-    the responsible seller may provide return instructions and may cover reasonable return-shipping costs.
-    For an approved discretionary return where the item is not defective or incorrect, the buyer may be responsible
-    for return-shipping costs unless the seller's listing states otherwise.
-  </p>
-
-  <h3>Refund Timing</h3>
-  <p>
-    Approved refunds for physical items are issued after the returned item is received and inspected.
-    Processing time may vary by payment method, bank, card issuer, Shopify, or local payment provider.
-    Original shipping charges are generally non-refundable unless the return resulted from a seller or fulfillment error.
-  </p>
-
-  <h3>Seller-Specific Terms</h3>
-  <p>
-    Some WATCH &amp; BUY physical-product listings may include seller-specific shipping, return, warranty, or refund terms.
-    Where lawful, those listing-specific terms may supplement this policy. They may not remove any mandatory consumer rights
-    that apply under governing law.
-  </p>
-</section>
-
-</main>
+  </main>
 </body>
 </html>`;
 
@@ -18935,8 +18882,9 @@ function buildGreetingStudioHomePage(language = "en") {
       <article class="legal-card"><h3>6. Credits and Memberships</h3><p>Credits are deducted when a generation or eligible service begins. Membership credits are released according to the selected plan. Prices, credit costs, available features, and processing times may be updated for future purchases.</p></article>
       <article class="legal-card legal-danger"><h3>7. Final Sale and No-Return Policy</h3><p><strong>Because each video is custom-generated using customer-provided information and computing resources, a successfully generated video is final and non-returnable. No refund is provided after successful generation merely because the customer changes their mind, dislikes a creative preference, or supplied incorrect information.</strong></p></article>
       <article class="legal-card legal-alert"><h3>8. Technical Generation Problems</h3><p>If a verified technical problem caused the generation not to work, produced no usable video, or prevented delivery, contact a Printto Support Agent promptly. After reviewing the issue, PATAPATA LLC may fix and regenerate the video, restore the affected credits, or provide another appropriate resolution.</p><p>A refund, when legally required or approved by PATAPATA LLC, is considered only after support has had a reasonable opportunity to investigate and correct the technical problem.</p></article>
-      <article class="legal-card"><h3>9. Limitation of Responsibility</h3><p>To the extent permitted by law, PATAPATA LLC is not responsible for claims, losses, or disputes caused by unauthorized uploads, customer mistakes, infringement by a user, third-party platforms, internet interruptions, or circumstances outside our reasonable control.</p></article>
-      <article class="legal-card"><h3>10. Policy Enforcement and Updates</h3><p>We may refuse service or restrict access when necessary to protect people, intellectual property, privacy, platform security, or legal compliance. Updated terms apply to future use after they are posted on this page.</p></article>
+      <article class="legal-card legal-alert"><h3>10. Physical Item Return Policy</h3><p><strong>This section applies to physical merchandise sold directly by PATAPATA LLC / Printto Shop unless the product page clearly states a different lawful return period.</strong></p><ul><li><strong>Return window:</strong> Request a return within 14 calendar days after confirmed delivery.</li><li><strong>Condition:</strong> The item must be unused, unworn, unopened where applicable, and returned with original packaging, tags, accessories, and proof of purchase.</li><li><strong>Damaged, defective, or incorrect items:</strong> Contact Printto Support within 3 calendar days after delivery and provide clear photos or video. When the problem is verified, PATAPATA LLC may replace the item, provide a return label, or issue an appropriate refund.</li><li><strong>Change-of-mind returns:</strong> The customer is responsible for return shipping. Original shipping charges are not refundable unless required by law.</li><li><strong>Non-returnable physical items:</strong> Personalized or custom-made goods; opened beauty, cosmetic, hygiene, or personal-care products; perishable goods; items clearly marked Final Sale; and items damaged after delivery through misuse or improper handling.</li><li><strong>Refund timing:</strong> Approved refunds are issued to the original payment method after the returned item is received and inspected. Bank or payment-provider processing time may vary.</li><li><strong>Independent Watch &amp; Buy sellers:</strong> A seller-specific return policy shown before purchase may apply to products sold by an independent seller. Seller policies must comply with applicable law.</li></ul><p>Nothing in this policy limits any non-waivable consumer rights provided by applicable law.</p></article>
+      <article class="legal-card"><h3>11. Limitation of Responsibility</h3><p>To the extent permitted by law, PATAPATA LLC is not responsible for claims, losses, or disputes caused by unauthorized uploads, customer mistakes, infringement by a user, third-party platforms, internet interruptions, or circumstances outside our reasonable control.</p></article>
+      <article class="legal-card"><h3>12. Policy Enforcement and Updates</h3><p>We may refuse service or restrict access when necessary to protect people, intellectual property, privacy, platform security, or legal compliance. Updated terms apply to future use after they are posted on this page.</p></article>
     </div>
     <div class="legal-contact"><strong>PATAPATA LLC</strong><br>81 W. Allen Street<br>Irvington, NJ 07111, United States<br><br>For a failed generation or another service problem, use the <strong>Worker Help</strong> or Support Agent option in Printto Studio before requesting a refund.</div>
   </section>
