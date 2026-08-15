@@ -23522,10 +23522,12 @@ const PRINTO_MUSIC_CATALOG = Object.freeze([
     description: "The official OSHIKOSHI production from Printo Studio.",
     regularPriceUsd: Number(process.env.MUSIC_OSHIKOSHI_REGULAR_PRICE_USD || 4.99),
     priceUsd: Number(process.env.MUSIC_OSHIKOSHI_PRICE_USD || 1.99),
+    // Use an environment override when provided; otherwise serve the
+    // deployed public preview at public/music/oshikoshi-preview.mp4.
     previewUrl: String(
       process.env.MUSIC_OSHIKOSHI_PREVIEW_URL ||
       process.env.MUSIC_OSHIKOSHI_VIDEO_URL ||
-      ""
+      "/music/oshikoshi-preview.mp4"
     ).trim(),
     coverUrl: String(process.env.MUSIC_OSHIKOSHI_COVER_URL || "").trim(),
     shopifyUrl: String(
