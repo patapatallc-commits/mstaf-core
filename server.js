@@ -21883,10 +21883,10 @@ async function renderPremiumOrderVideo({ orderId, req, publicBaseUrl = "" }) {
     // for the original Printo character. This makes both the introduction and
     // every item/recipient image substantially larger and easier to see.
     const usesExpandedMultiImageWindow = isMultiImage && !isWatchBuy;
-    const introInnerX = isWatchBuy ? 57 : usesExpandedMultiImageWindow ? 58 : 166;
-    const introInnerY = isWatchBuy ? 134 : usesExpandedMultiImageWindow ? 136 : 160;
-    const introInnerW = isWatchBuy ? 462 : usesExpandedMultiImageWindow ? 460 : 244;
-    const introInnerH = isWatchBuy ? 406 : usesExpandedMultiImageWindow ? 404 : 347;
+    const introInnerX = isWatchBuy ? 34 : usesExpandedMultiImageWindow ? 58 : 166;
+    const introInnerY = isWatchBuy ? 126 : usesExpandedMultiImageWindow ? 136 : 160;
+    const introInnerW = isWatchBuy ? 508 : usesExpandedMultiImageWindow ? 460 : 244;
+    const introInnerH = isWatchBuy ? 418 : usesExpandedMultiImageWindow ? 404 : 347;
 
     // Fit the complete sender vertically without cutting off the cap, head,
     // face, or shoulders. Any unused space stays a clean warm cream color.
@@ -21957,10 +21957,11 @@ async function renderPremiumOrderVideo({ orderId, req, publicBaseUrl = "" }) {
       `drawtext=${fontOption}text='WATCH & BUY':x=(w-text_w)/2:y=27:fontsize=31:fontcolor=#ffffff`,
       `drawtext=${fontOption}text='Powered by PATAPATA':x=(w-text_w)/2:y=68:fontsize=14:fontcolor=#d9f7ff`,
 
-      // Large consistent seller-video / product-image window.
-      `drawbox=x=43:y=120:w=490:h=424:color=${watchBuyFrame.fill}@1:t=fill`,
-      `drawbox=x=43:y=120:w=490:h=424:color=${watchBuyFrame.border}@1:t=7`,
-      `drawtext=text='SELLER VIDEO • PRODUCT PHOTOS':x=(w-text_w)/2:y=128:fontsize=12:fontcolor=${watchBuyFrame.label}`,
+      // Extra-large full-width seller-video / product-image window. The old
+      // side space is absorbed into the display so products are clearer.
+      `drawbox=x=22:y=110:w=532:h=442:color=${watchBuyFrame.fill}@1:t=fill`,
+      `drawbox=x=22:y=110:w=532:h=442:color=${watchBuyFrame.border}@1:t=7`,
+      `drawtext=text='SELLER VIDEO • PRODUCT PHOTOS':x=(w-text_w)/2:y=114:fontsize=11:fontcolor=${watchBuyFrame.label}`,
 
       // Product identity panel: two-line title and immediately visible price.
       "drawbox=x=34:y=558:w=508:h=112:color=#ffffff@1:t=fill",
