@@ -23522,6 +23522,7 @@ const PRINTO_MUSIC_CATALOG = Object.freeze([
     description: "The official OSHIKOSHI production from Printo Studio.",
     regularPriceUsd: Number(process.env.MUSIC_OSHIKOSHI_REGULAR_PRICE_USD || 4.99),
     priceUsd: Number(process.env.MUSIC_OSHIKOSHI_PRICE_USD || 1.99),
+    nigeriaPriceNgn: Number(process.env.MUSIC_OSHIKOSHI_NIGERIA_PRICE_NGN || 1000),
     // Use an environment override when provided; otherwise serve the
     // deployed public preview at public/music/oshikoshi-preview.mp4.
     previewUrl: String(
@@ -23562,11 +23563,19 @@ function formatPrintoMusicPrice(value) {
   return Number.isFinite(amount) ? `$${amount.toFixed(2)}` : "Price available at checkout";
 }
 
+function formatPrintoMusicNairaPrice(value) {
+  const amount = Number(value);
+  return Number.isFinite(amount)
+    ? `₦${Math.round(amount).toLocaleString("en-NG")}`
+    : "Nigeria price available at checkout";
+}
+
 function buildPrintoMusicSupportUrl(item) {
   const message = [
     "Hello Printo Studio,",
     `I want to buy and download ${item.title}.`,
-    `Price: ${formatPrintoMusicPrice(item.priceUsd)}`,
+    `International price: ${formatPrintoMusicPrice(item.priceUsd)}`,
+    `Nigeria price: ${formatPrintoMusicNairaPrice(item.nigeriaPriceNgn)}`,
     "Please help me complete my purchase and receive the download."
   ].join("\n");
   return `https://wa.me/${encodeURIComponent(String(SUPPORT_PHONE).replace(/\D+/g, ""))}?text=${encodeURIComponent(message)}`;
@@ -23577,11 +23586,16 @@ function renderPrintoMusicCard(item) {
   const description = escapeMusicStoreHtml(item.description);
   const type = escapeMusicStoreHtml(item.type);
   const price = escapeMusicStoreHtml(formatPrintoMusicPrice(item.priceUsd));
+  const nigeriaPrice = escapeMusicStoreHtml(formatPrintoMusicNairaPrice(item.nigeriaPriceNgn));
   const regularPrice = Number(item.regularPriceUsd);
   const hasPromo = Number.isFinite(regularPrice) && regularPrice > Number(item.priceUsd);
   const priceHtml = hasPromo
-    ? `<div class="promo-label">🔥 INTRODUCTORY PROMOTIONAL PRICE</div><div class="promo-prices"><span class="regular-price">${escapeMusicStoreHtml(formatPrintoMusicPrice(regularPrice))}</span><span class="promo-price">${price}</span></div>`
-    : `<div class="promo-price">${price}</div>`;
+    ? `<div class="promo-label">🔥 INTRODUCTORY PROMOTIONAL PRICE</div>
+       <div class="promo-prices"><span class="regular-price">${escapeMusicStoreHtml(formatPrintoMusicPrice(regularPrice))}</span><span class="promo-price">${price}</span></div>
+       <div class="regional-price"><strong>🌍 International:</strong> ${price}</div>
+       <div class="regional-price nigeria-price"><strong>🇳🇬 Nigeria:</strong> ${nigeriaPrice}</div>`
+    : `<div class="regional-price"><strong>🌍 International:</strong> ${price}</div>
+       <div class="regional-price nigeria-price"><strong>🇳🇬 Nigeria:</strong> ${nigeriaPrice}</div>`;
   const itemUrl = `/downloads/${encodeURIComponent(item.slug)}`;
   const preview = item.previewUrl
     ? `<video class="music-preview" controls playsinline preload="metadata"${item.coverUrl ? ` poster="${escapeMusicStoreHtml(item.coverUrl)}"` : ""}><source src="${escapeMusicStoreHtml(item.previewUrl)}" type="video/mp4">Your browser cannot play this video.</video>`
@@ -23610,7 +23624,7 @@ function buildPrintoMusicStorePage() {
 <title>Printo Studio Music & Video Downloads</title>
 <meta name="description" content="Preview, buy and download official Printo Studio music and video productions.">
 <style>
-*{box-sizing:border-box}body{margin:0;font-family:Arial,Helvetica,sans-serif;background:radial-gradient(circle at top,#17398e 0,#080d25 45%,#03050d 100%);color:#fff;min-height:100vh}.music-shell{width:min(1180px,94%);margin:auto;padding:28px 0 70px}.music-top{display:flex;justify-content:space-between;gap:16px;align-items:center;flex-wrap:wrap}.brand{font-weight:1000;font-size:20px}.back{color:#10245e;background:#ffd21f;text-decoration:none;font-weight:900;padding:11px 16px;border-radius:12px}.hero{text-align:center;padding:42px 10px 28px}.hero h1{font-size:clamp(34px,6vw,64px);margin:0 0 12px}.hero p{max-width:740px;margin:auto;color:#d5dcff;font-size:18px;line-height:1.55}.music-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(290px,1fr));gap:24px;margin-top:28px}.music-card{background:linear-gradient(180deg,#111b45,#0b1231);border:1px solid rgba(255,255,255,.14);border-radius:24px;overflow:hidden;box-shadow:0 20px 50px rgba(0,0,0,.35)}.music-media{display:block;background:#000;text-decoration:none}.music-preview{width:100%;display:block;aspect-ratio:16/10;object-fit:contain;background:#000}.music-placeholder{aspect-ratio:16/10;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:9px;background:linear-gradient(135deg,#16275d,#0a1028);color:#fff}.play-disc{width:74px;height:74px;border-radius:50%;display:grid;place-items:center;background:#ffd21f;color:#07112d;font-size:30px;padding-left:5px;box-shadow:0 0 0 9px rgba(255,210,31,.15)}.music-info{padding:22px}.music-badge{display:inline-block;background:#ff3d20;padding:6px 10px;border-radius:999px;font-size:12px;font-weight:1000}.music-info h2{font-size:30px;margin:12px 0 4px}.music-type{color:#9eb3ff;font-weight:800}.music-info p{color:#d4daf2;line-height:1.5}.music-price{margin:18px 0}.promo-label{display:inline-block;background:#ff3d20;color:#fff;font-size:12px;font-weight:1000;padding:6px 10px;border-radius:999px;margin-bottom:8px}.promo-prices{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap}.regular-price{text-decoration:line-through;color:#9ea8cc;font-size:21px;font-weight:800}.promo-price{font-size:34px;font-weight:1000;color:#ffd21f}.music-primary{display:block;text-align:center;text-decoration:none;background:#ffd21f;color:#07112d;padding:15px;border-radius:14px;font-weight:1000;font-size:17px}.notice{margin:34px auto 0;max-width:850px;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.12);padding:18px;border-radius:16px;text-align:center;color:#d9def3;line-height:1.5}.footer{text-align:center;color:#9ea8cc;margin-top:38px;font-size:13px}@media(max-width:600px){.music-shell{width:min(94%,520px)}.hero{padding-top:30px}}
+*{box-sizing:border-box}body{margin:0;font-family:Arial,Helvetica,sans-serif;background:radial-gradient(circle at top,#17398e 0,#080d25 45%,#03050d 100%);color:#fff;min-height:100vh}.music-shell{width:min(1180px,94%);margin:auto;padding:28px 0 70px}.music-top{display:flex;justify-content:space-between;gap:16px;align-items:center;flex-wrap:wrap}.brand{font-weight:1000;font-size:20px}.back{color:#10245e;background:#ffd21f;text-decoration:none;font-weight:900;padding:11px 16px;border-radius:12px}.hero{text-align:center;padding:42px 10px 28px}.hero h1{font-size:clamp(34px,6vw,64px);margin:0 0 12px}.hero p{max-width:740px;margin:auto;color:#d5dcff;font-size:18px;line-height:1.55}.music-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(290px,1fr));gap:24px;margin-top:28px}.music-card{background:linear-gradient(180deg,#111b45,#0b1231);border:1px solid rgba(255,255,255,.14);border-radius:24px;overflow:hidden;box-shadow:0 20px 50px rgba(0,0,0,.35)}.music-media{display:block;background:#000;text-decoration:none}.music-preview{width:100%;display:block;aspect-ratio:16/10;object-fit:contain;background:#000}.music-placeholder{aspect-ratio:16/10;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:9px;background:linear-gradient(135deg,#16275d,#0a1028);color:#fff}.play-disc{width:74px;height:74px;border-radius:50%;display:grid;place-items:center;background:#ffd21f;color:#07112d;font-size:30px;padding-left:5px;box-shadow:0 0 0 9px rgba(255,210,31,.15)}.music-info{padding:22px}.music-badge{display:inline-block;background:#ff3d20;padding:6px 10px;border-radius:999px;font-size:12px;font-weight:1000}.music-info h2{font-size:30px;margin:12px 0 4px}.music-type{color:#9eb3ff;font-weight:800}.music-info p{color:#d4daf2;line-height:1.5}.music-price{margin:18px 0}.promo-label{display:inline-block;background:#ff3d20;color:#fff;font-size:12px;font-weight:1000;padding:6px 10px;border-radius:999px;margin-bottom:8px}.promo-prices{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap}.regular-price{text-decoration:line-through;color:#9ea8cc;font-size:21px;font-weight:800}.promo-price{font-size:34px;font-weight:1000;color:#ffd21f}.regional-price{margin-top:9px;font-size:17px;font-weight:800;color:#fff}.nigeria-price{color:#7ef0b5}.music-primary{display:block;text-align:center;text-decoration:none;background:#ffd21f;color:#07112d;padding:15px;border-radius:14px;font-weight:1000;font-size:17px}.notice{margin:34px auto 0;max-width:850px;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.12);padding:18px;border-radius:16px;text-align:center;color:#d9def3;line-height:1.5}.footer{text-align:center;color:#9ea8cc;margin-top:38px;font-size:13px}@media(max-width:600px){.music-shell{width:min(94%,520px)}.hero{padding-top:30px}}
 </style>
 </head>
 <body>
@@ -23629,11 +23643,16 @@ function buildPrintoMusicItemPage(item) {
   const title = escapeMusicStoreHtml(item.title);
   const description = escapeMusicStoreHtml(item.description);
   const price = escapeMusicStoreHtml(formatPrintoMusicPrice(item.priceUsd));
+  const nigeriaPrice = escapeMusicStoreHtml(formatPrintoMusicNairaPrice(item.nigeriaPriceNgn));
   const regularPrice = Number(item.regularPriceUsd);
   const hasPromo = Number.isFinite(regularPrice) && regularPrice > Number(item.priceUsd);
   const priceHtml = hasPromo
-    ? `<div class="promo-label">🔥 INTRODUCTORY PROMOTIONAL PRICE</div><div class="promo-prices"><span class="regular-price">${escapeMusicStoreHtml(formatPrintoMusicPrice(regularPrice))}</span><span class="promo-price">${price}</span></div>`
-    : `<div class="promo-price">${price}</div>`;
+    ? `<div class="promo-label">🔥 INTRODUCTORY PROMOTIONAL PRICE</div>
+       <div class="promo-prices"><span class="regular-price">${escapeMusicStoreHtml(formatPrintoMusicPrice(regularPrice))}</span><span class="promo-price">${price}</span></div>
+       <div class="regional-price"><strong>🌍 International:</strong> ${price}</div>
+       <div class="regional-price nigeria-price"><strong>🇳🇬 Nigeria:</strong> ${nigeriaPrice}</div>`
+    : `<div class="regional-price"><strong>🌍 International:</strong> ${price}</div>
+       <div class="regional-price nigeria-price"><strong>🇳🇬 Nigeria:</strong> ${nigeriaPrice}</div>`;
   const supportUrl = buildPrintoMusicSupportUrl(item);
   const shareUrl = `${PRINTO_BRANDED_PUBLIC_ORIGIN}/downloads/${encodeURIComponent(item.slug)}`;
   const media = item.previewUrl
@@ -23653,7 +23672,7 @@ function buildPrintoMusicItemPage(item) {
 <meta property="og:type" content="video.other">
 ${item.coverUrl ? `<meta property="og:image" content="${escapeMusicStoreHtml(item.coverUrl)}">` : ""}
 <style>
-*{box-sizing:border-box}body{margin:0;font-family:Arial,Helvetica,sans-serif;background:linear-gradient(160deg,#05081d,#10245e);color:#fff;min-height:100vh}.wrap{width:min(900px,94%);margin:auto;padding:26px 0 60px}.top{display:flex;justify-content:space-between;gap:12px;align-items:center}.top a{color:#10245e;background:#ffd21f;text-decoration:none;font-weight:900;padding:10px 14px;border-radius:12px}.panel{margin-top:28px;background:#0d1536;border:1px solid rgba(255,255,255,.14);border-radius:26px;overflow:hidden;box-shadow:0 24px 60px rgba(0,0,0,.38)}.hero-video{display:block;width:100%;max-height:560px;background:#000}.hero-placeholder{min-height:350px;display:flex;flex-direction:column;align-items:center;justify-content:center;background:#02040c;gap:12px}.hero-placeholder div{font-size:72px}.content{padding:28px}.content h1{font-size:clamp(36px,8vw,68px);margin:0 0 8px}.type{color:#a5b8ff;font-weight:900}.content p{color:#d7dcf0;line-height:1.6}.price{margin:22px 0}.promo-label{display:inline-block;background:#ff3d20;color:#fff;font-size:12px;font-weight:1000;padding:7px 11px;border-radius:999px;margin-bottom:10px}.promo-prices{display:flex;align-items:baseline;gap:14px;flex-wrap:wrap}.regular-price{text-decoration:line-through;color:#9ea8cc;font-size:25px;font-weight:800}.promo-price{font-size:42px;font-weight:1000;color:#ffd21f}.buttons{display:grid;grid-template-columns:repeat(2,1fr);gap:12px}.btn{display:block;text-align:center;text-decoration:none;padding:15px;border-radius:14px;font-weight:1000}.shopify{background:#ffd21f;color:#07112d}.africa{background:#008751;color:#fff}.support{background:#25D366;color:#07112d}.share{background:#273c75;color:#fff}.full{grid-column:1/-1}.legal{margin-top:18px;color:#aeb7d5;font-size:13px;line-height:1.45}.footer{text-align:center;color:#9ea8cc;margin-top:28px;font-size:13px}@media(max-width:600px){.buttons{grid-template-columns:1fr}.full{grid-column:auto}}
+*{box-sizing:border-box}body{margin:0;font-family:Arial,Helvetica,sans-serif;background:linear-gradient(160deg,#05081d,#10245e);color:#fff;min-height:100vh}.wrap{width:min(900px,94%);margin:auto;padding:26px 0 60px}.top{display:flex;justify-content:space-between;gap:12px;align-items:center}.top a{color:#10245e;background:#ffd21f;text-decoration:none;font-weight:900;padding:10px 14px;border-radius:12px}.panel{margin-top:28px;background:#0d1536;border:1px solid rgba(255,255,255,.14);border-radius:26px;overflow:hidden;box-shadow:0 24px 60px rgba(0,0,0,.38)}.hero-video{display:block;width:100%;max-height:560px;background:#000}.hero-placeholder{min-height:350px;display:flex;flex-direction:column;align-items:center;justify-content:center;background:#02040c;gap:12px}.hero-placeholder div{font-size:72px}.content{padding:28px}.content h1{font-size:clamp(36px,8vw,68px);margin:0 0 8px}.type{color:#a5b8ff;font-weight:900}.content p{color:#d7dcf0;line-height:1.6}.price{margin:22px 0}.promo-label{display:inline-block;background:#ff3d20;color:#fff;font-size:12px;font-weight:1000;padding:7px 11px;border-radius:999px;margin-bottom:10px}.promo-prices{display:flex;align-items:baseline;gap:14px;flex-wrap:wrap}.regular-price{text-decoration:line-through;color:#9ea8cc;font-size:25px;font-weight:800}.promo-price{font-size:42px;font-weight:1000;color:#ffd21f}.regional-price{margin-top:10px;font-size:19px;font-weight:900;color:#fff}.nigeria-price{color:#7ef0b5}.buttons{display:grid;grid-template-columns:repeat(2,1fr);gap:12px}.btn{display:block;text-align:center;text-decoration:none;padding:15px;border-radius:14px;font-weight:1000}.shopify{background:#ffd21f;color:#07112d}.africa{background:#008751;color:#fff}.support{background:#25D366;color:#07112d}.share{background:#273c75;color:#fff}.full{grid-column:1/-1}.legal{margin-top:18px;color:#aeb7d5;font-size:13px;line-height:1.45}.footer{text-align:center;color:#9ea8cc;margin-top:28px;font-size:13px}@media(max-width:600px){.buttons{grid-template-columns:1fr}.full{grid-column:auto}}
 </style>
 </head>
 <body>
@@ -23667,8 +23686,8 @@ ${item.coverUrl ? `<meta property="og:image" content="${escapeMusicStoreHtml(ite
       <p>${description}</p>
       <div class="price">${priceHtml}</div>
       <div class="buttons">
-        <a class="btn shopify" href="${escapeMusicStoreHtml(item.shopifyUrl)}" target="_blank" rel="noopener">🛒 Pay with Shopify</a>
-        <a class="btn africa" href="${escapeMusicStoreHtml(item.africaUrl)}" target="_blank" rel="noopener">🌍 Africa Payment</a>
+        <a class="btn shopify" href="${escapeMusicStoreHtml(item.shopifyUrl)}" target="_blank" rel="noopener">🌍 International — Pay ${price}</a>
+        <a class="btn africa" href="${escapeMusicStoreHtml(item.africaUrl)}" target="_blank" rel="noopener">🇳🇬 Nigeria — Pay ${nigeriaPrice}</a>
         <a class="btn support full" href="${escapeMusicStoreHtml(supportUrl)}" target="_blank" rel="noopener">💬 Payment Help / Get Download</a>
         <button class="btn share full" id="copyMusicLink" type="button">🔗 Copy Download Store Link</button>
       </div>
@@ -23713,6 +23732,8 @@ app.get("/api/music-downloads/catalog", (_req, res) => {
       type: item.type,
       description: item.description,
       priceUsd: item.priceUsd,
+      nigeriaPriceNgn: item.nigeriaPriceNgn,
+      africaUrl: item.africaUrl,
       previewUrl: item.previewUrl,
       coverUrl: item.coverUrl,
       pageUrl: `${PRINTO_BRANDED_PUBLIC_ORIGIN}/downloads/${item.slug}`
