@@ -21879,10 +21879,14 @@ async function renderPremiumOrderVideo({ orderId, req, publicBaseUrl = "" }) {
     const introWindowY = 150;
     const introWindowW = 262;
     const introWindowH = 371;
-    const introInnerX = isWatchBuy ? 57 : 166;
-    const introInnerY = isWatchBuy ? 134 : 160;
-    const introInnerW = isWatchBuy ? 462 : 244;
-    const introInnerH = isWatchBuy ? 406 : 347;
+    // Multi-Image uses the full upper card instead of reserving the left side
+    // for the original Printo character. This makes both the introduction and
+    // every item/recipient image substantially larger and easier to see.
+    const usesExpandedMultiImageWindow = isMultiImage && !isWatchBuy;
+    const introInnerX = isWatchBuy ? 57 : usesExpandedMultiImageWindow ? 58 : 166;
+    const introInnerY = isWatchBuy ? 134 : usesExpandedMultiImageWindow ? 136 : 160;
+    const introInnerW = isWatchBuy ? 462 : usesExpandedMultiImageWindow ? 460 : 244;
+    const introInnerH = isWatchBuy ? 406 : usesExpandedMultiImageWindow ? 404 : 347;
 
     // Fit the complete sender vertically without cutting off the cap, head,
     // face, or shoulders. Any unused space stays a clean warm cream color.
@@ -21901,6 +21905,10 @@ async function renderPremiumOrderVideo({ orderId, req, publicBaseUrl = "" }) {
       ? `scale=${introInnerW}:${introInnerH}:force_original_aspect_ratio=decrease,` +
         `pad=${introInnerW}:${introInnerH}:(ow-iw)/2:(oh-ih)/2:color=#eef6ff,` +
         `setsar=1,format=yuv420p`
+      : usesExpandedMultiImageWindow
+        ? `scale=${introInnerW}:${introInnerH}:force_original_aspect_ratio=decrease,` +
+          `pad=${introInnerW}:${introInnerH}:(ow-iw)/2:(oh-ih)/2:color=#fff7e6,` +
+          `setsar=1,format=yuv420p`
       : `scale=${introInnerW + 34}:${introInnerH + 48}:force_original_aspect_ratio=increase,` +
         `crop=${introInnerW}:${introInnerH}:(iw-${introInnerW})/2:(ih-${introInnerH})/2,` +
         `setsar=1,format=yuv420p`;
@@ -21982,6 +21990,12 @@ async function renderPremiumOrderVideo({ orderId, req, publicBaseUrl = "" }) {
 
 
     const commonTextOverlay = isWatchBuy ? watchBuyTextOverlay : [
+      // On Multi-Image videos, cover the old narrow media area and the Printo
+      // character beside it, then draw one large clean display frame.
+      ...(usesExpandedMultiImageWindow ? [
+        "drawbox=x=42:y=116:w=492:h=438:color=#fff7e6@1:t=fill",
+        "drawbox=x=48:y=126:w=480:h=424:color=#d4af37@1:t=6"
+      ] : []),
       // Keep all customer fields blank in the master artwork, then write the
       // current order's data into the dedicated panels at render time.
       "drawbox=x=53:y=574:w=199:h=48:color=#fff7e6@0.99:t=fill",
