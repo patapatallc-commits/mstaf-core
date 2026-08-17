@@ -318,24 +318,16 @@ const premiumUpload = multer({
 const premiumMusicUpload = multer({
   storage: premiumTempStorage,
   limits: { fileSize: PREMIUM_MUSIC_MAX_BYTES, files: 1, fields: 5 },
-  fileFilter: (_req, file, cb) => {
-    const mime = String(file.mimetype || "").toLowerCase();
-    const ext = path.extname(String(file.originalname || "")).toLowerCase();
-    const allowedExtensions = new Set([
-      ".mp3", ".wav", ".m4a", ".aac", ".ogg", ".opus", ".flac"
-    ]);
-    const mimeLooksAudio =
-      mime.startsWith("audio/") ||
-      mime === "application/octet-stream" ||
-      mime === "application/x-mpegurl";
 
-    if (!mimeLooksAudio && !allowedExtensions.has(ext)) {
-      return cb(new Error(
-        "The tribute music must be an MP3, WAV, M4A, AAC, OGG, OPUS, or FLAC audio file."
-      ));
-    }
-    return cb(null, true);
-  }
+  // Do not reject Premium music only because Safari/iPhone/WhatsApp reports
+  // an unusual or blank MIME type (for example application/octet-stream)
+  // or supplies a filename without the expected extension.
+  //
+  // The /api/greeting/premium/music route validates the ACTUAL uploaded media
+  // immediately afterward with probePremiumMedia/ffprobe and rejects anything
+  // that has no playable audio stream. This is more reliable than browser MIME
+  // metadata and still prevents non-audio files from being stored as music.
+  fileFilter: (_req, _file, cb) => cb(null, true)
 });
 
 // Watch & Buy AI analysis uses an in-memory copy of one clear product image.
@@ -21752,25 +21744,42 @@ async function renderPremiumOrderVideo({ orderId, req, publicBaseUrl = "" }) {
       1,
       Math.min(PREMIUM_VIDEO_MAX_SECONDS, Number(introProbe.duration || 1))
     );
+    // Detect when the spoken introduction ends. The introduction media may
+    // continue with music after the final spoken word.
     const detectedIntroSpokenEnd = introProbe.hasAudio
       ? await probeSpokenAudioEndSeconds(introPath, introMediaDuration)
       : introMediaDuration;
-    const introDuration = Math.max(
+
+    // AUDIO TIMING:
+    // Keep the COMPLETE introduction audio/video soundtrack until its real end.
+    // The uploaded custom tribute/background music starts only after that.
+    const introDuration = introMediaDuration;
+
+    // VISUAL TIMING:
+    // Keep the seller/introduction cover/video only while the spoken introduction
+    // is happening. As soon as the speech ends and the introduction music begins,
+    // start showing/flipping the product or recipient images.
+    const visualIntroDuration = Math.max(
       1,
       Math.min(
         introMediaDuration,
         Number(detectedIntroSpokenEnd || introMediaDuration) + 0.08
       )
     );
-    // Final Premium sequence: sender introduction starts immediately.
-    // The recipient photo and custom music begin at the exact frame where
-    // the sender introduction ends. There is no opening card delay.
+
     const openingDuration = 0;
     const musicDuration = Math.max(20, Math.min(180, Number(musicProbe.duration || 45)));
     const closingDuration = 6;
-    const tributeDuration = musicDuration + closingDuration;
-    const totalDuration = introDuration + tributeDuration;
-    const introEnd = introDuration;
+
+    // Product/recipient images are visible during:
+    // 1) the remaining music portion of the introduction media, plus
+    // 2) the uploaded custom music section, plus
+    // 3) the closing screen duration.
+    const introMusicTailDuration = Math.max(0, introDuration - visualIntroDuration);
+    const customMusicSectionDuration = musicDuration + closingDuration;
+    const tributeDuration = introMusicTailDuration + customMusicSectionDuration;
+    const totalDuration = visualIntroDuration + tributeDuration;
+    const introEnd = visualIntroDuration;
 
     // In Watch & Buy mode these existing database columns are intentionally reused:
     // recipient_name = item name, sender_name = price, personal_message = specifications.
@@ -21896,11 +21905,12 @@ async function renderPremiumOrderVideo({ orderId, req, publicBaseUrl = "" }) {
     // "Padded dimensions cannot be smaller than input dimensions".
     const introVideoFilter =
       `scale=${introInnerW}:${introInnerH}:force_original_aspect_ratio=decrease,` +
-      `fps=15,trim=duration=${introDuration},setpts=PTS-STARTPTS,` +
+      `fps=15,trim=duration=${visualIntroDuration},setpts=PTS-STARTPTS,` +
       `setsar=1,format=yuv420p`;
 
-    // The recipient photograph replaces the sender video immediately after
-    // the speech ends. A very gentle zoom keeps the music section alive.
+    // The recipient/product images replace the seller/introduction cover as soon
+    // as the spoken introduction ends, so they are already visible while the
+    // remaining introduction music continues.
     const recipientPhotoFilter = isWatchBuy
       ? `scale=${introInnerW}:${introInnerH}:force_original_aspect_ratio=decrease,` +
         `pad=${introInnerW}:${introInnerH}:(ow-iw)/2:(oh-ih)/2:color=#eef6ff,` +
@@ -22037,11 +22047,11 @@ async function renderPremiumOrderVideo({ orderId, req, publicBaseUrl = "" }) {
         "-filter_complex",
         `[0:v]${baseFrame},${commonTextOverlay}[base];` +
         `[1:v]${recipientPhotoFilter},` +
-        `tpad=stop_mode=clone:stop_duration=${introDuration}[voice_photo];` +
+        `tpad=stop_mode=clone:stop_duration=${visualIntroDuration}[voice_photo];` +
         `[base][voice_photo]overlay=${introInnerX}:${introInnerY}:shortest=1[v]`,
         "-map", "[v]",
         ...premiumSegmentVideoArgs({
-          duration: introDuration,
+          duration: visualIntroDuration,
           outputPath: introSegmentPath,
           fps: 15
         })
@@ -22057,18 +22067,18 @@ async function renderPremiumOrderVideo({ orderId, req, publicBaseUrl = "" }) {
         "-filter_complex",
         `[0:v]${baseFrame},${commonTextOverlay}[base];` +
         `[1:v]${introVideoFilter}[intro_scaled];` +
-        `color=c=#fff7e6:s=${introInnerW}x${introInnerH}:d=${introDuration},format=yuv420p[intro_canvas];` +
+        `color=c=#fff7e6:s=${introInnerW}x${introInnerH}:d=${visualIntroDuration},format=yuv420p[intro_canvas];` +
         `[intro_canvas][intro_scaled]overlay=(W-w)/2:(H-h)/2:shortest=1[intro];` +
         `[base][intro]overlay=${introInnerX}:${introInnerY}:shortest=1[v]`,
         "-map", "[v]",
-        ...premiumSegmentVideoArgs({ duration: introDuration, outputPath: introSegmentPath, fps: 18 })
+        ...premiumSegmentVideoArgs({ duration: visualIntroDuration, outputPath: introSegmentPath, fps: 18 })
       ], { timeout: PREMIUM_RENDER_STAGE_TIMEOUT_MS, maxBuffer: 8 * 1024 * 1024 });
     }
 
     const introSegmentProbe = await probePremiumStreamDurations(introSegmentPath);
     if (
       !Number.isFinite(introSegmentProbe.videoDuration) ||
-      introSegmentProbe.videoDuration < Math.max(0.75, introDuration - 0.75)
+      introSegmentProbe.videoDuration < Math.max(0.75, visualIntroDuration - 0.75)
     ) {
       throw new Error(
         introMediaType === "audio"
@@ -22077,9 +22087,9 @@ async function renderPremiumOrderVideo({ orderId, req, publicBaseUrl = "" }) {
       );
     }
 
-    // Tribute section: as soon as the sender speech finishes, replace the
-    // sender video with the recipient photograph and play the custom music to
-    // the end. The sender video is never frozen or left talking under the song.
+    // Tribute visual section starts when speech ends. Product/recipient images
+    // begin flipping during the music tail already present in the introduction,
+    // then continue seamlessly when the uploaded custom music begins.
     if (tributeImagePaths.length > 1) {
       const flipDuration = Math.min(0.7, Math.max(0.35, tributeDuration / 80));
       const imageClipDuration =
@@ -22201,18 +22211,18 @@ async function renderPremiumOrderVideo({ orderId, req, publicBaseUrl = "" }) {
       audioInputArgs.push("-i", introPath);
     }
 
-    // Build one exact, non-overlapping audio timeline:
-    // 1) sender speech only from 0:00 for the exact introduction duration,
-    // 2) custom tribute music only after the sender speech ends.
-    // Using concat instead of amix prevents the sender voice from continuing
-    // underneath the tribute song and keeps the recipient-photo switch exact.
+    // Build one exact, non-overlapping AUDIO timeline:
+    // 1) COMPLETE introduction audio through the end of the intro file,
+    // 2) uploaded custom music only after the intro audio finishes.
+    // VISUALLY, however, the image flip starts earlier at visualIntroDuration,
+    // which is the detected end of speech / beginning of the intro music tail.
     const audioFilters = [
-      `[1:a]atrim=0:${tributeDuration},asetpts=PTS-STARTPTS,` +
+      `[1:a]atrim=0:${customMusicSectionDuration},asetpts=PTS-STARTPTS,` +
       `aresample=48000,aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=stereo,` +
       `volume=0.78,alimiter=limit=0.82:attack=5:release=80,` +
       `afade=t=in:st=0:d=0.12,` +
-      `afade=t=out:st=${Math.max(0, tributeDuration - 1.5)}:d=1.5,` +
-      `apad=pad_dur=${tributeDuration},atrim=0:${tributeDuration}[music_exact]`
+      `afade=t=out:st=${Math.max(0, customMusicSectionDuration - 1.5)}:d=1.5,` +
+      `apad=pad_dur=${customMusicSectionDuration},atrim=0:${customMusicSectionDuration}[music_exact]`
     ];
 
     if (introAudioIndex >= 0) {
@@ -22243,9 +22253,12 @@ async function renderPremiumOrderVideo({ orderId, req, publicBaseUrl = "" }) {
       introAudioMeanDb: introAudioLevels.meanDb,
       introAudioMaxDb: introAudioLevels.maxDb,
       introDuration,
-      stopsIntroductionAtFinalWord: true,
-      recipientPhotoStartsAt: introEnd,
-      tributeMusicStartsAt: introEnd,
+      preservesCompleteIntroductionAudio: true,
+      detectedIntroSpokenEnd,
+      visualIntroDuration,
+      introMusicTailDuration,
+      recipientPhotoStartsAt: visualIntroDuration,
+      uploadedTributeMusicStartsAt: introDuration,
       noOpeningDelay: true,
       creationType,
       imageCount: tributeImagePaths.length,
