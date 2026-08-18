@@ -21892,10 +21892,10 @@ async function renderPremiumOrderVideo({ orderId, req, publicBaseUrl = "" }) {
     // for the original Printo character. This makes both the introduction and
     // every item/recipient image substantially larger and easier to see.
     const usesExpandedMultiImageWindow = isMultiImage && !isWatchBuy;
-    const introInnerX = isWatchBuy ? 34 : usesExpandedMultiImageWindow ? 58 : 166;
-    const introInnerY = isWatchBuy ? 126 : usesExpandedMultiImageWindow ? 136 : 160;
-    const introInnerW = isWatchBuy ? 508 : usesExpandedMultiImageWindow ? 460 : 244;
-    const introInnerH = isWatchBuy ? 418 : usesExpandedMultiImageWindow ? 404 : 347;
+    const introInnerX = isWatchBuy ? 22 : usesExpandedMultiImageWindow ? 58 : 166;
+    const introInnerY = isWatchBuy ? 122 : usesExpandedMultiImageWindow ? 136 : 160;
+    const introInnerW = isWatchBuy ? 532 : usesExpandedMultiImageWindow ? 460 : 244;
+    const introInnerH = isWatchBuy ? 480 : usesExpandedMultiImageWindow ? 404 : 347;
 
     // Fit the complete sender vertically without cutting off the cap, head,
     // face, or shoulders. Any unused space stays a clean warm cream color.
@@ -21969,21 +21969,24 @@ async function renderPremiumOrderVideo({ orderId, req, publicBaseUrl = "" }) {
 
       // Extra-large full-width seller-video / product-image window. The old
       // side space is absorbed into the display so products are clearer.
-      `drawbox=x=22:y=110:w=532:h=442:color=${watchBuyFrame.fill}@1:t=fill`,
-      `drawbox=x=22:y=110:w=532:h=442:color=${watchBuyFrame.border}@1:t=7`,
-      `drawtext=text='SELLER VIDEO • PRODUCT PHOTOS':x=(w-text_w)/2:y=114:fontsize=11:fontcolor=${watchBuyFrame.label}`,
+      `drawbox=x=10:y=102:w=556:h=510:color=${watchBuyFrame.fill}@1:t=fill`,
+      `drawbox=x=10:y=102:w=556:h=510:color=${watchBuyFrame.border}@1:t=7`,
+      `drawtext=text='SELLER VIDEO • PRODUCT PHOTOS':x=(w-text_w)/2:y=106:fontsize=11:fontcolor=${watchBuyFrame.label}`,
 
       // Product identity panel: two-line title and immediately visible price.
-      "drawbox=x=34:y=558:w=508:h=112:color=#ffffff@1:t=fill",
-      `drawtext=${fontOption}text=${q(watchBuyTitleLines[0] || "")}:x=(w-text_w)/2:y=570:fontsize=${watchBuyTitleFontSize}:fontcolor=#082b6a`,
-      `drawtext=${fontOption}text=${q(watchBuyTitleLines[1] || "")}:x=(w-text_w)/2:y=599:fontsize=${watchBuyTitleFontSize}:fontcolor=#082b6a`,
-      `drawtext=${fontOption}text=${q(senderName)}:x=(w-text_w)/2:y=632:fontsize=${primaryPriceFontSize}:fontcolor=#d97706`,
+      "drawbox=x=22:y=618:w=532:h=106:color=#ffffff@1:t=fill",
+      `drawtext=${fontOption}text=${q(watchBuyTitleLines[0] || "")}:x=(w-text_w)/2:y=626:fontsize=${watchBuyTitleFontSize}:fontcolor=#082b6a`,
+      `drawtext=${fontOption}text=${q(watchBuyTitleLines[1] || "")}:x=(w-text_w)/2:y=653:fontsize=${watchBuyTitleFontSize}:fontcolor=#082b6a`,
+      // Blink the selling price in the rendered MP4. It stays visible for most
+      // of every second, then flashes briefly to attract the buyer's eye.
+      `drawbox=x=86:y=681:w=404:h=36:color=#fff3b0@0.96:t=fill:enable='lt(mod(t\\,1)\\,0.72)'`,
+      `drawtext=${fontOption}text=${q(senderName)}:x=(w-text_w)/2:y=686:fontsize=${primaryPriceFontSize}:fontcolor=#d97706:borderw=1:bordercolor=#ffffff:enable='lt(mod(t\\,1)\\,0.72)'`,
 
       // Readable specifications panel.
-      "drawbox=x=34:y=676:w=508:h=120:color=#edf5ff@1:t=fill",
-      `drawtext=${fontOption}text='PRODUCT DETAILS':x=52:y=684:fontsize=14:fontcolor=#0b4fb3`,
-      ...messageLines.slice(0, 10).map((line, index) =>
-        `drawtext=${fontOption}text=${q(line || "")}:x=52:y=${714 + index * watchBuyDetailGap}:fontsize=${watchBuyDetailFontSize}:fontcolor=#102a56`
+      "drawbox=x=22:y=730:w=532:h=66:color=#edf5ff@1:t=fill",
+      `drawtext=${fontOption}text='PRODUCT DETAILS':x=40:y=735:fontsize=12:fontcolor=#0b4fb3`,
+      ...messageLines.slice(0, 4).map((line, index) =>
+        `drawtext=${fontOption}text=${q(line || "")}:x=40:y=${754 + index * Math.min(10, watchBuyDetailGap)}:fontsize=${Math.min(10, watchBuyDetailFontSize)}:fontcolor=#102a56`
       ),
 
       // Buying actions occupy the former empty footer space.
