@@ -276,7 +276,8 @@ const premiumUpload = multer({
   storage: premiumTempStorage,
   limits: {
     fileSize: PREMIUM_VIDEO_UPLOAD_MAX_BYTES,
-    files: PREMIUM_MULTI_IMAGE_MAX_COUNT + 1,
+    // Up to 8 images, one introduction file, and one custom music file.
+    files: PREMIUM_MULTI_IMAGE_MAX_COUNT + 2,
     fields: 30
   },
   fileFilter: (_req, file, cb) => {
@@ -307,7 +308,23 @@ const premiumUpload = multer({
       }
     }
 
-    if (!["recipientPhoto", "recipientImages", "introVideo", "introAudio"].includes(fieldName)) {
+    if (fieldName === "tributeMusic") {
+      const ext = path.extname(String(file.originalname || "")).toLowerCase();
+      const allowedMusicExtensions = new Set([
+        ".mp3", ".wav", ".m4a", ".aac", ".ogg", ".opus", ".webm", ".flac"
+      ]);
+      const musicMimeAccepted =
+        mime.startsWith("audio/") ||
+        mime === "video/webm" ||
+        mime === "application/octet-stream";
+      if (!musicMimeAccepted && !allowedMusicExtensions.has(ext)) {
+        return cb(new Error(
+          "Custom background music must be an MP3, WAV, M4A, AAC, OGG, OPUS, WebM, or FLAC audio file."
+        ));
+      }
+    }
+
+    if (!["recipientPhoto", "recipientImages", "introVideo", "introAudio", "tributeMusic"].includes(fieldName)) {
       return cb(new Error("Unexpected Premium upload field."));
     }
 
@@ -19686,6 +19703,15 @@ const audioIntroTab=document.getElementById('audioIntroTab');
 const videoIntroPanel=document.getElementById('videoIntroPanel');
 const audioIntroPanel=document.getElementById('audioIntroPanel');
 const introVideoInput=document.getElementById('introVideoInput');
+if(premiumIsWatchBuy){
+  const introChoice=document.querySelector('.introChoice');
+  if(introChoice&&!document.getElementById('watchBuyMusicInput')){
+    const musicBox=document.createElement('div');
+    musicBox.className='full customMusicBox';
+    musicBox.innerHTML='<label>🎵 Upload Custom Background Music *</label><input id="watchBuyMusicInput" name="tributeMusic" type="file" accept="audio/mpeg,audio/mp4,audio/x-m4a,audio/wav,audio/x-wav,audio/aac,audio/ogg,audio/opus,audio/webm,.mp3,.m4a,.wav,.aac,.ogg,.opus,.webm,.flac" required><div class="hint">Choose your finished MP3, M4A or WAV song. Maximum 30 MB. It will play after the spoken product introduction.</div>';
+    introChoice.parentNode.insertBefore(musicBox,introChoice);
+  }
+}
 const introAudioInput=document.getElementById('introAudioInput');
 const startRecordBtn=document.getElementById('startRecordBtn');
 const stopRecordBtn=document.getElementById('stopRecordBtn');
@@ -20810,7 +20836,8 @@ const handlePremiumUpload = premiumUpload.fields([
   { name: "recipientPhoto", maxCount: 1 },
   { name: "recipientImages", maxCount: PREMIUM_MULTI_IMAGE_MAX_COUNT },
   { name: "introVideo", maxCount: 1 },
-  { name: "introAudio", maxCount: 1 }
+  { name: "introAudio", maxCount: 1 },
+  { name: "tributeMusic", maxCount: 1 }
 ]);
 
 app.post(
@@ -20841,6 +20868,7 @@ app.post(
     const photo = premiumPhotos[0];
     const introVideo = req.files?.introVideo?.[0];
     const introAudio = req.files?.introAudio?.[0];
+    const tributeMusic = req.files?.tributeMusic?.[0];
     const requestedIntroMediaType = String(req.body?.introMediaType || (introAudio ? "audio" : "video")).toLowerCase() === "audio"
       ? "audio"
       : "video";
@@ -20867,6 +20895,24 @@ app.post(
       const introMediaType = String(body.introMediaType || requestedIntroMediaType).toLowerCase() === "audio"
         ? "audio"
         : "video";
+
+      if (isWatchBuyRequest && (!tributeMusic?.path || !fs.existsSync(tributeMusic.path))) {
+        return res.status(400).json({
+          ok: false,
+          error: "Upload the finished Watch & Buy background music (MP3, M4A or WAV)."
+        });
+      }
+
+      if (isWatchBuyRequest) {
+        const musicBytes = fs.statSync(tributeMusic.path).size;
+        if (musicBytes > PREMIUM_MUSIC_MAX_BYTES) {
+          return res.status(400).json({ ok: false, error: "Background music must be 30 MB or smaller." });
+        }
+        const musicProbe = await probePremiumMedia(tributeMusic.path);
+        if (!musicProbe.hasAudio) {
+          return res.status(400).json({ ok: false, error: "The selected background-music file has no playable audio." });
+        }
+      }
 
       if (!recipientName || !senderName || !personalMessage || !customerPhone) {
         return res.status(400).json({
@@ -21118,6 +21164,26 @@ app.post(
         `DELETE FROM premium_greeting_images WHERE order_id = $1`,
         [orderId]
       );
+
+      if (isWatchBuyRequest && tributeMusic?.path) {
+        const musicBuffer = await fs.promises.readFile(tributeMusic.path);
+        const musicName = safeBaseName(tributeMusic.originalname || "watch-buy-music.mp3");
+        const musicMime = tributeMusic.mimetype || "audio/mpeg";
+        const musicUrl = buildPremiumMediaUrl(req, orderId, mediaToken, "music");
+        await queryWithRetry(
+          `UPDATE premium_greeting_orders
+           SET tribute_music_data = $2,
+               tribute_music_mime = $3,
+               tribute_music_name = $4,
+               tribute_music_url = $5,
+               render_status = 'ready_to_render',
+               render_error = '',
+               updated_at = NOW()
+           WHERE order_id = $1`,
+          [orderId, musicBuffer, musicMime, musicName, musicUrl]
+        );
+      }
+
       for (let imageIndex = 0; imageIndex < premiumImageBuffers.length; imageIndex += 1) {
         const image = premiumImageBuffers[imageIndex];
         await queryWithRetry(
@@ -21322,6 +21388,7 @@ app.post(
       preparedPhotoPaths.forEach((preparedPath) => safeUnlink(preparedPath));
       safeUnlink(introVideo?.path);
       safeUnlink(introAudio?.path);
+      safeUnlink(tributeMusic?.path);
       safeUnlink(compressedIntroPath);
     }
   }
