@@ -196,7 +196,8 @@ const PREMIUM_INTRO_AUDIO_MAX_BYTES = 30 * 1024 * 1024;
 const PREMIUM_VIDEO_STORED_MAX_BYTES = 40 * 1024 * 1024;
 const PREMIUM_INTRO_AUDIO_STORED_MAX_BYTES = 12 * 1024 * 1024;
 const PREMIUM_VIDEO_MAX_SECONDS = 60;
-const WATCH_BUY_VIDEO_MAX_SECONDS = 120;
+// Long-format Watch & Buy introductions (up to seven minutes) are separate from 60-second greetings.
+const WATCH_BUY_VIDEO_MAX_SECONDS = 420;
 const PREMIUM_MUSIC_MAX_BYTES = 30 * 1024 * 1024;
 const PREMIUM_FINAL_VIDEO_MAX_BYTES = 70 * 1024 * 1024;
 const PREMIUM_MULTI_IMAGE_MIN_COUNT = 2;
@@ -278,7 +279,7 @@ const premiumUpload = multer({
   limits: {
     fileSize: PREMIUM_VIDEO_UPLOAD_MAX_BYTES,
     // Up to 8 images, one introduction file, and one custom music file.
-    files: PREMIUM_MULTI_IMAGE_MAX_COUNT + 2,
+    files: PREMIUM_MULTI_IMAGE_MAX_COUNT + 3, // images + video + optional narration + music
     fields: 30
   },
   fileFilter: (_req, file, cb) => {
@@ -291,6 +292,14 @@ const premiumUpload = multer({
 
     if (fieldName === "introVideo" && !mime.startsWith("video/")) {
       return cb(new Error("The personal introduction video must be a video file."));
+    }
+
+    if (fieldName === "introNarration") {
+      const ext = path.extname(String(file.originalname || "")).toLowerCase();
+      const allowed = new Set([".mp3", ".m4a", ".wav", ".aac", ".ogg", ".opus", ".webm", ".flac"]);
+      if (!mime.startsWith("audio/") && mime !== "application/octet-stream" && !allowed.has(ext)) {
+        return cb(new Error("The optional narration must be an audio file (MP3, M4A or WAV recommended)."));
+      }
     }
 
     if (fieldName === "introAudio") {
@@ -325,7 +334,7 @@ const premiumUpload = multer({
       }
     }
 
-    if (!["recipientPhoto", "recipientImages", "introVideo", "introAudio", "tributeMusic"].includes(fieldName)) {
+    if (!["recipientPhoto", "recipientImages", "introVideo", "introAudio", "introNarration", "tributeMusic"].includes(fieldName)) {
       return cb(new Error("Unexpected Premium upload field."));
     }
 
@@ -4728,11 +4737,16 @@ async function compressPremiumRecipientImage(inputPath, outputPath) {
   };
 }
 
-async function compressPremiumIntroductionVideo(inputPath, outputPath, maxSeconds = PREMIUM_VIDEO_MAX_SECONDS) {
+async function compressPremiumIntroductionVideo(
+  inputPath,
+  outputPath,
+  maxSeconds = PREMIUM_VIDEO_MAX_SECONDS,
+  narrationPath = ""
+) {
   const source = await probePremiumMedia(inputPath);
   if (!source.hasVideo) throw new Error("The introduction file does not contain a valid video stream.");
-  if (!source.hasAudio) {
-    throw new Error("The introduction video has no audio. Record or upload a video in which your voice can be heard.");
+  if (!source.hasAudio && !narrationPath) {
+    throw new Error("This introduction video has no sound. For Watch & Buy, add an ElevenLabs narration MP3 or upload a video with audio.");
   }
   if (!Number.isFinite(source.duration) || source.duration <= 0) {
     throw new Error("The introduction video duration could not be read.");
@@ -4741,16 +4755,33 @@ async function compressPremiumIntroductionVideo(inputPath, outputPath, maxSecond
     throw new Error(`Introduction video must be ${maxSeconds} seconds or shorter.`);
   }
 
+  const clipSeconds = Math.min(source.duration, maxSeconds);
+  if (narrationPath) {
+    const narration = await probePremiumMedia(narrationPath);
+    if (!narration.hasAudio || !Number.isFinite(narration.duration) || narration.duration <= 0) {
+      throw new Error("The uploaded ElevenLabs narration has no playable audio.");
+    }
+    if (narration.duration > clipSeconds + 0.25) {
+      throw new Error("The narration is longer than the introduction video. Use a shorter MP3 or a longer video.");
+    }
+  }
+
+  // Preserve the complete visual recording; never use '-shortest' when narration
+  // is shorter than a long product showcase. Silence follows the narration.
   const common = [
     "-y", "-nostdin", "-loglevel", "error",
     "-i", inputPath,
-    "-t", String(Math.min(source.duration, maxSeconds)),
+    ...(narrationPath ? ["-i", narrationPath] : []),
+    "-t", String(clipSeconds),
+    "-map", "0:v:0",
+    "-map", narrationPath ? "1:a:0" : "0:a:0",
     "-vf", "scale=1280:720:force_original_aspect_ratio=decrease,scale=trunc(iw/2)*2:trunc(ih/2)*2,setsar=1",
     "-c:v", "libx264",
     "-preset", "veryfast",
     "-pix_fmt", "yuv420p",
-    "-af",
-    "aresample=48000,volume=1.0,alimiter=limit=0.98",
+    "-af", narrationPath
+      ? `aresample=48000,volume=1.0,alimiter=limit=0.98,apad=pad_dur=${clipSeconds},atrim=0:${clipSeconds}`
+      : "aresample=48000,volume=1.0,alimiter=limit=0.98",
     "-c:a", "aac",
     "-b:a", "96k",
     "-ar", "44100",
@@ -4758,8 +4789,10 @@ async function compressPremiumIntroductionVideo(inputPath, outputPath, maxSecond
     "-movflags", "+faststart"
   ];
 
+  const compressionTimeout = maxSeconds > PREMIUM_VIDEO_MAX_SECONDS
+    ? PREMIUM_RENDER_STAGE_TIMEOUT_MS : 240000;
   await execFilePromise("ffmpeg", [...common, "-crf", "27", outputPath], {
-    timeout: 240000,
+    timeout: compressionTimeout,
     maxBuffer: 8 * 1024 * 1024
   });
 
@@ -4767,7 +4800,7 @@ async function compressPremiumIntroductionVideo(inputPath, outputPath, maxSecond
   if (outputSize > PREMIUM_VIDEO_STORED_MAX_BYTES) {
     const secondPass = `${outputPath}.smaller.mp4`;
     await execFilePromise("ffmpeg", [...common, "-crf", "31", secondPass], {
-      timeout: 240000,
+      timeout: compressionTimeout,
       maxBuffer: 8 * 1024 * 1024
     });
     safeUnlink(outputPath);
@@ -4776,14 +4809,11 @@ async function compressPremiumIntroductionVideo(inputPath, outputPath, maxSecond
   }
 
   if (outputSize > PREMIUM_VIDEO_STORED_MAX_BYTES) {
-    throw new Error("The compressed introduction video is still too large. Please upload a shorter video.");
+    throw new Error("The compressed introduction video is still too large. Please upload a smaller video.");
   }
 
   const cleanedLevels = await probePremiumAudioLevels(outputPath);
-  assertPremiumIntroductionIsAudible(
-    cleanedLevels,
-    "Introduction-video voice"
-  );
+  assertPremiumIntroductionIsAudible(cleanedLevels, "Introduction-video voice");
 
   return {
     duration: source.duration,
@@ -19544,8 +19574,8 @@ function buildPremiumGreetingOrderPage(language = "en", creationType = "premium_
   const multiUi = multiCopy[lang] || multiCopy.en;
   if (isMultiImage) Object.assign(t, multiUi);
   if (isWatchBuy) {
-    multiUi.videoHint = "Maximum 120 seconds and 100 MB. Large files are compressed automatically before secure storage.";
-    multiUi.videoTooLong = "Product introduction video must be 120 seconds or shorter.";
+    multiUi.videoHint = "Up to 7 minutes (420 seconds), 100 MB. Full-length video fills the introduction screen; optional ElevenLabs MP3 narration below.";
+    multiUi.videoTooLong = "Product introduction video must be 7 minutes (420 seconds) or shorter.";
     Object.assign(t, {
       title: "Watch & Buy — Powered by PATAPATA",
       intro: "Create a finished product showcase video with a seller introduction, 2–8 product images, item name, price and product specifications.",
@@ -19565,8 +19595,8 @@ function buildPremiumGreetingOrderPage(language = "en", creationType = "premium_
       success: "Watch & Buy product order saved successfully.",
       worker: "Send product order to worker on WhatsApp"
     });
-    t.audioFormats = "MP3, M4A, WAV, AAC, OGG, OPUS, WebM or FLAC • Maximum 120 seconds and 30 MB.";
-    t.audioTooLong = "Product voice introduction must be 120 seconds or shorter.";
+    t.audioFormats = "MP3, M4A, WAV, AAC, OGG, OPUS, WebM or FLAC • Maximum 7 minutes and 30 MB.";
+    t.audioTooLong = "Product voice introduction must be 7 minutes (420 seconds) or shorter.";
   }
   const creationCreditCost = getPrintoCreationCreditCost(normalizedCreationType);
   const creationPriceLabel = usesMultipleImages
@@ -19748,6 +19778,7 @@ const premiumCreationType=${JSON.stringify(normalizedCreationType)};
 const premiumLanguage=${JSON.stringify(lang)};
 const premiumIsMultiImage=premiumCreationType==='premium_multi_image'||premiumCreationType==='watch_buy';
 const premiumIsWatchBuy=premiumCreationType==='watch_buy';
+const WATCH_BUY_MAX_INTRO_SECONDS=${WATCH_BUY_VIDEO_MAX_SECONDS} + 0.25;
 if(premiumIsWatchBuy&&termsAccepted){
   const agreement=termsAccepted.closest('.agreement');
   if(agreement){
@@ -19765,6 +19796,12 @@ const audioIntroTab=document.getElementById('audioIntroTab');
 const videoIntroPanel=document.getElementById('videoIntroPanel');
 const audioIntroPanel=document.getElementById('audioIntroPanel');
 const introVideoInput=document.getElementById('introVideoInput');
+if(premiumIsWatchBuy && videoIntroPanel && !document.getElementById('introNarrationInput')){
+  const narrationBox=document.createElement('div');
+  narrationBox.className='full';
+  narrationBox.innerHTML='<label style="margin-top:14px">🎙️ Optional ElevenLabs narration (MP3)</label><input id="introNarrationInput" name="introNarration" type="file" accept="audio/mpeg,audio/mp4,audio/wav,audio/x-wav,audio/aac,audio/ogg,.mp3,.m4a,.wav,.aac"><div class="hint">Add a separate narration if your promotional video is silent. Your full video remains on screen until it ends. Narration must fit inside the video and be 30 MB or smaller. Leave blank when the video already has sound.</div>';
+  videoIntroPanel.appendChild(narrationBox);
+}
 if(premiumIsWatchBuy){
   const introChoice=document.querySelector('.introChoice');
   if(introChoice&&!document.getElementById('watchBuyMusicInput')){
@@ -20035,7 +20072,7 @@ async function readReliableAudioDuration(file){
     return 0;
   }
 }
-form.addEventListener('submit',async(e)=>{e.preventDefault();if(!termsAccepted.checked){statusBox.textContent='❌ '+(premiumIsMultiImage?premiumMultiUi.acceptTerms:'Please confirm permission and accept the Terms, Privacy and Refund Policy.');return;}button.disabled=true;button.textContent='⏳ ${t.saving}';statusBox.textContent='';result.style.display='none';try{const fd=new FormData(form);const introMode=introMediaTypeInput.value==='audio'?'audio':'video';const video=fd.get('introVideo');const uploadedAudio=fd.get('introAudio');const singlePhoto=fd.get('recipientPhoto');const multiPhotos=fd.getAll('recipientImages').filter(file=>file&&file.size);if(premiumIsWatchBuy){const specs=String(fd.get('personalMessage')||'').trim();if(!specs)throw new Error('Generate or enter the product specifications before creating the video.');const extraNotes=String(fd.get('tributeNotes')||'').trim();const usdPrice=String(fd.get('priceUsd')||'').trim();const eurPrice=String(fd.get('priceEur')||'').trim();const ngnPrice=String(fd.get('priceNgn')||'').trim();const displayPrices=[usdPrice?('$ '+usdPrice.replace(/^\$\s*/,'')):'',eurPrice?('€ '+eurPrice.replace(/^€\s*/,'')):'',ngnPrice?('₦ '+ngnPrice.replace(/^₦\s*/,'')):''].filter(Boolean);if(!displayPrices.length)throw new Error('Enter at least one price: Dollar, Euro or Naira.');fd.set('senderName',displayPrices.join(' | ').slice(0,80));const hiddenDisplayPrice=document.getElementById('watchBuyDisplayPrice');if(hiddenDisplayPrice)hiddenDisplayPrice.value=displayPrices.join(' | ').slice(0,80);const shopifyLink=String(fd.get('shopifyProductLink')||'').trim();const africaLink=String(fd.get('africaPaymentLink')||'').trim();const frameStyle=String(fd.get('watchBuyFrameStyle')||'blue').trim().toLowerCase();fd.set('tributeNotes',[extraNotes,'Window Frame: '+frameStyle,usdPrice?('USD Price: '+usdPrice):'',eurPrice?('EUR Price: '+eurPrice):'',ngnPrice?('NGN Price: '+ngnPrice):'',shopifyLink?('Shopify Link: '+shopifyLink):'',africaLink?('Africa Payment: '+africaLink):''].filter(Boolean).join('\\n').slice(0,1800));}if(premiumIsMultiImage){if(multiPhotos.length<2||multiPhotos.length>8)throw new Error('${t.required}');for(const image of multiPhotos){if(image.size>10*1024*1024)throw new Error(premiumMultiUi.imageTooLarge);}}else{if(!singlePhoto||!singlePhoto.size)throw new Error('${t.required}');if(singlePhoto.size>10*1024*1024)throw new Error('Recipient photo must be 10 MB or smaller.');}let introFile=null;if(introMode==='audio'){if(recordedAudioBlob){const extension=recordedAudioBlob.type.includes('mp4')?'m4a':recordedAudioBlob.type.includes('ogg')?'ogg':'webm';introFile=new File([recordedAudioBlob],'printo-voice-introduction.'+extension,{type:recordedAudioBlob.type||'audio/webm'});fd.set('introAudio',introFile);}else if(uploadedAudio&&uploadedAudio.size){introFile=uploadedAudio;}if(!introFile)throw new Error(premiumIntroUi.audioRequired);if(!audioPreviewConfirmed)throw new Error('Tap Play Recording and confirm that you can hear your voice before saving the order.');if(introFile.size>30*1024*1024)throw new Error(premiumIntroUi.audioTooLarge);const audioDuration=await readReliableAudioDuration(introFile);if(audioDuration>(premiumIsWatchBuy?120.25:60.25))throw new Error(premiumIntroUi.audioTooLong);fd.delete('introVideo');}else{introFile=video;if(!introFile||!introFile.size)throw new Error('${t.required}');if(introFile.size>100*1024*1024)throw new Error(premiumIsMultiImage?premiumMultiUi.videoTooLarge:'Introduction video must be 100 MB or smaller.');const videoDuration=await readMediaDuration(introFile,false);if(videoDuration>(premiumIsWatchBuy?120.25:60.25))throw new Error(premiumIsMultiImage?premiumMultiUi.videoTooLong:(premiumIsWatchBuy?'Product introduction video must be 120 seconds or shorter.':'Introduction video must be 60 seconds or shorter.'));fd.delete('introAudio');}fd.set('introMediaType',introMode);statusBox.textContent='⏳ '+(introMode==='audio'?premiumIntroUi.audioUploading:(premiumIsMultiImage?premiumMultiUi.uploading:'Uploading and compressing your introduction video…'));fd.set('customerKey',accountKey);let response;try{response=await fetch('/api/greeting/premium/request',{method:'POST',headers:{'x-printo-customer-id':customerId,'x-printo-customer-key':accountKey},body:fd});}catch(networkError){throw new Error(premiumIntroUi.connectionInterrupted||'The upload connection was interrupted. Check My Videos or the worker dashboard before submitting again.');}const responseText=await response.text();let data={};try{data=responseText?JSON.parse(responseText):{};}catch(_parseError){throw new Error(response.ok?'The server returned an unreadable response. Please check My Videos before retrying.':('Server error '+response.status+'. Please check Render logs.'));}if(response.status===402&&data.paymentRequired){statusBox.textContent=(data.saved?'✅ ${t.success} ':'')+'💳 '+(premiumIsMultiImage?premiumMultiUi.paymentRequired:(data.error||'Payment is required.'));const creditsNeeded=String(data.access?.creditsNeeded||${creationCreditCost});orderIdBox.textContent=data.orderId?((premiumIsMultiImage?premiumMultiUi.order:'Order')+': '+data.orderId+' • Payment required'):(premiumIsMultiImage?premiumMultiUi.paymentSummary.replace('{credits}',creditsNeeded):'Premium payment required');shopifyPay.href=data.payment?.shopify||'/multi-image-checkout';africaPay.href=data.payment?.africa||'#';if(!data.payment?.shopify&&premiumIsMultiImage)shopifyPay.href='/multi-image-checkout';if(data.whatsappUrl){workerLink.href=data.whatsappUrl;workerLink.classList.remove('disabled');}else{workerLink.classList.add('disabled');}result.style.display='block';result.scrollIntoView({behavior:'smooth'});return;}if(!response.ok||!data.ok)throw new Error(data.error||'Could not save premium order.');statusBox.textContent='✅ ${t.success} '+(introMode==='audio'?premiumIntroUi.audioStored:(premiumIsMultiImage?premiumMultiUi.stored:'Introduction video compressed and stored safely.'));const chargeSummary=data.usedFreeMultiImageTrial?premiumMultiUi.freeTestUsed:String(data.chargedCredits??data.creditCost??${creationCreditCost})+' '+premiumMultiUi.creditsDeducted;orderIdBox.textContent=(premiumIsMultiImage?premiumMultiUi.order:'Order')+': '+data.orderId+' • '+chargeSummary;shopifyPay.href=data.payment?.shopify||'#';africaPay.href=data.payment?.africa||'#';if(!data.payment?.shopify)shopifyPay.classList.add('disabled');else shopifyPay.classList.remove('disabled');workerLink.href=data.whatsappUrl;result.style.display='block';result.scrollIntoView({behavior:'smooth'});}catch(error){statusBox.textContent='❌ '+error.message;}finally{button.textContent='✨ ${t.submit}';syncPremiumButton();}});
+form.addEventListener('submit',async(e)=>{e.preventDefault();if(!termsAccepted.checked){statusBox.textContent='❌ '+(premiumIsMultiImage?premiumMultiUi.acceptTerms:'Please confirm permission and accept the Terms, Privacy and Refund Policy.');return;}button.disabled=true;button.textContent='⏳ ${t.saving}';statusBox.textContent='';result.style.display='none';try{const fd=new FormData(form);const introMode=introMediaTypeInput.value==='audio'?'audio':'video';const video=fd.get('introVideo');const uploadedAudio=fd.get('introAudio');const singlePhoto=fd.get('recipientPhoto');const multiPhotos=fd.getAll('recipientImages').filter(file=>file&&file.size);if(premiumIsWatchBuy){const specs=String(fd.get('personalMessage')||'').trim();if(!specs)throw new Error('Generate or enter the product specifications before creating the video.');const extraNotes=String(fd.get('tributeNotes')||'').trim();const usdPrice=String(fd.get('priceUsd')||'').trim();const eurPrice=String(fd.get('priceEur')||'').trim();const ngnPrice=String(fd.get('priceNgn')||'').trim();const displayPrices=[usdPrice?('$ '+usdPrice.replace(/^\$\s*/,'')):'',eurPrice?('€ '+eurPrice.replace(/^€\s*/,'')):'',ngnPrice?('₦ '+ngnPrice.replace(/^₦\s*/,'')):''].filter(Boolean);if(!displayPrices.length)throw new Error('Enter at least one price: Dollar, Euro or Naira.');fd.set('senderName',displayPrices.join(' | ').slice(0,80));const hiddenDisplayPrice=document.getElementById('watchBuyDisplayPrice');if(hiddenDisplayPrice)hiddenDisplayPrice.value=displayPrices.join(' | ').slice(0,80);const shopifyLink=String(fd.get('shopifyProductLink')||'').trim();const africaLink=String(fd.get('africaPaymentLink')||'').trim();const frameStyle=String(fd.get('watchBuyFrameStyle')||'blue').trim().toLowerCase();fd.set('tributeNotes',[extraNotes,'Window Frame: '+frameStyle,usdPrice?('USD Price: '+usdPrice):'',eurPrice?('EUR Price: '+eurPrice):'',ngnPrice?('NGN Price: '+ngnPrice):'',shopifyLink?('Shopify Link: '+shopifyLink):'',africaLink?('Africa Payment: '+africaLink):''].filter(Boolean).join('\\n').slice(0,1800));}if(premiumIsMultiImage){if(multiPhotos.length<2||multiPhotos.length>8)throw new Error('${t.required}');for(const image of multiPhotos){if(image.size>10*1024*1024)throw new Error(premiumMultiUi.imageTooLarge);}}else{if(!singlePhoto||!singlePhoto.size)throw new Error('${t.required}');if(singlePhoto.size>10*1024*1024)throw new Error('Recipient photo must be 10 MB or smaller.');}let introFile=null;if(introMode==='audio'){if(recordedAudioBlob){const extension=recordedAudioBlob.type.includes('mp4')?'m4a':recordedAudioBlob.type.includes('ogg')?'ogg':'webm';introFile=new File([recordedAudioBlob],'printo-voice-introduction.'+extension,{type:recordedAudioBlob.type||'audio/webm'});fd.set('introAudio',introFile);}else if(uploadedAudio&&uploadedAudio.size){introFile=uploadedAudio;}if(!introFile)throw new Error(premiumIntroUi.audioRequired);if(!audioPreviewConfirmed)throw new Error('Tap Play Recording and confirm that you can hear your voice before saving the order.');if(introFile.size>30*1024*1024)throw new Error(premiumIntroUi.audioTooLarge);const audioDuration=await readReliableAudioDuration(introFile);if(audioDuration>(premiumIsWatchBuy?WATCH_BUY_MAX_INTRO_SECONDS:60.25))throw new Error(premiumIntroUi.audioTooLong);fd.delete('introVideo');fd.delete('introNarration');}else{introFile=video;if(!introFile||!introFile.size)throw new Error('${t.required}');if(introFile.size>100*1024*1024)throw new Error(premiumIsMultiImage?premiumMultiUi.videoTooLarge:'Introduction video must be 100 MB or smaller.');const videoDuration=await readMediaDuration(introFile,false);if(videoDuration>(premiumIsWatchBuy?WATCH_BUY_MAX_INTRO_SECONDS:60.25))throw new Error(premiumIsMultiImage?premiumMultiUi.videoTooLong:(premiumIsWatchBuy?'Product introduction video must be 7 minutes or shorter.':'Introduction video must be 60 seconds or shorter.'));fd.delete('introAudio');if(premiumIsWatchBuy){const voiceFile=fd.get('introNarration');if(voiceFile&&voiceFile.size>30*1024*1024)throw new Error('Optional narration must be 30 MB or smaller.');}}fd.set('introMediaType',introMode);statusBox.textContent='⏳ '+(introMode==='audio'?premiumIntroUi.audioUploading:(premiumIsMultiImage?premiumMultiUi.uploading:'Uploading and compressing your introduction video…'));fd.set('customerKey',accountKey);let response;try{response=await fetch('/api/greeting/premium/request',{method:'POST',headers:{'x-printo-customer-id':customerId,'x-printo-customer-key':accountKey},body:fd});}catch(networkError){throw new Error(premiumIntroUi.connectionInterrupted||'The upload connection was interrupted. Check My Videos or the worker dashboard before submitting again.');}const responseText=await response.text();let data={};try{data=responseText?JSON.parse(responseText):{};}catch(_parseError){throw new Error(response.ok?'The server returned an unreadable response. Please check My Videos before retrying.':('Server error '+response.status+'. Please check Render logs.'));}if(response.status===402&&data.paymentRequired){statusBox.textContent=(data.saved?'✅ ${t.success} ':'')+'💳 '+(premiumIsMultiImage?premiumMultiUi.paymentRequired:(data.error||'Payment is required.'));const creditsNeeded=String(data.access?.creditsNeeded||${creationCreditCost});orderIdBox.textContent=data.orderId?((premiumIsMultiImage?premiumMultiUi.order:'Order')+': '+data.orderId+' • Payment required'):(premiumIsMultiImage?premiumMultiUi.paymentSummary.replace('{credits}',creditsNeeded):'Premium payment required');shopifyPay.href=data.payment?.shopify||'/multi-image-checkout';africaPay.href=data.payment?.africa||'#';if(!data.payment?.shopify&&premiumIsMultiImage)shopifyPay.href='/multi-image-checkout';if(data.whatsappUrl){workerLink.href=data.whatsappUrl;workerLink.classList.remove('disabled');}else{workerLink.classList.add('disabled');}result.style.display='block';result.scrollIntoView({behavior:'smooth'});return;}if(!response.ok||!data.ok)throw new Error(data.error||'Could not save premium order.');statusBox.textContent='✅ ${t.success} '+(introMode==='audio'?premiumIntroUi.audioStored:(premiumIsMultiImage?premiumMultiUi.stored:'Introduction video compressed and stored safely.'));const chargeSummary=data.usedFreeMultiImageTrial?premiumMultiUi.freeTestUsed:String(data.chargedCredits??data.creditCost??${creationCreditCost})+' '+premiumMultiUi.creditsDeducted;orderIdBox.textContent=(premiumIsMultiImage?premiumMultiUi.order:'Order')+': '+data.orderId+' • '+chargeSummary;shopifyPay.href=data.payment?.shopify||'#';africaPay.href=data.payment?.africa||'#';if(!data.payment?.shopify)shopifyPay.classList.add('disabled');else shopifyPay.classList.remove('disabled');workerLink.href=data.whatsappUrl;result.style.display='block';result.scrollIntoView({behavior:'smooth'});}catch(error){statusBox.textContent='❌ '+error.message;}finally{button.textContent='✨ ${t.submit}';syncPremiumButton();}});
 </script></body></html>`;
 }
 
@@ -20597,7 +20634,7 @@ body{margin:0;font-family:Arial,sans-serif;background:linear-gradient(150deg,#02
 h1{font-size:30px;margin:8px 0}
 .subtitle{color:#dbeafe;line-height:1.5}
 .videoShell{position:relative;background:#000;border:3px solid #ffd21f;border-radius:20px;padding:8px;box-shadow:0 18px 50px rgba(0,0,0,.45)}
-video{display:block;width:100%;max-height:72vh;border-radius:13px;background:#000}
+video{display:block;width:100%;height:auto;max-height:${isWatchBuy ? "92vh" : "72vh"};object-fit:contain;border-radius:13px;background:#000}
 .bigPlayButton{
   position:absolute;
   left:50%;
@@ -20899,6 +20936,7 @@ const handlePremiumUpload = premiumUpload.fields([
   { name: "recipientImages", maxCount: PREMIUM_MULTI_IMAGE_MAX_COUNT },
   { name: "introVideo", maxCount: 1 },
   { name: "introAudio", maxCount: 1 },
+  { name: "introNarration", maxCount: 1 },
   { name: "tributeMusic", maxCount: 1 }
 ]);
 
@@ -20930,6 +20968,7 @@ app.post(
     const photo = premiumPhotos[0];
     const introVideo = req.files?.introVideo?.[0];
     const introAudio = req.files?.introAudio?.[0];
+    const introNarration = req.files?.introNarration?.[0];
     const tributeMusic = req.files?.tributeMusic?.[0];
     const requestedIntroMediaType = String(req.body?.introMediaType || (introAudio ? "audio" : "video")).toLowerCase() === "audio"
       ? "audio"
@@ -21022,6 +21061,17 @@ app.post(
         }
       }
 
+      const narrationPath = isWatchBuyRequest && introMediaType === "video" && introNarration?.path
+        ? introNarration.path : "";
+      if (narrationPath) {
+        if (fs.statSync(narrationPath).size > PREMIUM_INTRO_AUDIO_MAX_BYTES) {
+          return res.status(400).json({ ok: false, error: "ElevenLabs narration must be 30 MB or smaller." });
+        }
+        const narrationProbe = await probePremiumMedia(narrationPath);
+        if (!narrationProbe.hasAudio) {
+          return res.status(400).json({ ok: false, error: "ElevenLabs narration is not a playable audio file." });
+        }
+      }
       const originalIntroBytes = fs.statSync(introMedia.path).size;
       for (const item of premiumPhotos) {
         const itemBytes = fs.statSync(item.path).size;
@@ -21101,7 +21151,8 @@ app.post(
         : await compressPremiumIntroductionVideo(
             introMedia.path,
             compressedIntroPath,
-            maximumIntroductionSeconds
+            maximumIntroductionSeconds,
+            narrationPath
           );
 
       const premiumImageBuffers = [];
@@ -21454,6 +21505,7 @@ app.post(
       premiumPhotos.forEach((item) => safeUnlink(item?.path));
       preparedPhotoPaths.forEach((preparedPath) => safeUnlink(preparedPath));
       safeUnlink(introVideo?.path);
+      safeUnlink(introNarration?.path);
       safeUnlink(introAudio?.path);
       safeUnlink(tributeMusic?.path);
       safeUnlink(compressedIntroPath);
@@ -21896,13 +21948,15 @@ async function renderPremiumOrderVideo({ orderId, req, publicBaseUrl = "" }) {
     // Keep the seller/introduction cover/video only while the spoken introduction
     // is happening. As soon as the speech ends and the introduction music begins,
     // start showing/flipping the product or recipient images.
-    const visualIntroDuration = Math.max(
-      1,
-      Math.min(
-        introMediaDuration,
-        Number(detectedIntroSpokenEnd || introMediaDuration) + 0.08
-      )
-    );
+    const visualIntroDuration = isWatchBuy && introMediaType === "video"
+      ? introMediaDuration // Show EVERY frame of a Watch & Buy seller's long promotional video.
+      : Math.max(
+          1,
+          Math.min(
+            introMediaDuration,
+            Number(detectedIntroSpokenEnd || introMediaDuration) + 0.08
+          )
+        );
 
     const openingDuration = 0;
     const musicDuration = Math.max(20, Math.min(180, Number(musicProbe.duration || 45)));
@@ -22200,6 +22254,21 @@ async function renderPremiumOrderVideo({ orderId, req, publicBaseUrl = "" }) {
         timeout: PREMIUM_RENDER_STAGE_TIMEOUT_MS,
         maxBuffer: 8 * 1024 * 1024
       });
+    } else if (isWatchBuy) {
+      // Full-window seller introduction: no small inset or overlay covering the
+      // video. Maintain the entire source image using an aspect-ratio-safe canvas.
+      // A portrait upload fills almost all of the vertical Printo canvas.
+      await execFilePromise("ffmpeg", [
+        "-y", "-nostdin", "-loglevel", "error",
+        "-i", introPath,
+        "-filter_complex",
+        `[0:v]scale=${outputW}:${outputH}:force_original_aspect_ratio=decrease,` +
+        `fps=15,trim=duration=${visualIntroDuration},setpts=PTS-STARTPTS,setsar=1,format=yuv420p[full_intro];` +
+        `color=c=#06173b:s=${outputW}x${outputH}:d=${visualIntroDuration},format=yuv420p[full_canvas];` +
+        `[full_canvas][full_intro]overlay=(W-w)/2:(H-h)/2:shortest=1[v]`,
+        "-map", "[v]",
+        ...premiumSegmentVideoArgs({ duration: visualIntroDuration, outputPath: introSegmentPath, fps: 15 })
+      ], { timeout: PREMIUM_RENDER_STAGE_TIMEOUT_MS, maxBuffer: 8 * 1024 * 1024 });
     } else {
       await execFilePromise("ffmpeg", [
         "-y", "-nostdin", "-loglevel", "error",
