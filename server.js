@@ -3208,6 +3208,8 @@ async function ensureGreetingAccessTables() {
   await pool.query(`ALTER TABLE premium_greeting_orders ADD COLUMN IF NOT EXISTS final_video_mime TEXT NOT NULL DEFAULT ''`);
   await pool.query(`ALTER TABLE premium_greeting_orders ADD COLUMN IF NOT EXISTS final_video_name TEXT NOT NULL DEFAULT ''`);
   await pool.query(`ALTER TABLE premium_greeting_orders ADD COLUMN IF NOT EXISTS final_video_url TEXT NOT NULL DEFAULT ''`);
+  await pool.query(`ALTER TABLE premium_greeting_orders ADD COLUMN IF NOT EXISTS youtube_video_id TEXT NOT NULL DEFAULT ''`);
+  await pool.query(`ALTER TABLE premium_greeting_orders ADD COLUMN IF NOT EXISTS youtube_linked_at TIMESTAMPTZ`);
   await pool.query(`ALTER TABLE premium_greeting_orders ADD COLUMN IF NOT EXISTS share_preview_data BYTEA`);
   await pool.query(`ALTER TABLE premium_greeting_orders ADD COLUMN IF NOT EXISTS share_preview_mime TEXT NOT NULL DEFAULT ''`);
   await pool.query(`ALTER TABLE premium_greeting_orders ADD COLUMN IF NOT EXISTS share_preview_name TEXT NOT NULL DEFAULT ''`);
@@ -3276,7 +3278,8 @@ async function syncPremiumDashboardProductionStatus() {
         E'\n\n🎬 FINISHED PREMIUM VIDEO\n' || premium.final_video_url,
         updated_at = NOW()
     FROM premium_greeting_orders AS premium
-    WHERE premium.final_video_data IS NOT NULL
+    WHERE (premium.final_video_data IS NOT NULL
+           OR (premium.creation_type = 'watch_buy' AND premium.youtube_video_id <> ''))
       AND COALESCE(premium.final_video_url, '') <> ''
       AND COALESCE(job.instructions, '') NOT LIKE '%🎬 FINISHED PREMIUM VIDEO%'
       AND (
@@ -3789,6 +3792,8 @@ async function listPremiumGreetingVideos(customerKey) {
             recipient_name,
             sender_name,
             creation_type,
+            youtube_video_id,
+            final_video_data IS NOT NULL AS has_local_video,
             personal_message,
             media_token,
             created_at,
@@ -3796,7 +3801,8 @@ async function listPremiumGreetingVideos(customerKey) {
      FROM premium_greeting_orders
      WHERE customer_key = $1
        AND render_status = 'completed'
-       AND final_video_data IS NOT NULL
+       AND (final_video_data IS NOT NULL
+            OR (creation_type = 'watch_buy' AND youtube_video_id <> ''))
        AND COALESCE(media_token, '') <> ''
      ORDER BY COALESCE(updated_at, created_at) DESC
      LIMIT 100`,
@@ -3826,7 +3832,8 @@ async function listPremiumGreetingVideos(customerKey) {
       language: "en",
       createdAt: row.updated_at || row.created_at || null,
       resultUrl: baseUrl,
-      downloadUrl
+      downloadUrl: row.youtube_video_id && !row.has_local_video ? baseUrl : downloadUrl,
+      downloadAvailable: Boolean(row.has_local_video)
     };
   });
 }
@@ -15308,6 +15315,136 @@ function requireDashboardKey(req, res, next) {
   next();
 }
 
+// Finished Watch & Buy videos can be hosted by YouTube after creation.
+// These routes accept a reference only and never download the YouTube video.
+function parseWatchBuyYouTubeUrl(value) {
+  let url;
+  try {
+    url = new URL(String(value || "").trim());
+  } catch {
+    return null;
+  }
+  if (url.protocol !== "https:" || url.username || url.password || url.port) return null;
+  const host = url.hostname.toLowerCase();
+  const segments = url.pathname.split("/").filter(Boolean);
+  let id = "";
+  if (host === "youtu.be" && segments.length === 1) {
+    id = segments[0];
+  } else if (["youtube.com", "www.youtube.com", "m.youtube.com", "www.youtube-nocookie.com", "youtube-nocookie.com"].includes(host)) {
+    if (url.pathname === "/watch") id = url.searchParams.get("v") || "";
+    else if (["embed", "shorts", "live"].includes(segments[0]) && segments.length === 2) id = segments[1];
+  }
+  if (!/^[A-Za-z0-9_-]{11}$/.test(id)) return null;
+  return { id, url: `https://www.youtube.com/watch?v=${id}` };
+}
+
+function requireWatchBuyHostingKey(req, res, next) {
+  if (!isGreetingAdminAuthorized(req)) {
+    return res.status(401).json({ ok: false, error: "Open the worker dashboard with your configured dashboard key." });
+  }
+  return next();
+}
+
+app.get("/api/watch-buy/:orderId/youtube", requireWatchBuyHostingKey, async (req, res) => {
+  try {
+    res.setHeader("Cache-Control", "no-store");
+    const result = await queryWithRetry(
+      `SELECT order_id, render_status, youtube_video_id, media_token,
+              final_video_data IS NOT NULL AS has_local_video,
+              updated_at::text AS version
+       FROM premium_greeting_orders
+       WHERE order_id = $1 AND creation_type = 'watch_buy'`,
+      [String(req.params.orderId || "").trim()]
+    );
+    const row = result.rows[0];
+    if (!row) return res.status(404).json({ ok: false, error: "Watch & Buy order was not found." });
+    return res.json({
+      ok: true,
+      renderStatus: row.render_status,
+      youtubeUrl: row.youtube_video_id ? `https://www.youtube.com/watch?v=${row.youtube_video_id}` : "",
+      hasLocalVideo: Boolean(row.has_local_video),
+      version: row.version,
+      resultUrl: `/premium-result/${encodeURIComponent(row.order_id)}?token=${encodeURIComponent(row.media_token)}`
+    });
+  } catch (error) {
+    console.error("Watch & Buy hosting status failed:", error.message);
+    return res.status(500).json({ ok: false, error: "Could not read video hosting status. Try again." });
+  }
+});
+
+app.post("/api/watch-buy/:orderId/youtube", express.json(), requireWatchBuyHostingKey, async (req, res) => {
+  try {
+    const orderId = String(req.params.orderId || "").trim();
+    const youtube = parseWatchBuyYouTubeUrl(req.body?.youtubeUrl);
+    if (!youtube) return res.status(400).json({ ok: false, error: "Paste a valid HTTPS YouTube video link." });
+    const expectedVersion = String(req.body?.expectedVersion || "");
+    if (!expectedVersion) return res.status(400).json({ ok: false, error: "Refresh the video hosting status and try again." });
+    const removeLocalCopy = req.body?.removeLocalCopy === true;
+    if (removeLocalCopy && req.body?.playbackConfirmed !== true) {
+      return res.status(400).json({ ok: false, error: "Check YouTube playback and save an original backup before removing the stored copy." });
+    }
+
+    const found = await queryWithRetry(
+      `SELECT order_id, render_status, youtube_video_id, media_token,
+              updated_at::text AS version
+       FROM premium_greeting_orders
+       WHERE order_id = $1 AND creation_type = 'watch_buy'`,
+      [orderId]
+    );
+    const order = found.rows[0];
+    if (!order) return res.status(404).json({ ok: false, error: "Watch & Buy order was not found." });
+    if (order.render_status !== "completed" || activePremiumRenders.has(orderId)) {
+      return res.status(409).json({ ok: false, error: "Wait for this video to finish rendering before changing its hosting." });
+    }
+    if (order.version !== expectedVersion) {
+      return res.status(409).json({ ok: false, error: "This video changed. Refresh its hosting status and try again." });
+    }
+    if (removeLocalCopy && order.youtube_video_id !== youtube.id) {
+      return res.status(409).json({ ok: false, error: "Attach and test this YouTube link before removing the stored video." });
+    }
+
+    // Request metadata from a fixed YouTube endpoint. Never fetch a submitted URL.
+    try {
+      const metadata = await axios.get("https://www.youtube.com/oembed", {
+        params: { url: youtube.url, format: "json" },
+        timeout: 10000,
+        maxRedirects: 0,
+        maxContentLength: 65536
+      });
+      if (!metadata.data?.title || !metadata.data?.html) throw new Error("No embeddable video metadata.");
+    } catch {
+      return res.status(422).json({
+        ok: false,
+        error: "YouTube could not confirm this video. Finish processing, choose Unlisted or Public, allow embedding, and try again."
+      });
+    }
+
+    const resultUrl = `${getPublicBaseUrl(req).replace(/\/$/, "")}/premium-result/${encodeURIComponent(orderId)}?token=${encodeURIComponent(order.media_token)}`;
+    // One guarded update makes retries safe and prevents cleanup of a newer render.
+    const saved = await queryWithRetry(
+      `UPDATE premium_greeting_orders
+       SET youtube_video_id = $2,
+           youtube_linked_at = NOW(),
+           final_video_url = $3,
+           final_video_data = CASE WHEN $4::boolean THEN NULL ELSE final_video_data END,
+           final_video_mime = CASE WHEN $4::boolean THEN '' ELSE final_video_mime END,
+           final_video_name = CASE WHEN $4::boolean THEN '' ELSE final_video_name END,
+           updated_at = NOW()
+       WHERE order_id = $1 AND creation_type = 'watch_buy'
+         AND render_status = 'completed' AND updated_at = $5::timestamptz
+       RETURNING order_id, final_video_data IS NOT NULL AS has_local_video`,
+      [orderId, youtube.id, resultUrl, removeLocalCopy, expectedVersion]
+    );
+    if (!saved.rows.length) {
+      return res.status(409).json({ ok: false, error: "This video changed while YouTube was checked. Refresh and try again." });
+    }
+    return res.json({ ok: true, resultUrl, youtubeUrl: youtube.url, hasLocalVideo: Boolean(saved.rows[0].has_local_video) });
+  } catch (error) {
+    console.error("Watch & Buy hosting update failed:", error.message);
+    return res.status(500).json({ ok: false, error: "Could not update video hosting. Check its status before trying again." });
+  }
+});
+
 function escapeHtml(v = "") {
   return String(v)
     .replace(/&/g, "&amp;")
@@ -16759,6 +16896,58 @@ app.get("/worker-dashboard", requireDashboardKey, async (req, res) => {
     }
   });
 
+  async function manageWatchBuyYouTube(orderId, removeLocalCopy, button) {
+    const oldText = button.textContent;
+    button.disabled = true;
+    button.textContent = "Checking video...";
+    try {
+      const endpoint = "/api/watch-buy/" + encodeURIComponent(orderId) + "/youtube";
+      const current = await api(endpoint);
+      if (current.renderStatus !== "completed") throw new Error("Finish rendering this Watch & Buy video first.");
+      let youtubeUrl = current.youtubeUrl;
+      if (removeLocalCopy) {
+        if (!youtubeUrl) throw new Error("Attach a YouTube link and check playback first.");
+        if (!current.hasLocalVideo) {
+          alert("The finished video is already hosted on YouTube and its stored original has been removed.");
+          return;
+        }
+        if (!confirm("Have you played this exact video on its Printo Studio page and saved an original backup? Remove the stored finished MP4 from Render/PostgreSQL now?")) return;
+      } else {
+        youtubeUrl = prompt("Upload the finished video to YouTube as Unlisted, allow embedding, then paste its video link here:", youtubeUrl || "");
+        if (!youtubeUrl) return;
+      }
+      button.textContent = "Saving YouTube hosting...";
+      const saved = await api(endpoint, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          youtubeUrl,
+          expectedVersion: current.version,
+          removeLocalCopy,
+          playbackConfirmed: removeLocalCopy
+        })
+      });
+      if (removeLocalCopy) {
+        alert("The stored finished MP4 has been removed. This product now plays from YouTube.");
+      } else {
+        alert("YouTube link saved. Open the product page and play the video before using Remove Stored Video Copy.");
+        window.open(saved.resultUrl, "_blank", "noopener");
+      }
+    } catch (error) {
+      alert(error.message || "Could not update Watch & Buy video hosting.");
+    } finally {
+      button.disabled = false;
+      button.textContent = oldText;
+    }
+  }
+
+  document.addEventListener("click", (event) => {
+    const button = event.target.closest && event.target.closest(".watchBuyYouTubeButton, .watchBuyRemoveCopyButton");
+    if (!button) return;
+    event.preventDefault();
+    manageWatchBuyYouTube(button.dataset.orderId || "", button.classList.contains("watchBuyRemoveCopyButton"), button);
+  });
+
   function summarize(jobs) {
     const all = jobs.length;
     const pending = jobs.filter(j => j.status === "pending").length;
@@ -16896,6 +17085,15 @@ app.get("/worker-dashboard", requireDashboardKey, async (req, res) => {
     const finalDownloadUrl = urls.find((url) => url.includes("/premium-media/") && url.includes("/final?")) || "";
     const finalUrl = finalShareUrl || finalDownloadUrl;
     const actions = [];
+    const isWatchBuy = combined.includes("Creation type: watch_buy");
+
+    if (orderId && isWatchBuy) {
+      actions.push(
+        '<button type="button" class="btn watchBuyYouTubeButton" data-order-id="' + h(orderId) + '">▶ Attach YouTube Link</button>' +
+        '<button type="button" class="btn secondary watchBuyRemoveCopyButton" data-order-id="' + h(orderId) + '">Remove Stored Video Copy</button>' +
+        '<span class="small">Download the finished video, upload it to YouTube as Unlisted, then attach the link. Check playback before removing the stored original.</span>'
+      );
+    }
 
     if (orderId) {
       const uploadLabel = musicUrl ? "✅ Replace Tribute Music" : "🎵 Upload Tribute Music";
@@ -16965,7 +17163,7 @@ app.get("/worker-dashboard", requireDashboardKey, async (req, res) => {
 
     if (finalDownloadUrl) {
       actions.push(
-        '<a class="fileLink premiumAction" href="' + h(finalDownloadUrl) +
+        '<a class="fileLink premiumAction" href="' + h(finalDownloadUrl + "&download=1") +
         '" target="_blank" rel="noopener noreferrer">⬇ Download Finished Premium Video</a>'
       );
     }
@@ -18721,11 +18919,12 @@ function escapeGreetingAssetText(value = "") {
 async function listPublicWatchBuySamples() {
   const result = await queryWithRetry(
     `SELECT order_id, recipient_name, sender_name, personal_message,
-            media_token, created_at, updated_at
+            media_token, youtube_video_id, created_at, updated_at
      FROM premium_greeting_orders
      WHERE creation_type = 'watch_buy'
        AND render_status = 'completed'
-       AND final_video_data IS NOT NULL
+       AND (final_video_data IS NOT NULL
+            OR (creation_type = 'watch_buy' AND youtube_video_id <> ''))
        AND COALESCE(media_token, '') <> ''
      ORDER BY COALESCE(updated_at, created_at) DESC`,
     [],
@@ -18737,6 +18936,7 @@ async function listPublicWatchBuySamples() {
     const token = String(row.media_token || "");
     return {
       orderId,
+      youtubeVideoId: row.youtube_video_id || "",
       itemName: String(row.recipient_name || "Featured Product"),
       price: String(row.sender_name || "See product page"),
       specifications: String(row.personal_message || "").trim(),
@@ -18757,7 +18957,10 @@ function buildPublicWatchBuySampleCards(samples = []) {
     const itemName = escapeHtml(sample.itemName || "Featured Product");
     const price = escapeHtml(sample.price || "See product page");
     const specifications = escapeHtml(String(sample.specifications || "").slice(0, 150));
-    return `<article class="product-sample-card"><button class="sample-open product-sample-media" type="button" data-product-sample="true" data-video="${escapeHtml(sample.videoUrl)}" data-poster="${escapeHtml(sample.posterUrl)}" data-title="${itemName}"><img src="${escapeHtml(sample.posterUrl)}" alt="${itemName}" loading="lazy"><span class="play">▶</span></button><div class="product-sample-body"><h3>${itemName}</h3><div class="product-sample-price">${price}</div>${specifications ? `<p>${specifications}</p>` : ""}<div class="product-sample-actions"><a class="watch" href="${escapeHtml(sample.resultUrl)}">▶ Watch &amp; Buy</a><a class="create account-required" href="/greetings/watch-buy">🛍️ List Your Product</a></div></div></article>`;
+    const media = sample.youtubeVideoId
+      ? `<a class="product-sample-media" style="display:block" href="${escapeHtml(sample.resultUrl)}" aria-label="Watch ${itemName}"><img src="${escapeHtml(sample.posterUrl)}" alt="${itemName}" loading="lazy"><span class="play">▶</span></a>`
+      : `<button class="sample-open product-sample-media" type="button" data-product-sample="true" data-video="${escapeHtml(sample.videoUrl)}" data-poster="${escapeHtml(sample.posterUrl)}" data-title="${itemName}"><img src="${escapeHtml(sample.posterUrl)}" alt="${itemName}" loading="lazy"><span class="play">▶</span></button>`;
+    return `<article class="product-sample-card">${media}<div class="product-sample-body"><h3>${itemName}</h3><div class="product-sample-price">${price}</div>${specifications ? `<p>${specifications}</p>` : ""}<div class="product-sample-actions"><a class="watch" href="${escapeHtml(sample.resultUrl)}">▶ Watch &amp; Buy</a><a class="create account-required" href="/greetings/watch-buy">🛍️ List Your Product</a></div></div></article>`;
   }).join("");
 }
 
@@ -20325,7 +20528,6 @@ async function ensurePremiumSharePreview(orderId, token) {
     `SELECT share_preview_data,
             share_preview_name,
             creation_type,
-            final_video_data,
             updated_at
      FROM premium_greeting_orders
      WHERE order_id = $1
@@ -20385,6 +20587,11 @@ async function ensurePremiumSharePreview(orderId, token) {
     // Premium Tribute / Multi-Image, or a legacy Watch & Buy order without
     // stored listing images, falls back to the existing video-frame preview.
     if (!fs.existsSync(previewPath)) {
+      const original = await queryWithRetry(
+        "SELECT final_video_data FROM premium_greeting_orders WHERE order_id = $1 AND media_token = $2",
+        [orderId, token]
+      );
+      row.final_video_data = original.rows[0]?.final_video_data;
       if (!Buffer.isBuffer(row.final_video_data) || row.final_video_data.length === 0) {
         return null;
       }
@@ -20484,6 +20691,21 @@ app.get(
       const selected = mediaColumns[kind];
       if (!orderId || !token || !selected) {
         return res.status(404).send("Premium media not found.");
+      }
+
+      if (kind === "final") {
+        const hosting = await queryWithRetry(
+          `SELECT youtube_video_id, final_video_data IS NOT NULL AS has_local_video
+           FROM premium_greeting_orders
+           WHERE order_id = $1 AND media_token = $2 AND creation_type = 'watch_buy'`,
+          [orderId, token]
+        );
+        const hosted = hosting.rows[0];
+        if (hosted?.youtube_video_id && (String(req.query.download || "") !== "1" || !hosted.has_local_video)) {
+          return res.redirect(302,
+            `/premium-result/${encodeURIComponent(orderId)}?token=${encodeURIComponent(token)}`
+          );
+        }
       }
 
       // Read only the one requested media object. The previous query selected every
@@ -20611,6 +20833,7 @@ app.get("/premium-result/:orderId", async (req, res) => {
               contact_phone,
               media_token,
               render_status,
+              youtube_video_id,
               updated_at,
               final_video_data IS NOT NULL AS has_final_video
        FROM premium_greeting_orders
@@ -20621,7 +20844,12 @@ app.get("/premium-result/:orderId", async (req, res) => {
     );
     const order = found.rows[0];
 
-    if (!order || !order.has_final_video || String(order.render_status) !== "completed") {
+    const youtubeVideoId = order && order.creation_type === "watch_buy"
+      ? String(order.youtube_video_id || "") : "";
+    const youtubeUrl = youtubeVideoId ? `https://www.youtube.com/watch?v=${youtubeVideoId}` : "";
+    const youtubeEmbedUrl = youtubeVideoId
+      ? `https://www.youtube.com/embed/${youtubeVideoId}?playsinline=1&rel=0` : "";
+    if (!order || (!order.has_final_video && !youtubeVideoId) || String(order.render_status) !== "completed") {
       return res.status(404).type("html").send(
         "<h2>Premium video is not ready yet.</h2><p>Return to My Videos and try again after rendering is complete.</p>"
       );
@@ -20696,7 +20924,7 @@ app.get("/premium-result/:orderId", async (req, res) => {
       ? `🛍️ ${recipient}\nPrice: ${sender}\n\n${shareSpecificationPreview}\n\n📋 Full specifications available on the product page.\n▶ Watch & shop securely with Printo Shop — Powered by PATAPATA.`
       : `🎉 ${title}\nFrom ${sender}\n\nWatch this personalized Printo video and create yours too.`;
 
-    res.setHeader("Cache-Control", "public, max-age=300, must-revalidate");
+    res.setHeader("Cache-Control", isWatchBuy ? "no-store" : "public, max-age=300, must-revalidate");
     return res.type("html").send(`<!doctype html>
 <html lang="${language}" dir="${language === "ar" ? "rtl" : "ltr"}">
 <head>
@@ -20716,11 +20944,11 @@ app.get("/premium-result/:orderId", async (req, res) => {
 <meta property="og:image:height" content="630">
 <meta property="og:image:alt" content="${escapeHtml(title)}">
 <link rel="image_src" href="${escapeHtml(sharePreviewUrl)}">
-<meta property="og:video" content="${escapeHtml(videoUrl)}">
+${youtubeVideoId ? "" : `<meta property="og:video" content="${escapeHtml(videoUrl)}">
 <meta property="og:video:secure_url" content="${escapeHtml(videoUrl)}">
 <meta property="og:video:type" content="video/mp4">
 <meta property="og:video:width" content="720">
-<meta property="og:video:height" content="1280">
+<meta property="og:video:height" content="1280">`}
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="${escapeHtml(title)}">
 <meta name="twitter:description" content="${escapeHtml(message || "A personalized Printo Premium tribute video.")}">
@@ -20733,6 +20961,7 @@ body{margin:0;font-family:Arial,sans-serif;background:linear-gradient(150deg,#02
 .back{display:inline-block;margin-bottom:15px;padding:11px 16px;border-radius:999px;background:#ffd21f;color:#082a8f;text-decoration:none;font-weight:900}
 h1{font-size:30px;margin:8px 0}
 .subtitle{color:#dbeafe;line-height:1.5}
+.youtubePlayer{display:block;width:100%;aspect-ratio:16/9;min-height:200px;border:0;border-radius:13px;background:#000}
 .videoShell{position:relative;background:#000;border:3px solid #ffd21f;border-radius:20px;padding:8px;box-shadow:0 18px 50px rgba(0,0,0,.45)}
 video{display:block;width:100%;height:auto;max-height:${isWatchBuy ? "92vh" : "72vh"};object-fit:contain;border-radius:13px;background:#000}
 .bigPlayButton{
@@ -20781,10 +21010,10 @@ video{display:block;width:100%;height:auto;max-height:${isWatchBuy ? "92vh" : "7
 <h1>🌟 ${escapeHtml(title)}</h1>
 <p class="subtitle">Created for <strong>${escapeHtml(recipient)}</strong> from <strong>${escapeHtml(sender)}</strong></p>
 <div class="videoShell">
-<video id="premiumVideo" controls playsinline webkit-playsinline preload="auto" poster="${escapeHtml(videoPosterUrl)}"><source id="premiumVideoSource" src="${escapeHtml(videoUrl)}" type="video/mp4"></video>
-<button id="bigPlayButton" class="bigPlayButton" type="button" aria-label="Play Premium video">▶</button>
+${youtubeVideoId ? `<iframe class="youtubePlayer" src="${escapeHtml(youtubeEmbedUrl)}" title="${escapeHtml(title)}" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe>` : `<video id="premiumVideo" controls playsinline webkit-playsinline preload="auto" poster="${escapeHtml(videoPosterUrl)}"><source id="premiumVideoSource" src="${escapeHtml(videoUrl)}" type="video/mp4"></video>
+<button id="bigPlayButton" class="bigPlayButton" type="button" aria-label="Play Premium video">▶</button>`}
 </div>
-<a class="directVideoFallback" href="${escapeHtml(videoUrl)}" target="_blank" rel="noopener">▶ Open Video Directly</a>
+<a class="directVideoFallback" href="${escapeHtml(youtubeUrl || videoUrl)}" target="_blank" rel="noopener">${youtubeVideoId ? "▶ Watch on YouTube" : "▶ Open Video Directly"}</a>
 ${isWatchBuy ? `<a class="specButton" href="#full-specifications">📋 View Full Product Specifications</a>
 <section id="full-specifications" class="specPanel"><h2>Full Product Specifications</h2><div class="specText">${escapeHtml(message || "Product specifications were not provided.")}</div></section>
 <div class="watchBuyActions">
@@ -20800,19 +21029,19 @@ ${shippingPolicyUrl ? `<a href="${escapeHtml(shippingPolicyUrl)}" target="_blank
 <a href="${escapeHtml(sellerPrivacyUrl || printoTermsUrl)}" target="_blank" rel="noopener">🔒 Privacy / Refund Policy</a>
 </div></div>` : ""}
 <div class="actions">
-<a class="btn download full" href="${escapeHtml(downloadUrl)}">⬇ Download Video</a>
+${order.has_final_video ? `<a class="btn download full" href="${escapeHtml(downloadUrl)}">⬇ Download Original Video</a>` : ""}
 <button class="btn whatsapp" type="button" onclick="shareWhatsApp()">📱 WhatsApp</button>
 <button class="btn facebook" type="button" onclick="shareFacebook()">📘 Facebook</button>
 <button class="btn xshare" type="button" onclick="shareX()">𝕏 X / Twitter</button>
 <button class="btn instagram" type="button" onclick="shareVideoFile('Instagram')">📸 Instagram</button>
-<button class="btn youtube" type="button" onclick="shareVideoFile('YouTube')">▶ YouTube</button>
+${youtubeVideoId ? `<a class="btn youtube" href="${escapeHtml(youtubeUrl)}" target="_blank" rel="noopener">▶ YouTube</a>` : `<button class="btn youtube" type="button" onclick="shareVideoFile('YouTube')">▶ YouTube</button>`}
 <button class="btn tiktok" type="button" onclick="shareVideoFile('TikTok')">🎵 TikTok</button>
 <button class="btn email" type="button" onclick="shareEmail()">📧 Email</button>
 <button class="btn copy" type="button" onclick="copyLink()">🔗 Copy Link</button>
 <a class="btn videos" href="/customer-dashboard?lang=${encodeURIComponent(language)}">🎬 My Videos & Credits</a>
 <a class="btn credits" href="/subscriptions?lang=${encodeURIComponent(language)}">➕ Buy Credits / Subscribe</a>
 </div>
-<div class="note">Facebook, WhatsApp and X share the Premium result page. Instagram, YouTube and TikTok use your phone’s share sheet when available; otherwise the MP4 downloads first for upload.</div>
+<div class="note">${youtubeVideoId ? "Share this Printo Studio page so viewers can watch the video and open the product, payment and seller links." : "Facebook, WhatsApp and X share the Premium result page. Instagram, YouTube and TikTok use your phone’s share sheet when available; otherwise the MP4 downloads first for upload."}</div>
 </main>
 <script>
 const pageUrl=${JSON.stringify(pageUrl)};
@@ -22684,6 +22913,8 @@ async function renderPremiumOrderVideo({ orderId, req, publicBaseUrl = "" }) {
     await queryWithRetry(
       `UPDATE premium_greeting_orders
        SET final_video_data = $2,
+           youtube_video_id = '',
+           youtube_linked_at = NULL,
            final_video_mime = 'video/mp4',
            final_video_name = $3,
            final_video_url = $4,
@@ -23686,7 +23917,7 @@ function renderFinishedVideo(video){
     '<span class="'+typeClass+'">'+label+'</span><br>'+
     '<strong>For '+recipient+'</strong><br>'+
     '<span class="videoLinks"><a href="'+playUrl+'">▶ Play</a> &nbsp; '+
-    '<a href="'+downloadUrl+'">⬇ Download</a></span>'+
+    (video.downloadAvailable === false ? '' : '<a href="'+downloadUrl+'">⬇ Download</a>')+'</span>'+
     '</div>';
 }
 
